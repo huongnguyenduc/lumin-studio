@@ -175,6 +175,86 @@ else
   bad "extension.md MẤT luật sống còn ADR-011/no-DOM-Meta (REC-SP-02)"
 fi
 
+# ===== Lấp self-test holes (audit 2026-06-23) =====
+
+echo "== session-start: van-xả tự dọn mỗi phiên (audit 2026-06-23) =="
+touch "$ROOT/.claude/.skip-verify" "$ROOT/.claude/.allow-contract-edit"
+printf '%s' '{"hook_event_name":"SessionStart","source":"startup"}' | bash "$HOOKS/session-start.sh" >/dev/null 2>&1
+{ [ ! -f "$ROOT/.claude/.skip-verify" ] && [ ! -f "$ROOT/.claude/.allow-contract-edit" ]; } \
+  && ok "session-start xoá .skip-verify + .allow-contract-edit (van một-phiên)" \
+  || { bad "van-xả KHÔNG bị dọn ở session-start"; rm -f "$ROOT/.claude/.skip-verify" "$ROOT/.claude/.allow-contract-edit"; }
+
+echo "== guard-bash: loop-detector vòng đầy đủ (1-3 pass · 4 block · reset) (audit) =="
+TMPH2="$(mktemp)"; export CMD_HISTORY_FILE="$TMPH2"
+jl='{"tool_input":{"command":"echo loop-full"}}'
+run_hook guard-bash.sh "$jl"; a1=$RC; run_hook guard-bash.sh "$jl"; a2=$RC; run_hook guard-bash.sh "$jl"; a3=$RC
+run_hook guard-bash.sh "$jl"; a4=$RC; run_hook guard-bash.sh "$jl"; a5=$RC
+{ [ "$a1" = 0 ] && [ "$a2" = 0 ] && [ "$a3" = 0 ]; } && ok "loop 1-3 đi qua (chưa đủ ngưỡng)" || bad "loop 1-3 không pass (a1=$a1 a2=$a2 a3=$a3)"
+[ "$a4" = 2 ] && ok "loop lần 4 bị chặn" || bad "loop lần 4 không chặn (a4=$a4)"
+[ "$a5" = 0 ] && ok "loop sau chặn reset -> lần 5 đi qua" || bad "loop không reset sau chặn (a5=$a5)"
+unset CMD_HISTORY_FILE; rm -f "$TMPH2"
+
+echo "== invariant: 4-luật literal đồng bộ session-start.sh ↔ pre-compact.sh (audit) =="
+ssL="$(grep -F '4 luật always-must:' "$HOOKS/session-start.sh" | head -1 | sed -E 's/^[^•]*//; s/".*$//')"
+pcL="$(grep -F '4 luật always-must:' "$HOOKS/pre-compact.sh"   | head -1 | sed -E 's/^[^•]*//; s/".*$//')"
+{ [ -n "$ssL" ] && [ "$ssL" = "$pcL" ]; } && ok "4-luật literal khớp byte giữa 2 hook" \
+  || bad "4-luật literal LỆCH (ss='$ssL' pc='$pcL')"
+
+echo "== format-and-lint: Go parse-gate (REC-08) =="
+if command -v gofmt >/dev/null 2>&1; then
+  GTMP="$(mktemp -d)"
+  printf 'package main\nfunc main( {\n' > "$GTMP/broken.go"
+  run_hook format-and-lint.sh "{\"tool_input\":{\"file_path\":\"$GTMP/broken.go\"}}"
+  [ "$RC" -eq 2 ] && ok "Go syntax vỡ -> exit 2 (REC-08)" || bad "Go parse-gate không fire (exit=$RC)"
+  printf 'package main\n\nfunc main() {}\n' > "$GTMP/ok.go"
+  run_hook format-and-lint.sh "{\"tool_input\":{\"file_path\":\"$GTMP/ok.go\"}}"
+  [ "$RC" -eq 0 ] && ok "Go hợp lệ -> exit 0" || bad "Go hợp lệ bị chặn nhầm (exit=$RC)"
+  rm -rf "$GTMP"
+else ok "format-and-lint Go parse-gate (skip: vắng gofmt)"; fi
+
+echo "== verify-before-stop: retry budget 4× surface (REC-06) =="
+if command -v make >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
+  VTMP="$(mktemp -d)"; ( cd "$VTMP" && git init -q && git config user.email t@t && git config user.name t )
+  printf 'verify-go:\n\t@exit 1\n' > "$VTMP/Makefile"
+  printf 'package main\n' > "$VTMP/x.go"
+  VATT="$(mktemp)"; rm -f "$VATT"
+  runv() { OUT="$(printf '{}' | env CLAUDE_PROJECT_DIR="$VTMP" VERIFY_ATTEMPTS_FILE="$VATT" bash "$HOOKS/verify-before-stop.sh" 2>/dev/null)"; RC=$?; }
+  runv; r1=$RC; runv; r2=$RC; runv; r3=$RC; runv; r4=$RC
+  { [ "$r1" = 2 ] && [ "$r2" = 2 ] && [ "$r3" = 2 ]; } && ok "fail 1-3 chặn dừng (exit 2)" || bad "retry 1-3 không chặn (r1=$r1 r2=$r2 r3=$r3)"
+  { [ "$r4" = 0 ] && printf '%s' "$OUT" | grep -q 'FAIL 4'; } && ok "fail lần 4 -> surface cho người + cho dừng (exit 0)" || bad "retry budget lần 4 sai (r4=$r4)"
+  rm -rf "$VTMP" "$VATT"
+else ok "verify-before-stop retry budget (skip: vắng make/git)"; fi
+
+echo "== verify-before-stop: REC-02 nhắc active-context (non-blocking) =="
+if command -v git >/dev/null 2>&1; then
+  RTMP="$(mktemp -d)"; ( cd "$RTMP" && git init -q )
+  printf 'export const a=1\n' > "$RTMP/a.ts"; printf 'export const b=2\n' > "$RTMP/b.ts"
+  OUT="$(printf '{}' | env CLAUDE_PROJECT_DIR="$RTMP" bash "$HOOKS/verify-before-stop.sh" 2>/dev/null)"; RC=$?
+  { [ "$RC" = 0 ] && printf '%s' "$OUT" | grep -q 'active-context'; } && ok "đổi >1 source chưa đụng active-context -> nhắc (non-blocking)" || bad "REC-02 nhắc không phát (exit=$RC)"
+  rm -rf "$RTMP"
+else ok "verify-before-stop REC-02 (skip: vắng git)"; fi
+
+echo "== pre-compact: nội dung snapshot keep_first (REC-19) =="
+if command -v git >/dev/null 2>&1; then
+  PTMP="$(mktemp -d)"; ( cd "$PTMP" && git init -q )
+  mkdir -p "$PTMP/docs"; printf '# active\n' > "$PTMP/docs/active-context.md"; printf 'export const x=1\n' > "$PTMP/foo.ts"
+  PCF="$(mktemp)"
+  printf '%s' '{"trigger":"manual"}' | env CLAUDE_PROJECT_DIR="$PTMP" PRECOMPACT_FILE="$PCF" bash "$HOOKS/pre-compact.sh" >/dev/null 2>&1
+  { grep -q 'always-must' "$PCF" && grep -q 'File đã đổi' "$PCF" && grep -q 'pnpm verify' "$PCF"; } \
+    && ok "snapshot chứa 4-luật + file đổi + verify-cmd" || bad "snapshot pre-compact thiếu nội dung keep_first"
+  rm -rf "$PTMP" "$PCF"
+else ok "pre-compact content (skip: vắng git)"; fi
+
+echo "== guard-files: special-casing đường git-status THẬT (REC-16, không qua van) =="
+if command -v git >/dev/null 2>&1; then
+  STMP="$(mktemp -d)"; ( cd "$STMP" && git init -q )
+  mkdir -p "$STMP/x"; printf "expect(format(390000)).toBe('390.000₫')\n" > "$STMP/x/money.test.ts"
+  OUT="$(printf '%s' "{\"tool_input\":{\"file_path\":\"$STMP/services/web/money.ts\",\"content\":\"export function f(t){ if(t===390000) return '390.000₫'; return '' }\"}}" | env CLAUDE_PROJECT_DIR="$STMP" bash "$HOOKS/guard-files.sh" 2>/dev/null)"
+  printf '%s' "$OUT" | grep -q '"permissionDecision":"ask"' \
+    && ok "source hardcode khớp test untracked (git-status path) -> ask" || bad "REC-16 đường git-status THẬT không fire (out=$OUT)"
+  rm -rf "$STMP"
+else ok "guard-files special-casing real-path (skip: vắng git)"; fi
+
 echo
 printf 'Kết quả: \033[32m%d pass\033[0m / \033[31m%d fail\033[0m\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

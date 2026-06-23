@@ -16,7 +16,7 @@ printf '%s' "$INPUT" | grep -Eq '"stop_hook_active"[[:space:]]*:[[:space:]]*true
 # Cần git để biết có đổi gì không
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 
-changed="$(git status --porcelain 2>/dev/null | sed -E 's/^...//')"
+changed="$(git status --porcelain -uall 2>/dev/null | sed -E 's/^...//')"
 [ -z "$changed" ] && exit 0
 
 has_ext() { printf '%s\n' "$changed" | grep -Eq "\.($1)([\"]?)$"; }

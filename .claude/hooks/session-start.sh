@@ -7,9 +7,13 @@
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 cd "$ROOT" 2>/dev/null || exit 0
 
-# --- 1) Reset state (REC-06) ---
+# --- 1) Reset state (REC-06) + van-xả tự dọn (audit 2026-06-23) ---
+# Van-xả là check-tồn-tại-file: tạo rồi quên = tắt gate VĨNH VIỄN âm thầm. Dọn ở session-start ⇒
+# mỗi van chỉ sống TRONG MỘT phiên (buộc re-arm có chủ đích), khớp tinh thần one-shot của .precompact-state.
 rm -f "${CMD_HISTORY_FILE:-$ROOT/.claude/.cmd-history}" \
-      "${VERIFY_ATTEMPTS_FILE:-$ROOT/.claude/.verify-attempts}" 2>/dev/null
+      "${VERIFY_ATTEMPTS_FILE:-$ROOT/.claude/.verify-attempts}" \
+      "$ROOT/.claude/.skip-verify" \
+      "$ROOT/.claude/.allow-contract-edit" 2>/dev/null
 
 # --- 2) Orient ---
 ctx=""

@@ -88,11 +88,12 @@ case "$FILE" in
                      | sed -E "s/^[\"']//; s/[\"']\$//" | sort -u )"
             if [ -n "$lits" ]; then
               # Đối chiếu CHỈ test đang sửa trong working tree (touched) — không quét cả cây.
-              tests="$(git -C "$ROOT" status --porcelain 2>/dev/null | awk '{print $NF}' \
+              tests="$(git -C "$ROOT" status --porcelain -uall 2>/dev/null | awk '{print $NF}' \
                        | grep -E '(_test\.go|\.test\.(ts|tsx|js)|\.spec\.(ts|tsx|js)|/e2e/)' || true)"
               # Van self-test: trỏ vào một thư mục test fixture cố định.
               if [ -n "${GUARD_SPECIALCASE_TESTROOT:-}" ]; then
-                tests="$(find "$GUARD_SPECIALCASE_TESTROOT" -type f \( -name '*_test.go' -o -name '*.test.*' -o -name '*.spec.*' \) 2>/dev/null)"
+                # Dùng CÙNG predicate với nhánh production (line ~85) để self-test exercise đúng logic chọn.
+                tests="$(find "$GUARD_SPECIALCASE_TESTROOT" -type f 2>/dev/null | grep -E '(_test\.go|\.test\.(ts|tsx|js)|\.spec\.(ts|tsx|js)|/e2e/)')"
               fi
               if [ -n "$tests" ]; then
                 while IFS= read -r lit; do

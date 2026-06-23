@@ -17,14 +17,14 @@ mkdir -p "$(dirname "$OUT")" 2>/dev/null
   echo "• 4 luật always-must: statusHistory MỌI transition · money int-VND qua MỘT formatter core · i18n key (không hard-code) · prefers-reduced-motion."
   if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     # 3) File đã đổi + 4) verify-cmd theo ngôn ngữ đổi
-    changed="$(git status --porcelain 2>/dev/null | sed 's/^...//' | head -30)"
+    changed="$(git status --porcelain -uall 2>/dev/null | sed 's/^...//' | head -30)"
     if [ -n "$changed" ]; then
       echo "• File đã đổi (git):"
       printf '%s\n' "$changed" | sed 's/^/    /'
       cmds=""
-      printf '%s\n' "$changed" | grep -qE '\.(ts|tsx|js|jsx)$' && cmds="$cmds pnpm verify"
-      printf '%s\n' "$changed" | grep -qE '\.go$'              && cmds="$cmds make verify-go"
-      printf '%s\n' "$changed" | grep -qE '\.rs$'              && cmds="$cmds make verify-rs"
+      printf '%s\n' "$changed" | grep -qE '\.(ts|tsx|js|jsx)([\"]?)$' && cmds="$cmds pnpm verify"
+      printf '%s\n' "$changed" | grep -qE '\.go([\"]?)$'              && cmds="$cmds make verify-go"
+      printf '%s\n' "$changed" | grep -qE '\.rs([\"]?)$'              && cmds="$cmds make verify-rs"
       [ -n "$cmds" ] && echo "• Verify-cmd ngôn ngữ đổi:$cmds"
     fi
     # 5) ADR id đang chạm (best-effort grep diff — heuristic; plan.md không có marker máy-đọc)

@@ -43,7 +43,13 @@ TOY
 # ── Toy tests (map 1-1 với OSM-01..03 trong docs/acceptance.md); mỗi test chạy subshell sạch, 0=PASS ──
 t_osm01() { ( . "$1"                                                  # OSM-01 transition_table
   osm_transition PENDING_CONFIRM PAID    "" >/dev/null || exit 1      #   valid  -> phải OK
+  osm_transition PAID IN_PRODUCTION      "" >/dev/null || exit 1      #   valid  -> phải OK (kill drop-edge)
   osm_transition PENDING_CONFIRM SHIPPED "" >/dev/null && exit 1      #   invalid-> phải REJECT
+  osm_transition PAID SHIPPED            "" >/dev/null && exit 1      #   invalid (skip IN_PRODUCTION) -> REJECT (kill add-illegal-edge)
+  exit 0 ); }
+t_osm01t() { ( . "$1"                                                 # OSM-01 terminal: CANCELLED/RETURNED không có cạnh ra
+  osm_transition CANCELLED PAID "x" >/dev/null && exit 1             #   terminal -> phải REJECT (kill terminal-escape)
+  osm_transition RETURNED  PAID "x" >/dev/null && exit 1
   exit 0 ); }
 t_osm02() { ( . "$1"                                                  # OSM-02 appends_status_history
   osm_transition PENDING_CONFIRM PAID "" >/dev/null
@@ -54,9 +60,10 @@ t_osm03() { ( . "$1"                                                  # OSM-03 c
   exit 0 ); }
 
 echo "== baseline: toy-OSM + toy-test phải XANH (nếu đỏ ⇒ toy/test hỏng, không phải mutant) =="
-t_osm01 "$TMP/toy.sh" && ok "OSM-01 baseline pass" || bad "OSM-01 baseline FAIL"
-t_osm02 "$TMP/toy.sh" && ok "OSM-02 baseline pass" || bad "OSM-02 baseline FAIL"
-t_osm03 "$TMP/toy.sh" && ok "OSM-03 baseline pass" || bad "OSM-03 baseline FAIL"
+t_osm01  "$TMP/toy.sh" && ok "OSM-01 baseline pass" || bad "OSM-01 baseline FAIL"
+t_osm01t "$TMP/toy.sh" && ok "OSM-01 terminal baseline pass" || bad "OSM-01 terminal baseline FAIL"
+t_osm02  "$TMP/toy.sh" && ok "OSM-02 baseline pass" || bad "OSM-02 baseline FAIL"
+t_osm03  "$TMP/toy.sh" && ok "OSM-03 baseline pass" || bad "OSM-03 baseline FAIL"
 
 echo "== mutation kill-gate: mỗi mutant PHẢI bị test tương ứng giết =="
 run_mutant() { # $1=label  $2=sed-expr  $3=test-fn  $4=osm-id
@@ -71,6 +78,10 @@ run_mutant "allow-all guard"    's~.*#GUARDCALL~  : # mut-allow-all~'           
 run_mutant "swap from/to"       's~.*#GUARDMATCH~osm_allowed() { case " $ALLOWED " in *" $2>$1 "*) return 0 ;; esac; return 1; } # mut-swap~' t_osm01 "OSM-01"
 run_mutant "drop statusHistory" 's~.*#HISTORY~  : # mut-drop-history~'                                                            t_osm02 "OSM-02"
 run_mutant "drop reason-check"  's~.*#REASON~  : # mut-drop-reason~'                                                              t_osm03 "OSM-03"
+# Họ mutant cấu-trúc-cạnh (audit 2026-06-23): test over-/under-constrains transitions sẽ để mutant này SỐNG.
+run_mutant "drop-edge PAID>IN_PRODUCTION"   's~PAID>IN_PRODUCTION ~~'                t_osm01  "OSM-01"
+run_mutant "add-illegal PAID>SHIPPED"       's~^ALLOWED="~ALLOWED="PAID>SHIPPED ~'   t_osm01  "OSM-01"
+run_mutant "terminal-escape CANCELLED>PAID" 's~^ALLOWED="~ALLOWED="CANCELLED>PAID ~' t_osm01t "OSM-01"
 
 echo "== real-check: packages/core OSM (tự kích khi Phase-0 land) =="
 osm_src="$(find "$ROOT/packages/core" -type f \( -iname '*state*' -o -iname '*osm*' -o -iname '*transition*' \) 2>/dev/null | head -1)"
