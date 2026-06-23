@@ -1,0 +1,22 @@
+/* Lumin Studio — Elevation tokens
+   Warm cocoa-tinted shadows. Plus a signature "pop" solid-offset shadow
+   for the playful, chunky brand feel. */
+
+:root {
+  /* Soft ambient shadows (cocoa-tinted, never gray) */
+  --shadow-sm: 0 1px 2px rgba(50, 32, 10, 0.08);
+  --shadow-md: 0 4px 14px rgba(50, 32, 10, 0.10);
+  --shadow-lg: 0 14px 36px rgba(50, 32, 10, 0.14);
+  --shadow-xl: 0 28px 60px rgba(50, 32, 10, 0.18);
+
+  /* Signature "pop" — solid offset, no blur. Chunky & fun. */
+  --shadow-pop:    4px 4px 0 var(--cocoa-900);
+  --shadow-pop-sm: 3px 3px 0 var(--cocoa-900);
+  --shadow-pop-flame: 4px 4px 0 var(--flame-700);
+
+  /* Inset for pressed/sunken */
+  --shadow-inset: inset 0 2px 4px rgba(50, 32, 10, 0.10);
+
+  /* Focus ring */
+  --ring-focus: 0 0 0 3px rgba(76, 141, 255, 0.45);
+}

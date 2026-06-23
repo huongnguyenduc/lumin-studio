@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Hanken+Grotesque:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#EAE7DF}
+</style>
+</helmet>
+
+<div style="width:max-content;min-width:100%;min-height:100vh;box-sizing:border-box;padding:48px;background:#EAE7DF">
+
+  <div style="margin-bottom:30px">
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:44px;color:#492F10;letter-spacing:-0.025em;line-height:1">Admin mobile · bản hi-fi</div>
+    <div style="font-family:'Space Mono',monospace;font-size:12px;color:#7C6233;margin-top:8px;max-width:820px;line-height:1.7">Bản app-like cho điện thoại — vận hành shop khi không có laptop: xem &amp; đổi trạng thái đơn, theo dõi hàng đợi in, trả lời đánh giá, xem doanh thu nhanh, nhận thông báo đơn mới. Thao tác 1 tay: điều hướng chính ở <b style="color:#492F10">thanh tab dưới</b>, mọi nút quan trọng nằm trong tầm ngón cái. Khối gạch chéo = ảnh/model thật · ghi chú cam = điểm cần lưu ý.</div>
+  </div>
+
+  <!-- NAV SYSTEM EXPLAINER -->
+  <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:46px">
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;color:#492F10;letter-spacing:-0.02em">Hệ điều hướng — thanh tab dưới (5 mục) + thanh trên (back / tiêu đề / hành động)</div>
+    <div style="display:flex;gap:34px;align-items:flex-start;flex-wrap:wrap">
+
+      <div style="max-width:560px;background:#fff;border:2px solid #492F10;border-radius:16px;box-shadow:5px 5px 0 rgba(73,47,16,.1);padding:16px 18px;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+        <div style="font-size:18px">Vì sao thanh tab dưới?</div>
+        <div style="font-family:'Space Mono',monospace;font-size:10px;color:#785B34;line-height:1.9;margin-top:8px">Admin có ~17 màn, nhưng khi cầm điện thoại bạn chỉ làm 4-5 việc gấp. Thanh tab cố định 5 mục hay dùng nhất → 1 chạm tới ngay, không cần mở menu. Mọi màn phụ (Sản phẩm, Vật tư, Cài đặt…) gom vào tab <b style="color:#492F10">Thêm</b>.</div>
+        <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:12px;border-top:1px dashed #EFE6CC;padding-top:10px;line-height:1.8">Mọi nút hành động chính (Cập nhật trạng thái, Trả lời, Lưu) đều <b style="color:#492F10">dính đáy</b> phía trên thanh tab — ngón cái với tới. Thao tác phụ ẩn trong menu <span style="color:#492F10">⋯</span> hoặc vuốt.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:13px">
+          <span style="font-family:'Space Mono',monospace;font-size:9px;background:#FFF1EC;border:1.5px solid #FF6B4A;color:#C93A1A;padding:4px 9px;border-radius:14px">vuốt phải = tiến 1 bước</span>
+          <span style="font-family:'Space Mono',monospace;font-size:9px;background:#F6EFD8;border:1.5px solid #D8C9A1;padding:4px 9px;border-radius:14px">giữ = chọn nhiều</span>
+          <span style="font-family:'Space Mono',monospace;font-size:9px;background:#F6EFD8;border:1.5px solid #D8C9A1;padding:4px 9px;border-radius:14px">kéo xuống = làm mới</span>
+        </div>
+      </div>
+
+      <!-- tab bar anatomy -->
+      <div style="flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">Thanh tab dưới — 5 mục cố định</span>
+        <div style="width:390px;background:#fff;border:2px solid #492F10;border-radius:16px;box-shadow:4px 4px 0 rgba(73,47,16,.1);overflow:hidden">
+          <div style="border-top:0;display:flex;padding:9px 6px 11px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#C93A1A"><span style="font-size:20px;line-height:1">◧</span><span style="font-family:'Space Mono',monospace;font-size:8px;font-weight:700">Tổng quan</span><span style="width:5px;height:5px;border-radius:50%;background:#FF6B4A"></span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:20px;line-height:1">☰</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đơn</span><span style="width:5px;height:5px"></span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:20px;line-height:1">▦</span><span style="font-family:'Space Mono',monospace;font-size:8px">Hàng in</span><span style="width:5px;height:5px"></span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:20px;line-height:1">★</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đánh giá</span><span style="width:5px;height:5px"></span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:20px;line-height:1">⋯</span><span style="font-family:'Space Mono',monospace;font-size:8px">Thêm</span><span style="width:5px;height:5px"></span></div>
+          </div>
+        </div>
+        <span style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;line-height:1.7;max-width:390px">Tab <b style="color:#C93A1A">Tổng quan</b> · <b>Đơn</b> · <b>Hàng in</b> · <b>Đánh giá</b> đúng 4 việc gấp nhất. <b>Thêm</b> = Sản phẩm, Danh mục, Vật tư, Khách hàng, Cài đặt.</span>
+
+        <!-- push notif -->
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233;margin-top:6px">Thông báo đơn mới (màn khoá)</span>
+        <div style="width:390px;background:#fff;border:2px solid #492F10;border-radius:16px;box-shadow:4px 4px 0 rgba(73,47,16,.1);padding:11px 12px;display:flex;gap:11px;align-items:flex-start;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="width:34px;height:34px;border-radius:9px;background:#FF6B4A;border:1.5px solid #492F10;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;flex:none">◖</div>
+          <div style="flex:1">
+            <div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:14px">Lumin Admin</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">vừa xong</span></div>
+            <div style="font-size:14px;margin-top:1px">Đơn mới #LM2049 · ₫340k</div>
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:2px">Lê Cúc · Messenger · Đèn Mochi +1</div>
+            <div style="display:flex;gap:7px;margin-top:8px"><span style="flex:1;text-align:center;background:#FF6B4A;color:#fff;border:1.5px solid #492F10;border-radius:9px;padding:5px;font-size:12px">Xác nhận</span><span style="flex:1;text-align:center;border:1.5px solid #492F10;border-radius:9px;padding:5px;font-size:12px">Mở đơn</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 1 DASHBOARD -->
+  <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:46px">
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;color:#492F10;letter-spacing:-0.02em">1 · Tổng quan</div>
+    <div style="display:flex;gap:34px;align-items:flex-start">
+
+      <!-- Dashboard B -->
+      <div style="width:390px;flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">"Tập trung" — hành động trước, số liệu sau</span>
+        <div style="width:390px;background:#FFFBEF;border:2px solid #492F10;border-radius:30px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="height:34px;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:'Space Mono',monospace;font-size:10px;color:#492F10;background:#fff"><span>9:41</span><div style="position:absolute;left:50%;top:7px;transform:translateX(-50%);width:86px;height:18px;background:#492F10;border-radius:11px"></div><div style="display:flex;align-items:center;gap:4px"><span style="font-size:9px">▮▮▮</span><div style="width:22px;height:11px;border:1.5px solid #492F10;border-radius:3px;position:relative"><div style="position:absolute;top:1px;left:1px;bottom:1px;width:62%;background:#492F10;border-radius:1px"></div></div></div></div>
+          <div style="height:52px;background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;align-items:center;gap:10px;padding:0 16px"><span style="font-size:20px;color:#C93A1A">◖</span><span style="font-size:18px;flex:1">Tổng quan</span><div style="position:relative;font-size:20px">♪<span style="position:absolute;top:-3px;right:-4px;width:14px;height:14px;background:#FF6B4A;border:1.5px solid #492F10;border-radius:50%;color:#fff;font-family:'Space Mono',monospace;font-size:7px;display:flex;align-items:center;justify-content:center">3</span></div></div>
+          <div style="padding:14px;min-height:560px">
+            <div style="text-align:center;padding:6px 0 4px"><div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">DOANH THU HÔM NAY · 18/06</div><div style="font-size:46px;line-height:1.1">₫2.4tr</div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#0E7C68">▲ 12% so với hôm qua</div></div>
+            <div style="display:flex;align-items:flex-end;gap:5px;height:40px;margin-top:6px;padding:0 6px">
+              <div style="flex:1;height:38%;background:#EFE2BE;border-radius:3px"></div><div style="flex:1;height:62%;background:#EFE2BE;border-radius:3px"></div><div style="flex:1;height:48%;background:#EFE2BE;border-radius:3px"></div><div style="flex:1;height:80%;background:#EFE2BE;border-radius:3px"></div><div style="flex:1;height:55%;background:#EFE2BE;border-radius:3px"></div><div style="flex:1;height:70%;background:#EFE2BE;border-radius:3px"></div><div style="flex:1;height:100%;background:#FF6B4A;border-radius:3px"></div>
+            </div>
+            <div style="font-size:17px;margin-top:18px">Ưu tiên</div>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:9px">
+              <div style="background:#FF6B4A;border:2.5px solid #492F10;border-radius:18px;padding:13px;color:#fff;display:flex;align-items:center;gap:12px;box-shadow:2px 2px 0 rgba(73,47,16,.25)"><span style="font-size:30px;line-height:1">8</span><div style="flex:1"><div style="font-size:16px">Cần in</div><div style="font-family:'Space Mono',monospace;font-size:8px;opacity:.9">đã thanh toán, chờ vào máy</div></div><span style="background:#fff;color:#C93A1A;border:1.5px solid #492F10;border-radius:9px;padding:6px 12px;font-size:13px">Mở →</span></div>
+              <div style="background:#fff;border:1.5px solid #492F10;border-radius:14px;padding:13px;display:flex;align-items:center;gap:12px"><span style="font-size:30px;line-height:1;color:#2D5FB8">5</span><div style="flex:1"><div style="font-size:16px">Cần giao</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">in xong, đóng gói &amp; gửi</div></div><span style="font-size:18px;color:#7C6233">›</span></div>
+              <div style="background:#fff;border:1.5px solid #492F10;border-radius:14px;padding:13px;display:flex;align-items:center;gap:12px"><span style="font-size:30px;line-height:1">2</span><div style="flex:1"><div style="font-size:16px">Đánh giá chờ</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">trả lời để giữ uy tín</div></div><span style="font-size:18px;color:#7C6233">›</span></div>
+            </div>
+            <div style="background:#FFF1EC;border:1.5px solid #FF6B4A;border-radius:13px;padding:11px 13px;margin-top:13px;display:flex;align-items:center;gap:10px"><span style="font-size:18px;color:#C93A1A">⚠</span><div style="flex:1;font-size:13px">Cam Mochi sắp hết — còn <b style="color:#C93A1A">~180g</b></div><span style="font-family:'Space Mono',monospace;font-size:9px;color:#C93A1A">Đặt thêm ›</span></div>
+          </div>
+          <div style="border-top:1.5px solid #EFE6CC;background:#fff;display:flex;padding:8px 6px 11px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#C93A1A"><span style="font-size:19px;line-height:1">◧</span><span style="font-family:'Space Mono',monospace;font-size:8px;font-weight:700">Tổng quan</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">☰</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đơn</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">▦</span><span style="font-family:'Space Mono',monospace;font-size:8px">Hàng in</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">★</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đánh giá</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">⋯</span><span style="font-family:'Space Mono',monospace;font-size:8px">Thêm</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:14px;color:#C93A1A;background:#fff;border:1.5px dashed #FF6B4A;border-radius:12px;padding:9px 12px;align-self:flex-start;box-shadow:3px 3px 0 rgba(244,99,58,.15)">✎ Đã chọn phương án B — đưa thẳng việc cần làm + cảnh báo vật tư lên đầu, doanh thu hiển thị to để liếc nhanh.</div>
+  </div>
+
+  <!-- 2 ORDERS LIST -->
+  <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:46px">
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;color:#492F10;letter-spacing:-0.02em">2 · Đơn hàng — danh sách</div>
+    <div style="display:flex;gap:34px;align-items:flex-start">
+
+      <!-- Orders A: cards + quick advance -->
+      <div style="width:390px;flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">Thẻ đơn + nút tiến nhanh</span>
+        <div style="width:390px;background:#FFFBEF;border:2px solid #492F10;border-radius:30px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="height:34px;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:'Space Mono',monospace;font-size:10px;background:#fff"><span>9:41</span><div style="position:absolute;left:50%;top:7px;transform:translateX(-50%);width:86px;height:18px;background:#492F10;border-radius:11px"></div><div style="display:flex;align-items:center;gap:4px"><span style="font-size:9px">▮▮▮</span><div style="width:22px;height:11px;border:1.5px solid #492F10;border-radius:3px;position:relative"><div style="position:absolute;top:1px;left:1px;bottom:1px;width:62%;background:#492F10;border-radius:1px"></div></div></div></div>
+          <div style="height:50px;background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;align-items:center;gap:10px;padding:0 16px"><span style="font-size:19px;flex:1">Đơn hàng</span><span style="font-size:18px">⌕</span><span style="font-size:18px">⤓</span></div>
+          <div style="background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;gap:7px;padding:9px 12px;overflow:hidden">
+            <span style="background:#FF6B4A;color:#fff;border:1.5px solid #492F10;border-radius:15px;padding:4px 11px;font-size:12px;white-space:nowrap">Tất cả 128</span>
+            <span style="border:1.5px solid #D8C9A1;border-radius:15px;padding:4px 11px;font-size:12px;white-space:nowrap">Chờ TT 2</span>
+            <span style="border:1.5px solid #D8C9A1;border-radius:15px;padding:4px 11px;font-size:12px;white-space:nowrap">Đang in 8</span>
+            <span style="border:1.5px solid #D8C9A1;border-radius:15px;padding:4px 11px;font-size:12px;white-space:nowrap;opacity:.5">Giao</span>
+          </div>
+          <div style="padding:12px;min-height:512px;display:flex;flex-direction:column;gap:10px">
+            <div style="background:#fff;border:1.5px solid #492F10;border-radius:14px;padding:12px 13px">
+              <div style="display:flex;align-items:center;gap:8px"><span style="font-family:'Space Mono',monospace;font-size:12px">#LM2048</span><span style="background:#FF6B4A;color:#fff;border:1.5px solid #492F10;font-size:10px;padding:2px 9px;border-radius:13px">Đang in</span><span style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-left:auto">18/06</span></div>
+              <div style="display:flex;align-items:center;gap:9px;margin-top:9px"><div style="width:42px;height:42px;border-radius:9px;background-image:repeating-linear-gradient(45deg,#F3EBD6 0,#F3EBD6 6px,#e4e2db 6px,#e4e2db 12px);border:1.5px dashed #C9B98E;flex:none"></div><div style="flex:1"><div style="font-size:15px">Nguyễn An</div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">Đèn Mochi +1 · Messenger</div></div><span style="font-family:'Space Mono',monospace;font-size:13px;color:#C93A1A">₫445k</span></div>
+              <div style="display:flex;gap:8px;margin-top:11px"><span style="flex:1;text-align:center;background:#FF6B4A;color:#fff;border:1.5px solid #492F10;border-radius:10px;padding:7px;font-size:13px">Chuyển "Đang giao" →</span><span style="width:42px;text-align:center;border:1.5px solid #492F10;border-radius:10px;padding:7px;font-size:14px">⋯</span></div>
+            </div>
+            <div style="background:#fff;border:1.5px solid #492F10;border-radius:14px;padding:12px 13px">
+              <div style="display:flex;align-items:center;gap:8px"><span style="font-family:'Space Mono',monospace;font-size:12px">#LM2047</span><span style="border:2px solid #FF6B4A;color:#C93A1A;font-size:10px;padding:1px 9px;border-radius:13px">Chờ xác nhận</span><span style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-left:auto">18/06</span></div>
+              <div style="display:flex;align-items:center;gap:9px;margin-top:9px"><div style="width:42px;height:42px;border-radius:9px;background-image:repeating-linear-gradient(45deg,#F3EBD6 0,#F3EBD6 6px,#e4e2db 6px,#e4e2db 12px);border:1.5px dashed #C9B98E;flex:none"></div><div style="flex:1"><div style="font-size:15px">Trần Bình</div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">Kệ Origami · Instagram</div></div><span style="font-family:'Space Mono',monospace;font-size:13px;color:#C93A1A">₫120k</span></div>
+              <div style="display:flex;gap:8px;margin-top:11px"><span style="flex:1;text-align:center;background:#fff;color:#0E7C68;border:1.5px solid #0E7C68;border-radius:10px;padding:7px;font-size:13px">✓ Xác nhận đã CK →</span><span style="width:42px;text-align:center;border:1.5px solid #492F10;border-radius:10px;padding:7px;font-size:14px">⋯</span></div>
+            </div>
+            <div style="background:#fff;border:1.5px solid #EFE6CC;border-radius:14px;padding:12px 13px">
+              <div style="display:flex;align-items:center;gap:8px"><span style="font-family:'Space Mono',monospace;font-size:12px">#LM2046</span><span style="background:#E6EEFC;color:#2D5FB8;border:1.5px solid #4C8DFF;font-size:10px;padding:2px 9px;border-radius:13px">Đang giao</span><span style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-left:auto">17/06</span></div>
+              <div style="display:flex;align-items:center;gap:9px;margin-top:9px"><div style="width:42px;height:42px;border-radius:9px;background-image:repeating-linear-gradient(45deg,#F3EBD6 0,#F3EBD6 6px,#e4e2db 6px,#e4e2db 12px);border:1.5px dashed #C9B98E;flex:none"></div><div style="flex:1"><div style="font-size:15px">Lê Cúc</div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">Đèn Mochi · Messenger</div></div><span style="font-family:'Space Mono',monospace;font-size:13px;color:#C93A1A">₫290k</span></div>
+              <div style="display:flex;gap:8px;margin-top:11px"><span style="flex:1;text-align:center;border:1.5px solid #492F10;border-radius:10px;padding:7px;font-size:13px">Đánh dấu "Hoàn tất" →</span><span style="width:42px;text-align:center;border:1.5px solid #492F10;border-radius:10px;padding:7px;font-size:14px">⋯</span></div>
+            </div>
+          </div>
+          <div style="border-top:1.5px solid #EFE6CC;background:#fff;display:flex;padding:8px 6px 11px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">◧</span><span style="font-family:'Space Mono',monospace;font-size:8px">Tổng quan</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#C93A1A"><span style="font-size:19px;line-height:1">☰</span><span style="font-family:'Space Mono',monospace;font-size:8px;font-weight:700">Đơn</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">▦</span><span style="font-family:'Space Mono',monospace;font-size:8px">Hàng in</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">★</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đánh giá</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">⋯</span><span style="font-family:'Space Mono',monospace;font-size:8px">Thêm</span></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <div style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:14px;color:#C93A1A;background:#fff;border:1.5px dashed #FF6B4A;border-radius:12px;padding:9px 12px;align-self:flex-start;box-shadow:3px 3px 0 rgba(244,99,58,.15)">✎ Đã chọn phương án A — thẻ đơn rõ ràng, mỗi đơn có nút ghi rõ bước kế tiếp. Có thể bật thêm thao tác vuốt như phím tắt sau.</div>
+  </div>
+
+  <!-- 2b CANCEL / RETURN bottom sheets -->
+  <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:46px">
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;color:#492F10;letter-spacing:-0.02em">2b · Huỷ &amp; Hoàn đơn — bottom sheet (buộc nhập lý do)</div>
+    <div style="display:flex;gap:34px;align-items:flex-start">
+
+      <!-- cancel sheet -->
+      <div style="width:390px;flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">Huỷ đơn (chọn từ menu ⋯ › trạng thái)</span>
+        <div style="width:390px;background:#FFFBEF;border:2px solid #492F10;border-radius:30px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10;position:relative">
+          <div style="height:34px;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:'Space Mono',monospace;font-size:10px;background:#fff"><span>9:41</span><div style="position:absolute;left:50%;top:7px;transform:translateX(-50%);width:86px;height:18px;background:#492F10;border-radius:11px"></div><div style="width:22px;height:11px;border:1.5px solid #492F10;border-radius:3px"></div></div>
+          <!-- dimmed list behind -->
+          <div style="filter:blur(1px);opacity:.4;padding:14px;height:300px"><div style="background:#fff;border:1.5px solid #492F10;border-radius:14px;padding:12px;margin-bottom:10px;height:70px"></div><div style="background:#fff;border:1.5px solid #EFE6CC;border-radius:14px;padding:12px;height:70px"></div></div>
+          <!-- sheet -->
+          <div style="position:absolute;left:0;right:0;bottom:0;background:#fff;border-top:2px solid #492F10;border-radius:22px 22px 30px 30px;padding:8px 16px 18px">
+            <div style="width:44px;height:5px;border-radius:3px;background:#D8C9A1;margin:0 auto 12px"></div>
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:19px">Huỷ đơn #LM2044</span><span style="margin-left:auto;background:#fff;border:2px solid #FF6B4A;color:#C93A1A;font-size:9px;padding:1px 9px;border-radius:13px">Chờ xác nhận</span></div>
+            <div style="font-size:13px;color:#7C6233;margin-top:12px">Lý do huỷ <span style="color:#d8473a">*</span> (bắt buộc)</div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+              <div style="display:flex;align-items:center;gap:10px;border:2px solid #d8473a;background:#FBE6E2;border-radius:11px;padding:11px 13px"><span style="color:#C0392B;font-size:15px">◉</span><span style="flex:1;font-size:14px">Khách đổi ý / không phản hồi</span></div>
+              <div style="display:flex;align-items:center;gap:10px;border:1.5px solid #EFE6CC;border-radius:11px;padding:11px 13px"><span style="color:#7C6233;font-size:15px">○</span><span style="flex:1;font-size:14px">Hết nhựa / không làm được</span></div>
+              <div style="display:flex;align-items:center;gap:10px;border:1.5px solid #EFE6CC;border-radius:11px;padding:11px 13px"><span style="color:#7C6233;font-size:15px">○</span><span style="flex:1;font-size:14px">Đặt nhầm / trùng đơn</span></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:13px"><div style="width:38px;height:22px;border-radius:13px;background:#D8C9A1;border:1.5px solid #492F10;position:relative;flex:none"><div style="position:absolute;top:1px;left:1px;width:18px;height:18px;border-radius:50%;background:#fff;border:1px solid #492F10"></div></div><span style="font-size:14px;flex:1">Nhắn khách lý do qua Messenger</span></div>
+            <div style="border:1.5px solid #EFE6CC;border-radius:11px;padding:9px 12px;margin-top:12px;font-family:'Space Mono',monospace;font-size:9px;color:#785B34;line-height:1.8">Đơn chưa thanh toán · chưa vào hàng đợi in <span style="color:#0E7C68">→ không hoàn tiền / hoàn nhựa</span></div>
+            <div style="display:flex;gap:9px;margin-top:14px"><span style="flex:1;text-align:center;border:1.5px solid #492F10;border-radius:12px;padding:12px;font-size:14px">Quay lại</span><span style="flex:1.4;text-align:center;background:#d8473a;color:#fff;border:2px solid #492F10;border-radius:12px;padding:12px;font-size:14px;box-shadow:2px 2px 0 rgba(73,47,16,.25)">Xác nhận huỷ</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- return sheet -->
+      <div style="width:390px;flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">Hoàn hàng (đã in / giao bị trả về)</span>
+        <div style="width:390px;background:#FFFBEF;border:2px solid #492F10;border-radius:30px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10;position:relative">
+          <div style="height:34px;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:'Space Mono',monospace;font-size:10px;background:#fff"><span>9:41</span><div style="position:absolute;left:50%;top:7px;transform:translateX(-50%);width:86px;height:18px;background:#492F10;border-radius:11px"></div><div style="width:22px;height:11px;border:1.5px solid #492F10;border-radius:3px"></div></div>
+          <div style="filter:blur(1px);opacity:.4;padding:14px;height:230px"><div style="background:#fff;border:1.5px solid #492F10;border-radius:14px;padding:12px;margin-bottom:10px;height:70px"></div><div style="background:#fff;border:1.5px solid #EFE6CC;border-radius:14px;padding:12px;height:70px"></div></div>
+          <div style="position:absolute;left:0;right:0;bottom:0;background:#fff;border-top:2px solid #492F10;border-radius:22px 22px 30px 30px;padding:8px 16px 18px">
+            <div style="width:44px;height:5px;border-radius:3px;background:#D8C9A1;margin:0 auto 12px"></div>
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:19px">Hoàn hàng #LM2043</span><span style="margin-left:auto;background:#E6EEFC;color:#2D5FB8;border:1.5px solid #4C8DFF;font-size:9px;padding:1px 9px;border-radius:13px">Đang giao</span></div>
+            <div style="font-size:13px;color:#7C6233;margin-top:12px">Lý do hoàn <span style="color:#d8473a">*</span></div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+              <div style="display:flex;align-items:center;gap:10px;border:2px solid #9a6b2f;background:#FBEFD9;border-radius:11px;padding:11px 13px"><span style="color:#9a6b2f;font-size:15px">◉</span><span style="flex:1;font-size:14px">Bom hàng — khách không nhận</span></div>
+              <div style="display:flex;align-items:center;gap:10px;border:1.5px solid #EFE6CC;border-radius:11px;padding:11px 13px"><span style="color:#7C6233;font-size:15px">○</span><span style="flex:1;font-size:14px">Lỗi sản phẩm / giao sai</span></div>
+            </div>
+            <div style="border:1.5px solid #EFE6CC;border-radius:12px;padding:11px 13px;margin-top:12px">
+              <div style="font-size:14px">Xử lý kèm theo</div>
+              <div style="display:flex;align-items:center;gap:10px;margin-top:9px"><span style="width:20px;height:20px;border-radius:6px;background:#9a6b2f;border:1.5px solid #492F10;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;flex:none">✓</span><span style="flex:1;font-size:13px">Hoàn 138g nhựa vào tồn kho</span></div>
+              <div style="display:flex;align-items:center;gap:10px;margin-top:9px"><span style="width:20px;height:20px;border-radius:6px;background:#9a6b2f;border:1.5px solid #492F10;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;flex:none">✓</span><span style="flex:1;font-size:13px">Trừ doanh thu đơn khỏi Thống kê</span></div>
+              <div style="display:flex;align-items:center;gap:10px;margin-top:9px"><span style="width:20px;height:20px;border-radius:6px;border:1.5px solid #D8C9A1;flex:none"></span><span style="flex:1;font-size:13px;color:#7C6233">Ghi nợ phí ship đã mất (₫35k)</span></div>
+            </div>
+            <div style="display:flex;gap:9px;margin-top:14px"><span style="flex:1;text-align:center;border:1.5px solid #492F10;border-radius:12px;padding:12px;font-size:14px">Quay lại</span><span style="flex:1.4;text-align:center;background:#9a6b2f;color:#fff;border:2px solid #492F10;border-radius:12px;padding:12px;font-size:14px;box-shadow:2px 2px 0 rgba(73,47,16,.25)">Xác nhận hoàn</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:14px;color:#C93A1A;background:#fff;border:1.5px dashed #FF6B4A;border-radius:12px;padding:9px 12px;align-self:flex-start;box-shadow:3px 3px 0 rgba(244,99,58,.15)">✎ Trên mobile dùng bottom sheet (trượt từ đáy) thay cho dialog — ngón cái với tới nút, vuốt xuống để đóng. Logic giống desktop: huỷ trước CK = sạch · hoàn sau in/giao = hoàn nhựa + trừ doanh thu.</div>
+  </div>
+
+  <!-- 3 ORDER DETAIL -->
+  <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:46px">
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;color:#492F10;letter-spacing:-0.02em">3 · Đơn hàng — chi tiết &amp; cập nhật (nút dính đáy)</div>
+    <div style="display:flex;gap:34px;align-items:flex-start">
+      <div style="width:390px;flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">Cuộn dọc · thanh tiến trình ngang · nút "Cập nhật" cố định</span>
+        <div style="width:390px;background:#FFFBEF;border:2px solid #492F10;border-radius:30px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10;position:relative">
+          <div style="height:34px;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:'Space Mono',monospace;font-size:10px;background:#fff"><span>9:41</span><div style="position:absolute;left:50%;top:7px;transform:translateX(-50%);width:86px;height:18px;background:#492F10;border-radius:11px"></div><div style="width:22px;height:11px;border:1.5px solid #492F10;border-radius:3px"></div></div>
+          <div style="height:50px;background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;align-items:center;gap:10px;padding:0 14px"><span style="font-size:22px">‹</span><span style="font-size:18px">Đơn #LM2048</span><span style="background:#FF6B4A;color:#fff;font-size:10px;padding:2px 9px;border-radius:13px">Đang in</span><span style="font-size:18px;margin-left:auto">⋯</span></div>
+          <div style="padding:14px 14px 88px;min-height:540px;background:#fff">
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">TIẾN TRÌNH</div>
+            <div style="display:flex;align-items:center;margin-top:10px"><div style="width:20px;height:20px;border-radius:50%;background:#492F10;flex:none"></div><div style="flex:1;height:2px;background:#492F10"></div><div style="width:20px;height:20px;border-radius:50%;background:#492F10;flex:none"></div><div style="flex:1;height:2px;background:#FF6B4A"></div><div style="width:26px;height:26px;border-radius:50%;background:#FF6B4A;border:2px solid #492F10;flex:none"></div><div style="flex:1;height:2px;background:#D8C9A1"></div><div style="width:20px;height:20px;border-radius:50%;border:2px solid #D8C9A1;flex:none"></div><div style="flex:1;height:2px;background:#D8C9A1"></div><div style="width:20px;height:20px;border-radius:50%;border:2px solid #D8C9A1;flex:none"></div></div>
+            <div style="display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:7px;color:#7C6233;margin-top:6px"><span>Xác nhận</span><span>Thanh toán</span><span style="color:#C93A1A">In</span><span>Giao</span><span>Xong</span></div>
+            <div style="font-size:16px;margin-top:18px">Sản phẩm</div>
+            <div style="border:1.5px solid #EFE6CC;border-radius:13px;margin-top:9px;overflow:hidden">
+              <div style="display:flex;gap:11px;align-items:center;padding:11px;border-bottom:1px solid #f0eee8"><div style="width:46px;height:46px;border-radius:9px;background-image:repeating-linear-gradient(45deg,#F3EBD6 0,#F3EBD6 7px,#e4e2db 7px,#e4e2db 14px);border:1.5px dashed #C9B98E;flex:none"></div><div style="flex:1"><div style="font-size:15px">Đèn ngủ Mochi</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">Cam Mochi · Size M · Khắc "An"</div></div><span style="font-family:'Space Mono',monospace;font-size:11px;color:#C93A1A">₫290k</span></div>
+              <div style="display:flex;gap:11px;align-items:center;padding:11px"><div style="width:46px;height:46px;border-radius:9px;background-image:repeating-linear-gradient(45deg,#F3EBD6 0,#F3EBD6 7px,#e4e2db 7px,#e4e2db 14px);border:1.5px dashed #C9B98E;flex:none"></div><div style="flex:1"><div style="font-size:15px">Móc khóa Robo ×2</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">Xanh Rêu · Khắc "Lumin"</div></div><span style="font-family:'Space Mono',monospace;font-size:11px;color:#C93A1A">₫130k</span></div>
+            </div>
+            <div style="border:1.5px solid #EFE6CC;border-radius:13px;padding:11px 13px;margin-top:10px;font-family:'Space Mono',monospace;font-size:9px;color:#785B34;line-height:1.9">Tạm tính ₫420.000 · Ship Q.1 ₫25.000<br/><span style="color:#492F10;font-size:12px;font-family:'Hanken Grotesque',sans-serif;font-weight:600">Tổng: ₫445.000</span> · <span style="color:#0E7C68">Đã thanh toán ✓</span></div>
+            <div style="border:1.5px solid #EFE6CC;border-radius:13px;padding:11px 13px;margin-top:10px"><div style="font-size:15px">Khách hàng</div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#785B34;line-height:1.9;margin-top:5px">Nguyễn An · 0901 234 567<br/>123 Lê Lợi, P.Bến Thành, Q.1</div><div style="display:flex;gap:8px;margin-top:9px"><span style="flex:1;text-align:center;border:1.5px solid #492F10;border-radius:10px;padding:7px;font-size:13px">Gọi</span><span style="flex:1;text-align:center;border:1.5px solid #492F10;border-radius:10px;padding:7px;font-size:13px">Mở Messenger</span></div></div>
+            <div style="border:1.5px solid #EFE6CC;border-radius:13px;padding:11px 13px;margin-top:10px"><div style="font-size:15px">Ghi chú nội bộ</div><div style="border:1.5px dashed #C9B98E;border-radius:10px;padding:8px;margin-top:7px;font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;min-height:38px">Khách dặn giao giờ hành chính…</div></div>
+          </div>
+          <!-- sticky action -->
+          <div style="position:absolute;left:0;right:0;bottom:0;background:#fff;border-top:1.5px solid #EFE6CC;padding:11px 14px 16px"><span style="display:block;text-align:center;background:#FF6B4A;color:#fff;border:2px solid #492F10;border-radius:13px;padding:13px;font-size:16px;box-shadow:2px 2px 0 rgba(73,47,16,.25)">Cập nhật trạng thái ▾</span></div>
+        </div>
+      </div>
+
+      <div style="max-width:330px;align-self:center;font-family:'Space Mono',monospace;font-size:11px;color:#785B34;line-height:1.9;background:#fff;border:1.5px dashed #C9B98E;border-radius:14px;padding:14px 16px">
+        <div style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:17px;color:#492F10;margin-bottom:8px">Nguyên tắc màn chi tiết</div>
+        • Nút <b style="color:#C93A1A">Cập nhật trạng thái</b> dính đáy — luôn thấy dù cuộn tới đâu.<br/><br/>
+        • Bấm nút → bottom sheet liệt kê các bước (Đang giao / Hoàn tất…) + Huỷ / Hoàn hàng (đỏ, ở cuối, buộc nhập lý do).<br/><br/>
+        • Mỗi món hiện <b style="color:#492F10">màu (có tên) · size · khắc tên</b> để in đúng — y như desktop.<br/><br/>
+        • Gọi / nhắn khách 1 chạm, không cần copy số.
+      </div>
+    </div>
+  </div>
+
+  <!-- 4 PRODUCTS + 5 EDITOR + 6 REVIEWS -->
+  <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:46px">
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;color:#492F10;letter-spacing:-0.02em">4 · Sản phẩm · 5 · Sửa sản phẩm · 6 · Đánh giá</div>
+    <div style="display:flex;gap:34px;align-items:flex-start">
+
+      <!-- 4 products list -->
+      <div style="width:390px;flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">4 · Sản phẩm — danh sách (trong tab Thêm)</span>
+        <div style="width:390px;background:#FFFBEF;border:2px solid #492F10;border-radius:30px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10;position:relative">
+          <div style="height:34px;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:'Space Mono',monospace;font-size:10px;background:#fff"><span>9:41</span><div style="position:absolute;left:50%;top:7px;transform:translateX(-50%);width:86px;height:18px;background:#492F10;border-radius:11px"></div><div style="width:22px;height:11px;border:1.5px solid #492F10;border-radius:3px"></div></div>
+          <div style="height:50px;background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;align-items:center;gap:10px;padding:0 14px"><span style="font-size:22px">‹</span><span style="font-size:18px;flex:1">Sản phẩm <span style="font-family:'Space Mono',monospace;font-size:10px;color:#7C6233">42</span></span><span style="font-size:18px">⌕</span></div>
+          <div style="padding:12px;min-height:516px;background:#fff;display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1.5px solid #EFE6CC;border-radius:13px;padding:10px 12px"><div style="width:44px;height:44px;border-radius:9px;background-image:repeating-linear-gradient(45deg,#F3EBD6 0,#F3EBD6 6px,#e4e2db 6px,#e4e2db 12px);border:1.5px dashed #C9B98E;flex:none"></div><div style="flex:1"><div style="font-size:15px">Đèn ngủ Mochi</div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">Đèn &amp; trang trí · 13 màu · Khắc</div></div><div style="text-align:right"><div style="font-family:'Space Mono',monospace;font-size:12px;color:#C93A1A">₫290k</div><span style="background:#D6F0EA;color:#0E7C68;border:1px solid #0E7C68;font-size:8px;padding:1px 7px;border-radius:11px">Đang bán</span></div></div>
+            <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1.5px solid #EFE6CC;border-radius:13px;padding:10px 12px"><div style="width:44px;height:44px;border-radius:9px;background-image:repeating-linear-gradient(45deg,#F3EBD6 0,#F3EBD6 6px,#e4e2db 6px,#e4e2db 12px);border:1.5px dashed #C9B98E;flex:none"></div><div style="flex:1"><div style="font-size:15px">Mô hình Mèo Mập</div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">Mô hình · 8 màu</div></div><div style="text-align:right"><div style="font-family:'Space Mono',monospace;font-size:12px;color:#C93A1A">₫180k</div><span style="background:#D6F0EA;color:#0E7C68;border:1px solid #0E7C68;font-size:8px;padding:1px 7px;border-radius:11px">Đang bán</span></div></div>
+            <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1.5px solid #EFE6CC;border-radius:13px;padding:10px 12px"><div style="width:44px;height:44px;border-radius:9px;background-image:repeating-linear-gradient(45deg,#F3EBD6 0,#F3EBD6 6px,#e4e2db 6px,#e4e2db 12px);border:1.5px dashed #C9B98E;flex:none"></div><div style="flex:1"><div style="font-size:15px">Móc khóa Robo</div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">Phụ kiện · 6 màu · Khắc</div></div><div style="text-align:right"><div style="font-family:'Space Mono',monospace;font-size:12px;color:#C93A1A">₫65k</div><span style="border:1px solid #b6b3aa;color:#7C6233;font-size:8px;padding:1px 7px;border-radius:11px">Nháp</span></div></div>
+          </div>
+          <!-- FAB -->
+          <div style="position:absolute;right:18px;bottom:84px;width:56px;height:56px;border-radius:50%;background:#FF6B4A;border:2px solid #492F10;box-shadow:3px 3px 0 rgba(73,47,16,.25);display:flex;align-items:center;justify-content:center;color:#fff;font-size:28px;line-height:1">+</div>
+          <div style="border-top:1.5px solid #EFE6CC;background:#fff;display:flex;padding:8px 6px 11px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">◧</span><span style="font-family:'Space Mono',monospace;font-size:8px">Tổng quan</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">☰</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đơn</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">▦</span><span style="font-family:'Space Mono',monospace;font-size:8px">Hàng in</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">★</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đánh giá</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#C93A1A"><span style="font-size:19px;line-height:1">⋯</span><span style="font-family:'Space Mono',monospace;font-size:8px;font-weight:700">Thêm</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5 product editor -->
+      <div style="width:390px;flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">5 · Sửa SP — các phần gập (accordion), mở "Bộ phận &amp; màu"</span>
+        <div style="width:390px;background:#FFFBEF;border:2px solid #492F10;border-radius:30px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10;position:relative">
+          <div style="height:34px;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:'Space Mono',monospace;font-size:10px;background:#fff"><span>9:41</span><div style="position:absolute;left:50%;top:7px;transform:translateX(-50%);width:86px;height:18px;background:#492F10;border-radius:11px"></div><div style="width:22px;height:11px;border:1.5px solid #492F10;border-radius:3px"></div></div>
+          <div style="height:50px;background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;align-items:center;gap:10px;padding:0 14px"><span style="font-size:22px">‹</span><span style="font-size:17px;flex:1">Sửa · Đèn Mochi</span><span style="font-family:'Space Mono',monospace;font-size:10px;color:#7C6233">Xem trước</span></div>
+          <div style="padding:12px;min-height:540px;background:#fff">
+            <!-- model preview -->
+            <div style="height:120px;border-radius:13px;background-image:repeating-linear-gradient(45deg,#F3EBD6 0,#F3EBD6 8px,#e4e2db 8px,#e4e2db 16px);border:1.5px dashed #C9B98E;display:flex;align-items:center;justify-content:center;position:relative"><span style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">MODEL 3D · phần "Chao đèn" đang sáng</span><span style="position:absolute;top:38px;left:120px;width:48px;height:30px;border:2px solid #FF6B4A;border-radius:8px;background:rgba(244,99,58,.12)"></span></div>
+            <!-- collapsed sections -->
+            <div style="border:1.5px solid #EFE6CC;border-radius:11px;padding:12px 13px;margin-top:11px;display:flex;align-items:center"><span style="flex:1;font-size:15px">Thông tin</span><span style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-right:8px">Mochi · ₫290k</span><span style="font-size:15px;color:#7C6233">▾</span></div>
+            <!-- expanded section -->
+            <div style="border:2px solid #492F10;border-radius:13px;margin-top:9px;overflow:hidden">
+              <div style="background:#FFF1EC;padding:12px 13px;display:flex;align-items:center"><span style="flex:1;font-size:16px">Bộ phận &amp; màu</span><span style="font-size:15px">▴</span></div>
+              <div style="padding:12px 13px">
+                <div style="display:flex;align-items:center;gap:8px"><span style="width:11px;height:11px;border-radius:50%;background:#FF6B4A;border:1px solid #492F10"></span><span style="font-size:14px;flex:1">Chao đèn</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#C93A1A">đang chọn ●</span></div>
+                <div style="display:flex;gap:8px;margin-top:9px;flex-wrap:wrap">
+                  <div style="display:flex;align-items:center;gap:6px;border:1.5px solid #492F10;border-radius:9px;padding:5px 8px"><span style="width:16px;height:16px;border-radius:5px;background:#FF6B4A;border:1px solid #492F10"></span><span style="font-family:'Space Mono',monospace;font-size:9px">Cam Mochi</span><span style="color:#d8473a;font-size:10px">✕</span></div>
+                  <div style="display:flex;align-items:center;gap:6px;border:1.5px solid #492F10;border-radius:9px;padding:5px 8px"><span style="width:16px;height:16px;border-radius:5px;background:#fff;border:1px solid #492F10"></span><span style="font-family:'Space Mono',monospace;font-size:9px">Trắng Sữa</span><span style="color:#d8473a;font-size:10px">✕</span></div>
+                  <div style="display:flex;align-items:center;gap:5px;border:1.5px dashed #b6b3aa;border-radius:9px;padding:5px 9px;font-size:12px">+ màu</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:11px;border-top:1px solid #f0eee8"><span style="width:11px;height:11px;border-radius:50%;background:#7fae8b;border:1px solid #492F10"></span><span style="font-size:14px;flex:1">Đế</span><span style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">2 màu ▾</span></div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:10px"><span style="width:11px;height:11px;border-radius:50%;background:#4C8DFF;border:1px solid #492F10"></span><span style="font-size:14px;flex:1">Nút bấm</span><span style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">1 màu ▾</span></div>
+                <div style="border:1.5px dashed #b6b3aa;border-radius:9px;padding:7px;text-align:center;font-size:12px;margin-top:10px">+ Thêm bộ phận</div>
+              </div>
+            </div>
+            <div style="border:1.5px solid #EFE6CC;border-radius:11px;padding:12px 13px;margin-top:9px;display:flex;align-items:center"><span style="flex:1;font-size:15px">Tùy chỉnh khác</span><span style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-right:8px">Size · Khắc tên</span><span style="font-size:15px;color:#7C6233">▾</span></div>
+            <div style="border:1.5px solid #EFE6CC;border-radius:11px;padding:12px 13px;margin-top:9px;display:flex;align-items:center"><span style="flex:1;font-size:15px">Định mức vật tư in</span><span style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-right:8px">S 106g · M 189g</span><span style="font-size:15px;color:#7C6233">▾</span></div>
+          </div>
+          <div style="position:absolute;left:0;right:0;bottom:0;background:#fff;border-top:1.5px solid #EFE6CC;padding:10px 14px 15px;display:flex;gap:9px"><span style="flex:1;text-align:center;border:1.5px solid #492F10;border-radius:12px;padding:11px;font-size:14px">Lưu nháp</span><span style="flex:1.5;text-align:center;background:#FF6B4A;color:#fff;border:2px solid #492F10;border-radius:12px;padding:11px;font-size:15px;box-shadow:2px 2px 0 rgba(73,47,16,.25)">Lưu &amp; đăng bán</span></div>
+        </div>
+      </div>
+
+      <!-- 6 reviews -->
+      <div style="width:390px;flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">6 · Đánh giá — trả lời (tab Đánh giá)</span>
+        <div style="width:390px;background:#FFFBEF;border:2px solid #492F10;border-radius:30px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="height:34px;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:'Space Mono',monospace;font-size:10px;background:#fff"><span>9:41</span><div style="position:absolute;left:50%;top:7px;transform:translateX(-50%);width:86px;height:18px;background:#492F10;border-radius:11px"></div><div style="width:22px;height:11px;border:1.5px solid #492F10;border-radius:3px"></div></div>
+          <div style="height:50px;background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;align-items:center;gap:8px;padding:0 16px"><span style="font-size:19px;flex:1">Đánh giá</span><span style="font-family:'Space Mono',monospace;font-size:11px;color:#7C6233">4.8 ★ · 2 chờ</span></div>
+          <div style="background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;gap:7px;padding:9px 12px">
+            <span style="background:#FF6B4A;color:#fff;border:1.5px solid #492F10;border-radius:15px;padding:4px 11px;font-size:12px">Chờ trả lời 2</span>
+            <span style="border:1.5px solid #D8C9A1;border-radius:15px;padding:4px 11px;font-size:12px">Đã trả lời</span>
+            <span style="border:1.5px solid #D8C9A1;border-radius:15px;padding:4px 11px;font-size:12px">★ thấp</span>
+          </div>
+          <div style="padding:12px;min-height:516px;background:#fff;display:flex;flex-direction:column;gap:11px">
+            <div style="background:#fff;border:1.5px solid #492F10;border-radius:14px;padding:13px">
+              <div style="display:flex;align-items:center;gap:9px"><div style="width:34px;height:34px;border-radius:50%;background:#EFE2BE;border:1.5px solid #492F10;flex:none"></div><div style="flex:1"><div style="font-size:14px">Phạm Dung</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">Mèo Mập · 16/06</div></div><span style="font-size:13px;color:#C93A1A">★★★☆☆</span></div>
+              <div style="font-size:14px;margin-top:9px;line-height:1.5">"Màu đẹp nhưng đế hơi lung lay, mong shop khắc phục ạ."</div>
+              <div style="border:1.5px dashed #C9B98E;border-radius:11px;padding:9px 11px;margin-top:10px"><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">TRẢ LỜI · gợi ý mẫu nhanh</div><div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap"><span style="border:1px solid #D8C9A1;border-radius:9px;padding:3px 8px;font-family:'Space Mono',monospace;font-size:9px">Xin lỗi + hỗ trợ</span><span style="border:1px solid #D8C9A1;border-radius:9px;padding:3px 8px;font-family:'Space Mono',monospace;font-size:9px">Cảm ơn</span></div></div>
+              <div style="display:flex;gap:8px;margin-top:10px"><span style="flex:1;text-align:center;background:#FF6B4A;color:#fff;border:1.5px solid #492F10;border-radius:10px;padding:8px;font-size:13px">Trả lời công khai</span><span style="width:46px;text-align:center;border:1.5px solid #492F10;border-radius:10px;padding:8px;font-size:13px">DM</span></div>
+            </div>
+            <div style="background:#fff;border:1.5px solid #EFE6CC;border-radius:14px;padding:13px">
+              <div style="display:flex;align-items:center;gap:9px"><div style="width:34px;height:34px;border-radius:50%;background:#EFE2BE;border:1.5px solid #492F10;flex:none"></div><div style="flex:1"><div style="font-size:14px">Nguyễn An</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">Đèn Mochi · 15/06</div></div><span style="font-size:13px;color:#C93A1A">★★★★★</span></div>
+              <div style="font-size:14px;margin-top:9px;line-height:1.5">"Đèn xinh xỉu, khắc tên sắc nét. Sẽ ủng hộ tiếp!"</div>
+            </div>
+          </div>
+          <div style="border-top:1.5px solid #EFE6CC;background:#fff;display:flex;padding:8px 6px 11px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">◧</span><span style="font-family:'Space Mono',monospace;font-size:8px">Tổng quan</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">☰</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đơn</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">▦</span><span style="font-family:'Space Mono',monospace;font-size:8px">Hàng in</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#C93A1A"><span style="font-size:19px;line-height:1">★</span><span style="font-family:'Space Mono',monospace;font-size:8px;font-weight:700">Đánh giá</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">⋯</span><span style="font-family:'Space Mono',monospace;font-size:8px">Thêm</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7 PRINT QUEUE -->
+  <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:46px">
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;color:#492F10;letter-spacing:-0.02em">7 · Hàng đợi in (tab Hàng in)</div>
+    <div style="display:flex;gap:34px;align-items:flex-start">
+
+      <!-- 7B segmented checklist -->
+      <div style="width:390px;flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">Danh sách theo cột (chọn cột trên cùng + nút In)</span>
+        <div style="width:390px;background:#FFFBEF;border:2px solid #492F10;border-radius:30px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="height:34px;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:'Space Mono',monospace;font-size:10px;background:#fff"><span>9:41</span><div style="position:absolute;left:50%;top:7px;transform:translateX(-50%);width:86px;height:18px;background:#492F10;border-radius:11px"></div><div style="width:22px;height:11px;border:1.5px solid #492F10;border-radius:3px"></div></div>
+          <div style="height:50px;background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;align-items:center;gap:8px;padding:0 16px"><span style="font-size:19px;flex:1">Hàng đợi in</span><span style="font-family:'Space Mono',monospace;font-size:10px;color:#7C6233">tổng 9</span></div>
+          <div style="background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;padding:8px 10px;gap:6px">
+            <span style="flex:1;text-align:center;background:#FF6B4A;color:#fff;border:1.5px solid #492F10;border-radius:10px;padding:6px 0;font-size:12px">Cần in<br/><span style="font-family:'Space Mono',monospace;font-size:9px">6</span></span>
+            <span style="flex:1;text-align:center;border:1.5px solid #D8C9A1;border-radius:10px;padding:6px 0;font-size:12px">Đang in<br/><span style="font-family:'Space Mono',monospace;font-size:9px">2</span></span>
+            <span style="flex:1;text-align:center;border:1.5px solid #D8C9A1;border-radius:10px;padding:6px 0;font-size:12px">Đóng gói<br/><span style="font-family:'Space Mono',monospace;font-size:9px">1</span></span>
+            <span style="flex:1;text-align:center;border:1.5px solid #D8C9A1;border-radius:10px;padding:6px 0;font-size:12px">Đã giao<br/><span style="font-family:'Space Mono',monospace;font-size:9px">—</span></span>
+          </div>
+          <div style="padding:12px;min-height:476px;background:#fff;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1.5px solid #492F10;border-radius:13px;padding:11px 12px"><span style="width:26px;height:26px;border-radius:7px;border:1.5px solid #492F10;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:11px;color:#7C6233;flex:none">⋮⋮</span><div style="flex:1"><div style="font-size:14px">#LM2050 · Đèn Mochi</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">Cam Mochi · M · Khắc "An" · ~106g</div></div><span style="background:#FF6B4A;color:#fff;border:1.5px solid #492F10;border-radius:9px;padding:6px 9px;font-size:11px">In →</span></div>
+            <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1.5px solid #EFE6CC;border-radius:13px;padding:11px 12px"><span style="width:26px;height:26px;border-radius:7px;border:1.5px solid #D8C9A1;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:11px;color:#7C6233;flex:none">⋮⋮</span><div style="flex:1"><div style="font-size:14px">#LM2051 · Móc khóa Robo ×2</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">Xanh Rêu · ~64g</div></div><span style="border:1.5px solid #492F10;border-radius:9px;padding:6px 9px;font-size:11px">In →</span></div>
+            <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1.5px solid #EFE6CC;border-radius:13px;padding:11px 12px"><span style="width:26px;height:26px;border-radius:7px;border:1.5px solid #D8C9A1;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:11px;color:#7C6233;flex:none">⋮⋮</span><div style="flex:1"><div style="font-size:14px">#LM2052 · Kệ Origami</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">Trắng Sữa · ~210g</div></div><span style="border:1.5px solid #492F10;border-radius:9px;padding:6px 9px;font-size:11px">In →</span></div>
+            <div style="background:#FFF1EC;border:1.5px solid #FF6B4A;border-radius:12px;padding:10px 12px;display:flex;align-items:center;gap:9px"><span style="font-size:15px;color:#C93A1A">⚠</span><div style="flex:1;font-family:'Space Mono',monospace;font-size:9px;color:#785B34;line-height:1.7">Tổng 6 đơn cần ~590g nhựa · Cam Mochi còn 180g — <b style="color:#C93A1A">đủ 1 đơn</b></div></div>
+          </div>
+          <div style="border-top:1.5px solid #EFE6CC;background:#fff;display:flex;padding:8px 6px 11px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">◧</span><span style="font-family:'Space Mono',monospace;font-size:8px">Tổng quan</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">☰</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đơn</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#C93A1A"><span style="font-size:19px;line-height:1">▦</span><span style="font-family:'Space Mono',monospace;font-size:8px;font-weight:700">Hàng in</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">★</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đánh giá</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">⋯</span><span style="font-family:'Space Mono',monospace;font-size:8px">Thêm</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:14px;color:#C93A1A;background:#fff;border:1.5px dashed #FF6B4A;border-radius:12px;padding:9px 12px;align-self:flex-start;box-shadow:3px 3px 0 rgba(244,99,58,.15)">✎ Đã chọn phương án B — danh sách theo cột (chọn cột trên cùng + nút "In →"), đơn giản &amp; chắc tay hơn kanban vuốt trên màn nhỏ.</div>
+  </div>
+
+  <!-- 8 INVENTORY + 10 CANNED + 11 AUTH -->
+  <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:46px">
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;color:#492F10;letter-spacing:-0.02em">8 · Vật tư &amp; chi phí · 10 · Mẫu trả lời · 11 · Đăng nhập</div>
+    <div style="display:flex;gap:34px;align-items:flex-start">
+
+      <!-- 8 inventory -->
+      <div style="width:390px;flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">8 · Vật tư — 4 tab (đang xem Filament)</span>
+        <div style="width:390px;background:#FFFBEF;border:2px solid #492F10;border-radius:30px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10;position:relative">
+          <div style="height:34px;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:'Space Mono',monospace;font-size:10px;background:#fff"><span>9:41</span><div style="position:absolute;left:50%;top:7px;transform:translateX(-50%);width:86px;height:18px;background:#492F10;border-radius:11px"></div><div style="width:22px;height:11px;border:1.5px solid #492F10;border-radius:3px"></div></div>
+          <div style="height:50px;background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;align-items:center;gap:10px;padding:0 14px"><span style="font-size:22px">‹</span><span style="font-size:18px;flex:1">Vật tư &amp; chi phí</span></div>
+          <div style="background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;gap:6px;padding:9px 12px;overflow:hidden">
+            <span style="background:#FF6B4A;color:#fff;border:1.5px solid #492F10;border-radius:15px;padding:4px 11px;font-size:12px;white-space:nowrap">Filament</span>
+            <span style="border:1.5px solid #D8C9A1;border-radius:15px;padding:4px 11px;font-size:12px;white-space:nowrap">Giờ máy</span>
+            <span style="border:1.5px solid #D8C9A1;border-radius:15px;padding:4px 11px;font-size:12px;white-space:nowrap">Chi phí phụ</span>
+            <span style="border:1.5px solid #D8C9A1;border-radius:15px;padding:4px 11px;font-size:12px;white-space:nowrap;opacity:.6">Hao</span>
+          </div>
+          <div style="padding:12px;min-height:496px;background:#fff;display:flex;flex-direction:column;gap:10px">
+            <div style="background:#FFF1EC;border:1.5px solid #FF6B4A;border-radius:13px;padding:12px"><div style="display:flex;align-items:center;gap:9px"><span style="width:18px;height:18px;border-radius:5px;background:#FF6B4A;border:1.5px solid #492F10;flex:none"></span><span style="font-size:15px;flex:1">Cam Mochi (PLA)</span><span style="font-family:'Space Mono',monospace;font-size:11px;color:#C93A1A">180g</span></div><div style="height:8px;border-radius:5px;background:#f0d9d0;margin-top:9px;overflow:hidden"><div style="width:18%;height:100%;background:#FF6B4A"></div></div><div style="display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:8px;color:#7C6233;margin-top:5px"><span>còn 18% · ~1 đơn</span><span style="color:#C93A1A">⚠ Đặt thêm</span></div></div>
+            <div style="background:#fff;border:1.5px solid #EFE6CC;border-radius:13px;padding:12px"><div style="display:flex;align-items:center;gap:9px"><span style="width:18px;height:18px;border-radius:5px;background:#fff;border:1.5px solid #492F10;flex:none"></span><span style="font-size:15px;flex:1">Trắng Sữa (PLA)</span><span style="font-family:'Space Mono',monospace;font-size:11px">820g</span></div><div style="height:8px;border-radius:5px;background:#eceae3;margin-top:9px;overflow:hidden"><div style="width:72%;height:100%;background:#7fae8b"></div></div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233;margin-top:5px">còn 72% · ~7 đơn</div></div>
+            <div style="background:#fff;border:1.5px solid #EFE6CC;border-radius:13px;padding:12px"><div style="display:flex;align-items:center;gap:9px"><span style="width:18px;height:18px;border-radius:5px;background:#7fae8b;border:1.5px solid #492F10;flex:none"></span><span style="font-size:15px;flex:1">Xanh Rêu (PLA)</span><span style="font-family:'Space Mono',monospace;font-size:11px">540g</span></div><div style="height:8px;border-radius:5px;background:#eceae3;margin-top:9px;overflow:hidden"><div style="width:48%;height:100%;background:#7fae8b"></div></div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233;margin-top:5px">còn 48% · ~5 đơn</div></div>
+          </div>
+          <div style="position:absolute;right:18px;bottom:78px;width:54px;height:54px;border-radius:50%;background:#FF6B4A;border:2px solid #492F10;box-shadow:3px 3px 0 rgba(73,47,16,.25);display:flex;align-items:center;justify-content:center;color:#fff;font-size:26px">+</div>
+          <div style="border-top:1.5px solid #EFE6CC;background:#fff;display:flex;padding:8px 6px 11px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">◧</span><span style="font-family:'Space Mono',monospace;font-size:8px">Tổng quan</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">☰</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đơn</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">▦</span><span style="font-family:'Space Mono',monospace;font-size:8px">Hàng in</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">★</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đánh giá</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#C93A1A"><span style="font-size:19px;line-height:1">⋯</span><span style="font-family:'Space Mono',monospace;font-size:8px;font-weight:700">Thêm</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 10 canned replies -->
+      <div style="width:390px;flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">10 · Mẫu trả lời nhanh (chat &amp; đánh giá)</span>
+        <div style="width:390px;background:#FFFBEF;border:2px solid #492F10;border-radius:30px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10;position:relative">
+          <div style="height:34px;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:'Space Mono',monospace;font-size:10px;background:#fff"><span>9:41</span><div style="position:absolute;left:50%;top:7px;transform:translateX(-50%);width:86px;height:18px;background:#492F10;border-radius:11px"></div><div style="width:22px;height:11px;border:1.5px solid #492F10;border-radius:3px"></div></div>
+          <div style="height:50px;background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;align-items:center;gap:10px;padding:0 14px"><span style="font-size:22px">‹</span><span style="font-size:18px;flex:1">Mẫu trả lời</span><span style="font-size:18px">+</span></div>
+          <div style="padding:12px;min-height:516px;background:#fff;display:flex;flex-direction:column;gap:10px">
+            <div style="background:#fff;border:1.5px solid #EFE6CC;border-radius:13px;padding:12px"><div style="display:flex;align-items:center;gap:7px"><span style="font-family:'Space Mono',monospace;font-size:8px;background:#492F10;color:#fff;padding:1px 7px;border-radius:10px">CHÀO</span><span style="font-size:14px;flex:1">Xác nhận đơn</span><span style="font-size:14px;color:#7C6233">⋯</span></div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#785B34;line-height:1.7;margin-top:7px">"Lumin đã nhận đơn của bạn nha! Bên mình bắt đầu in trong 1-2 ngày…"</div></div>
+            <div style="background:#fff;border:1.5px solid #EFE6CC;border-radius:13px;padding:12px"><div style="display:flex;align-items:center;gap:7px"><span style="font-family:'Space Mono',monospace;font-size:8px;background:#492F10;color:#fff;padding:1px 7px;border-radius:10px">SHIP</span><span style="font-size:14px;flex:1">Báo đang giao</span><span style="font-size:14px;color:#7C6233">⋯</span></div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#785B34;line-height:1.7;margin-top:7px">"Đơn của bạn đang trên đường giao, mã vận đơn: …"</div></div>
+            <div style="background:#fff;border:1.5px solid #EFE6CC;border-radius:13px;padding:12px"><div style="display:flex;align-items:center;gap:7px"><span style="font-family:'Space Mono',monospace;font-size:8px;background:#9a6b2f;color:#fff;padding:1px 7px;border-radius:10px">XIN LỖI</span><span style="font-size:14px;flex:1">Phản hồi đánh giá xấu</span><span style="font-size:14px;color:#7C6233">⋯</span></div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#785B34;line-height:1.7;margin-top:7px">"Lumin xin lỗi vì trải nghiệm chưa tốt. Bạn nhắn shop để mình hỗ trợ đổi/sửa nhé…"</div></div>
+            <div style="border:1.5px dashed #b6b3aa;border-radius:12px;padding:12px;text-align:center;font-size:14px">+ Tạo mẫu mới</div>
+          </div>
+          <div style="border-top:1.5px solid #EFE6CC;background:#fff;display:flex;padding:8px 6px 11px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">◧</span><span style="font-family:'Space Mono',monospace;font-size:8px">Tổng quan</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">☰</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đơn</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">▦</span><span style="font-family:'Space Mono',monospace;font-size:8px">Hàng in</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">★</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đánh giá</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#C93A1A"><span style="font-size:19px;line-height:1">⋯</span><span style="font-family:'Space Mono',monospace;font-size:8px;font-weight:700">Thêm</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 11 auth -->
+      <div style="width:390px;flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">11 · Đăng nhập (không có thanh tab)</span>
+        <div style="width:390px;background:#EAE7DF;border:2px solid #492F10;border-radius:30px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="height:34px;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:'Space Mono',monospace;font-size:10px"><span>9:41</span><div style="position:absolute;left:50%;top:7px;transform:translateX(-50%);width:86px;height:18px;background:#492F10;border-radius:11px"></div><div style="width:22px;height:11px;border:1.5px solid #492F10;border-radius:3px"></div></div>
+          <div style="padding:42px 26px 30px;min-height:602px;display:flex;flex-direction:column">
+            <div style="text-align:center;margin-top:28px"><div style="font-size:54px;color:#C93A1A;line-height:1">Lumin◖</div><div style="font-family:'Space Mono',monospace;font-size:10px;color:#7C6233;margin-top:6px">ADMIN · quản trị cửa hàng</div></div>
+            <div style="margin-top:42px">
+              <div style="font-size:13px;color:#7C6233">Email</div>
+              <div style="background:#fff;border:1.5px solid #492F10;border-radius:12px;padding:13px;font-family:'Space Mono',monospace;font-size:11px;color:#7C6233;margin-top:5px">lumin.studio@gmail.com</div>
+              <div style="font-size:13px;color:#7C6233;margin-top:14px">Mật khẩu</div>
+              <div style="background:#fff;border:1.5px solid #492F10;border-radius:12px;padding:13px;font-family:'Space Mono',monospace;font-size:13px;margin-top:5px;display:flex;align-items:center"><span style="flex:1;letter-spacing:3px">••••••••</span><span style="font-size:14px;color:#7C6233">◎</span></div>
+              <div style="text-align:right;font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:8px">Quên mật khẩu?</div>
+              <div style="background:#FF6B4A;color:#fff;border:2px solid #492F10;border-radius:13px;padding:14px;text-align:center;font-size:17px;margin-top:16px;box-shadow:2px 2px 0 rgba(73,47,16,.25)">Đăng nhập</div>
+              <div style="display:flex;align-items:center;gap:10px;margin-top:18px;font-family:'Space Mono',monospace;font-size:9px;color:#7C6233"><div style="flex:1;height:1px;background:#D8C9A1"></div>hoặc<div style="flex:1;height:1px;background:#D8C9A1"></div></div>
+              <div style="background:#fff;border:1.5px solid #492F10;border-radius:13px;padding:12px;text-align:center;font-size:14px;margin-top:14px;display:flex;align-items:center;justify-content:center;gap:9px"><span style="width:18px;height:18px;border-radius:50%;border:1.5px solid #492F10;display:inline-block"></span>Tiếp tục với Google</div>
+            </div>
+            <div style="text-align:center;font-family:'Space Mono',monospace;font-size:10px;color:#7C6233;margin-top:auto;padding-top:24px">Lần đầu mở shop? <span style="color:#C93A1A">Đăng ký →</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 12 CATEGORIES + 13 CUSTOMERS + 13b MERGE -->
+  <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:46px">
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;color:#492F10;letter-spacing:-0.02em">12 · Danh mục · 13 · Khách hàng · 13b · Gộp hồ sơ trùng</div>
+    <div style="display:flex;gap:34px;align-items:flex-start">
+
+      <!-- 12 categories -->
+      <div style="width:390px;flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">12 · Danh mục — kéo sắp xếp · ẩn/hiện</span>
+        <div style="width:390px;background:#FFFBEF;border:2px solid #492F10;border-radius:30px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="height:34px;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:'Space Mono',monospace;font-size:10px;background:#fff"><span>9:41</span><div style="position:absolute;left:50%;top:7px;transform:translateX(-50%);width:86px;height:18px;background:#492F10;border-radius:11px"></div><div style="width:22px;height:11px;border:1.5px solid #492F10;border-radius:3px"></div></div>
+          <div style="height:50px;background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;align-items:center;gap:10px;padding:0 14px"><span style="font-size:22px">‹</span><span style="font-size:18px;flex:1">Danh mục</span><span style="font-size:18px">+</span></div>
+          <div style="padding:12px;min-height:516px;background:#fff;display:flex;flex-direction:column;gap:9px">
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-bottom:2px">Thứ tự này = menu khách thấy trên web</div>
+            <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1.5px solid #492F10;border-radius:13px;padding:12px"><span style="font-family:'Space Mono',monospace;font-size:13px;color:#7C6233">⋮⋮</span><div style="flex:1"><div style="font-size:15px">Đèn &amp; trang trí</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">12 sản phẩm</div></div><div style="width:38px;height:22px;border-radius:13px;background:#FF6B4A;border:1.5px solid #492F10;position:relative;flex:none"><div style="position:absolute;top:1px;right:1px;width:18px;height:18px;border-radius:50%;background:#fff;border:1px solid #492F10"></div></div></div>
+            <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1.5px solid #EFE6CC;border-radius:13px;padding:12px"><span style="font-family:'Space Mono',monospace;font-size:13px;color:#7C6233">⋮⋮</span><div style="flex:1"><div style="font-size:15px">Mô hình</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">9 sản phẩm</div></div><div style="width:38px;height:22px;border-radius:13px;background:#FF6B4A;border:1.5px solid #492F10;position:relative;flex:none"><div style="position:absolute;top:1px;right:1px;width:18px;height:18px;border-radius:50%;background:#fff;border:1px solid #492F10"></div></div></div>
+            <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1.5px solid #EFE6CC;border-radius:13px;padding:12px"><span style="font-family:'Space Mono',monospace;font-size:13px;color:#7C6233">⋮⋮</span><div style="flex:1"><div style="font-size:15px">Phụ kiện</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">15 sản phẩm</div></div><div style="width:38px;height:22px;border-radius:13px;background:#FF6B4A;border:1.5px solid #492F10;position:relative;flex:none"><div style="position:absolute;top:1px;right:1px;width:18px;height:18px;border-radius:50%;background:#fff;border:1px solid #492F10"></div></div></div>
+            <div style="display:flex;align-items:center;gap:11px;background:#faf9f5;border:1.5px solid #EFE6CC;border-radius:13px;padding:12px;opacity:.7"><span style="font-family:'Space Mono',monospace;font-size:13px;color:#7C6233">⋮⋮</span><div style="flex:1"><div style="font-size:15px">Hàng Tết (ẩn)</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">6 sản phẩm</div></div><div style="width:38px;height:22px;border-radius:13px;background:#D8C9A1;border:1.5px solid #492F10;position:relative;flex:none"><div style="position:absolute;top:1px;left:1px;width:18px;height:18px;border-radius:50%;background:#fff;border:1px solid #492F10"></div></div></div>
+          </div>
+          <div style="border-top:1.5px solid #EFE6CC;background:#fff;display:flex;padding:8px 6px 11px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">◧</span><span style="font-family:'Space Mono',monospace;font-size:8px">Tổng quan</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">☰</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đơn</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">▦</span><span style="font-family:'Space Mono',monospace;font-size:8px">Hàng in</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">★</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đánh giá</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#C93A1A"><span style="font-size:19px;line-height:1">⋯</span><span style="font-family:'Space Mono',monospace;font-size:8px;font-weight:700">Thêm</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 13 customers -->
+      <div style="width:390px;flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">13 · Khách hàng — link MXH &amp; tra đơn</span>
+        <div style="width:390px;background:#FFFBEF;border:2px solid #492F10;border-radius:30px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="height:34px;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:'Space Mono',monospace;font-size:10px;background:#fff"><span>9:41</span><div style="position:absolute;left:50%;top:7px;transform:translateX(-50%);width:86px;height:18px;background:#492F10;border-radius:11px"></div><div style="width:22px;height:11px;border:1.5px solid #492F10;border-radius:3px"></div></div>
+          <div style="height:50px;background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;align-items:center;gap:10px;padding:0 14px"><span style="font-size:22px">‹</span><span style="font-size:18px;flex:1">Khách hàng</span><span style="font-size:18px">⌕</span></div>
+          <div style="padding:12px;min-height:516px;background:#fff;display:flex;flex-direction:column;gap:10px">
+            <div style="background:#fff;border:1.5px solid #EFE6CC;border-radius:14px;padding:13px"><div style="display:flex;align-items:center;gap:10px"><div style="width:42px;height:42px;border-radius:50%;background:#EFE2BE;border:1.5px solid #492F10;flex:none"></div><div style="flex:1"><div style="font-size:15px">Nguyễn An</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">8 đơn · ₫3.2tr · khách quen</div></div><span style="font-size:18px;color:#7C6233">›</span></div><div style="display:flex;gap:7px;margin-top:10px"><span style="flex:1;text-align:center;border:1.5px solid #492F10;border-radius:9px;padding:6px;font-size:11px;font-family:'Space Mono',monospace">Messenger</span><span style="flex:1;text-align:center;border:1.5px solid #492F10;border-radius:9px;padding:6px;font-size:11px;font-family:'Space Mono',monospace">Instagram</span><span style="flex:1;text-align:center;border:1.5px solid #492F10;border-radius:9px;padding:6px;font-size:11px;font-family:'Space Mono',monospace">Gọi</span></div></div>
+            <div style="background:#fff;border:1.5px solid #EFE6CC;border-radius:14px;padding:13px"><div style="display:flex;align-items:center;gap:10px"><div style="width:42px;height:42px;border-radius:50%;background:#EFE2BE;border:1.5px solid #492F10;flex:none"></div><div style="flex:1"><div style="font-size:15px">Trần Bình</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">2 đơn · ₫240k</div></div><span style="font-size:18px;color:#7C6233">›</span></div></div>
+            <div style="background:#FFF1EC;border:1.5px solid #FF6B4A;border-radius:14px;padding:11px 13px;display:flex;align-items:center;gap:9px"><span style="font-size:16px;color:#C93A1A">⚯</span><div style="flex:1;font-size:13px">2 hồ sơ có thể trùng người</div><span style="font-family:'Space Mono',monospace;font-size:9px;color:#C93A1A">Xem ›</span></div>
+          </div>
+          <div style="border-top:1.5px solid #EFE6CC;background:#fff;display:flex;padding:8px 6px 11px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">◧</span><span style="font-family:'Space Mono',monospace;font-size:8px">Tổng quan</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">☰</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đơn</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">▦</span><span style="font-family:'Space Mono',monospace;font-size:8px">Hàng in</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">★</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đánh giá</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#C93A1A"><span style="font-size:19px;line-height:1">⋯</span><span style="font-family:'Space Mono',monospace;font-size:8px;font-weight:700">Thêm</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 13b merge -->
+      <div style="width:390px;flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">13b · Gộp hồ sơ trùng (FB &amp; IG cùng người)</span>
+        <div style="width:390px;background:#FFFBEF;border:2px solid #492F10;border-radius:30px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="height:34px;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:'Space Mono',monospace;font-size:10px;background:#fff"><span>9:41</span><div style="position:absolute;left:50%;top:7px;transform:translateX(-50%);width:86px;height:18px;background:#492F10;border-radius:11px"></div><div style="width:22px;height:11px;border:1.5px solid #492F10;border-radius:3px"></div></div>
+          <div style="height:50px;background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;align-items:center;gap:10px;padding:0 14px"><span style="font-size:22px">‹</span><span style="font-size:18px;flex:1">Gộp hồ sơ</span></div>
+          <div style="padding:14px;min-height:516px;background:#fff">
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;line-height:1.7">Cùng tên &amp; SĐT — có thể là 1 người nhắn qua 2 kênh:</div>
+            <div style="display:flex;gap:10px;margin-top:12px;align-items:stretch">
+              <div style="flex:1;border:2px solid #FF6B4A;border-radius:13px;padding:11px;background:#FFF1EC"><div style="font-family:'Space Mono',monospace;font-size:8px;color:#C93A1A">GIỮ LÀM CHÍNH ●</div><div style="font-size:14px;margin-top:5px">Nguyễn An</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233;line-height:1.7;margin-top:4px">Messenger<br/>0901 234 567<br/>8 đơn</div></div>
+              <div style="flex:1;border:1.5px solid #EFE6CC;border-radius:13px;padding:11px"><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">GỘP VÀO ○</div><div style="font-size:14px;margin-top:5px">An Nguyen</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233;line-height:1.7;margin-top:4px">Instagram<br/>0901 234 567<br/>3 đơn</div></div>
+            </div>
+            <div style="border:1.5px solid #EFE6CC;border-radius:13px;padding:12px;margin-top:12px"><div style="font-size:14px">Sau khi gộp</div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#785B34;line-height:1.9;margin-top:6px">• Tổng 11 đơn về 1 hồ sơ<br/>• Giữ cả 2 link chat (FB + IG)<br/>• Lịch sử mua gộp chung</div></div>
+            <div style="display:flex;gap:9px;margin-top:14px"><span style="flex:1;text-align:center;border:1.5px solid #492F10;border-radius:12px;padding:12px;font-size:14px">Không phải</span><span style="flex:1.4;text-align:center;background:#FF6B4A;color:#fff;border:2px solid #492F10;border-radius:12px;padding:12px;font-size:14px;box-shadow:2px 2px 0 rgba(73,47,16,.25)">Gộp hồ sơ</span></div>
+            <div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233;margin-top:11px;line-height:1.7;text-align:center">Gộp không xoá đơn — chỉ gom về 1 người. Có thể tách lại sau.</div>
+          </div>
+          <div style="border-top:1.5px solid #EFE6CC;background:#fff;display:flex;padding:8px 6px 11px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">◧</span><span style="font-family:'Space Mono',monospace;font-size:8px">Tổng quan</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">☰</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đơn</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">▦</span><span style="font-family:'Space Mono',monospace;font-size:8px">Hàng in</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">★</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đánh giá</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#C93A1A"><span style="font-size:19px;line-height:1">⋯</span><span style="font-family:'Space Mono',monospace;font-size:8px;font-weight:700">Thêm</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MORE HUB + 14 + 15 -->
+  <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:46px">
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;color:#492F10;letter-spacing:-0.02em">Tab "Thêm" (hub) · 14 · Thanh toán &amp; ship · 15 · Extension</div>
+    <div style="display:flex;gap:34px;align-items:flex-start">
+
+      <!-- More hub -->
+      <div style="width:390px;flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">Tab Thêm — gom mọi màn phụ</span>
+        <div style="width:390px;background:#FFFBEF;border:2px solid #492F10;border-radius:30px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="height:34px;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:'Space Mono',monospace;font-size:10px;background:#fff"><span>9:41</span><div style="position:absolute;left:50%;top:7px;transform:translateX(-50%);width:86px;height:18px;background:#492F10;border-radius:11px"></div><div style="width:22px;height:11px;border:1.5px solid #492F10;border-radius:3px"></div></div>
+          <div style="height:50px;background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;align-items:center;gap:10px;padding:0 16px"><span style="font-size:19px;flex:1">Thêm</span><span style="font-size:18px">⚙</span></div>
+          <div style="padding:14px;min-height:516px;background:#fff">
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">CỬA HÀNG</div>
+            <div style="border:1.5px solid #EFE6CC;border-radius:13px;margin-top:8px;overflow:hidden">
+              <div style="display:flex;align-items:center;gap:11px;padding:13px;border-bottom:1px solid #f0eee8"><span style="font-size:17px;width:22px;text-align:center">▦</span><span style="flex:1;font-size:15px">Sản phẩm</span><span style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">42</span><span style="font-size:16px;color:#7C6233;margin-left:8px">›</span></div>
+              <div style="display:flex;align-items:center;gap:11px;padding:13px;border-bottom:1px solid #f0eee8"><span style="font-size:17px;width:22px;text-align:center">≣</span><span style="flex:1;font-size:15px">Danh mục</span><span style="font-size:16px;color:#7C6233">›</span></div>
+              <div style="display:flex;align-items:center;gap:11px;padding:13px;border-bottom:1px solid #f0eee8"><span style="font-size:17px;width:22px;text-align:center">◍</span><span style="flex:1;font-size:15px">Vật tư &amp; chi phí</span><span style="background:#FF6B4A;color:#fff;font-family:'Space Mono',monospace;font-size:8px;padding:1px 7px;border-radius:10px">1 sắp hết</span><span style="font-size:16px;color:#7C6233;margin-left:6px">›</span></div>
+              <div style="display:flex;align-items:center;gap:11px;padding:13px"><span style="font-size:17px;width:22px;text-align:center">☺</span><span style="flex:1;font-size:15px">Khách hàng</span><span style="font-size:16px;color:#7C6233">›</span></div>
+            </div>
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:16px">CÀI ĐẶT</div>
+            <div style="border:1.5px solid #EFE6CC;border-radius:13px;margin-top:8px;overflow:hidden">
+              <div style="display:flex;align-items:center;gap:11px;padding:13px;border-bottom:1px solid #f0eee8"><span style="font-size:17px;width:22px;text-align:center">₫</span><span style="flex:1;font-size:15px">Thanh toán &amp; ship</span><span style="font-size:16px;color:#7C6233">›</span></div>
+              <div style="display:flex;align-items:center;gap:11px;padding:13px;border-bottom:1px solid #f0eee8"><span style="font-size:17px;width:22px;text-align:center">⧉</span><span style="flex:1;font-size:15px">Extension</span><span style="background:#D6F0EA;color:#0E7C68;font-family:'Space Mono',monospace;font-size:8px;padding:1px 7px;border-radius:10px">Đã kết nối</span><span style="font-size:16px;color:#7C6233;margin-left:6px">›</span></div>
+              <div style="display:flex;align-items:center;gap:11px;padding:13px;border-bottom:1px solid #f0eee8"><span style="font-size:17px;width:22px;text-align:center">⚇</span><span style="flex:1;font-size:15px">Nhân viên &amp; phân quyền</span><span style="font-size:16px;color:#7C6233">›</span></div>
+              <div style="display:flex;align-items:center;gap:11px;padding:13px;border-bottom:1px solid #f0eee8"><span style="font-size:17px;width:22px;text-align:center">✉</span><span style="flex:1;font-size:15px">Kênh chat</span><span style="font-size:16px;color:#7C6233">›</span></div>
+              <div style="display:flex;align-items:center;gap:11px;padding:13px"><span style="font-size:17px;width:22px;text-align:center">⤷</span><span style="flex:1;font-size:15px">Mẫu trả lời nhanh</span><span style="font-size:16px;color:#7C6233">›</span></div>
+            </div>
+            <div style="text-align:center;font-family:'Space Mono',monospace;font-size:10px;color:#d8473a;margin-top:18px">Đăng xuất</div>
+          </div>
+          <div style="border-top:1.5px solid #EFE6CC;background:#fff;display:flex;padding:8px 6px 11px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">◧</span><span style="font-family:'Space Mono',monospace;font-size:8px">Tổng quan</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">☰</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đơn</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">▦</span><span style="font-family:'Space Mono',monospace;font-size:8px">Hàng in</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">★</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đánh giá</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#C93A1A"><span style="font-size:19px;line-height:1">⋯</span><span style="font-family:'Space Mono',monospace;font-size:8px;font-weight:700">Thêm</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 14 payment & ship -->
+      <div style="width:390px;flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">14 · Thanh toán &amp; ship</span>
+        <div style="width:390px;background:#FFFBEF;border:2px solid #492F10;border-radius:30px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="height:34px;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:'Space Mono',monospace;font-size:10px;background:#fff"><span>9:41</span><div style="position:absolute;left:50%;top:7px;transform:translateX(-50%);width:86px;height:18px;background:#492F10;border-radius:11px"></div><div style="width:22px;height:11px;border:1.5px solid #492F10;border-radius:3px"></div></div>
+          <div style="height:50px;background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;align-items:center;gap:10px;padding:0 14px"><span style="font-size:22px">‹</span><span style="font-size:18px;flex:1">Thanh toán &amp; ship</span></div>
+          <div style="padding:14px;min-height:516px;background:#fff">
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">TÀI KHOẢN NHẬN TIỀN</div>
+            <div style="border:1.5px solid #EFE6CC;border-radius:13px;padding:13px;margin-top:8px"><div style="display:flex;align-items:center;gap:9px"><div style="width:34px;height:34px;border-radius:8px;background:#EFE2BE;border:1.5px solid #492F10;flex:none"></div><div style="flex:1"><div style="font-size:14px">Vietcombank</div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">**** 8821 · Lumin Studio</div></div><span style="font-family:'Space Mono',monospace;font-size:9px;color:#C93A1A">Sửa</span></div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233;margin-top:9px;border-top:1px dashed #EFE6CC;padding-top:8px">QR chuyển khoản tự sinh trong đơn của khách</div></div>
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:16px">PHƯƠNG THỨC</div>
+            <div style="border:1.5px solid #EFE6CC;border-radius:13px;margin-top:8px;overflow:hidden">
+              <div style="display:flex;align-items:center;gap:9px;padding:12px 13px;border-bottom:1px solid #f0eee8"><span style="flex:1;font-size:14px">Chuyển khoản (QR)</span><div style="width:38px;height:22px;border-radius:13px;background:#FF6B4A;border:1.5px solid #492F10;position:relative;flex:none"><div style="position:absolute;top:1px;right:1px;width:18px;height:18px;border-radius:50%;background:#fff;border:1px solid #492F10"></div></div></div>
+              <div style="display:flex;align-items:center;gap:9px;padding:12px 13px"><span style="flex:1;font-size:14px">COD (thu hộ)</span><div style="width:38px;height:22px;border-radius:13px;background:#FF6B4A;border:1.5px solid #492F10;position:relative;flex:none"><div style="position:absolute;top:1px;right:1px;width:18px;height:18px;border-radius:50%;background:#fff;border:1px solid #492F10"></div></div></div>
+            </div>
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:16px">PHÍ SHIP THEO KHU VỰC</div>
+            <div style="border:1.5px solid #EFE6CC;border-radius:13px;margin-top:8px;overflow:hidden">
+              <div style="display:flex;align-items:center;padding:11px 13px;border-bottom:1px solid #f0eee8;font-size:14px"><span style="flex:1">Nội thành HCM</span><span style="font-family:'Space Mono',monospace;font-size:11px;color:#C93A1A">₫25k</span></div>
+              <div style="display:flex;align-items:center;padding:11px 13px;border-bottom:1px solid #f0eee8;font-size:14px"><span style="flex:1">Ngoại thành</span><span style="font-family:'Space Mono',monospace;font-size:11px;color:#C93A1A">₫35k</span></div>
+              <div style="display:flex;align-items:center;padding:11px 13px;font-size:14px"><span style="flex:1">Tỉnh khác</span><span style="font-family:'Space Mono',monospace;font-size:11px;color:#C93A1A">₫40k</span></div>
+            </div>
+            <div style="border:1.5px dashed #b6b3aa;border-radius:11px;padding:9px;text-align:center;font-size:13px;margin-top:9px">+ Thêm khu vực</div>
+          </div>
+          <div style="border-top:1.5px solid #EFE6CC;background:#fff;display:flex;padding:8px 6px 11px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">◧</span><span style="font-family:'Space Mono',monospace;font-size:8px">Tổng quan</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">☰</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đơn</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">▦</span><span style="font-family:'Space Mono',monospace;font-size:8px">Hàng in</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">★</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đánh giá</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#C93A1A"><span style="font-size:19px;line-height:1">⋯</span><span style="font-family:'Space Mono',monospace;font-size:8px;font-weight:700">Thêm</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 15 extension -->
+      <div style="width:390px;flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">15 · Extension (trên mobile: xem trạng thái + QR ghép máy tính)</span>
+        <div style="width:390px;background:#FFFBEF;border:2px solid #492F10;border-radius:30px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="height:34px;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:'Space Mono',monospace;font-size:10px;background:#fff"><span>9:41</span><div style="position:absolute;left:50%;top:7px;transform:translateX(-50%);width:86px;height:18px;background:#492F10;border-radius:11px"></div><div style="width:22px;height:11px;border:1.5px solid #492F10;border-radius:3px"></div></div>
+          <div style="height:50px;background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;align-items:center;gap:10px;padding:0 14px"><span style="font-size:22px">‹</span><span style="font-size:18px;flex:1">Extension</span></div>
+          <div style="padding:14px;min-height:516px;background:#fff">
+            <div style="background:#D6F0EA;border:1.5px solid #0E7C68;border-radius:13px;padding:13px;display:flex;align-items:center;gap:11px"><span style="width:38px;height:38px;border-radius:50%;background:#0E7C68;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;flex:none">✓</span><div style="flex:1"><div style="font-size:15px;color:#0E7C68">Đang hoạt động</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#785B34">Chrome · máy "Studio-PC" · 2 phút trước</div></div></div>
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:16px">EXTENSION LÀM GÌ</div>
+            <div style="border:1.5px solid #EFE6CC;border-radius:13px;padding:13px;margin-top:8px;font-family:'Space Mono',monospace;font-size:9px;color:#785B34;line-height:1.9">• Đọc tin nhắn Messenger/IG → gợi ý tạo đơn<br/>• Tự điền tên · địa chỉ · sản phẩm<br/>• Đồng bộ trạng thái 2 chiều với admin</div>
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:16px">GHÉP MÁY MỚI</div>
+            <div style="border:1.5px solid #EFE6CC;border-radius:13px;padding:16px;margin-top:8px;display:flex;flex-direction:column;align-items:center"><div style="width:120px;height:120px;border-radius:10px;background-image:repeating-conic-gradient(#492F10 0% 25%,#fff 0% 50%);background-size:14px 14px;border:2px solid #492F10"></div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:11px;text-align:center;line-height:1.6">Mở lumin.studio/ext trên máy tính<br/>rồi quét mã này để ghép</div></div>
+          </div>
+          <div style="border-top:1.5px solid #EFE6CC;background:#fff;display:flex;padding:8px 6px 11px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">◧</span><span style="font-family:'Space Mono',monospace;font-size:8px">Tổng quan</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">☰</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đơn</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">▦</span><span style="font-family:'Space Mono',monospace;font-size:8px">Hàng in</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">★</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đánh giá</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#C93A1A"><span style="font-size:19px;line-height:1">⋯</span><span style="font-family:'Space Mono',monospace;font-size:8px;font-weight:700">Thêm</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 16 STAFF + 17 CHAT CHANNELS -->
+  <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:30px">
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;color:#492F10;letter-spacing:-0.02em">16 · Nhân viên &amp; phân quyền · 17 · Kênh chat</div>
+    <div style="display:flex;gap:34px;align-items:flex-start">
+
+      <!-- 16 staff -->
+      <div style="width:390px;flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">16 · Nhân viên &amp; phân quyền</span>
+        <div style="width:390px;background:#FFFBEF;border:2px solid #492F10;border-radius:30px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="height:34px;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:'Space Mono',monospace;font-size:10px;background:#fff"><span>9:41</span><div style="position:absolute;left:50%;top:7px;transform:translateX(-50%);width:86px;height:18px;background:#492F10;border-radius:11px"></div><div style="width:22px;height:11px;border:1.5px solid #492F10;border-radius:3px"></div></div>
+          <div style="height:50px;background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;align-items:center;gap:10px;padding:0 14px"><span style="font-size:22px">‹</span><span style="font-size:18px;flex:1">Nhân viên</span><span style="font-size:18px">+</span></div>
+          <div style="padding:14px;min-height:516px;background:#fff;display:flex;flex-direction:column;gap:10px">
+            <div style="background:#fff;border:1.5px solid #EFE6CC;border-radius:13px;padding:13px;display:flex;align-items:center;gap:11px"><div style="width:40px;height:40px;border-radius:50%;background:#FF6B4A;color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;border:1.5px solid #492F10;flex:none">L</div><div style="flex:1"><div style="font-size:15px">Bạn (Chủ shop)</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">lumin.studio@gmail.com</div></div><span style="background:#492F10;color:#fff;font-family:'Space Mono',monospace;font-size:8px;padding:2px 9px;border-radius:11px">Toàn quyền</span></div>
+            <div style="background:#fff;border:1.5px solid #EFE6CC;border-radius:13px;padding:13px;display:flex;align-items:center;gap:11px"><div style="width:40px;height:40px;border-radius:50%;background:#EFE2BE;border:1.5px solid #492F10;display:flex;align-items:center;justify-content:center;font-size:16px;flex:none">M</div><div style="flex:1"><div style="font-size:15px">Minh</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">Xử đơn · in · trả lời chat</div></div><span style="border:1.5px solid #4C8DFF;color:#2D5FB8;font-family:'Space Mono',monospace;font-size:8px;padding:2px 9px;border-radius:11px">Nhân viên</span></div>
+            <div style="background:#fff;border:1.5px solid #EFE6CC;border-radius:13px;padding:13px;display:flex;align-items:center;gap:11px"><div style="width:40px;height:40px;border-radius:50%;background:#EFE2BE;border:1.5px solid #492F10;display:flex;align-items:center;justify-content:center;font-size:16px;flex:none">H</div><div style="flex:1"><div style="font-size:15px">Hà</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">Chỉ xem đơn &amp; hàng đợi in</div></div><span style="border:1.5px solid #D8C9A1;color:#7C6233;font-family:'Space Mono',monospace;font-size:8px;padding:2px 9px;border-radius:11px">Chỉ xem</span></div>
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;line-height:1.8;border:1.5px dashed #C9B98E;border-radius:11px;padding:11px;margin-top:2px">Chạm 1 nhân viên để bật/tắt từng quyền: xem doanh thu · sửa giá · huỷ/hoàn đơn · sửa vật tư…</div>
+          </div>
+          <div style="border-top:1.5px solid #EFE6CC;background:#fff;display:flex;padding:8px 6px 11px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">◧</span><span style="font-family:'Space Mono',monospace;font-size:8px">Tổng quan</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">☰</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đơn</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">▦</span><span style="font-family:'Space Mono',monospace;font-size:8px">Hàng in</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">★</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đánh giá</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#C93A1A"><span style="font-size:19px;line-height:1">⋯</span><span style="font-family:'Space Mono',monospace;font-size:8px;font-weight:700">Thêm</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 17 chat channels -->
+      <div style="width:390px;flex:none;display:flex;flex-direction:column;gap:9px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">17 · Kênh chat</span>
+        <div style="width:390px;background:#FFFBEF;border:2px solid #492F10;border-radius:30px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="height:34px;position:relative;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-family:'Space Mono',monospace;font-size:10px;background:#fff"><span>9:41</span><div style="position:absolute;left:50%;top:7px;transform:translateX(-50%);width:86px;height:18px;background:#492F10;border-radius:11px"></div><div style="width:22px;height:11px;border:1.5px solid #492F10;border-radius:3px"></div></div>
+          <div style="height:50px;background:#fff;border-bottom:1.5px solid #EFE6CC;display:flex;align-items:center;gap:10px;padding:0 14px"><span style="font-size:22px">‹</span><span style="font-size:18px;flex:1">Kênh chat</span></div>
+          <div style="padding:14px;min-height:516px;background:#fff;display:flex;flex-direction:column;gap:11px">
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">Khách nhắn từ đâu → gom hết về 1 nơi</div>
+            <div style="background:#fff;border:1.5px solid #EFE6CC;border-radius:13px;padding:13px"><div style="display:flex;align-items:center;gap:11px"><div style="width:38px;height:38px;border-radius:9px;background:#4C8DFF;border:1.5px solid #492F10;flex:none"></div><div style="flex:1"><div style="font-size:15px">Facebook Messenger</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#0E7C68">Trang "Lumin Studio" · đã nối</div></div><div style="width:38px;height:22px;border-radius:13px;background:#FF6B4A;border:1.5px solid #492F10;position:relative;flex:none"><div style="position:absolute;top:1px;right:1px;width:18px;height:18px;border-radius:50%;background:#fff;border:1px solid #492F10"></div></div></div></div>
+            <div style="background:#fff;border:1.5px solid #EFE6CC;border-radius:13px;padding:13px"><div style="display:flex;align-items:center;gap:11px"><div style="width:38px;height:38px;border-radius:9px;background:#d96aa0;border:1.5px solid #492F10;flex:none"></div><div style="flex:1"><div style="font-size:15px">Instagram DM</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#0E7C68">@lumin.studio · đã nối</div></div><div style="width:38px;height:22px;border-radius:13px;background:#FF6B4A;border:1.5px solid #492F10;position:relative;flex:none"><div style="position:absolute;top:1px;right:1px;width:18px;height:18px;border-radius:50%;background:#fff;border:1px solid #492F10"></div></div></div></div>
+            <div style="background:#faf9f5;border:1.5px solid #EFE6CC;border-radius:13px;padding:13px"><div style="display:flex;align-items:center;gap:11px"><div style="width:38px;height:38px;border-radius:9px;background:#EFE2BE;border:1.5px dashed #b6b3aa;flex:none"></div><div style="flex:1"><div style="font-size:15px">Zalo OA</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">chưa nối</div></div><span style="border:1.5px solid #492F10;border-radius:9px;padding:6px 12px;font-size:12px">Nối →</span></div></div>
+            <div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233;line-height:1.8;margin-top:2px">Mỗi đơn ghi rõ đến từ kênh nào (Mess. / IG) — khớp với cột "Kênh" trong danh sách đơn.</div>
+          </div>
+          <div style="border-top:1.5px solid #EFE6CC;background:#fff;display:flex;padding:8px 6px 11px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">◧</span><span style="font-family:'Space Mono',monospace;font-size:8px">Tổng quan</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">☰</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đơn</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">▦</span><span style="font-family:'Space Mono',monospace;font-size:8px">Hàng in</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#7C6233"><span style="font-size:19px;line-height:1">★</span><span style="font-family:'Space Mono',monospace;font-size:8px">Đánh giá</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:#C93A1A"><span style="font-size:19px;line-height:1">⋯</span><span style="font-family:'Space Mono',monospace;font-size:8px;font-weight:700">Thêm</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:14px;color:#C93A1A;background:#fff;border:1.5px dashed #FF6B4A;border-radius:12px;padding:9px 12px;align-self:flex-start;box-shadow:3px 3px 0 rgba(244,99,58,.15)">✎ Tất cả màn dùng chung 1 hệ: thanh tab dưới + thanh trên (back/tiêu đề/hành động) + bottom sheet cho lựa chọn + nút chính dính đáy. Trạng thái đơn khớp 100% với bản desktop &amp; web khách.</div>
+  </div>
+
+  <div id="more-screens"></div>
+</div>
+</x-dc>
+</body>
+</html>

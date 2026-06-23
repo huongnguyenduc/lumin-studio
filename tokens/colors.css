@@ -1,0 +1,104 @@
+/* Lumin Studio — Color tokens (v1 palette restored, kept under flame/teal names)
+   Core: buttercream + deep cocoa (straight from the logo).
+   Accents: coral orange-red (primary) + teal, with sky & sun support.
+   NOTE: token ramp `--flame-*` carries the coral values; `--teal-*` the teal values. */
+
+:root {
+  /* ---------- Brand core: Cream (butter) ---------- */
+  --cream-50:  #FFFBEF;
+  --cream-100: #FDF3D4;
+  --cream-200: #FFE9A4; /* logo background — signature brand cream */
+  --cream-300: #F4D67E;
+  --cream-400: #EAC25A;
+
+  /* ---------- Brand core: Cocoa (ink) ---------- */
+  --cocoa-900: #492F10; /* logo blob — primary ink & outlines */
+  --cocoa-800: #432E12;
+  --cocoa-700: #5A411F;
+  --cocoa-600: #785B34;
+  --cocoa-400: #A98F63;
+  --cocoa-200: #D8C7A2;
+  --cocoa-100: #ECE0C6;
+
+  /* ---------- Accent: Flame (coral orange-red — primary action / "pop") ---------- */
+  --flame-100: #FFE3D8;
+  --flame-300: #FFA98F;
+  --flame-500: #FF6B4A;
+  --flame-600: #F04E29;
+  --flame-700: #C93A1A;
+
+  /* ---------- Accent: Teal (fresh blue-green — success-leaning) ---------- */
+  --teal-100: #CDEFE9;
+  --teal-300: #6FD3C4;
+  --teal-500: #16B5A0;
+  --teal-600: #0E9384;
+  --teal-700: #0B7569;
+
+  /* ---------- Accent: Sky (info / links) ---------- */
+  --sky-100: #DCE8FF;
+  --sky-300: #9DBDFF;
+  --sky-500: #4C8DFF;
+  --sky-600: #2E6BE0;
+  --sky-700: #2253B8;
+
+  /* ---------- Accent: Sun (highlight / warning-leaning) ---------- */
+  --sun-100: #FFEFC2;
+  --sun-300: #FFD668;
+  --sun-500: #FFC233;
+  --sun-600: #F2A60E;
+  --sun-700: #C9870A;
+
+  /* ---------- Semantic raw ---------- */
+  --danger-100: #FFD9D2;
+  --danger-500: #F0492B;
+  --danger-600: #D2371C;
+  --success-100: var(--teal-100);
+  --success-500: var(--teal-500);
+  --success-600: var(--teal-600);
+  --warning-100: var(--sun-100);
+  --warning-500: var(--sun-500);
+  --warning-600: var(--sun-600);
+  --info-100: var(--sky-100);
+  --info-500: var(--sky-500);
+  --info-600: var(--sky-600);
+
+  /* ====================================================== */
+  /* Semantic aliases — use THESE in components             */
+  /* ====================================================== */
+
+  /* Text */
+  --text-strong:  var(--cocoa-900);
+  --text-body:    var(--cocoa-800);
+  --text-muted:   var(--cocoa-600);
+  --text-subtle:  var(--cocoa-400);
+  --text-on-dark: var(--cream-50);
+  --text-on-accent: #FFFFFF;
+  --text-link:    var(--sky-600);
+
+  /* Surfaces */
+  --surface-page:    var(--cream-50);
+  --surface-card:    #FFFFFF;
+  --surface-sunken:  var(--cream-100);
+  --surface-cream:   var(--cream-200);
+  --surface-brand:   var(--cocoa-900);
+  --surface-inverse: var(--cocoa-900);
+
+  /* Borders */
+  --border-subtle:  #EFE6CC;
+  --border-default: #E3D5B0;
+  --border-strong:  var(--cocoa-900);
+
+  /* Actions — PRIMARY is coral (flame); cocoa is secondary */
+  --primary:        var(--flame-500);
+  --primary-hover:  var(--flame-600);
+  --primary-press:  var(--flame-700);
+  --on-primary:     #FFFFFF;
+
+  --accent-flame:   var(--flame-500);
+  --accent-teal:    var(--teal-500);
+  --accent-sky:     var(--sky-500);
+  --accent-sun:     var(--sun-500);
+
+  /* Focus */
+  --focus-ring: var(--sky-500);
+}

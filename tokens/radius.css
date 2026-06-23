@@ -1,0 +1,13 @@
+/* Lumin Studio — Radius tokens
+   Playful brand → generous, soft rounding everywhere. */
+
+:root {
+  --radius-xs:   6px;
+  --radius-sm:   10px;
+  --radius-md:   16px;
+  --radius-lg:   24px;
+  --radius-xl:   32px;
+  --radius-2xl:  44px;
+  --radius-pill: 999px;
+  --radius-blob: 48% 52% 55% 45% / 52% 48% 52% 48%; /* organic logo-blob shape */
+}

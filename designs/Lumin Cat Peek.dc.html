@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Hanken+Grotesque:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#FFFBEF}
+@keyframes catblink{0%,93%,100%{transform:scaleY(0)}96.5%{transform:scaleY(1)}}
+@keyframes eartwitch{0%,88%,100%{transform:rotate(var(--r))}92%{transform:rotate(calc(var(--r) + 6deg))}}
+/* Reduced-motion: dừng mọi loop nhàn rỗi của mèo (blink/ear) — flee & follow tắt trong logic */
+@media (prefers-reduced-motion: reduce){ [data-cat] *{animation:none !important} }
+</style>
+</helmet>
+
+<div style="position:relative;min-height:100vh;background:#FFFBEF;background-image:radial-gradient(circle, rgba(73,47,16,.06) 1.2px, transparent 1.3px);background-size:22px 22px;padding:36px 5vw 90px;font-family:'Hanken Grotesque',sans-serif;color:#492F10">
+
+  <div style="max-width:1180px;margin:0 auto 26px">
+    <div style="display:inline-flex;align-items:center;gap:8px;background:#492F10;color:#FFE9A4;font-family:'Space Mono',monospace;font-size:11px;padding:6px 12px;border-radius:999px">🐈 ĐƯA CHUỘT LẠI GẦN — MÈO SẼ CHẠY ĐI NÚP CHỖ KHÁC</div>
+  </div>
+
+  <!-- ===================== NAV ===================== -->
+  <div data-anchor="nav" style="max-width:1180px;margin:0 auto 60px;display:flex;align-items:center;justify-content:space-between;background:#fff;border:2.5px solid #492F10;border-radius:18px;box-shadow:4px 4px 0 #492F10;padding:15px 24px">
+    <span style="font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:26px;letter-spacing:-0.03em">lumin</span>
+    <div style="display:flex;align-items:center;gap:28px;font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px">
+      <span>Bộ sưu tập</span><span>Cách in</span><span>Về chúng tôi</span>
+      <span style="background:#FF6B4A;color:#fff;border:2px solid #492F10;border-radius:999px;padding:8px 18px;box-shadow:3px 3px 0 #492F10;font-family:'Bricolage Grotesque',sans-serif;font-weight:700">Giỏ hàng</span>
+    </div>
+  </div>
+
+  <!-- ===================== HERO ===================== -->
+  <div style="max-width:1180px;margin:0 auto 70px">
+    <div data-anchor="hero" style="background:#FFE9A4;border:2.5px solid #492F10;border-radius:30px;box-shadow:7px 7px 0 #492F10;padding:56px 58px;display:flex;align-items:center;justify-content:space-between;gap:30px;overflow:hidden">
+      <div style="flex:1;max-width:540px">
+        <div style="display:inline-block;background:#FF6B4A;color:#fff;font-family:'Space Mono',monospace;font-size:12px;font-weight:700;padding:4px 12px;border-radius:999px;margin-bottom:18px">✦ IN THEO YÊU CẦU</div>
+        <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:52px;line-height:1.02;letter-spacing:-0.02em">Ánh sáng in<br/>riêng cho bạn</div>
+        <div style="font-family:'Hanken Grotesque',sans-serif;font-size:16px;color:#785B34;margin-top:16px;line-height:1.55;max-width:430px">Lumin thiết kế và in 3D đèn &amp; vật trang trí theo yêu cầu — bằng vật liệu tái chế. Không hàng đại trà, không lãng phí.</div>
+        <div style="display:flex;gap:14px;margin-top:26px">
+          <span style="background:#FF6B4A;color:#fff;border:2.5px solid #492F10;border-radius:999px;padding:13px 26px;box-shadow:4px 4px 0 #492F10;font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:16px">Mua bộ sưu tập</span>
+          <span style="background:#fff;color:#492F10;border:2.5px solid #492F10;border-radius:999px;padding:13px 26px;font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:16px">Cách in →</span>
+        </div>
+      </div>
+      <div style="position:relative;width:230px;height:230px;border-radius:26px;background:#FDF3D4;border:2px solid #492F10;display:grid;place-items:center;flex:none">
+        <div style="width:64%;aspect-ratio:1/1;border-radius:46% 54% 50% 50%/55% 46% 54% 45%;background:radial-gradient(circle at 36% 30%, rgba(255,255,255,.95), #FF6B4A 62%);box-shadow:0 18px 30px rgba(50,32,10,.26)"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== PRODUCTS ===================== -->
+  <div style="max-width:1180px;margin:0 auto 70px">
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:30px;letter-spacing:-0.02em;margin-bottom:22px">Mới về tuần này</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:26px">
+      <sc-for list="{{ cards }}" as="p" hint-placeholder-count="6">
+        <div data-anchor="card" style="background:#fff;border:2.5px solid #492F10;border-radius:24px;box-shadow:5px 5px 0 #492F10;padding:16px">
+          <div style="position:relative;height:180px;border-radius:16px;background:#FDF3D4;border:1.5px solid #EFE6CC;display:grid;place-items:center;margin-bottom:14px;overflow:hidden">
+            <div style="position:absolute;inset:0;background-image:radial-gradient(circle, rgba(73,47,16,.1) 1.1px, transparent 1.2px);background-size:13px 13px;opacity:.5"></div>
+            <div style="width:54%;aspect-ratio:1/1;border-radius:46% 54% 50% 50%/55% 46% 54% 45%;background:radial-gradient(circle at 36% 30%, rgba(255,255,255,.92), {{ p.tint }} 62%);box-shadow:0 14px 24px rgba(50,32,10,.22)"></div>
+          </div>
+          <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:19px">{{ p.title }}</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
+            <span style="font-family:'Space Mono',monospace;font-size:14px;color:#F04E29;font-weight:700">{{ p.price }}</span>
+            <span style="width:38px;height:38px;border-radius:50%;background:#FFE9A4;border:2px solid #492F10;display:grid;place-items:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#492F10" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg></span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- ===================== CTA ===================== -->
+  <div style="max-width:1180px;margin:0 auto">
+    <div data-anchor="cta" style="background:#492F10;border:2.5px solid #32200A;border-radius:28px;box-shadow:7px 7px 0 rgba(73,47,16,.3);padding:46px 50px;display:flex;align-items:center;justify-content:space-between;gap:24px">
+      <div>
+        <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:36px;color:#FFE9A4;letter-spacing:-0.02em;line-height:1.05">Sẵn sàng in ánh<br/>sáng của bạn?</div>
+        <div style="font-family:'Hanken Grotesque',sans-serif;font-size:15px;color:#D8C7A2;margin-top:10px">Chọn mẫu, chọn màu — chúng tôi in tươi trong 3–5 ngày.</div>
+      </div>
+      <span style="background:#FF6B4A;color:#fff;border:2.5px solid #FFE9A4;border-radius:999px;padding:15px 30px;box-shadow:4px 4px 0 #FFE9A4;font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;white-space:nowrap;flex:none">Bắt đầu ngay</span>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- ============  SHY 2D CATS (flee on approach)  ============== -->
+  <!-- ============================================================
+       HÀNH VI (giữ nguyên khi apply vào web chính thức — xem
+       "Cat Peek - Behavior Spec.md" để biết chi tiết & checklist):
+       • Núp SAU element: mỗi chỗ núp là 1 [data-anchor]; khi mount
+         các [data-anchor] được nâng z-index:2, mèo z-index:1 → chỉ
+         phần ló ra mép element là nhìn thấy (side/top-peek).
+       • Đưa chuột lại gần (<165px) → mèo tuck ra SAU element đang núp
+         rồi chạy sang 1 spot khác ĐANG TRONG VIEWPORT, xa con trỏ nhất.
+       • Cuộn trang → mèo chạy theo: spot trôi khỏi màn hình thì nấp đi
+         và ló lại từ element đang hiển thị (pickViewSpot).
+       • LUÔN trong viewport: transform "hide" tuck vào sau element
+         (không văng ra ngoài); không có spot in-view trống thì né tại chỗ.
+       • Mèo pointer-events:none — không cản tương tác trang.
+       Props: showCats / trackPointer / shy.
+  ============================================================ -->
+
+  <!-- ===== TORTOISESHELL (cat 0) ===== -->
+  <div data-cat data-cat-id="0" style="position:absolute;z-index:1;pointer-events:none;width:150px;height:150px;left:0;top:0;transform:none">
+    <div style="position:relative;width:150px;height:140px">
+      <div style="position:absolute;top:6px;left:18px;width:0;height:0;border-left:24px solid transparent;border-right:12px solid transparent;border-bottom:44px solid #4a3422;--r:-16deg;transform:rotate(var(--r));animation:eartwitch 6s infinite"></div>
+      <div style="position:absolute;top:6px;right:18px;width:0;height:0;border-left:12px solid transparent;border-right:24px solid transparent;border-bottom:44px solid #2c1d11;--r:16deg;transform:rotate(var(--r));animation:eartwitch 5.5s infinite"></div>
+      <div style="position:absolute;top:20px;left:30px;width:0;height:0;border-left:11px solid transparent;border-right:5px solid transparent;border-bottom:22px solid #C2702F;transform:rotate(-16deg)"></div>
+      <div style="position:absolute;top:20px;right:30px;width:0;height:0;border-left:5px solid transparent;border-right:11px solid transparent;border-bottom:22px solid #9c5526;transform:rotate(16deg)"></div>
+      <div style="position:absolute;top:30px;left:14px;width:122px;height:104px;border-radius:48% 48% 46% 46%/52% 52% 60% 60%;overflow:hidden;background:#4a3422">
+        <div style="position:absolute;top:-12px;left:-14px;width:78px;height:88px;background:#22170d;border-radius:50%"></div>
+        <div style="position:absolute;top:4px;right:-12px;width:74px;height:86px;background:#C2702F;border-radius:50%"></div>
+        <div style="position:absolute;bottom:-16px;left:32px;width:60px;height:50px;background:#a85f28;border-radius:50%"></div>
+      </div>
+      <div style="position:absolute;top:30px;left:14px;width:122px;height:104px;border-radius:48% 48% 46% 46%/52% 52% 60% 60%;border:3px solid #2a1c10"></div>
+      <div style="position:absolute;top:93px;left:50%;transform:translateX(-50%);width:60px;height:38px;background:#F2E2C0;border-radius:50%"></div>
+      <div style="position:absolute;top:62px;left:0;right:0;display:flex;justify-content:center;gap:16px">
+        <div data-eye data-max="5" style="position:relative;width:30px;height:32px;border-radius:52% 52% 50% 50%;background:radial-gradient(circle at 50% 40%,#FBE7B0,#E0AB52);border:3px solid #2a1c10;overflow:hidden;display:grid;place-items:center"><div data-pupil style="position:relative;width:14px;height:17px;border-radius:50%;background:#1c130a;transition:transform .07s linear"><div style="position:absolute;top:2px;left:2px;width:5px;height:5px;border-radius:50%;background:#fff"></div></div><div style="position:absolute;inset:0;background:#4a3422;transform:scaleY(0);transform-origin:top;animation:catblink 4.8s infinite"></div></div>
+        <div data-eye data-max="5" style="position:relative;width:30px;height:32px;border-radius:52% 52% 50% 50%;background:radial-gradient(circle at 50% 40%,#FBE7B0,#E0AB52);border:3px solid #2a1c10;overflow:hidden;display:grid;place-items:center"><div data-pupil style="position:relative;width:14px;height:17px;border-radius:50%;background:#1c130a;transition:transform .07s linear"><div style="position:absolute;top:2px;left:2px;width:5px;height:5px;border-radius:50%;background:#fff"></div></div><div style="position:absolute;inset:0;background:#4a3422;transform:scaleY(0);transform-origin:top;animation:catblink 4.8s infinite"></div></div>
+      </div>
+      <div style="position:absolute;top:96px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-top:8px solid #C2702F"></div>
+      <div style="position:absolute;top:104px;left:50%;width:2px;height:7px;background:#7a5a3a;transform:translateX(-50%)"></div>
+      <div style="position:absolute;top:100px;left:12px;width:34px;height:2px;background:#EFE6CC;transform:rotate(7deg)"></div>
+      <div style="position:absolute;top:106px;left:12px;width:34px;height:2px;background:#EFE6CC;transform:rotate(-4deg)"></div>
+      <div style="position:absolute;top:100px;right:12px;width:34px;height:2px;background:#EFE6CC;transform:rotate(-7deg)"></div>
+      <div style="position:absolute;top:106px;right:12px;width:34px;height:2px;background:#EFE6CC;transform:rotate(4deg)"></div>
+      <div style="position:absolute;top:122px;left:42px;width:30px;height:24px;background:#4a3422;border:3px solid #2a1c10;border-radius:11px 11px 13px 13px;transform:rotate(-6deg)"><div style="position:absolute;bottom:3px;left:8px;width:2px;height:8px;background:#EFE6CC;border-radius:2px"></div><div style="position:absolute;bottom:3px;left:14px;width:2px;height:9px;background:#EFE6CC;border-radius:2px"></div><div style="position:absolute;bottom:3px;left:20px;width:2px;height:8px;background:#EFE6CC;border-radius:2px"></div></div>
+    </div>
+  </div>
+
+  <!-- ===== BLACK CAT (cat 1) ===== -->
+  <div data-cat data-cat-id="1" style="position:absolute;z-index:1;pointer-events:none;width:150px;height:150px;left:0;top:0;transform:none">
+    <div style="position:relative;width:150px;height:140px">
+      <div style="position:absolute;top:2px;left:18px;width:0;height:0;border-left:25px solid transparent;border-right:13px solid transparent;border-bottom:50px solid #221d18;--r:-15deg;transform:rotate(var(--r));animation:eartwitch 5.8s infinite"></div>
+      <div style="position:absolute;top:2px;right:18px;width:0;height:0;border-left:13px solid transparent;border-right:25px solid transparent;border-bottom:50px solid #15110d;--r:15deg;transform:rotate(var(--r));animation:eartwitch 6.4s infinite"></div>
+      <div style="position:absolute;top:18px;left:30px;width:0;height:0;border-left:11px solid transparent;border-right:5px solid transparent;border-bottom:23px solid #7a5a55;transform:rotate(-15deg)"></div>
+      <div style="position:absolute;top:18px;right:30px;width:0;height:0;border-left:5px solid transparent;border-right:11px solid transparent;border-bottom:23px solid #5e4641;transform:rotate(15deg)"></div>
+      <div style="position:absolute;top:30px;left:14px;width:122px;height:104px;border-radius:48% 48% 46% 46%/52% 52% 60% 60%;overflow:hidden;background:#221d18">
+        <div style="position:absolute;top:8px;left:28px;width:66px;height:58px;background:#2f2a23;border-radius:50%"></div>
+      </div>
+      <div style="position:absolute;top:30px;left:14px;width:122px;height:104px;border-radius:48% 48% 46% 46%/52% 52% 60% 60%;border:3px solid #100c09"></div>
+      <div style="position:absolute;top:93px;left:50%;transform:translateX(-50%);width:60px;height:38px;background:#2f2a23;border-radius:50%"></div>
+      <div style="position:absolute;top:62px;left:0;right:0;display:flex;justify-content:center;gap:16px">
+        <div data-eye data-max="5" style="position:relative;width:30px;height:32px;border-radius:52% 52% 50% 50%;background:radial-gradient(circle at 50% 40%,#E2EEB0,#A9BE6A);border:3px solid #100c09;overflow:hidden;display:grid;place-items:center"><div data-pupil style="position:relative;width:14px;height:17px;border-radius:50%;background:#0a0c05;transition:transform .07s linear"><div style="position:absolute;top:2px;left:2px;width:5px;height:5px;border-radius:50%;background:#fff"></div></div><div style="position:absolute;inset:0;background:#221d18;transform:scaleY(0);transform-origin:top;animation:catblink 5.3s infinite"></div></div>
+        <div data-eye data-max="5" style="position:relative;width:30px;height:32px;border-radius:52% 52% 50% 50%;background:radial-gradient(circle at 50% 40%,#E2EEB0,#A9BE6A);border:3px solid #100c09;overflow:hidden;display:grid;place-items:center"><div data-pupil style="position:relative;width:14px;height:17px;border-radius:50%;background:#0a0c05;transition:transform .07s linear"><div style="position:absolute;top:2px;left:2px;width:5px;height:5px;border-radius:50%;background:#fff"></div></div><div style="position:absolute;inset:0;background:#221d18;transform:scaleY(0);transform-origin:top;animation:catblink 5.3s infinite"></div></div>
+      </div>
+      <div style="position:absolute;top:96px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-top:8px solid #3a2e2a"></div>
+      <div style="position:absolute;top:104px;left:50%;width:2px;height:7px;background:#181410;transform:translateX(-50%)"></div>
+      <div style="position:absolute;top:100px;left:12px;width:34px;height:2px;background:#efeae0;transform:rotate(7deg)"></div>
+      <div style="position:absolute;top:106px;left:12px;width:34px;height:2px;background:#efeae0;transform:rotate(-4deg)"></div>
+      <div style="position:absolute;top:100px;right:12px;width:34px;height:2px;background:#efeae0;transform:rotate(-7deg)"></div>
+      <div style="position:absolute;top:106px;right:12px;width:34px;height:2px;background:#efeae0;transform:rotate(4deg)"></div>
+      <div style="position:absolute;top:122px;left:42px;width:30px;height:24px;background:#221d18;border:3px solid #100c09;border-radius:11px 11px 13px 13px;transform:rotate(-6deg)"><div style="position:absolute;bottom:3px;left:8px;width:2px;height:8px;background:#efeae0;border-radius:2px"></div><div style="position:absolute;bottom:3px;left:14px;width:2px;height:9px;background:#efeae0;border-radius:2px"></div><div style="position:absolute;bottom:3px;left:20px;width:2px;height:8px;background:#efeae0;border-radius:2px"></div></div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:900},&quot;showCats&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;trackPointer&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;shy&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;respectReducedMotion&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  componentDidMount() {
+    this.wrap = document.querySelector('[data-cat-id="0"]').parentElement;
+    this.cardEls = Array.from(document.querySelectorAll('[data-anchor="card"]'));
+    // raise real page elements above the cats so a cat peeks from BEHIND them
+    document.querySelectorAll('[data-anchor]').forEach((el) => {
+      if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+      el.style.zIndex = '2';
+    });
+    // hiding spots anchored to real page elements — cats burrow in/behind them
+    this.spotDefs = [
+      { q: '[data-anchor="nav"]', mode: 'top', off: 0.16 },
+      { q: '[data-anchor="nav"]', mode: 'top', off: 0.74 },
+      { q: '[data-anchor="hero"]', mode: 'right', off: 0.22 },
+      { q: '[data-anchor="hero"]', mode: 'top', off: 0.78 },
+      { card: 0, mode: 'top', off: 0.5 },
+      { card: 1, mode: 'top', off: 0.5 },
+      { card: 2, mode: 'right', off: 0.4 },
+      { card: 3, mode: 'left', off: 0.4 },
+      { card: 4, mode: 'top', off: 0.5 },
+      { card: 5, mode: 'top', off: 0.5 },
+      { q: '[data-anchor="cta"]', mode: 'left', off: 0.42 },
+      { q: '[data-anchor="cta"]', mode: 'top', off: 0.2 },
+    ];
+    this.cats = [
+      { el: document.querySelector('[data-cat-id="0"]'), spot: 0, hide: 'none', fleeing: false, cooldown: 0 },
+      { el: document.querySelector('[data-cat-id="1"]'), spot: 8, hide: 'none', fleeing: false, cooldown: 0 },
+    ];
+    this.mx = -9999; this.my = -9999;
+    // Reduced-motion: tôn trọng cài đặt hệ điều hành (gắn với prop respectReducedMotion)
+    this.reduceMotion = false;
+    this._rmq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    this._applyRM = () => { this.reduceMotion = (this.props.respectReducedMotion ?? true) && this._rmq.matches; };
+    this._applyRM();
+    if (this._rmq.addEventListener) this._rmq.addEventListener('change', this._applyRM);
+    else if (this._rmq.addListener) this._rmq.addListener(this._applyRM);
+    requestAnimationFrame(() => { this.placeCat(0, 0, false); this.placeCat(1, 8, false); this.followScroll(); });
+    this._onMove = (e) => { this.mx = e.clientX; this.my = e.clientY; this.eyes(); this.checkFlee(); };
+    this._onResize = () => { this.placeCat(0, this.cats[0].spot, false); this.placeCat(1, this.cats[1].spot, false); };
+    this._scrollPending = false;
+    this._onScroll = () => {
+      if (this._scrollPending) return;
+      this._scrollPending = true;
+      requestAnimationFrame(() => { this._scrollPending = false; this.followScroll(); });
+    };
+    window.addEventListener('mousemove', this._onMove, { passive: true });
+    window.addEventListener('resize', this._onResize);
+    window.addEventListener('scroll', this._onScroll, { passive: true });
+    this.applyShow();
+  }
+  componentDidUpdate() { this.applyShow(); if (this._applyRM) this._applyRM(); }
+  componentWillUnmount() {
+    window.removeEventListener('mousemove', this._onMove);
+    window.removeEventListener('resize', this._onResize);
+    window.removeEventListener('scroll', this._onScroll);
+    if (this._rmq) {
+      if (this._rmq.removeEventListener) this._rmq.removeEventListener('change', this._applyRM);
+      else if (this._rmq.removeListener) this._rmq.removeListener(this._applyRM);
+    }
+  }
+
+  // No-cat zone: element (hoặc tổ tiên) gắn [data-no-cat] sẽ KHÔNG bao giờ được mèo chọn
+  // (vd: bọc khu checkout/giỏ hàng bằng [data-no-cat] để mèo không quấy lúc khách nhập liệu).
+  isNoCat(spotIdx) {
+    const el = this.resolveEl(this.spotDefs[spotIdx]);
+    return !!(el && el.closest && el.closest('[data-no-cat]'));
+  }
+
+  // is the element this spot is anchored to comfortably inside the viewport?
+  spotInView(spotIdx, margin = 70) {
+    if (this.isNoCat(spotIdx)) return false; // tránh xa vùng no-cat
+    const def = this.spotDefs[spotIdx];
+    const el = this.resolveEl(def); if (!el) return false;
+    const r = el.getBoundingClientRect();
+    const vh = window.innerHeight, vw = window.innerWidth;
+    return r.bottom > margin && r.top < vh - margin && r.right > 0 && r.left < vw;
+  }
+
+  applyShow() {
+    const show = this.props.showCats ?? true;
+    this.cats.forEach((c) => { if (c.el) c.el.style.display = show ? '' : 'none'; });
+  }
+
+  resolveEl(def) { return def.card != null ? this.cardEls[def.card] : document.querySelector(def.q); }
+
+  // position (relative to wrapper) for a spot def
+  computePos(def) {
+    const el = this.resolveEl(def); if (!el || !this.wrap) return null;
+    const r = el.getBoundingClientRect(); const w = this.wrap.getBoundingClientRect();
+    const elTop = r.top - w.top, elLeft = r.left - w.left;
+    const elRight = elLeft + r.width, elBottom = elTop + r.height;
+    const catW = 150;
+    // hide = tuck the cat BEHIND the host element (which is on-screen), so it never leaves the viewport
+    if (def.mode === 'top') return { left: elLeft + def.off * r.width - catW / 2, top: elTop - 72, hide: 'translateY(72%)' };
+    if (def.mode === 'left') return { left: elLeft - catW * 0.5, top: elTop + def.off * r.height, hide: 'translateX(95%)' };
+    if (def.mode === 'right') return { left: elRight - catW * 0.5, top: elTop + def.off * r.height, hide: 'translateX(-95%)' };
+    return { left: elLeft, top: elBottom, hide: 'translateY(-72%)' };
+  }
+
+  placeCat(i, spotIdx, animateIn) {
+    const c = this.cats[i]; if (!c || !c.el) return;
+    const pos = this.computePos(this.spotDefs[spotIdx]); if (!pos) return;
+    const el = c.el;
+    c.spot = spotIdx; c.hide = pos.hide;
+    el.style.transition = 'none';
+    el.style.left = pos.left + 'px';
+    el.style.top = pos.top + 'px';
+    if (animateIn) {
+      el.style.transform = pos.hide;
+      void el.offsetWidth; // reflow
+      el.style.transition = 'transform .55s cubic-bezier(.34,1.56,.64,1)';
+      el.style.transform = 'none';
+    } else {
+      el.style.transform = 'none';
+    }
+  }
+
+  // viewport-space center of a spot, for distance ranking
+  spotScreenCenter(spotIdx) {
+    const pos = this.computePos(this.spotDefs[spotIdx]); if (!pos || !this.wrap) return null;
+    const w = this.wrap.getBoundingClientRect();
+    return { x: pos.left + w.left + 75, y: pos.top + w.top + 70 };
+  }
+
+  // flee target: the in-view spot FARTHEST from the pointer (so it dodges within the current screen)
+  pickSpot(i) {
+    const other = this.cats[1 - i].spot; const cur = this.cats[i].spot;
+    let best = -1, bestD = -1;
+    for (let idx = 0; idx < this.spotDefs.length; idx++) {
+      if (idx === cur || idx === other) continue;
+      if (!this.spotInView(idx)) continue;
+      const c = this.spotScreenCenter(idx); if (!c) continue;
+      const d = Math.hypot(this.mx - c.x, this.my - c.y);
+      if (d > bestD) { bestD = d; best = idx; }
+    }
+    // fallback: any in-view spot, then anything
+    if (best < 0) {
+      for (let idx = 0; idx < this.spotDefs.length; idx++) {
+        if (idx === cur || idx === other) continue;
+        if (this.spotInView(idx)) { best = idx; break; }
+      }
+    }
+    if (best < 0) best = cur; // no in-view spot free → dodge in place, never go off-screen
+    return best;
+  }
+
+  // scroll target: an in-view spot nearest the vertical centre of the screen
+  pickViewSpot(i) {
+    const other = this.cats[1 - i].spot; const cur = this.cats[i].spot;
+    const vh = window.innerHeight;
+    let best = -1, bestScore = Infinity;
+    for (let idx = 0; idx < this.spotDefs.length; idx++) {
+      if (idx === cur || idx === other) continue;
+      if (!this.spotInView(idx, 110)) continue;
+      const c = this.spotScreenCenter(idx); if (!c) continue;
+      const score = Math.abs(c.y - vh / 2);
+      if (score < bestScore) { bestScore = score; best = idx; }
+    }
+    return best;
+  }
+
+  // when the page scrolls, a cat whose host element left the viewport runs to a visible one
+  followScroll() {
+    const now = Date.now();
+    this.cats.forEach((c, i) => {
+      if (!c.el || c.fleeing || now < c.cooldown) return;
+      if (this.spotInView(c.spot, 90)) return;
+      const target = this.pickViewSpot(i);
+      if (target < 0 || target === c.spot) return;
+      if (this.reduceMotion) { this.placeCat(i, target, false); return; } // reposition tức thời, không dart
+      c.fleeing = true; c.cooldown = now + 600;
+      c.el.style.transition = 'transform .24s cubic-bezier(.5,0,.75,0)';
+      c.el.style.transform = c.hide;
+      setTimeout(() => { this.placeCat(i, target, true); }, 240);
+      setTimeout(() => { c.fleeing = false; }, 820);
+    });
+  }
+
+  flee(i) {
+    const c = this.cats[i]; if (!c || !c.el) return;
+    c.el.style.transition = 'transform .26s cubic-bezier(.5,0,.75,0)';
+    c.el.style.transform = c.hide;
+    setTimeout(() => { this.placeCat(i, this.pickSpot(i), true); }, 270);
+  }
+
+  checkFlee() {
+    if (!(this.props.shy ?? true)) return;
+    if (this.reduceMotion) return; // không "trốn" giật mình khi user bật giảm chuyển động
+    const now = Date.now();
+    this.cats.forEach((c, i) => {
+      if (!c.el || c.fleeing || now < c.cooldown) return;
+      const r = c.el.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      if (Math.hypot(this.mx - cx, this.my - cy) < 165) {
+        c.fleeing = true; c.cooldown = now + 700;
+        this.flee(i);
+        setTimeout(() => { c.fleeing = false; }, 950);
+      }
+    });
+  }
+
+  eyes() {
+    const track = this.props.trackPointer ?? true;
+    document.querySelectorAll('[data-eye]').forEach((eye) => {
+      const pupil = eye.querySelector('[data-pupil]');
+      if (!pupil) return;
+      if (!track) { pupil.style.transform = 'translate(0px,0px)'; return; }
+      const r = eye.getBoundingClientRect();
+      const dx = this.mx - (r.left + r.width / 2);
+      const dy = this.my - (r.top + r.height / 2);
+      const ang = Math.atan2(dy, dx);
+      const max = parseFloat(eye.getAttribute('data-max')) || 5;
+      const dist = Math.min(max, Math.hypot(dx, dy) / 14);
+      pupil.style.transform = `translate(${Math.cos(ang) * dist}px, ${Math.sin(ang) * dist}px)`;
+    });
+  }
+
+  renderVals() {
+    return {
+      cards: [
+        { title: 'Đèn ngủ Mochi', price: '290.000₫', tint: '#FF6B4A' },
+        { title: 'Mèo Mập', price: '180.000₫', tint: '#16B5A0' },
+        { title: 'Phi hành gia', price: '210.000₫', tint: '#4C8DFF' },
+        { title: 'Khủng long', price: '160.000₫', tint: '#FFC233' },
+        { title: 'Móc khóa Robo', price: '65.000₫', tint: '#FF6B4A' },
+        { title: 'Kệ đt Origami', price: '120.000₫', tint: '#16B5A0' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

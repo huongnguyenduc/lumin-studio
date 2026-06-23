@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+.next/
+dist/
+build/
+out/
+.turbo/
+*.tsbuildinfo
+
+# Go
+/services/*/bin/
+vendor/
+
+# Rust
+target/
+
+# Test / coverage
+coverage/
+playwright-report/
+test-results/
+.vitest/
+
+# Secrets (lưu mã hoá bằng SOPS+age; bản giải mã KHÔNG commit)
+.env
+.env.*
+!.env.example
+*.age
+*.pem
+*.tfstate
+secrets/
+*.dec.*
+
+# Claude Code — cá nhân, không chia sẻ
+.claude/settings.local.json
+CLAUDE.local.md
+.claude/scheduled_tasks.lock
+.claude/.skip-verify
+.claude/.allow-contract-edit
+.claude/.verify-attempts
+.claude/.cmd-history
+.claude/.cmd-history.tmp
+.claude/.precompact-state
+# State một-lần / cold của các lane đã định (ADR-026/REC-40) — không commit
+.claude/.session-retro-pending
+.claude/.turn-count
+.claude/.repair-event
+.claude/.review-diff
+
+# OS / editor
+.DS_Store
+*.log
+.idea/
+.vscode/*
+!.vscode/extensions.json

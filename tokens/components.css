@@ -1,0 +1,34 @@
+/* Lumin Studio — Component interaction states
+   Hover/active states that inline styles can't express. Shipped with the system. */
+
+/* ---- Button ---- */
+.lumin-btn:not(:disabled):hover { filter: brightness(0.96); }
+.lumin-btn--primary:not(:disabled):hover { background: var(--primary-hover); filter: none; }
+.lumin-btn--primary:not(:disabled):active { background: var(--primary-press); }
+.lumin-btn--outline:not(:disabled):hover { background: var(--cocoa-900); color: var(--cream-50); }
+.lumin-btn--ghost:not(:disabled):hover { background: var(--cream-100); filter: none; }
+.lumin-btn:not(:disabled):active { transform: translateY(1px); }
+
+/* "pop" variant — chunky press: shadow collapses as button sinks toward it */
+.lumin-btn--pop:not(:disabled):hover { transform: translate(-1px, -1px); box-shadow: 6px 6px 0 var(--cocoa-900); filter: none; }
+.lumin-btn--pop:not(:disabled):active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--cocoa-900); }
+
+/* ---- IconButton ---- */
+.lumin-iconbtn:not(:disabled):hover { background: var(--cream-100); }
+.lumin-iconbtn:not(:disabled):active { transform: scale(0.92); }
+
+/* ---- Card (interactive) ---- */
+.lumin-card--interactive { transition: transform .15s ease, box-shadow .15s ease; cursor: pointer; }
+.lumin-card--interactive:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+
+/* ---- Tag (removable / selectable) ---- */
+.lumin-tag--selectable { cursor: pointer; transition: background .12s ease, border-color .12s ease; }
+.lumin-tag--selectable:hover { border-color: var(--cocoa-900); }
+
+/* ---- Input ---- */
+.lumin-input:focus { outline: none; border-color: var(--sky-500); box-shadow: var(--ring-focus); }
+.lumin-input::placeholder { color: var(--cocoa-400); }
+
+/* ---- Stepper ---- */
+.lumin-step-btn:not(:disabled):hover { background: var(--cream-100); }
+.lumin-step-btn:not(:disabled):active { transform: scale(0.9); }

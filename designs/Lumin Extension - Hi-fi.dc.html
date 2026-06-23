@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Hanken+Grotesque:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#EAE7DF}
+</style>
+</helmet>
+
+<div style="width:max-content;min-width:100%;min-height:100vh;box-sizing:border-box;padding:48px;background:#EAE7DF">
+
+  <div style="margin-bottom:30px">
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:44px;color:#492F10;letter-spacing:-0.025em;line-height:1">Extension trình duyệt · bản hi-fi</div>
+    <div style="font-family:'Space Mono',monospace;font-size:12px;color:#7C6233;margin-top:8px;max-width:820px;line-height:1.7">Tiện ích cài trên trình duyệt, hiện cạnh khung chat Messenger / Instagram. 3 việc shop làm ngay tại chỗ — không đổi tab: <b>① Tạo đơn nhanh</b> từ hội thoại · <b>② Tra cứu đơn</b> (tự quét link/mã đơn trong tin nhắn) · <b>③ Mẫu trả lời</b> chèn 1 chạm. Khối gạch chéo = ảnh thật · ghi chú cam = điểm cần lưu ý.</div>
+  </div>
+
+  <div style="background:#fff;border:2.5px solid #492F10;border-radius:18px;box-shadow:5px 5px 0 rgba(73,47,16,.1);padding:16px 18px;margin-bottom:34px;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+    <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><span style="font-size:19px">◆ Bộ trạng thái đơn — chuẩn dùng chung</span><span style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">1 bộ duy nhất · Web khách · Admin · Extension đều khớp</span></div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:13px">
+      <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:12px;padding:3px 11px;border-radius:16px;white-space:nowrap;border:2px solid #FF6B4A;color:#C93A1A;background:#fff">Chờ xác nhận</span> <span style="color:#C9B98E;font-size:13px">→</span> <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:12px;padding:3px 11px;border-radius:16px;white-space:nowrap;background:#FFE7DD;color:#C93A1A;border:1.5px solid #F3B49B">Đã thanh toán</span> <span style="color:#C9B98E;font-size:13px">→</span> <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:12px;padding:3px 11px;border-radius:16px;white-space:nowrap;background:#FF6B4A;color:#fff;border:1.5px solid #492F10">Đang in</span> <span style="color:#C9B98E;font-size:13px">→</span> <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:12px;padding:3px 11px;border-radius:16px;white-space:nowrap;background:#E6EEFC;color:#2D5FB8;border:1.5px solid #4C8DFF">Đang giao</span> <span style="color:#C9B98E;font-size:13px">→</span> <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:12px;padding:3px 11px;border-radius:16px;white-space:nowrap;background:#D6F0EA;color:#0E7C68;border:1.5px solid #0E7C68">Hoàn tất</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:12px">
+      <span style="font-family:'Space Mono',monospace;font-size:10px;color:#7C6233">Ngoại lệ (ngoài trục tiến trình):</span>
+      <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:12px;padding:3px 11px;border-radius:16px;white-space:nowrap;background:#FBE6E2;color:#c0392b;border:1.5px solid #d8473a">Đã huỷ</span> <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:12px;padding:3px 11px;border-radius:16px;white-space:nowrap;background:#FBEFD9;color:#9a6b2f;border:1.5px solid #E0A458">Hoàn hàng</span>
+      <span style="font-family:'Space Mono',monospace;font-size:9px;color:#785B34;line-height:1.6;max-width:520px">Huỷ / Hoàn hàng (bom hàng, trả về) có thể xảy ra ở bất kỳ bước nào trước "Hoàn tất" — luôn hiển thị tách riêng, không tính là một mốc tiến trình.</span>
+    </div>
+    <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:12px;border-top:1px dashed #EFE6CC;padding-top:10px;line-height:1.7">Thẻ đơn &amp; nút "Cập nhật nhanh trạng thái" trong extension dùng đúng bộ này. Thanh tiến trình thu gọn (Xác nhận · Thanh toán · In · Giao · Xong) là nhãn rút gọn của 5 mốc trên. "Chờ xác nhận" = khách đã báo chuyển khoản, chờ shop xác nhận lại (đơn chỉ tạo sau khi khách báo CK).</div>
+  </div>
+  <!-- LOGIN + CONDITIONS -->
+  <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:48px">
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;color:#492F10;letter-spacing:-0.02em">0 · Đăng nhập &amp; điều kiện hoạt động</div>
+    <div style="display:flex;gap:34px;align-items:flex-start">
+
+      <!-- login panel -->
+      <div style="width:380px;flex:none;display:flex;flex-direction:column;gap:10px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">Đăng nhập extension (lần đầu)</span>
+        <div style="width:380px;background:#fff;border:2px solid #492F10;border-radius:16px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="background:#492F10;color:#fff;padding:10px 13px;display:flex;align-items:center;gap:8px"><span style="font-size:16px">Lumin◖</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#c9c6bd;border:1px solid #5a5a55;border-radius:8px;padding:1px 6px">extension</span><span style="margin-left:auto;display:flex;align-items:center;gap:5px;font-family:'Space Mono',monospace;font-size:9px;color:#c9b18a"><span style="width:7px;height:7px;border-radius:50%;background:#e0a458;display:inline-block"></span>Chưa kết nối</span></div>
+          <div style="padding:20px 16px">
+            <div style="text-align:center;margin-top:6px"><div style="font-size:30px">Lumin◖</div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:4px">Kết nối với cửa hàng để bắt đầu</div></div>
+            <div style="margin-top:18px"><div style="font-size:12px;color:#7C6233">Email cửa hàng</div><div style="border:1.5px solid #492F10;border-radius:9px;padding:8px 11px;font-family:'Space Mono',monospace;font-size:11px;margin-top:4px;color:#7C6233">shop@luminstudio.vn</div></div>
+            <div style="margin-top:10px"><div style="font-size:12px;color:#7C6233">Mật khẩu</div><div style="border:1.5px solid #492F10;border-radius:9px;padding:8px 11px;font-family:'Space Mono',monospace;font-size:11px;margin-top:4px;color:#7C6233;display:flex;justify-content:space-between">••••••••<span>◔</span></div></div>
+            <div style="background:#FF6B4A;color:#fff;border:2px solid #492F10;border-radius:11px;padding:10px;text-align:center;font-size:14px;margin-top:16px;box-shadow:2px 2px 0 rgba(73,47,16,.25)">Đăng nhập &amp; kết nối</div>
+            <div style="display:flex;align-items:center;gap:10px;margin:14px 0;font-family:'Space Mono',monospace;font-size:9px;color:#b6b3aa"><span style="flex:1;height:1px;background:#EFE6CC"></span>hoặc<span style="flex:1;height:1px;background:#EFE6CC"></span></div>
+            <div style="border:1.5px solid #492F10;border-radius:11px;padding:9px;text-align:center;font-size:13px">Nhập mã ghép từ Admin</div>
+            <div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233;text-align:center;margin-top:9px;line-height:1.6">Lấy mã ở Admin › Cài đặt › Extension<br/>(vd: <span style="color:#492F10">LUMIN-4821</span>)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- standby panel -->
+      <div style="width:380px;flex:none;display:flex;flex-direction:column;gap:10px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">Sai trang — chế độ chờ (thiếu điều kiện cần)</span>
+        <div style="width:380px;background:#fff;border:2px solid #492F10;border-radius:16px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="background:#492F10;color:#fff;padding:10px 13px;display:flex;align-items:center;gap:8px"><span style="font-size:16px">Lumin◖</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#c9c6bd;border:1px solid #5a5a55;border-radius:8px;padding:1px 6px">extension</span><span style="margin-left:auto;display:flex;align-items:center;gap:5px;font-family:'Space Mono',monospace;font-size:9px;color:#9fd6ad"><span style="width:7px;height:7px;border-radius:50%;background:#7c9;display:inline-block"></span>Đã kết nối</span></div>
+          <div style="padding:18px 16px;text-align:center">
+            <div style="width:78px;height:78px;border-radius:50%;border:2px dashed #C9B98E;display:flex;align-items:center;justify-content:center;font-size:32px;color:#b6b3aa;margin:8px auto 0">○</div>
+            <div style="font-size:17px;margin-top:12px">Đang chờ…</div>
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:6px;line-height:1.7;padding:0 6px">Mở trang Fanpage / Instagram của Lumin Studio để bật nhận diện tin nhắn.</div>
+            <div style="border:1.5px solid #EFE6CC;border-radius:10px;padding:8px 11px;margin-top:13px;font-family:'Space Mono',monospace;font-size:9px;color:#785B34;text-align:left;line-height:1.6">Đang ở: <span style="color:#d8473a">google.com</span> — ngoài phạm vi</div>
+            <div style="text-align:left;margin-top:13px;font-size:13px">Tự bật khi vào:</div>
+            <div style="display:flex;flex-direction:column;gap:7px;margin-top:8px;text-align:left">
+              <div style="display:flex;align-items:center;gap:8px;border:1.5px solid #EFE6CC;border-radius:9px;padding:7px 10px"><span style="width:18px;height:18px;border-radius:5px;background:#4C8DFF;border:1.5px solid #492F10;flex:none"></span><span style="flex:1;font-family:'Space Mono',monospace;font-size:9px;color:#785B34">m.me/luminstudio</span><span style="color:#0E7C68">✓</span></div>
+              <div style="display:flex;align-items:center;gap:8px;border:1.5px solid #EFE6CC;border-radius:9px;padding:7px 10px"><span style="width:18px;height:18px;border-radius:5px;background:#d96aa6;border:1.5px solid #492F10;flex:none"></span><span style="flex:1;font-family:'Space Mono',monospace;font-size:9px;color:#785B34">instagram.com/luminstudio</span><span style="color:#0E7C68">✓</span></div>
+              <div style="display:flex;align-items:center;gap:8px;border:1.5px solid #EFE6CC;border-radius:9px;padding:7px 10px"><span style="width:18px;height:18px;border-radius:5px;background:#111;border:1.5px solid #492F10;flex:none"></span><span style="flex:1;font-family:'Space Mono',monospace;font-size:9px;color:#785B34">tiktok.com/@luminstudio</span><span style="color:#0E7C68">✓</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- decision flow -->
+    <div style="width:794px;background:#fff;border:2.5px solid #492F10;border-radius:18px;box-shadow:5px 5px 0 rgba(73,47,16,.1);padding:18px 20px;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+      <div style="font-size:17px">Khi nào extension làm gì?</div>
+      <div style="display:flex;align-items:stretch;gap:12px;margin-top:14px">
+        <div style="width:230px;flex:none;border:2px solid #FF6B4A;background:#FFF1EC;border-radius:12px;padding:13px"><div style="font-family:'Space Mono',monospace;font-size:8px;color:#C93A1A;border:1px solid #FF6B4A;border-radius:8px;padding:1px 7px;display:inline-block">ĐIỀU KIỆN CẦN</div><div style="font-size:15px;margin-top:8px;line-height:1.4">Trang đang mở là của Lumin Studio</div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#785B34;margin-top:6px;line-height:1.6">Fanpage FB / IG / TikTok @luminstudio.<br/><span style="color:#d8473a">Nếu không → Chế độ chờ.</span></div></div>
+        <div style="display:flex;align-items:center;color:#C93A1A;font-size:22px">→</div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:10px">
+          <div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233;border:1px solid #D8C9A1;border-radius:8px;padding:1px 7px;align-self:flex-start">ĐIỀU KIỆN ĐỦ · quét tin nhắn → 2 trường hợp</div>
+          <div style="display:flex;gap:10px">
+            <div style="flex:1;border:1.5px solid #EFE6CC;border-radius:11px;padding:11px"><div style="display:flex;align-items:center;gap:7px"><span style="width:22px;height:22px;border-radius:50%;background:#492F10;color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none">1</span><span style="font-size:14px">Khách gửi link đơn</span></div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#785B34;margin-top:7px;line-height:1.7">Đã có trong hệ thống → hiện <span style="color:#492F10">thẻ đơn cạnh chat</span> để theo dõi &amp; <span style="color:#C93A1A">cập nhật trạng thái</span> (đã thanh toán, đang in…).</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233;margin-top:6px">→ tab "Tra cứu"</div></div>
+            <div style="flex:1;border:1.5px solid #EFE6CC;border-radius:11px;padding:11px"><div style="display:flex;align-items:center;gap:7px"><span style="width:22px;height:22px;border-radius:50%;background:#FF6B4A;color:#fff;border:1.5px solid #492F10;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none">2</span><span style="font-size:14px">Khách mua trực tiếp</span></div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#785B34;margin-top:7px;line-height:1.7">Chốt đơn qua chat → <span style="color:#492F10">thu thập thông tin khách</span> (gồm <span style="color:#C93A1A">link FB/IG</span>) → <span style="color:#492F10">khách báo đã CK</span> → tạo đơn ở "Chờ xác nhận".</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233;margin-top:6px">→ tab "Tạo đơn"</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:14px;color:#C93A1A;background:#fff;border:1.5px dashed #FF6B4A;border-radius:12px;padding:9px 12px;align-self:flex-start;box-shadow:3px 3px 0 rgba(244,99,58,.15)">✎ Đăng nhập 1 lần bằng tài khoản Admin (hoặc mã ghép) → chấm xanh "Đã kết nối". Extension chỉ thức dậy khi đúng trang shop; cả 2 trường hợp đều lưu lại link MXH của khách vào hồ sơ để lần sau tra đơn &amp; nhắn lại không cần lục inbox.</div>
+  </div>
+
+  <!-- HERO: IN CONTEXT -->
+  <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:48px">
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;color:#492F10;letter-spacing:-0.02em">A · Bối cảnh — extension gắn cạnh khung chat (không cần đổi tab)</div>
+    <div style="width:1180px;flex:none;background:#fff;border:2.5px solid #492F10;border-radius:18px;box-shadow:6px 6px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+      <!-- browser chrome -->
+      <div style="height:34px;background:#F3EAD2;border-bottom:1.5px solid #EFE6CC;display:flex;align-items:center;gap:6px;padding:0 13px">
+        <div style="width:11px;height:11px;border-radius:50%;background:#e88;border:1px solid #492F10"></div><div style="width:11px;height:11px;border-radius:50%;background:#ec4;border:1px solid #492F10"></div><div style="width:11px;height:11px;border-radius:50%;background:#7c9;border:1px solid #492F10"></div>
+        <div style="margin-left:14px;flex:1;max-width:420px;background:#fff;border:1.5px solid #EFE6CC;border-radius:9px;padding:3px 11px;font-family:'Space Mono',monospace;font-size:10px;color:#7C6233">⚭ messenger.com/t/luminstudio</div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:6px;background:#492F10;color:#fff;border-radius:9px;padding:4px 9px"><span style="font-size:13px">Lumin◖</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#C93A1A">●</span></div>
+      </div>
+
+      <div style="display:flex;min-height:560px">
+        <!-- left: messenger conversation -->
+        <div style="flex:1;display:flex;flex-direction:column;border-right:1.5px solid #EFE6CC">
+          <div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1.5px solid #EFE6CC">
+            <div style="width:34px;height:34px;border-radius:50%;background:#7fae8b;border:1.5px solid #492F10"></div>
+            <div style="flex:1"><div style="font-size:16px">Trần Mai</div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#0E7C68">● Đang hoạt động</div></div>
+            <span style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">messenger</span>
+          </div>
+
+          <div style="flex:1;padding:16px;display:flex;flex-direction:column;gap:10px;background:#fbfaf6">
+            <div style="align-self:flex-start;max-width:74%;background:#F3EAD2;border:1.5px solid #EFE6CC;border-radius:14px 14px 14px 4px;padding:9px 12px;font-family:'Space Mono',monospace;font-size:11px;color:#4b4b4b;line-height:1.6">Shop ơi cho mình đặt <b style="color:#492F10">Đèn ngủ Mochi</b> màu cam, size M, khắc tên "Mai" nha 🧡</div>
+
+            <div style="align-self:flex-start;max-width:78%;position:relative;background:#FFF1EC;border:2px solid #FF6B4A;border-radius:14px 14px 14px 4px;padding:9px 12px;font-family:'Space Mono',monospace;font-size:11px;color:#4b4b4b;line-height:1.7">
+              SĐT mình <b style="color:#492F10">0901 234 567</b><br/>Địa chỉ: <b style="color:#492F10">123 Lê Lợi, P.Bến Thành, Q.1</b>
+              <div style="position:absolute;top:-10px;right:8px;background:#FF6B4A;color:#fff;font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:10px;padding:1px 8px;border-radius:11px;border:1.5px solid #492F10">● extension đã nhận diện</div>
+            </div>
+
+            <div style="align-self:flex-end;max-width:70%;background:#FF6B4A;color:#fff;border:1.5px solid #492F10;border-radius:14px 14px 4px 14px;padding:9px 12px;font-family:'Space Mono',monospace;font-size:11px;line-height:1.6">Dạ bạn CK giúp shop rồi báo mình nha 🧡</div>
+
+            <div style="align-self:flex-start;max-width:74%;position:relative;background:#fff;border:1.5px solid #EFE6CC;border-radius:14px 14px 14px 4px;padding:9px 12px;font-family:'Space Mono',monospace;font-size:11px;color:#4b4b4b;line-height:1.6">Mình CK đủ <b style="color:#492F10">315k</b> rồi nha shop 🧡<div style="position:absolute;top:-10px;right:8px;background:#0E7C68;color:#fff;font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:10px;padding:1px 8px;border-radius:11px;border:1.5px solid #492F10">● đã báo CK</div></div>
+
+            <div style="align-self:center;margin-top:4px;font-family:'Space Mono',monospace;font-size:8px;color:#b6b3aa">↑ khách đã báo CK → giờ mới tạo đơn (vào "Chờ xác nhận")</div>
+          </div>
+
+          <div style="border-top:1.5px solid #EFE6CC;padding:10px 14px;display:flex;align-items:center;gap:9px">
+            <div style="flex:1;border:1.5px solid #492F10;border-radius:18px;padding:7px 13px;font-family:'Space Mono',monospace;font-size:10px;color:#7C6233">Nhắn tin…</div>
+            <div style="border:1.5px solid #FF6B4A;color:#C93A1A;border-radius:12px;padding:6px 11px;font-size:13px">✎ Mẫu</div>
+          </div>
+        </div>
+
+        <!-- right: docked extension panel -->
+        <div style="width:382px;flex:none;display:flex;flex-direction:column;background:#fff">
+          <div style="background:#492F10;color:#fff;padding:11px 14px;display:flex;align-items:center;gap:8px">
+            <span style="font-size:17px">Lumin◖</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#c9c6bd;border:1px solid #5a5a55;border-radius:8px;padding:1px 6px">extension</span>
+            <span style="margin-left:auto;display:flex;align-items:center;gap:5px;font-family:'Space Mono',monospace;font-size:9px;color:#9fd6ad"><span style="width:7px;height:7px;border-radius:50%;background:#7c9;display:inline-block"></span>Đã kết nối</span>
+            <span style="font-size:14px">⚙</span>
+          </div>
+          <div style="display:flex;border-bottom:1.5px solid #EFE6CC;font-size:13px;background:#faf9f5">
+            <div style="flex:1;text-align:center;padding:9px;border-bottom:2.5px solid #FF6B4A;color:#C93A1A">Tạo đơn</div>
+            <div style="flex:1;text-align:center;padding:9px;color:#7C6233">Tra cứu <span style="font-family:'Space Mono',monospace;font-size:8px;background:#FF6B4A;color:#fff;padding:0 5px;border-radius:9px">1</span></div>
+            <div style="flex:1;text-align:center;padding:9px;color:#7C6233">Mẫu</div>
+          </div>
+
+          <div style="flex:1;padding:13px;overflow:hidden">
+            <div style="background:#FFF1EC;border:1.5px solid #FF6B4A;border-radius:11px;padding:8px 11px;display:flex;align-items:center;gap:8px"><span style="font-family:'Space Mono',monospace;font-size:8px;background:#FF6B4A;color:#fff;padding:2px 7px;border-radius:9px">QUÉT ✓</span><span style="flex:1;font-size:13px">Đã đọc hội thoại — điền sẵn 4 mục</span><span style="font-family:'Space Mono',monospace;font-size:9px;color:#C93A1A">⟲</span></div>
+
+            <div style="margin-top:11px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;color:#7C6233">Tên khách</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233;border:1px solid #D8C9A1;border-radius:8px;padding:0 6px">hồ sơ FB</span></div><div style="border:1.5px solid #492F10;border-radius:9px;padding:7px 10px;font-family:'Space Mono',monospace;font-size:11px;margin-top:3px">Trần Mai</div></div>
+            <div style="margin-top:8px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;color:#7C6233">Link Facebook / IG</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#C93A1A;border:1px solid #FF6B4A;border-radius:8px;padding:0 6px">● tự lưu</span></div><div style="border:1.5px solid #FF6B4A;background:#FFF1EC;border-radius:9px;padding:7px 10px;font-family:'Space Mono',monospace;font-size:10px;margin-top:3px;display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:4px;background:#4C8DFF;border:1px solid #492F10;flex:none"></span>m.me/tran.mai.97</div></div>
+
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <div style="flex:1"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;color:#7C6233">SĐT</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#C93A1A;border:1px solid #FF6B4A;border-radius:8px;padding:0 6px">● tự nhận</span></div><div style="border:1.5px solid #FF6B4A;background:#FFF1EC;border-radius:9px;padding:7px 10px;font-family:'Space Mono',monospace;font-size:11px;margin-top:3px">0901 234 567</div></div>
+            </div>
+
+            <div style="margin-top:8px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;color:#7C6233">Địa chỉ giao</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#C93A1A;border:1px solid #FF6B4A;border-radius:8px;padding:0 6px">● tự nhận</span></div><div style="border:1.5px solid #FF6B4A;background:#FFF1EC;border-radius:9px;padding:7px 10px;font-family:'Space Mono',monospace;font-size:10px;margin-top:3px;line-height:1.5">123 Lê Lợi, P.Bến Thành, Q.1</div></div>
+
+            <div style="margin-top:8px"><div style="font-size:12px;color:#7C6233">Sản phẩm</div><div style="border:1.5px solid #492F10;border-radius:9px;padding:7px 10px;font-size:13px;margin-top:3px;display:flex;justify-content:space-between"><span>Đèn ngủ Mochi</span><span style="color:#7C6233">▾</span></div>
+              <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap;align-items:center"><span style="display:flex;align-items:center;gap:4px;border:1.5px solid #D8C9A1;border-radius:8px;padding:2px 7px;font-family:'Space Mono',monospace;font-size:9px"><span style="width:12px;height:12px;border-radius:4px;background:#FF6B4A;border:1px solid #492F10"></span>Cam Mochi</span><span style="border:1.5px solid #D8C9A1;border-radius:8px;padding:2px 7px;font-family:'Space Mono',monospace;font-size:9px">Size M</span><span style="border:1.5px solid #FF6B4A;color:#C93A1A;border-radius:8px;padding:2px 7px;font-family:'Space Mono',monospace;font-size:9px">Khắc "Mai"</span></div>
+            </div>
+
+            <div style="display:flex;gap:8px;margin-top:9px;font-family:'Space Mono',monospace;font-size:10px;color:#785B34">
+              <div style="flex:1;border:1.5px solid #EFE6CC;border-radius:9px;padding:6px 8px">SL <span style="color:#492F10">×1</span></div>
+              <div style="flex:1.4;border:1.5px solid #EFE6CC;border-radius:9px;padding:6px 8px">Tổng <span style="color:#C93A1A">₫315k</span></div>
+              <div style="flex:1.3;border:1.5px solid #EFE6CC;border-radius:9px;padding:6px 8px">Ship <span style="color:#492F10">25k</span></div>
+            </div>
+          </div>
+
+          <div style="border-top:1.5px solid #EFE6CC;padding:11px 13px;display:flex;gap:8px">
+            <span style="flex:1;text-align:center;border:1.5px solid #492F10;border-radius:11px;padding:8px;font-size:13px">Lưu nháp</span>
+            <span style="flex:1.6;text-align:center;background:#FF6B4A;color:#fff;border:2px solid #492F10;border-radius:11px;padding:8px;font-size:13px;box-shadow:2px 2px 0 rgba(73,47,16,.25)">Tạo đơn →</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:14px;color:#C93A1A;background:#fff;border:1.5px dashed #FF6B4A;border-radius:12px;padding:9px 12px;align-self:flex-start;box-shadow:3px 3px 0 rgba(244,99,58,.15)">✎ Panel bám cạnh phải khung chat. Bấm "Quét" → extension đọc tin nhắn, <b>tự điền SĐT / địa chỉ</b> (viền cam = lấy từ chat), shop chỉ chỉnh sản phẩm rồi "Tạo đơn" — <b>chỉ tạo sau khi khách đã báo CK</b>, đơn vào thẳng Admin ở "Chờ xác nhận", không rời tab Messenger.</div>
+  </div>
+
+  <!-- THREE PANEL STATES -->
+  <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:48px">
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;color:#492F10;letter-spacing:-0.02em">B · Ba tab của extension</div>
+    <div style="display:flex;gap:34px;align-items:flex-start">
+
+      <!-- PANEL 1: TAO DON -->
+      <div style="width:380px;flex:none;display:flex;flex-direction:column;gap:10px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">① Tạo đơn nhanh từ hội thoại</span>
+        <div style="width:380px;background:#fff;border:2px solid #492F10;border-radius:16px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="background:#492F10;color:#fff;padding:10px 13px;display:flex;align-items:center;gap:8px"><span style="font-size:16px">Lumin◖</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#c9c6bd;border:1px solid #5a5a55;border-radius:8px;padding:1px 6px">extension</span><span style="margin-left:auto;display:flex;align-items:center;gap:5px;font-family:'Space Mono',monospace;font-size:9px;color:#9fd6ad"><span style="width:7px;height:7px;border-radius:50%;background:#7c9;display:inline-block"></span>Đã kết nối</span><span style="font-size:14px">⚙</span></div>
+          <div style="display:flex;border-bottom:1.5px solid #EFE6CC;font-size:13px;background:#faf9f5"><div style="flex:1;text-align:center;padding:9px;border-bottom:2.5px solid #FF6B4A;color:#C93A1A">Tạo đơn</div><div style="flex:1;text-align:center;padding:9px;color:#7C6233">Tra cứu</div><div style="flex:1;text-align:center;padding:9px;color:#7C6233">Mẫu</div></div>
+          <div style="padding:13px">
+            <div style="background:#FFF1EC;border:1.5px solid #FF6B4A;border-radius:11px;padding:9px 11px"><div style="display:flex;align-items:center;gap:8px"><span style="font-family:'Space Mono',monospace;font-size:8px;background:#FF6B4A;color:#fff;padding:2px 7px;border-radius:9px">QUÉT ✓</span><span style="flex:1;font-size:13px">Đã đọc hội thoại</span><span style="border:1.5px solid #FF6B4A;color:#C93A1A;border-radius:9px;padding:2px 9px;font-size:11px">Quét lại ⟲</span></div></div>
+
+            <div style="margin-top:11px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;color:#7C6233">Tên khách</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233;border:1px solid #D8C9A1;border-radius:8px;padding:0 6px">hồ sơ FB</span></div><div style="border:1.5px solid #492F10;border-radius:9px;padding:7px 10px;font-family:'Space Mono',monospace;font-size:11px;margin-top:3px">Trần Mai</div></div>
+            <div style="margin-top:8px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;color:#7C6233">Link Facebook / IG</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#C93A1A;border:1px solid #FF6B4A;border-radius:8px;padding:0 6px">● tự lưu</span></div><div style="border:1.5px solid #FF6B4A;background:#FFF1EC;border-radius:9px;padding:7px 10px;font-family:'Space Mono',monospace;font-size:10px;margin-top:3px;display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border-radius:4px;background:#4C8DFF;border:1px solid #492F10;flex:none"></span>m.me/tran.mai.97</div></div>
+            <div style="margin-top:8px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;color:#7C6233">SĐT</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#C93A1A;border:1px solid #FF6B4A;border-radius:8px;padding:0 6px">● tự nhận</span></div><div style="border:1.5px solid #FF6B4A;background:#FFF1EC;border-radius:9px;padding:7px 10px;font-family:'Space Mono',monospace;font-size:11px;margin-top:3px">0901 234 567</div></div>
+            <div style="margin-top:8px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;color:#7C6233">Địa chỉ giao</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#C93A1A;border:1px solid #FF6B4A;border-radius:8px;padding:0 6px">● tự nhận</span></div><div style="border:1.5px solid #FF6B4A;background:#FFF1EC;border-radius:9px;padding:7px 10px;font-family:'Space Mono',monospace;font-size:10px;margin-top:3px;line-height:1.5">123 Lê Lợi, P.Bến Thành, Q.1, TP.HCM</div></div>
+
+            <div style="margin-top:8px"><div style="font-size:12px;color:#7C6233">Sản phẩm</div>
+              <div style="border:1.5px solid #492F10;border-radius:9px;padding:7px 10px;font-size:13px;margin-top:3px;display:flex;justify-content:space-between"><span>Đèn ngủ Mochi</span><span style="color:#7C6233">▾</span></div>
+              <div style="display:flex;gap:5px;margin-top:6px;flex-wrap:wrap;align-items:center"><span style="display:flex;align-items:center;gap:4px;border:1.5px solid #D8C9A1;border-radius:8px;padding:2px 7px;font-family:'Space Mono',monospace;font-size:9px"><span style="width:12px;height:12px;border-radius:4px;background:#FF6B4A;border:1px solid #492F10"></span>Cam Mochi</span><span style="border:1.5px solid #D8C9A1;border-radius:8px;padding:2px 7px;font-family:'Space Mono',monospace;font-size:9px">Size M</span><span style="border:1.5px solid #FF6B4A;color:#C93A1A;border-radius:8px;padding:2px 7px;font-family:'Space Mono',monospace;font-size:9px">Khắc "Mai"</span></div>
+              <div style="border:1.5px dashed #b6b3aa;border-radius:8px;padding:5px;text-align:center;font-size:11px;margin-top:6px;color:#7C6233">+ Thêm món</div>
+            </div>
+
+            <div style="display:flex;gap:8px;margin-top:9px;font-family:'Space Mono',monospace;font-size:10px;color:#785B34">
+              <div style="flex:1;border:1.5px solid #EFE6CC;border-radius:9px;padding:6px 8px">SL <span style="color:#492F10">×1</span></div>
+              <div style="flex:1;border:1.5px solid #EFE6CC;border-radius:9px;padding:6px 8px">Kênh <span style="color:#492F10">Mess.</span></div>
+            </div>
+            <div style="border:1.5px solid #EFE6CC;border-radius:10px;padding:8px 11px;margin-top:9px;font-family:'Space Mono',monospace;font-size:10px;color:#785B34;line-height:1.9"><span style="color:#0E7C68">✓ Khách đã báo CK</span> · Tạm tính ₫290k · Ship Q.1 ₫25k<br/><span style="color:#492F10;font-size:12px">Tổng: ₫315.000</span> · <span style="color:#7C6233">Chờ xác nhận</span></div>
+          </div>
+          <div style="border-top:1.5px solid #EFE6CC;padding:11px 13px;display:flex;gap:8px"><span style="flex:1;text-align:center;border:1.5px solid #492F10;border-radius:11px;padding:8px;font-size:13px">Lưu nháp</span><span style="flex:1.6;text-align:center;background:#FF6B4A;color:#fff;border:2px solid #492F10;border-radius:11px;padding:8px;font-size:13px;box-shadow:2px 2px 0 rgba(73,47,16,.25)">Tạo đơn #LM____</span></div>
+        </div>
+      </div>
+
+      <!-- PANEL 2: TRA CUU -->
+      <div style="width:380px;flex:none;display:flex;flex-direction:column;gap:10px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">② Tra cứu đơn — tự quét link/mã trong chat</span>
+        <div style="width:380px;background:#fff;border:2px solid #492F10;border-radius:16px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="background:#492F10;color:#fff;padding:10px 13px;display:flex;align-items:center;gap:8px"><span style="font-size:16px">Lumin◖</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#c9c6bd;border:1px solid #5a5a55;border-radius:8px;padding:1px 6px">extension</span><span style="margin-left:auto;display:flex;align-items:center;gap:5px;font-family:'Space Mono',monospace;font-size:9px;color:#9fd6ad"><span style="width:7px;height:7px;border-radius:50%;background:#7c9;display:inline-block"></span>Đã kết nối</span><span style="font-size:14px">⚙</span></div>
+          <div style="display:flex;border-bottom:1.5px solid #EFE6CC;font-size:13px;background:#faf9f5"><div style="flex:1;text-align:center;padding:9px;color:#7C6233">Tạo đơn</div><div style="flex:1;text-align:center;padding:9px;border-bottom:2.5px solid #FF6B4A;color:#C93A1A">Tra cứu</div><div style="flex:1;text-align:center;padding:9px;color:#7C6233">Mẫu</div></div>
+          <div style="padding:13px">
+            <div style="background:#FFF1EC;border:1.5px solid #FF6B4A;border-radius:11px;padding:9px 11px;display:flex;align-items:center;gap:8px"><span style="font-family:'Space Mono',monospace;font-size:8px;background:#FF6B4A;color:#fff;padding:2px 7px;border-radius:9px">TÌM THẤY</span><span style="flex:1;font-size:13px">Có mã đơn trong hội thoại</span></div>
+            <div style="border:1.5px dashed #C9B98E;border-radius:10px;padding:8px 10px;margin-top:9px;font-family:'Space Mono',monospace;font-size:9px;color:#785B34;line-height:1.6">khách gửi: "…đơn <span style="color:#C93A1A">lumin.studio/o/LM2046-q4t8</span> tới đâu rồi shop?"</div>
+
+            <div style="border:2px solid #492F10;border-radius:13px;margin-top:11px;overflow:hidden;box-shadow:3px 3px 0 rgba(73,47,16,.1)">
+              <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1.5px solid #EFE6CC"><span style="font-size:16px">#LM2046</span><span style="border:1px solid #4C8DFF;color:#2D5FB8;font-size:10px;padding:1px 9px;border-radius:14px">Đang giao</span></div>
+              <div style="padding:11px 12px">
+                <div style="font-family:'Space Mono',monospace;font-size:10px;color:#785B34;line-height:1.7">Lê Cúc · 0907 888 222<br/>45 Nguyễn Huệ, Q.1</div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:7px;border:1.5px solid #EFE6CC;border-radius:8px;padding:5px 8px"><span style="width:16px;height:16px;border-radius:4px;background:#4C8DFF;border:1px solid #492F10;flex:none"></span><span style="font-family:'Space Mono',monospace;font-size:9px;color:#2D5FB8;flex:1">fb.com/le.cuc.92</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#0E7C68;border:1px solid #0E7C68;border-radius:7px;padding:0 6px">đã lưu</span></div>
+                <div style="display:flex;align-items:center;gap:4px;margin-top:11px"><div style="width:16px;height:16px;border-radius:50%;background:#492F10"></div><div style="flex:1;height:2px;background:#492F10"></div><div style="width:16px;height:16px;border-radius:50%;background:#492F10"></div><div style="flex:1;height:2px;background:#492F10"></div><div style="width:16px;height:16px;border-radius:50%;background:#492F10"></div><div style="flex:1;height:2px;background:#FF6B4A"></div><div style="width:20px;height:20px;border-radius:50%;background:#FF6B4A;border:2px solid #492F10"></div><div style="flex:1;height:2px;background:#D8C9A1"></div><div style="width:16px;height:16px;border-radius:50%;border:2px solid #D8C9A1"></div></div>
+                <div style="display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:7px;color:#7C6233;margin-top:5px"><span>Xác nhận</span><span>Thanh toán</span><span>In</span><span style="color:#C93A1A">Giao</span><span>Xong</span></div>
+                <div style="border:1.5px solid #EFE6CC;border-radius:9px;margin-top:11px;padding:8px 10px;display:flex;gap:9px;align-items:center"><div style="width:34px;height:34px;border-radius:7px;background-image:repeating-linear-gradient(45deg,#F3EBD6 0,#F3EBD6 6px,#e4e2db 6px,#e4e2db 12px);border:1.5px dashed #C9B98E"></div><div style="flex:1"><div style="font-size:13px">Đèn ngủ Mochi</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">Cam Mochi · Size M</div></div><div style="font-family:'Space Mono',monospace;font-size:10px;color:#C93A1A">₫290k</div></div>
+                <div style="font-family:'Space Mono',monospace;font-size:10px;color:#785B34;margin-top:8px;line-height:1.7">Tổng <span style="color:#492F10">₫315k</span> · <span style="color:#0E7C68">Đã thanh toán ✓</span><br/>Gửi ĐVVC <span style="color:#492F10">GHN · dự kiến 20/06</span></div>
+                <div style="border-top:1.5px solid #EFE6CC;margin-top:10px;padding-top:9px"><div style="font-size:12px">Cập nhật nhanh trạng thái <span style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">· đang "Đang giao"</span></div><div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap"><span style="background:#FF6B4A;color:#fff;border:1.5px solid #492F10;border-radius:9px;padding:3px 9px;font-size:11px">✓ Hoàn tất</span><span style="border:1.5px solid #d8473a;color:#c0392b;border-radius:9px;padding:3px 9px;font-size:11px">Hoàn hàng</span></div></div>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:8px;margin-top:11px"><span style="flex:1.7;text-align:center;background:#FF6B4A;color:#fff;border:2px solid #492F10;border-radius:11px;padding:8px;font-size:12px;box-shadow:2px 2px 0 rgba(73,47,16,.25)">Chèn trạng thái vào chat</span><span style="flex:1;text-align:center;border:1.5px solid #492F10;border-radius:11px;padding:8px;font-size:12px">Mở Admin ↗</span></div>
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:9px;text-align:center">cũng nhắc tới <span style="color:#C93A1A">#LM2041</span> — bấm để xem</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL 3: MAU TRA LOI -->
+      <div style="width:380px;flex:none;display:flex;flex-direction:column;gap:10px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">③ Mẫu trả lời — chèn 1 chạm</span>
+        <div style="width:380px;background:#fff;border:2px solid #492F10;border-radius:16px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="background:#492F10;color:#fff;padding:10px 13px;display:flex;align-items:center;gap:8px"><span style="font-size:16px">Lumin◖</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#c9c6bd;border:1px solid #5a5a55;border-radius:8px;padding:1px 6px">extension</span><span style="margin-left:auto;display:flex;align-items:center;gap:5px;font-family:'Space Mono',monospace;font-size:9px;color:#9fd6ad"><span style="width:7px;height:7px;border-radius:50%;background:#7c9;display:inline-block"></span>Đã kết nối</span><span style="font-size:14px">⚙</span></div>
+          <div style="display:flex;border-bottom:1.5px solid #EFE6CC;font-size:13px;background:#faf9f5"><div style="flex:1;text-align:center;padding:9px;color:#7C6233">Tạo đơn</div><div style="flex:1;text-align:center;padding:9px;color:#7C6233">Tra cứu</div><div style="flex:1;text-align:center;padding:9px;border-bottom:2.5px solid #FF6B4A;color:#C93A1A">Mẫu</div></div>
+          <div style="padding:13px">
+            <div style="display:flex;align-items:center;gap:8px"><div style="flex:1;border:1.5px solid #492F10;border-radius:18px;padding:5px 11px;font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">⌕ Tìm mẫu…</div></div>
+            <div style="display:flex;gap:6px;margin-top:9px"><span style="border:2px solid #FF6B4A;background:#FF6B4A;color:#fff;border-radius:16px;padding:3px 11px;font-size:12px">Tất cả</span><span style="border:1.5px solid #492F10;border-radius:16px;padding:3px 11px;font-size:12px">Chat</span><span style="border:1.5px solid #492F10;border-radius:16px;padding:3px 11px;font-size:12px">CK</span></div>
+
+            <div style="display:flex;flex-direction:column;gap:9px;margin-top:11px">
+              <div style="border:1.5px solid #EFE6CC;border-radius:11px;padding:10px 11px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:14px">Báo phí ship</span><span style="font-family:'Space Mono',monospace;font-size:8px;border:1px solid #4C8DFF;color:#2D5FB8;border-radius:8px;padding:0 6px">Chat</span></div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:5px;line-height:1.6">"Phí ship khu vực mình là <span style="color:#C93A1A">{phí}</span> nha. Bạn cho shop xin địa chỉ nhé!"</div><div style="display:flex;justify-content:flex-end;margin-top:7px"><span style="background:#FF6B4A;color:#fff;border:1.5px solid #492F10;border-radius:9px;padding:3px 12px;font-size:12px">Chèn ↵</span></div></div>
+
+              <div style="border:1.5px solid #EFE6CC;border-radius:11px;padding:10px 11px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:14px">Gửi STK / QR</span><span style="font-family:'Space Mono',monospace;font-size:8px;border:1px solid #4C8DFF;color:#2D5FB8;border-radius:8px;padding:0 6px">Chat</span></div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:5px;line-height:1.6">"Shop gửi STK: <span style="color:#C93A1A">{stk}</span>. Nội dung CK: tên + #đơn 🧡"</div><div style="display:flex;justify-content:space-between;align-items:center;margin-top:7px"><span style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">+ đính kèm ảnh QR</span><span style="background:#FF6B4A;color:#fff;border:1.5px solid #492F10;border-radius:9px;padding:3px 12px;font-size:12px">Chèn ↵</span></div></div>
+
+              <div style="border:1.5px solid #EFE6CC;border-radius:11px;padding:10px 11px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:14px">Báo đang in / xong</span><span style="font-family:'Space Mono',monospace;font-size:8px;border:1px solid #4C8DFF;color:#2D5FB8;border-radius:8px;padding:0 6px">Chat</span></div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:5px;line-height:1.6">"Đơn của bạn đang in, dự kiến xong <span style="color:#C93A1A">{ngày}</span> 🖨️"</div><div style="display:flex;justify-content:flex-end;margin-top:7px"><span style="background:#FF6B4A;color:#fff;border:1.5px solid #492F10;border-radius:9px;padding:3px 12px;font-size:12px">Chèn ↵</span></div></div>
+
+              <div style="border:1.5px solid #EFE6CC;border-radius:11px;padding:10px 11px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:14px">Cảm ơn chốt đơn</span><span style="font-family:'Space Mono',monospace;font-size:8px;border:1px solid #0E7C68;color:#0E7C68;border-radius:8px;padding:0 6px">Chat</span></div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:5px;line-height:1.6">"Cảm ơn bạn đã ủng hộ shop 🧡 Đồ in theo đơn nên làm kỹ từng chiếc…"</div><div style="display:flex;justify-content:flex-end;margin-top:7px"><span style="background:#FF6B4A;color:#fff;border:1.5px solid #492F10;border-radius:9px;padding:3px 12px;font-size:12px">Chèn ↵</span></div></div>
+            </div>
+            <div style="border:1.5px dashed #b6b3aa;border-radius:10px;padding:7px;text-align:center;font-size:12px;margin-top:9px;color:#7C6233">+ Thêm mẫu (đồng bộ với Admin)</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:4px">
+      <div style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:14px;color:#C93A1A;background:#fff;border:1.5px dashed #FF6B4A;border-radius:12px;padding:9px 12px;max-width:360px;box-shadow:3px 3px 0 rgba(244,99,58,.15)">✎ <b>Tra cứu:</b> extension dò tin nhắn tìm định dạng link đơn (<span style="font-family:'Space Mono',monospace;font-size:11px">lumin.studio/o/LMxxxx-xxxx</span>) hoặc mã <span style="font-family:'Space Mono',monospace;font-size:11px">#LMxxxx</span> → hiện ngay thẻ đơn (trạng thái, tiến trình, ĐVVC). Shop trả lời khách mà không mở tab Admin.</div>
+      <div style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:14px;color:#C93A1A;background:#fff;border:1.5px dashed #FF6B4A;border-radius:12px;padding:9px 12px;max-width:360px;box-shadow:3px 3px 0 rgba(244,99,58,.15)">✎ <b>Mẫu &amp; biến:</b> dùng chung kho mẫu với Admin (mục "Mẫu trả lời nhanh"). Biến <span style="font-family:'Space Mono',monospace;font-size:11px">{phí} {stk} {ngày}</span> tự điền theo cài đặt + đơn đang xem. Bấm "Chèn" → chữ vào thẳng ô soạn tin.</div>
+    </div>
+  </div>
+
+  <!-- ORDER MERGE + PAYMENT CONFIRM -->
+  <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:48px">
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;color:#492F10;letter-spacing:-0.02em">D · Xác nhận chuyển khoản</div>
+    <div style="display:flex;gap:34px;align-items:flex-start">
+
+      <!-- payment confirm panel -->
+      <div style="width:380px;flex:none;display:flex;flex-direction:column;gap:10px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">Xác nhận CK — thủ công (miễn phí)</span>
+        <div style="width:380px;background:#fff;border:2px solid #492F10;border-radius:16px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="background:#492F10;color:#fff;padding:10px 13px;display:flex;align-items:center;gap:8px"><span style="font-size:16px">Lumin◖</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#c9c6bd;border:1px solid #5a5a55;border-radius:8px;padding:1px 6px">extension</span><span style="margin-left:auto;display:flex;align-items:center;gap:5px;font-family:'Space Mono',monospace;font-size:9px;color:#9fd6ad"><span style="width:7px;height:7px;border-radius:50%;background:#7c9;display:inline-block"></span>Đã kết nối</span></div>
+          <div style="padding:14px 13px">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">Đánh dấu Đã chuyển khoản</span><span style="margin-left:auto;font-family:'Space Mono',monospace;font-size:11px;color:#C93A1A">#LM2049</span></div>
+
+            <div style="border:2px solid #FF6B4A;background:#FFF1EC;border-radius:11px;padding:10px 12px;margin-top:11px;display:flex;align-items:center;gap:9px"><span style="width:26px;height:26px;border-radius:50%;background:#FF6B4A;color:#fff;border:1.5px solid #492F10;display:flex;align-items:center;justify-content:center;font-size:14px;flex:none">✓</span><div style="flex:1"><div style="font-size:14px">Đã nhận CK (bấm tay)</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">tự đối chiếu app ngân hàng</div></div></div>
+
+            <div style="display:flex;align-items:center;gap:10px;margin:13px 0;font-family:'Space Mono',monospace;font-size:8px;color:#b6b3aa"><span style="flex:1;height:1px;background:#EFE6CC"></span>biên lai khách gửi<span style="flex:1;height:1px;background:#EFE6CC"></span></div>
+
+            <div style="font-size:12px;color:#7C6233">Ảnh chuyển khoản khách đính kèm</div>
+            <div style="display:flex;gap:11px;margin-top:6px">
+              <div style="width:96px;flex:none;min-height:124px;border-radius:11px;border:1.5px solid #492F10;background-image:repeating-linear-gradient(45deg,#F3EBD6 0,#F3EBD6 7px,#e4e2db 7px,#e4e2db 14px);display:flex;align-items:flex-end;justify-content:center;padding:7px"><span style="font-family:'Space Mono',monospace;font-size:8px;color:#785B34;background:#fff;border-radius:6px;padding:1px 6px">biên lai.jpg</span></div>
+              <div style="flex:1;display:flex;flex-direction:column;font-family:'Space Mono',monospace;font-size:9px;color:#785B34;line-height:1.6">
+                <div>Khách gửi khi đặt (web) hoặc trong chat.</div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:7px;color:#0E7C68"><span style="border:1px solid #0E7C68;border-radius:8px;padding:1px 7px">đối chiếu</span>#LM2049 · ₫315k</div>
+                <div style="margin-top:auto;border:1.5px solid #492F10;border-radius:8px;padding:4px 9px;text-align:center;font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:11px;color:#492F10">Xem ảnh lớn</div>
+              </div>
+            </div>
+          </div>
+          <div style="border-top:1.5px solid #EFE6CC;padding:11px 13px"><span style="display:block;text-align:center;background:#FF6B4A;color:#fff;border:2px solid #492F10;border-radius:11px;padding:9px;font-size:14px;box-shadow:2px 2px 0 rgba(73,47,16,.25)">Xác nhận Đã thanh toán → cập nhật đơn</span></div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap">
+      <div style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:14px;color:#C93A1A;background:#fff;border:1.5px dashed #FF6B4A;border-radius:12px;padding:9px 12px;max-width:360px;box-shadow:3px 3px 0 rgba(244,99,58,.15)">✎ <b>Xác nhận CK (miễn phí):</b> chưa có cổng tự động, nên shop <b>xem ảnh biên lai khách gửi</b>, đối chiếu số tiền &amp; mã đơn rồi bấm xác nhận. Nâng cấp sau: webhook ngân hàng / cổng thanh toán mới tự động hoàn toàn.</div>
+    </div>
+  </div>
+
+  <!-- TOOLBAR POPUP + FLOW -->
+  <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:20px">
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;color:#492F10;letter-spacing:-0.02em">C · Popup trên thanh công cụ &amp; luồng hoạt động</div>
+    <div style="display:flex;gap:40px;align-items:flex-start">
+
+      <!-- toolbar popup -->
+      <div style="width:300px;flex:none;display:flex;flex-direction:column;gap:10px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">Bấm icon Lumin trên thanh trình duyệt</span>
+        <div style="width:300px;background:#fff;border:2px solid #492F10;border-radius:16px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="background:#492F10;color:#fff;padding:10px 13px;display:flex;align-items:center;gap:8px"><span style="font-size:16px">Lumin◖</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#c9c6bd;border:1px solid #5a5a55;border-radius:8px;padding:1px 6px">extension</span><span style="margin-left:auto;display:flex;align-items:center;gap:5px;font-family:'Space Mono',monospace;font-size:9px;color:#9fd6ad"><span style="width:7px;height:7px;border-radius:50%;background:#7c9;display:inline-block"></span>Đã kết nối</span></div>
+          <div style="padding:13px">
+            <div style="border:1.5px solid #EFE6CC;border-radius:10px;padding:8px 10px;font-family:'Space Mono',monospace;font-size:9px;color:#785B34;line-height:1.6">Đang ở: <span style="color:#492F10">messenger.com</span><br/>Hội thoại với <span style="color:#492F10">Trần Mai</span></div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:11px">
+              <div style="display:flex;align-items:center;gap:9px;border:2px solid #FF6B4A;background:#FFF1EC;border-radius:11px;padding:10px 12px"><span style="width:26px;height:26px;border-radius:8px;background:#FF6B4A;border:1.5px solid #492F10;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px">⊕</span><span style="flex:1;font-size:14px">Tạo đơn từ chat</span><span style="color:#C93A1A">›</span></div>
+              <div style="display:flex;align-items:center;gap:9px;border:1.5px solid #492F10;border-radius:11px;padding:10px 12px"><span style="width:26px;height:26px;border-radius:8px;border:1.5px solid #492F10;display:flex;align-items:center;justify-content:center;font-size:15px">⌕</span><span style="flex:1;font-size:14px">Tra cứu đơn</span><span style="font-family:'Space Mono',monospace;font-size:8px;background:#FF6B4A;color:#fff;padding:1px 7px;border-radius:10px">1 mã</span></div>
+              <div style="display:flex;align-items:center;gap:9px;border:1.5px solid #492F10;border-radius:11px;padding:10px 12px"><span style="width:26px;height:26px;border-radius:8px;border:1.5px solid #492F10;display:flex;align-items:center;justify-content:center;font-size:15px">✎</span><span style="flex:1;font-size:14px">Mẫu trả lời</span><span style="color:#7C6233">›</span></div>
+            </div>
+            <div style="border-top:1.5px solid #EFE6CC;margin-top:12px;padding-top:10px;display:flex;justify-content:space-between;align-items:center"><span style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">Hôm nay: <span style="color:#492F10">3 đơn</span> từ extension</span><span style="font-family:'Space Mono',monospace;font-size:9px;color:#C93A1A">Mở Admin ↗</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- flow -->
+      <div style="flex:1;display:flex;flex-direction:column;gap:10px;max-width:720px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">Luồng — từ tin nhắn tới đơn trong Admin</span>
+        <div style="background:#fff;border:2.5px solid #492F10;border-radius:18px;box-shadow:5px 5px 0 rgba(73,47,16,.1);padding:18px 20px;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="display:flex;align-items:stretch;gap:10px">
+            <div style="flex:1;border:1.5px solid #EFE6CC;border-radius:12px;padding:12px;text-align:center"><div style="width:32px;height:32px;border-radius:50%;background:#FF6B4A;color:#fff;border:2px solid #492F10;display:flex;align-items:center;justify-content:center;font-size:16px;margin:0 auto">1</div><div style="font-size:14px;margin-top:8px">Đang chat khách</div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:4px;line-height:1.5">Messenger / Instagram</div></div>
+            <div style="display:flex;align-items:center;color:#C93A1A;font-size:20px">→</div>
+            <div style="flex:1;border:1.5px solid #EFE6CC;border-radius:12px;padding:12px;text-align:center"><div style="width:32px;height:32px;border-radius:50%;background:#FF6B4A;color:#fff;border:2px solid #492F10;display:flex;align-items:center;justify-content:center;font-size:16px;margin:0 auto">2</div><div style="font-size:14px;margin-top:8px">Extension quét</div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:4px;line-height:1.5">SĐT · địa chỉ · mã đơn</div></div>
+            <div style="display:flex;align-items:center;color:#C93A1A;font-size:20px">→</div>
+            <div style="flex:1;border:1.5px solid #EFE6CC;border-radius:12px;padding:12px;text-align:center"><div style="width:32px;height:32px;border-radius:50%;background:#FF6B4A;color:#fff;border:2px solid #492F10;display:flex;align-items:center;justify-content:center;font-size:16px;margin:0 auto">3</div><div style="font-size:14px;margin-top:8px">Điền &amp; xác nhận</div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:4px;line-height:1.5">chỉnh sản phẩm / màu</div></div>
+            <div style="display:flex;align-items:center;color:#C93A1A;font-size:20px">→</div>
+            <div style="flex:1;border:2px solid #FF6B4A;background:#FFF1EC;border-radius:12px;padding:12px;text-align:center"><div style="width:32px;height:32px;border-radius:50%;background:#492F10;color:#fff;border:2px solid #492F10;display:flex;align-items:center;justify-content:center;font-size:15px;margin:0 auto">✓</div><div style="font-size:14px;margin-top:8px;color:#C93A1A">Đơn vào Admin</div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:4px;line-height:1.5">#LM2049 · chờ xác nhận</div></div>
+          </div>
+          <div style="font-family:'Space Mono',monospace;font-size:10px;color:#785B34;margin-top:16px;line-height:1.8;border-top:1.5px solid #EFE6CC;padding-top:12px">Chỉ tạo đơn sau khi khách <span style="color:#492F10">đã báo CK</span> → đơn vào Admin ở "Chờ xác nhận". Đơn tạo từ extension gắn cờ kênh = <span style="color:#492F10">Mess./IG/TikTok</span> (khớp cột "KÊNH" ở danh sách đơn Admin). Kho <span style="color:#492F10">mẫu trả lời</span>, <span style="color:#492F10">STK/QR</span> &amp; <span style="color:#492F10">phí ship theo khu vực</span> đồng bộ từ Cài đặt Admin — sửa 1 nơi, dùng cả hai.</div>
+        </div>
+        <div style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:14px;color:#C93A1A;background:#fff;border:1.5px dashed #FF6B4A;border-radius:12px;padding:9px 12px;box-shadow:3px 3px 0 rgba(244,99,58,.15)">✎ Extension chỉ "đọc" để gợi ý — shop luôn xác nhận trước khi tạo đơn / gửi tin. Cần đăng nhập Admin 1 lần để kết nối (chấm xanh "Đã kết nối").</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- E · UNHAPPY PATHS + AUTO -->
+  <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:20px">
+    <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;color:#492F10;letter-spacing:-0.02em">E · Khi không như ý (unhappy paths) &amp; nâng cấp tự động</div>
+    <div style="display:flex;gap:34px;align-items:flex-start;flex-wrap:wrap">
+
+      <!-- E1: scan incomplete -->
+      <div style="width:380px;flex:none;display:flex;flex-direction:column;gap:10px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">① Quét thiếu — khách chưa gửi SĐT / địa chỉ</span>
+        <div style="width:380px;background:#fff;border:2px solid #492F10;border-radius:16px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="background:#492F10;color:#fff;padding:10px 13px;display:flex;align-items:center;gap:8px"><span style="font-size:16px">Lumin◖</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#c9c6bd;border:1px solid #5a5a55;border-radius:8px;padding:1px 6px">extension</span><span style="margin-left:auto;display:flex;align-items:center;gap:5px;font-family:'Space Mono',monospace;font-size:9px;color:#9fd6ad"><span style="width:7px;height:7px;border-radius:50%;background:#7c9;display:inline-block"></span>Đã kết nối</span></div>
+          <div style="display:flex;border-bottom:1.5px solid #EFE6CC;font-size:13px;background:#faf9f5"><div style="flex:1;text-align:center;padding:9px;border-bottom:2.5px solid #FF6B4A;color:#C93A1A">Tạo đơn</div><div style="flex:1;text-align:center;padding:9px;color:#7C6233">Tra cứu</div><div style="flex:1;text-align:center;padding:9px;color:#7C6233">Mẫu</div></div>
+          <div style="padding:13px">
+            <div style="background:#fdf3ec;border:1.5px solid #e0a458;border-radius:11px;padding:9px 11px;display:flex;align-items:center;gap:8px"><span style="font-family:'Space Mono',monospace;font-size:8px;background:#e0a458;color:#fff;padding:2px 7px;border-radius:9px">QUÉT ⚠</span><span style="flex:1;font-size:13px">Đọc được tên — thiếu SĐT &amp; địa chỉ</span></div>
+
+            <div style="margin-top:11px"><div style="font-size:12px;color:#7C6233">Tên khách</div><div style="border:1.5px solid #492F10;border-radius:9px;padding:7px 10px;font-family:'Space Mono',monospace;font-size:11px;margin-top:3px">Trần Mai</div></div>
+            <div style="margin-top:8px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;color:#7C6233">SĐT</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#d8473a;border:1px solid #d8473a;border-radius:8px;padding:0 6px">chưa thấy</span></div><div style="border:1.5px dashed #d8473a;background:#fdf0ef;border-radius:9px;padding:7px 10px;font-family:'Space Mono',monospace;font-size:10px;margin-top:3px;color:#c0392b">— cần nhập tay hoặc hỏi khách</div></div>
+            <div style="margin-top:8px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;color:#7C6233">Địa chỉ giao</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#d8473a;border:1px solid #d8473a;border-radius:8px;padding:0 6px">chưa thấy</span></div><div style="border:1.5px dashed #d8473a;background:#fdf0ef;border-radius:9px;padding:7px 10px;font-family:'Space Mono',monospace;font-size:10px;margin-top:3px;color:#c0392b">— trống</div></div>
+
+            <div style="border:1.5px solid #FF6B4A;background:#FFF1EC;border-radius:11px;padding:9px 11px;margin-top:11px"><div style="font-size:13px">Hỏi khách 1 chạm</div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:5px;line-height:1.6">"Bạn cho shop xin <span style="color:#C93A1A">SĐT + địa chỉ</span> nhận hàng nhé 🧡"</div><div style="display:flex;justify-content:flex-end;margin-top:7px"><span style="background:#FF6B4A;color:#fff;border:1.5px solid #492F10;border-radius:9px;padding:3px 12px;font-size:12px">Chèn vào chat ↵</span></div></div>
+          </div>
+          <div style="border-top:1.5px solid #EFE6CC;padding:11px 13px;display:flex;gap:8px"><span style="flex:1;text-align:center;border:1.5px solid #492F10;border-radius:11px;padding:8px;font-size:13px">Lưu nháp</span><span style="flex:1.6;text-align:center;background:#efe9e2;color:#a8a39a;border:2px solid #D8C9A1;border-radius:11px;padding:8px;font-size:13px">Tạo đơn · cần đủ SĐT+ĐC</span></div>
+        </div>
+      </div>
+
+      <!-- E2: CK mismatch -->
+      <div style="width:380px;flex:none;display:flex;flex-direction:column;gap:10px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">② Biên lai không khớp</span>
+        <div style="width:380px;background:#fff;border:2px solid #492F10;border-radius:16px;box-shadow:5px 5px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="background:#492F10;color:#fff;padding:10px 13px;display:flex;align-items:center;gap:8px"><span style="font-size:16px">Lumin◖</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#c9c6bd;border:1px solid #5a5a55;border-radius:8px;padding:1px 6px">extension</span><span style="margin-left:auto;display:flex;align-items:center;gap:5px;font-family:'Space Mono',monospace;font-size:9px;color:#9fd6ad"><span style="width:7px;height:7px;border-radius:50%;background:#7c9;display:inline-block"></span>Đã kết nối</span></div>
+          <div style="padding:14px 13px">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">Xác nhận CK</span><span style="margin-left:auto;font-family:'Space Mono',monospace;font-size:11px;color:#C93A1A">#LM2049 · cần ₫315k</span></div>
+            <div style="font-size:12px;color:#7C6233;margin-top:11px">Biên lai khách gửi</div>
+            <div style="display:flex;gap:10px;margin-top:5px">
+              <div style="width:74px;flex:none;min-height:84px;border-radius:10px;border:1.5px solid #492F10;background-image:repeating-linear-gradient(45deg,#F3EBD6 0,#F3EBD6 7px,#e4e2db 7px,#e4e2db 14px);display:flex;align-items:flex-end;justify-content:center;padding:5px"><span style="font-family:'Space Mono',monospace;font-size:7px;color:#785B34;background:#fff;border-radius:5px;padding:1px 5px">biên lai.jpg</span></div>
+              <div style="flex:1;font-family:'Space Mono',monospace;font-size:9px;color:#785B34;line-height:1.7">Đọc được: <span style="background:#fdf0ef;color:#c0392b;padding:0 3px;border-radius:3px">₫250.000</span><br/>14:22 · TRAN MAI</div>
+            </div>
+
+            <div style="border:2px solid #d8473a;background:#fdf0ef;border-radius:11px;padding:10px 12px;margin-top:10px"><div style="display:flex;align-items:center;gap:8px"><span style="width:22px;height:22px;border-radius:50%;background:#d8473a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;flex:none">!</span><span style="font-size:13px;color:#c0392b">Biên lai không khớp</span></div><div style="font-family:'Space Mono',monospace;font-size:9px;color:#785B34;margin-top:7px;line-height:1.7">• Số tiền lệch: biên lai <span style="color:#c0392b">₫250k</span> / cần <span style="color:#492F10">₫315k</span><br/>• Không thấy mã <span style="color:#c0392b">#LMxxxx</span> trong nội dung CK</div></div>
+
+            <div style="display:flex;flex-direction:column;gap:7px;margin-top:10px">
+              <div style="display:flex;align-items:center;gap:8px;border:1.5px solid #492F10;border-radius:10px;padding:8px 11px;font-size:13px"><span style="flex:1">Gán thủ công cho đơn này</span><span style="font-family:'Space Mono',monospace;font-size:9px;color:#C93A1A">chọn đơn ▾</span></div>
+              <div style="display:flex;align-items:center;gap:8px;border:1.5px solid #492F10;border-radius:10px;padding:8px 11px;font-size:13px"><span style="flex:1">Đánh dấu "CK một phần" · còn ₫65k</span></div>
+            </div>
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:9px;line-height:1.7">Không bao giờ tự đổi sang "Đã thanh toán" khi lệch — shop tự quyết để tránh nhầm.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- E3: auto webhook (future) -->
+      <div style="width:380px;flex:none;display:flex;flex-direction:column;gap:10px">
+        <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:15px;color:#7C6233">③ Nâng cấp: tự khớp CK (webhook ngân hàng)</span>
+        <div style="width:380px;background:#fff;border:2px dashed #4C8DFF;border-radius:16px;box-shadow:5px 5px 0 rgba(107,143,196,.12);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+          <div style="background:#492F10;color:#fff;padding:10px 13px;display:flex;align-items:center;gap:8px"><span style="font-size:16px">Lumin◖</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#c9c6bd;border:1px solid #5a5a55;border-radius:8px;padding:1px 6px">extension</span><span style="margin-left:auto;font-family:'Space Mono',monospace;font-size:8px;color:#cfe0f4;border:1px solid #4C8DFF;border-radius:8px;padding:1px 7px">SẮP CÓ · BETA</span></div>
+          <div style="padding:14px 13px">
+            <div style="font-size:15px">Tự động khớp chuyển khoản</div>
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:4px;line-height:1.6">Khi bật webhook NH / cổng thanh toán — bỏ hẳn bước đối chiếu biên lai thủ công.</div>
+
+            <div style="border:2px solid #0E7C68;background:#E8F6F2;border-radius:12px;padding:11px 12px;margin-top:11px">
+              <div style="display:flex;align-items:center;gap:8px"><span style="width:24px;height:24px;border-radius:50%;background:#0E7C68;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;flex:none">✓</span><div style="flex:1"><div style="font-size:13px">+₫315.000 vừa về</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">ND: TRAN MAI LM2049 · 14:22</div></div></div>
+              <div style="display:flex;align-items:center;gap:7px;margin-top:9px;font-family:'Space Mono',monospace;font-size:9px;color:#0E7C68"><span style="border:1px solid #0E7C68;border-radius:8px;padding:1px 7px">khớp tự động ✓</span>#LM2049 · đúng số tiền</div>
+              <div style="display:flex;align-items:center;gap:7px;margin-top:9px;font-size:12px"><span style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">Đơn tự chuyển:</span><span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:11px;padding:2px 9px;border-radius:14px;border:2px solid #FF6B4A;color:#C93A1A">Chờ xác nhận</span><span style="color:#C9B98E">→</span><span style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:11px;padding:2px 9px;border-radius:14px;background:#FFE7DD;color:#C93A1A;border:1.5px solid #F3B49B">Đã thanh toán</span></div>
+            </div>
+            <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:10px;line-height:1.7">Vẫn cho phép <span style="color:#492F10">duyệt tay</span> nếu số tiền lệch / không rõ. Tới khi tích hợp xong, shop đối chiếu biên lai ở mục D.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:14px;color:#C93A1A;background:#fff;border:1.5px dashed #FF6B4A;border-radius:12px;padding:9px 12px;align-self:flex-start;box-shadow:3px 3px 0 rgba(244,99,58,.15)">✎ Nguyên tắc: extension <b>không bao giờ tự chốt</b> khi dữ liệu thiếu/lệch — luôn để shop xác nhận. Webhook tự động là bước nâng cấp, gắn đúng vào chỗ "Xác nhận CK" hiện tại nên <b>không phải thiết kế lại</b> Admin về sau.</div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

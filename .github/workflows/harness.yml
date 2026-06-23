@@ -1,0 +1,28 @@
+# Harness self-test lane (agent-harness.md §"Harness self-test (CI)" / ADR-023).
+# Mọi hook self-no-op tới Phase 0 ⇒ "gate no-op" trông y hệt "gate pass"; self-test là cái phân biệt.
+# Chạy được pre-Phase-0 (không phụ thuộc toolchain app: pnpm/golangci-lint…).
+name: harness-selftest
+
+on:
+  push:
+    paths:
+      - '.claude/**'
+      - 'tests/harness/**'
+      - 'docs/agent-harness.md'
+      - '.github/workflows/harness.yml'
+  pull_request:
+    paths:
+      - '.claude/**'
+      - 'tests/harness/**'
+      - 'docs/agent-harness.md'
+      - '.github/workflows/harness.yml'
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: guard.test.sh (chặn rm-rf/secret/contract/test-weaken/loop/special-casing…)
+        run: bash tests/harness/guard.test.sh
+      - name: osm-mutation.test.sh (chứng minh test OSM ràng buộc transition)
+        run: bash tests/harness/osm-mutation.test.sh
