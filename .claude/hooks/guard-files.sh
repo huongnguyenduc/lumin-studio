@@ -11,10 +11,13 @@ jget() { [ "$HAVE_JQ" -eq 1 ] && printf '%s' "$INPUT" | jq -r "$1 // empty" 2>/d
 
 if [ "$HAVE_JQ" -eq 1 ]; then
   FILE="$(jget '.tool_input.file_path')"; [ -z "$FILE" ] && FILE="$(jget '.tool_input.path')"
+  [ -z "$FILE" ] && FILE="$(jget '.tool_input.notebook_path')"   # NotebookEdit dùng field riêng (audit 2026-06)
 else
-  FILE="$(printf '%s' "$INPUT" | grep -oE '"(file_path|path)"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*:[[:space:]]*"([^"]*)"/\1/')"
+  FILE="$(printf '%s' "$INPUT" | grep -oE '"(file_path|path|notebook_path)"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*:[[:space:]]*"([^"]*)"/\1/')"
 fi
 [ -z "$FILE" ] && exit 0
+# Chuẩn hoá path: gộp `//`+ về `/` (audit 2026-06: `docs//decisions.md` đi vòng case-match -> hard-block fail-open).
+FILE="$(printf '%s' "$FILE" | sed -E 's#/{2,}#/#g')"
 
 # JSON-escape một chuỗi tuỳ ý -> string literal JSON hợp lệ (audit 2026-06-23: trước đây ask()
 # nội suy thô $FILE/$lit/$tf chứa " hoặc \ -> JSON vỡ -> Claude Code không parse được decision ->
@@ -88,7 +91,10 @@ case "$FILE" in
                      | sed -E "s/^[\"']//; s/[\"']\$//" | sort -u )"
             if [ -n "$lits" ]; then
               # Đối chiếu CHỈ test đang sửa trong working tree (touched) — không quét cả cây.
-              tests="$(git -C "$ROOT" status --porcelain -uall 2>/dev/null | awk '{print $NF}' \
+              # Strip 2-char status + separator, lấy đích rename sau `-> `, dequote (audit 2026-06: `awk $NF`
+              # cắt sai path có space/quoted/rename).
+              tests="$(git -C "$ROOT" status --porcelain -uall 2>/dev/null \
+                       | sed -E 's/^.. //; s/^.*-> //; s/^"(.*)"$/\1/' \
                        | grep -E '(_test\.go|\.test\.(ts|tsx|js)|\.spec\.(ts|tsx|js)|/e2e/)' || true)"
               # Van self-test: trỏ vào một thư mục test fixture cố định.
               if [ -n "${GUARD_SPECIALCASE_TESTROOT:-}" ]; then
@@ -96,9 +102,15 @@ case "$FILE" in
                 tests="$(find "$GUARD_SPECIALCASE_TESTROOT" -type f 2>/dev/null | grep -E '(_test\.go|\.test\.(ts|tsx|js)|\.spec\.(ts|tsx|js)|/e2e/)')"
               fi
               if [ -n "$tests" ]; then
+                # Đọc tests vào MẢNG theo dòng (chịu được path có space — audit 2026-06: `for tf in $tests`
+                # word-split làm grep chạy vào path sai => REC-16 fail-open âm thầm).
+                tarr=()
+                while IFS= read -r tline; do [ -n "$tline" ] && tarr+=("$tline"); done <<EOT
+$tests
+EOT
                 while IFS= read -r lit; do
                   [ -z "$lit" ] && continue
-                  for tf in $tests; do
+                  for tf in "${tarr[@]}"; do
                     [ -f "$ROOT/$tf" ] && path="$ROOT/$tf" || path="$tf"
                     if grep -Fq -- "$lit" "$path" 2>/dev/null; then
                       ask "File SOURCE $FILE thêm literal '$lit' TRÙNG y nguyên với fixture/expected trong test đang sửa ($tf) — dấu hiệu special-casing (hardcode output để qua test thay vì cài logic thật; REC-16/ImpossibleBench). Nếu là hằng số hợp lệ ngoài core, xác nhận để tiếp tục."
@@ -125,5 +137,14 @@ case "$FILE" in
     exit 2 ;;
   */tokens/*.css|*/CLAUDE.md|CLAUDE.md|*/AGENTS.md|AGENTS.md)
     ask "File hợp đồng (tokens/CLAUDE.md/AGENTS.md) — sửa cần chủ đích. Xác nhận để tiếp tục." ;;
+esac
+
+# 4) Self-guard harness (audit 2026-06, P0): chính file điều khiển — settings, hook, rule, agent, skill,
+#    self-test, CI — KHÔNG được sửa âm thầm (một phiên có thể làm verify-before-stop.sh -> `exit 0` hoặc rỗng
+#    guard.test.sh = vô hiệu hoá toàn bộ gate). Tinh chỉnh harness là HỢP LỆ nên dùng `ask` (không hard-block)
+#    để bề mặt hoá chủ đích, khớp cách xử tokens/CLAUDE.md. Nhánh Bash-redirect đã canh ở guard-bash PROT_PATH_RE.
+case "$FILE" in
+  */.claude/settings.json|.claude/settings.json|*/.claude/settings.local.json|*/.claude/hooks/*|*/.claude/rules/*|*/.claude/agents/*|*/.claude/skills/*|*/tests/harness/*|tests/harness/*|*/.github/workflows/*|.github/workflows/*)
+    ask "File ĐIỀU KHIỂN harness ($FILE) — sửa sẽ thay đổi chính cơ chế guard/test/CI. Tinh chỉnh là hợp lệ nhưng phải CÓ CHỦ ĐÍCH: đừng vô tình làm yếu gate (vd verify-before-stop.sh -> exit 0, rỗng guard.test.sh, gỡ deny rule). Xác nhận để tiếp tục." ;;
 esac
 exit 0

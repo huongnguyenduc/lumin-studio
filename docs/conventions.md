@@ -11,10 +11,10 @@
 
 ## §statusHistory & state machine
 - Mọi đổi `OrderStatus` đi qua transition guard của `packages/core` và **append** `statusHistory{from, to, at, byUser, reason?}`.
-- `reason` **bắt buộc** cho `CANCELLED` và `RETURNED`.
-- Reconcile → `PAID` là **owner-only** (staff không được). Chuỗi hợp lệ: `PENDING_CONFIRM→PAID→PRINTING→SHIPPING→COMPLETED`; ngoại lệ `CANCELLED`/`RETURNED` tách riêng (`/spec.md` §04).
+- `reason` **bắt buộc** cho `CANCELLED` và `REFUNDED` (`REFUNDED` thêm `refundProofUrl`).
+- Reconcile → `PAID` (web) **và** `→ REFUNDED` là **owner-only** (tiền-vào/tiền-ra; staff không được). Chuỗi hợp lệ: `PENDING_CONFIRM→PAID→PRINTING→SHIPPING→COMPLETED`; đóng đơn `CANCELLED` (không hoàn) / `REFUNDED` (đã hoàn) tách riêng (`/spec.md` §04).
 - Server là nguồn chân lý; client không tự nhảy state.
-- **Tạo đơn kênh `web`:** checkout **không** tạo đơn; chỉ `POST /orders` (tạo ở `PENDING_CONFIRM`) **sau khi** khách đính **ảnh biên lai CK + xác nhận**. Lưu ảnh CK (`paymentProofUrl`); đối soát = **owner xem ảnh** → `PAID`. Kênh `inbox` tương tự (nhân viên tạo sau khi khách báo CK).
+- **Tạo đơn kênh `web`:** checkout **không** tạo đơn; chỉ `POST /orders` (tạo ở `PENDING_CONFIRM`) **sau khi** khách đính **ảnh biên lai CK + xác nhận**. Lưu ảnh CK (`paymentProofUrl`); đối soát = **owner xem ảnh** → `PAID`. Kênh `inbox`: nhân viên **tự kiểm tra thấy tiền về** rồi tạo đơn **thẳng `PAID`** (không qua `PENDING_CONFIRM`).
 
 ## §Tính toàn vẹn test (anti-reward-hacking) — ADR-023/024
 - **Không bóp méo test để qua green-gate:** cấm xoá test-case / thêm `.skip`·`t.Skip`·`xit`·`xdescribe` / bỏ assertion trên invariant lõi (statusHistory, money int-VND, reconcile→PAID owner-only, `sum(parts)==total`). Tầng deterministic: `guard-files` **ask**, `spec-guardian` **BLOCKER** (REC-05).
@@ -64,3 +64,19 @@
 ## §Phân tích & consent
 - Event analytics §08 (`product_viewed → personalize_started → add_to_cart → checkout_started → order_placed`, `order_status_changed`, `extension_quick_order`) phát qua `umami.track()` từ `core/api-client` — một vocabulary cho cả 4 bề mặt.
 - Umami **gated theo consent**; session replay **TẮT mặc định**, opt-in + che input + tắt ở `/personalize` + checkout (PDPL — `compliance.md`).
+
+## §Visual-fidelity (màn UI) — ADR-027
+- Màn UI mới/đổi: khi app chạy được (skill `verify`), chụp **1 screenshot mobile + desktop** rồi **đối chiếu mắt thường** với `designs/*.dc.html` (hi-fi) mở cạnh — liệt kê lệch **spacing/màu/type** vào evidence/PR. Advisory.
+- **KHÔNG** baseline-PNG cố định, **KHÔNG** pixel-diff tooling, **KHÔNG** Stop-hook pixel-gate (font/anti-alias đỏ giả; solo sẽ tắt). EARS test phủ hành vi; bước này phủ **thị giác** — nửa còn thiếu của "give Claude a check it can run".
+
+## §Scope & PR (giao một PR) — ADR-027
+- **1 PR = 1 trục:** feature XOR refactor, đừng trộn. Target **<~400 dòng**; >~800 → tách PR tuần tự (de-scope stacked-PR tooling cho 1 người).
+- **Branch:** trunk-based, nhánh ngắn (merge trong ~một ngày), **squash-merge**. Không gitflow.
+- **Spec-sync (trước merge):** hành vi lệch `spec.md`/`acceptance.md` → sửa hai file đó **trong CÙNG PR**. `spec-guardian` WARN khi diff chạm order-state/money/checkout mà spec không đổi.
+- **EARS-per-feature:** duyệt plan → hành vi có invariant thật thì append 1-3 dòng EARS + test-id vào `acceptance.md`.
+- **Cite anchor** trong commit/PR chạm backbone: ADR-0NN / `spec.md §…` / acceptance-id (vd `OSM-03`) — norm doc, KHÔNG lint.
+- **PR body:** `.github/PULL_REQUEST_TEMPLATE.md` (Changed / Why / Test plan + EARS ids / Out-of-scope / Spec-sync). Dán **evidence**: lệnh test + output, lint, (UI) screenshot §Visual-fidelity.
+
+## §Session hygiene — ADR-021/027
+- **Sửa sai cùng chỗ >2 lần → dừng:** `/clear`, ghi 1 dòng dead-end (cái gì + vì sao) vào kênh lý-do (REC-20 `active-context.history.md` khi dựng; tạm thời plan file của feature), khởi động lại bằng prompt sắc hơn (phiên sạch > phiên ô nhiễm).
+- **Blast-radius chưa rõ** (chạm order-state/money/compliance): phỏng vấn up-front (AskUserQuestion) → gấp ràng buộc vào plan §1 → `/clear` (tuỳ chọn) trước khi code. KHÔNG ép mọi lần chạm tiền.

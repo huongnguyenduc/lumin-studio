@@ -88,7 +88,9 @@ osm_src="$(find "$ROOT/packages/core" -type f \( -iname '*state*' -o -iname '*os
 if [ -z "$osm_src" ]; then
   skip "packages/core OSM chưa tồn tại (pre-Phase-0) — self-check toy ở trên là bảo đảm hiện hành; real-arm tự kích khi OSM land."
 else
-  skip "OSM thật: $osm_src — Phase-0 TODO: áp cùng họ mutant (allow-all/swap/drop-history/drop-reason) rồi assert order_state.{transition_table,appends_status_history,cancel_return_requires_reason} chuyển ĐỎ (copy file → sed-mutant → chạy 'pnpm -s test'/'go test' → restore)."
+  # audit r3: ARM-cliff — khi OSM thật land mà real-mutation-arm CHƯA wire thì FAIL (không skip im lặng).
+  # "gate no-op trông y hệt gate pass": để skip ở đây nghĩa là OSM thật có thể vacuous mà CI vẫn xanh.
+  bad "ARM: OSM thật ĐÃ land ($osm_src) nhưng real-mutation-arm CHƯA wire — Phase-0 TODO: copy file → sed-mutant họ (allow-all/swap/drop-edge/add-illegal/terminal-escape/drop-history/drop-reason) → chạy 'pnpm -s test'/'go test' assert OSM-01..03 chuyển ĐỎ → restore. Wire xong: thay dòng bad() này bằng phép kiểm thực."
 fi
 
 echo

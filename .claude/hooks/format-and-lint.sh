@@ -3,6 +3,9 @@
 # Tự no-op khi tool chưa cài (an toàn trước Phase 0). Exit 2 = đẩy lỗi lint cho Claude tự sửa.
 INPUT="$(cat)"
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+# cd về ROOT (như session-start/pre-compact/verify-before-stop) để `[ -f "$FILE" ]` và formatter (chạy trong
+# cd "$ROOT") cùng một base nếu file_path là tương đối — audit 2026-06 D1-5 (trước đây lệch base, no-op âm thầm).
+cd "$ROOT" 2>/dev/null || exit 0
 
 if command -v jq >/dev/null 2>&1; then
   FILE="$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // .tool_input.path // empty' 2>/dev/null)"

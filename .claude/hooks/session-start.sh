@@ -12,6 +12,7 @@ cd "$ROOT" 2>/dev/null || exit 0
 # mỗi van chỉ sống TRONG MỘT phiên (buộc re-arm có chủ đích), khớp tinh thần one-shot của .precompact-state.
 rm -f "${CMD_HISTORY_FILE:-$ROOT/.claude/.cmd-history}" \
       "${VERIFY_ATTEMPTS_FILE:-$ROOT/.claude/.verify-attempts}" \
+      "${TURN_COUNT_FILE:-$ROOT/.claude/.turn-count}" \
       "$ROOT/.claude/.skip-verify" \
       "$ROOT/.claude/.allow-contract-edit" 2>/dev/null
 
@@ -30,6 +31,15 @@ else
   # Sau /compact thì snapshot precompact ĐÃ chứa dòng này → chỉ phát ở nhánh else (tránh trùng).
   # GIỮ ĐỒNG BỘ literal với pre-compact.sh dòng 17.
   add "• 4 luật always-must: statusHistory MỌI transition · money int-VND qua MỘT formatter core · i18n key (không hard-code) · prefers-reduced-motion."
+fi
+
+# REC-34 (audit r3): repair-event do verify-before-stop ghi khi 4×-fail — surface verbatim rồi xoá (one-shot)
+# để phiên fresh-context biết "lần trước bế tắc ở target nào". KHÔNG nằm trong rm reset ở trên: đây là handoff
+# XUYÊN phiên (như .precompact-state), không phải state loop/retry per-session.
+REV="${REPAIR_EVENT_FILE:-$ROOT/.claude/.repair-event}"
+if [ -f "$REV" ]; then
+  ctx="${ctx}$(cat "$REV")"$'\n'
+  rm -f "$REV" 2>/dev/null
 fi
 
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -72,14 +82,15 @@ fi
 
 [ -z "$ctx" ] && exit 0
 
-# Cap cứng ~3000 ký tự rồi phát dưới dạng SessionStart additionalContext.
+# Cap ~3000 BYTE — ngân sách orient TỰ ÁP (lean, ADR-025), KHÔNG phải trần platform (~10k). Đừng nâng.
 ctx="$(printf '%s' "$ctx" | head -c 3000)"
 header='📍 Orient (Lumin harness) — đọc docs/README.md trước khi sửa nhiều file:'$'\n'
+# jq -Rs encode an toàn cả UTF-8 vỡ (head -c có thể cắt mid-multibyte) lẫn control char.
 if command -v jq >/dev/null 2>&1; then
   printf '%s\n%s' "$header" "$ctx" \
     | jq -Rs '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:.}}'
-else
-  esc="$(printf '%s\n%s' "$header" "$ctx" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk 'BEGIN{ORS="\\n"}{print}')"
-  printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}' "$esc"
 fi
+# VẮNG jq: BỎ phát orient (im lặng, exit 0). Orient chỉ best-effort; escaper sed/awk thủ công cũ phát JSON
+# VỠ khi ctx chứa TAB/control char, và BSD sed abort 'illegal byte sequence' khi head -c cắt mid-multibyte
+# (audit 2026-06 D1-1/D1-2). Hook orient KHÔNG được làm hỏng phiên; jq vốn là dependency thực tế của harness.
 exit 0

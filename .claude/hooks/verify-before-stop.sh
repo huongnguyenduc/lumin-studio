@@ -31,7 +31,17 @@ record_fail_and_decide() { # $1=tên target  $2=output
   printf '%s %s' "$t" "$cnt" > "$ATT" 2>/dev/null
   if [ "$cnt" -ge 4 ]; then
     rm -f "$ATT" 2>/dev/null
-    printf '{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"⚠️ verify %s FAIL %s lần liên tiếp — KHÔNG xanh. Có thể do môi trường (vd test GPU trên GTX 1060). Đang để bạn DỪNG để người xem; nếu đúng môi trường, tạo .claude/.skip-verify. ĐỪNG coi là done."}}\n' "$t" "$cnt"
+    # REC-34 (audit r3): ghi repair-event artifact cho phiên fresh-context kế — mirror .precompact-state
+    # (session-start surface verbatim rồi xoá one-shot). Non-binding scratch; KHÔNG đổi exit code. gitignored.
+    REV="${REPAIR_EVENT_FILE:-$ROOT/.claude/.repair-event}"
+    mkdir -p "$(dirname "$REV")" 2>/dev/null
+    { echo "🛠️ repair-event (verify-before-stop · REC-34) — target '$t' FAIL ${cnt}× liên tiếp, KHÔNG xanh:"
+      echo "• Nhánh/commit: $(git branch --show-current 2>/dev/null) / $(git log -1 --pretty='%h %s' 2>/dev/null)"
+      echo "• Gợi ý: mở phiên mới (/clear) đọc file này; nếu là môi trường (vd test GPU GTX 1060) thì tạo .claude/.skip-verify."
+      echo "• Output cuối (tail 30):"
+      printf '%s\n' "$out" | tail -n 30 | sed 's/^/    /'
+    } > "$REV" 2>/dev/null
+    printf '{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"⚠️ verify %s FAIL %s lần liên tiếp — KHÔNG xanh. Đã ghi .claude/.repair-event cho phiên sau. Có thể do môi trường (vd test GPU trên GTX 1060); nếu vậy tạo .claude/.skip-verify. ĐỪNG coi là done."}}\n' "$t" "$cnt"
     exit 0
   fi
   echo "⛔ $t CHƯA xanh (lần $cnt/4) — chưa thể coi là xong. Sửa rồi mới dừng:" >&2
@@ -63,9 +73,31 @@ fi
 # Tới đây = mọi target đã xanh (hoặc không có gì để chạy). Reset counter.
 rm -f "$ATT" 2>/dev/null
 
-# REC-02: nhắc cập nhật docs/active-context.md (NON-BLOCKING) nếu đổi >1 file source mà chưa đụng nó.
+# Advisory nudges (NON-BLOCKING) — gộp thành MỘT additionalContext (một JSON object, tránh vỡ parser).
+msg=""
+# REC-02: nhắc cập nhật docs/active-context.md nếu đổi >1 file source mà chưa đụng nó.
 srcs="$(printf '%s\n' "$changed" | grep -Ec '\.(ts|tsx|js|jsx|mjs|cjs|go|rs)$')"
 if [ "${srcs:-0}" -gt 1 ] && ! printf '%s\n' "$changed" | grep -q 'docs/active-context\.md'; then
-  printf '{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"📝 Đã đổi %s file source nhưng chưa cập nhật docs/active-context.md (focus + bước kế + lần verify xanh gần nhất). Cập nhật để phiên sau orient được — không bắt buộc, không chặn."}}\n' "$srcs"
+  msg="${msg}📝 Đã đổi ${srcs} file source nhưng chưa cập nhật docs/active-context.md (focus + bước kế + lần verify xanh). "
+fi
+# ADR-027: risk-tag banner — diff chạm path tiền/state/auth/STK/migration/outbox → nhắc review TỪNG DÒNG
+# (human-attention router, KHÔNG auto-approve, KHÔNG chặn). Self-no-op trước Phase-0 (path chưa tồn tại).
+RISK_RE='packages/core/|migrations?/|order|status|payment|refund|reconcile|money|price|total|auth|rbac|bank|outbox|state-?machine'
+risk="$(printf '%s\n' "$changed" | grep -Eio "$RISK_RE" | tr 'A-Z' 'a-z' | sort -u | tr '\n' ',' | sed 's/,$//')"
+if [ -n "$risk" ]; then
+  msg="${msg}⚠️ Diff chạm path RỦI-RO-CAO (${risk}) — review TỪNG DÒNG trước merge (tiền/state/auth là sự-cố-tiền-thật). Banner advisory, owner luôn là người merge. "
+fi
+# ADR-027: diff-size — PR quá to khó review (1 người) → gợi ý tách 1-PR-1-trục (advisory).
+nfiles="$(printf '%s\n' "$changed" | grep -c .)"
+nlines="$(git diff --numstat 2>/dev/null | awk '{a+=($1=="-"?0:$1)+($2=="-"?0:$2)} END{print a+0}')"
+if [ "${nfiles:-0}" -gt 15 ] || [ "${nlines:-0}" -gt 600 ]; then
+  msg="${msg}📏 Diff lớn (~${nfiles} file / ~${nlines} dòng) — cân nhắc tách 1-PR-1-trục (conventions §Scope). "
+fi
+if [ -n "$msg" ]; then
+  if command -v jq >/dev/null 2>&1; then
+    printf '%s' "$msg" | jq -Rs '{hookSpecificOutput:{hookEventName:"Stop",additionalContext:.}}'
+  else
+    printf '{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"%s"}}\n' "$msg"
+  fi
 fi
 exit 0
