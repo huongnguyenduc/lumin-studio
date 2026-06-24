@@ -66,10 +66,10 @@ services/      (Go/Rust — ngoài workspace JS)
 2. **Màn QR:** hiện **QR tĩnh** (server render từ STK đã lưu; **nội dung/memo CK không bắt buộc**) + hướng dẫn chuyển khoản.
 3. Khách chuyển khoản → **đính ảnh chụp biên lai + bấm xác nhận**. **Chỉ lúc này** frontend mới `POST /orders` → server **tạo đơn** ở `PENDING_CONFIRM` (kèm ảnh CK). Trả về link+mã đơn (email cho khách).
 4. Khách theo **link tra cứu đơn** → **màn "chờ xác nhận"** (timeline + thời gian dự kiến + **auto-poll** trạng thái). Chủ shop đối soát **thủ công** (xem ảnh biên lai, đối chiếu số tiền) → bấm 1 chạm "đã nhận CK" → `PAID` (owner-only). UI khách tự lật sang PAID.
-5. `PAID → PRINTING → SHIPPING → COMPLETED`. Ngoại lệ `CANCELLED`/`RETURNED` (bắt buộc `reason`).
+5. `PAID → PRINTING → SHIPPING → COMPLETED`. Đóng đơn `CANCELLED` (không hoàn) / `REFUNDED` (đã hoàn — owner-only) — bắt buộc `reason`.
 
 ### 5.2 Kênh `inbox`
-Nhân viên dùng Extension (assistive) → form tạo đơn gọi `POST /orders` (`channel=inbox`). Người tự thao tác bên trong Messenger/IG.
+Nhân viên **tự kiểm tra thấy tiền đã về** rồi dùng Extension (assistive) → form tạo đơn gọi `POST /orders` (`channel=inbox`) → đơn vào **thẳng `PAID`** (không qua `PENDING_CONFIRM`). Người tự thao tác bên trong Messenger/IG. `→ REFUNDED` & sửa STK vẫn **owner-only**.
 
 ### 5.3 Asset pipeline (upload model)
 ```
@@ -89,8 +89,8 @@ Tiến độ đẩy về Admin qua **SSE**. Xem `conventions.md` §3D-upload cho
 ## 6. OrderStatus state machine (tóm tắt — chi tiết ở `/spec.md` §04)
 
 ```
-PENDING_CONFIRM → PAID → PRINTING → SHIPPING → COMPLETED
-ngoại lệ:  CANCELLED   RETURNED        (đều bắt buộc reason)
+PENDING_CONFIRM → PAID → PRINTING → SHIPPING → COMPLETED   (inbox vào thẳng PAID)
+đóng đơn:  CANCELLED (không hoàn)   REFUNDED (đã hoàn)       (đều bắt buộc reason)
 ```
 Ánh xạ hàng đợi in: `Cần in` = PAID · `Đang in/Đóng gói` = PRINTING · `Đã giao` = SHIPPING.
 Mọi transition: append `statusHistory{from,to,at,byUser,reason?}`. Reconcile → PAID là **owner-only**. Đây là phần được test kỹ nhất (xem `plan.md` Core, `conventions.md` §statusHistory).

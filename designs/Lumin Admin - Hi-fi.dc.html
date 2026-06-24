@@ -1410,6 +1410,87 @@ html,body{margin:0;padding:0;background:#EAE7DF}
 
 
 
+  <!-- 16b PET TAG PROVISIONING -->
+  <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:46px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><span style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;color:#492F10;letter-spacing:-0.02em">16b · Pet Tag — nạp link vào NFC trước khi giao</span><span style="font-family:'Space Mono',monospace;font-size:11px;color:#0B7569;background:#E7F6F2;border:1.5px solid #16B5A0;border-radius:11px;padding:3px 10px">provisioning · ghi URL vào chip NTAG215</span></div>
+    <div style="font-family:'Space Mono',monospace;font-size:11px;color:#7C6233;max-width:880px;line-height:1.7">Mỗi vòng tag trắng có UID phần cứng. Trước khi giao, shop <b style="color:#492F10">gán 1 URL công khai duy nhất</b> (vd lumin.pet/t/AB12CD) &amp; ghi vào chip, rồi <b style="color:#492F10">khoá ghi</b> để khách không bị ghi đè. Khách chạm lần đầu → URL mở luồng kích hoạt &amp; tạo trang.</div>
+    <div style="width:1180px;flex:none;background:#fff;border:2.5px solid #492F10;border-radius:18px;box-shadow:6px 6px 0 rgba(73,47,16,.1);overflow:hidden;font-family:'Hanken Grotesque',sans-serif;font-weight:600;color:#492F10">
+      <div style="height:30px;background:#F3EAD2;border-bottom:1.5px solid #EFE6CC;display:flex;align-items:center;gap:6px;padding:0 13px"><div style="width:11px;height:11px;border-radius:50%;background:#e88;border:1px solid #492F10"></div><div style="width:11px;height:11px;border-radius:50%;background:#ec4;border:1px solid #492F10"></div><div style="width:11px;height:11px;border-radius:50%;background:#7c9;border:1px solid #492F10"></div></div>
+      <div style="display:flex">
+        <div style="width:208px;flex:none;background:#faf9f5;border-right:1.5px solid #EFE6CC;padding:16px 12px;min-height:560px">
+          <div style="font-size:22px;padding:0 6px 12px">Lumin◖ <span style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">admin</span></div>
+          <div style="display:flex;flex-direction:column;gap:3px;font-size:14px"><div style="padding:8px 11px;border-radius:9px">Tổng quan</div><div style="padding:8px 11px;border-radius:9px">Đơn hàng</div><div style="padding:8px 11px;border-radius:9px">Hàng đợi in</div><div style="padding:8px 11px;border-radius:9px">Sản phẩm</div><div style="padding:8px 11px;border-radius:9px;background:#FF6B4A;color:#fff">Pet Tag</div><div style="padding:8px 11px;border-radius:9px">Danh mục</div><div style="padding:8px 11px;border-radius:9px">Đánh giá</div><div style="padding:8px 11px;border-radius:9px">Vật tư</div><div style="padding:8px 11px;border-radius:9px">Khách hàng</div><div style="padding:8px 11px;border-radius:9px">Cài đặt</div></div>
+        </div>
+        <div style="flex:1;padding:20px 24px;display:flex;flex-direction:column;gap:14px">
+
+          <!-- header -->
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px">
+            <div>
+              <div style="font-size:24px;line-height:1">Pet Tag — nạp NFC</div>
+              <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-top:5px">Gán URL → ghi vào chip → khoá → đóng gói theo đơn</div>
+            </div>
+            <div style="display:flex;gap:7px;flex:none">
+              <div style="border:1.5px solid #492F10;border-radius:9px;padding:6px 12px;font-size:13px;background:#fff">⤓ Nhập lô tag trắng</div>
+              <div style="border:2px solid #492F10;border-radius:9px;padding:6px 12px;font-size:13px;background:#FF6B4A;color:#fff">⚡ Nạp hàng loạt</div>
+            </div>
+          </div>
+
+          <!-- KPI -->
+          <div style="display:flex;gap:11px">
+            <div style="flex:1;border:1.5px solid #EFE6CC;border-radius:12px;padding:11px 13px;background:#faf9f5"><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233;letter-spacing:.04em">TAG TRONG KHO</div><div style="font-size:24px;margin-top:3px">240</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233;margin-top:2px">lô LMN-B07</div></div>
+            <div style="flex:1;border:2px solid #FF6B4A;border-radius:12px;padding:11px 13px;background:#FFE7DD"><div style="font-family:'Space Mono',monospace;font-size:8px;color:#C93A1A;letter-spacing:.04em">CHƯA NẠP</div><div style="font-size:24px;margin-top:3px;color:#C93A1A">31</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#C93A1A;margin-top:2px">● cần nạp trước khi giao</div></div>
+            <div style="flex:1;border:1.5px solid #FFC233;border-radius:12px;padding:11px 13px;background:#FFF6DE"><div style="font-family:'Space Mono',monospace;font-size:8px;color:#9A6B2F;letter-spacing:.04em">ĐÃ NẠP · CHỜ GIAO</div><div style="font-size:24px;margin-top:3px">18</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#9A6B2F;margin-top:2px">đã khoá ghi</div></div>
+            <div style="flex:1;border:1.5px solid #16B5A0;border-radius:12px;padding:11px 13px;background:#E7F6F2"><div style="font-family:'Space Mono',monospace;font-size:8px;color:#0B7569;letter-spacing:.04em">ĐÃ KÍCH HOẠT</div><div style="font-size:24px;margin-top:3px;color:#0B7569">191</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#0B7569;margin-top:2px">khách đã tạo trang</div></div>
+          </div>
+
+          <!-- table + write panel -->
+          <div style="display:flex;gap:13px;align-items:stretch">
+            <!-- table -->
+            <div style="flex:1.6;border:1.5px solid #EFE6CC;border-radius:12px;overflow:hidden;background:#fff">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 13px;background:#faf9f5;border-bottom:1.5px solid #EFE6CC"><span style="font-size:16px">Tag chờ nạp · lô LMN-B07</span><span style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">UID đọc từ đầu ghi NFC</span></div>
+              <div style="display:flex;font-family:'Space Mono',monospace;font-size:8px;color:#7C6233;padding:7px 13px;border-bottom:1px solid #F0E6CE"><span style="width:18px"></span><span style="flex:1.1">UID CHIP</span><span style="flex:1.5">URL GÁN VÀO TAG</span><span style="flex:1">ĐƠN HÀNG</span><span style="flex:1;text-align:right">TRẠNG THÁI</span></div>
+              <!-- row selected (writing) -->
+              <div style="display:flex;align-items:center;padding:10px 13px;border-top:1px solid #F0E6CE;background:#FFF6F2;font-size:12.5px"><span style="width:18px"><span style="display:inline-block;width:13px;height:13px;border-radius:50%;background:#FF6B4A;border:1.5px solid #492F10"></span></span><span style="flex:1.1;font-family:'Space Mono',monospace;font-size:11px;font-weight:700">04:A2:2F:9B</span><span style="flex:1.5;font-family:'Space Mono',monospace;font-size:10px;color:#C93A1A">lumin.pet/t/AB12CD</span><span style="flex:1;font-family:'Space Mono',monospace;font-size:10px;color:#7C6233">#LM2261</span><span style="flex:1;text-align:right"><span style="background:#FF6B4A;color:#fff;border:1.5px solid #492F10;font-size:9px;font-weight:700;padding:2px 8px;border-radius:999px">Chưa nạp</span></span></div>
+              <!-- row not yet assigned -->
+              <div style="display:flex;align-items:center;padding:10px 13px;border-top:1px solid #F0E6CE;font-size:12.5px"><span style="width:18px"><span style="display:inline-block;width:13px;height:13px;border-radius:50%;border:1.5px solid #C9B98E"></span></span><span style="flex:1.1;font-family:'Space Mono',monospace;font-size:11px">04:A2:31:07</span><span style="flex:1.5;font-family:'Space Mono',monospace;font-size:10px;color:#B6A47C">— chưa gán —</span><span style="flex:1;font-family:'Space Mono',monospace;font-size:10px;color:#7C6233">#LM2263</span><span style="flex:1;text-align:right"><span style="background:#FF6B4A;color:#fff;border:1.5px solid #492F10;font-size:9px;font-weight:700;padding:2px 8px;border-radius:999px">Chưa nạp</span></span></div>
+              <!-- row written / locked -->
+              <div style="display:flex;align-items:center;padding:10px 13px;border-top:1px solid #F0E6CE;font-size:12.5px"><span style="width:18px"><span style="display:inline-block;width:13px;height:13px;border-radius:50%;border:1.5px solid #C9B98E"></span></span><span style="flex:1.1;font-family:'Space Mono',monospace;font-size:11px">04:9F:C4:11 🔒</span><span style="flex:1.5;font-family:'Space Mono',monospace;font-size:10px;color:#492F10">lumin.pet/t/7KQ2M9</span><span style="flex:1;font-family:'Space Mono',monospace;font-size:10px;color:#7C6233">#LM2259</span><span style="flex:1;text-align:right"><span style="background:#FFF6DE;color:#9A6B2F;border:1.5px solid #FFC233;font-size:9px;font-weight:700;padding:2px 8px;border-radius:999px">Đã nạp · chờ giao</span></span></div>
+              <!-- row activated -->
+              <div style="display:flex;align-items:center;padding:10px 13px;border-top:1px solid #F0E6CE;font-size:12.5px"><span style="width:18px"><span style="display:inline-block;width:13px;height:13px;border-radius:50%;border:1.5px solid #C9B98E"></span></span><span style="flex:1.1;font-family:'Space Mono',monospace;font-size:11px">04:9F:B0:8E 🔒</span><span style="flex:1.5;font-family:'Space Mono',monospace;font-size:10px;color:#492F10">lumin.pet/t/QX48LZ <span style="color:#0B7569">→ Bơ</span></span><span style="flex:1;font-family:'Space Mono',monospace;font-size:10px;color:#7C6233">#LM2261</span><span style="flex:1;text-align:right"><span style="background:#E7F6F2;color:#0B7569;border:1.5px solid #16B5A0;font-size:9px;font-weight:700;padding:2px 8px;border-radius:999px">✓ Đã kích hoạt</span></span></div>
+              <div style="display:flex;align-items:center;padding:10px 13px;border-top:1px solid #F0E6CE;font-size:12.5px;color:#B6A47C"><span style="width:18px"><span style="display:inline-block;width:13px;height:13px;border-radius:50%;border:1.5px solid #C9B98E"></span></span><span style="flex:1.1;font-family:'Space Mono',monospace;font-size:11px">04:9F:B0:8E</span><span style="flex:1.5;font-family:'Space Mono',monospace;font-size:10px">…28 tag nữa trong lô</span><span style="flex:1"></span><span style="flex:1"></span></div>
+            </div>
+
+            <!-- write panel -->
+            <div style="flex:1;border:2px solid #492F10;border-radius:14px;overflow:hidden;background:#FFFBEF;box-shadow:3px 3px 0 rgba(73,47,16,.12);display:flex;flex-direction:column">
+              <div style="background:#492F10;color:#FFE9A4;padding:10px 14px;font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:15px">Nạp tag đang chọn</div>
+              <div style="padding:14px;display:flex;flex-direction:column;gap:11px">
+                <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233">UID CHIP</span><span style="font-family:'Space Mono',monospace;font-size:12px;font-weight:700">04:A2:2F:9B</span></div>
+                <!-- url field -->
+                <div>
+                  <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;margin-bottom:5px">URL GHI VÀO TAG <span style="color:#0B7569">· tự sinh, duy nhất</span></div>
+                  <div style="display:flex;gap:7px;align-items:center;border:2px solid #492F10;border-radius:11px;padding:8px 10px;background:#fff"><span style="flex:1;font-family:'Space Mono',monospace;font-size:11px;color:#492F10">lumin.pet/t/AB12CD</span><span style="font-size:14px">↻</span></div>
+                  <div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233;margin-top:4px;line-height:1.6">→ Mở luồng kích hoạt khi khách chạm lần đầu; sau đó tự chuyển tới trang của bé.</div>
+                </div>
+                <!-- gán đơn -->
+                <div style="display:flex;justify-content:space-between;align-items:center;border:1.5px solid #EFE6CC;border-radius:11px;padding:9px 11px;background:#fff"><span style="font-size:12.5px">Gán vào đơn</span><span style="font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:#C93A1A">#LM2261 ▾</span></div>
+                <!-- lock toggle -->
+                <div style="display:flex;align-items:center;gap:10px;border:1.5px solid #EFE6CC;border-radius:11px;padding:9px 11px;background:#fff"><span style="font-size:15px">🔒</span><div style="flex:1"><div style="font-size:12.5px">Khoá ghi sau khi nạp</div><div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233">chống ghi đè · khuyên bật</div></div><div style="width:42px;height:24px;border-radius:14px;background:#16B5A0;border:1.5px solid #0B7569;position:relative;flex:none"><div style="position:absolute;top:1px;right:1px;width:19px;height:19px;border-radius:50%;background:#fff"></div></div></div>
+                <!-- nfc place hint -->
+                <div style="border:1.5px dashed #16B5A0;background:#E7F6F2;border-radius:12px;padding:11px;display:flex;gap:10px;align-items:center"><div style="width:38px;height:38px;border-radius:50%;border:2px solid #16B5A0;display:grid;place-items:center;flex:none;color:#0B7569"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0B7569" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9a13 13 0 0 1 0 6"></path><path d="M9 6a18 18 0 0 1 0 12"></path><path d="M13 4a22 22 0 0 1 0 16"></path></svg></div><div style="flex:1;font-family:'Space Mono',monospace;font-size:9px;color:#0B7569;line-height:1.6">Đặt vòng tag lên đầu ghi NFC, rồi bấm <b>Ghi vào tag</b>.</div></div>
+                <!-- write button -->
+                <div style="text-align:center;background:#FF6B4A;color:#fff;border:2px solid #492F10;border-radius:13px;padding:12px;font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:15px;box-shadow:3px 3px 0 #492F10">⚡ Ghi vào tag &amp; khoá</div>
+                <div style="font-family:'Space Mono',monospace;font-size:8px;color:#7C6233;text-align:center;line-height:1.6">Sau khi ghi: trạng thái → <b style="color:#9A6B2F">Đã nạp · chờ giao</b>, in nhãn đóng gói kèm đơn.</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div style="font-family:'Hanken Grotesque',sans-serif;font-weight:600;font-size:14px;color:#C93A1A;background:#fff;border:1.5px dashed #FF6B4A;border-radius:12px;padding:9px 12px;align-self:flex-start;box-shadow:3px 3px 0 rgba(244,99,58,.15)">✎ Vòng đời tag: Chưa nạp → (gán URL + ghi + khoá) → Đã nạp · chờ giao → khách chạm lần đầu → Đã kích hoạt (gắn vào pet). URL cố định trên chip; đổi pet chỉ đổi dữ liệu phía sau, không ghi lại NFC.</div>
+  </div>
+
+
   <!-- 17 EMPTY / ERROR STATES -->
   <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:30px">
     <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:26px;color:#492F10;letter-spacing:-0.02em">17 · Empty &amp; Error states</div>

@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Hanken+Grotesque:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/lumin-studio-design-system-c90f11ab-a43d-4206-85a8-c10024c87ba0/tokens/colors.css">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#EAE7DF}
+.doc a{color:#2D5FB8;text-decoration:none}
+.doc p{margin:0 0 10px}
+.doc table{border-collapse:collapse;width:100%;font-family:'Hanken Grotesque',sans-serif}
+.doc th{background:#492F10;color:#FFE9A4;font-weight:700;text-align:left;font-size:12px;padding:9px 12px;font-family:'Space Mono',monospace;letter-spacing:.02em}
+.doc td{border-bottom:1px solid #EFE6CC;padding:9px 12px;font-size:13px;color:#3A2A12;vertical-align:top;line-height:1.55}
+.doc tr:nth-child(even) td{background:#FCF8EC}
+.doc code{font-family:'Space Mono',monospace;font-size:12px;background:#F3EAD2;color:#6B3A12;padding:1px 6px;border-radius:6px}
+.doc h2{scroll-margin-top:20px}
+@media print{
+  html,body{background:#fff}
+  .page{box-shadow:none!important;margin:0!important;border-radius:0!important;border:none!important}
+  .page+.page{page-break-before:always}
+  .noprint{display:none!important}
+}
+</style>
+</helmet>
+
+<div class="doc" style="width:100%;background:#EAE7DF;padding:40px 0 60px;font-family:'Hanken Grotesque',sans-serif">
+
+  <!-- ============ COVER ============ -->
+  <div class="page" style="max-width:860px;margin:0 auto;background:#fff;border:2.5px solid #492F10;border-radius:20px;box-shadow:7px 7px 0 rgba(73,47,16,.13);overflow:hidden">
+    <div style="background:#32200A;padding:54px 56px 48px;color:#FAE5A4;position:relative">
+      <div style="position:absolute;inset:0;background-image:radial-gradient(#5a3c16 1.1px,transparent 1.1px);background-size:18px 18px;opacity:.45"></div>
+      <div style="position:relative">
+        <div style="display:inline-flex;align-items:center;gap:8px;background:#FF6B4A;color:#fff;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;padding:6px 14px;border-radius:999px;margin-bottom:26px">✦ DEVELOPER HANDOFF · v1.1</div>
+        <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:54px;line-height:1.0;letter-spacing:-0.03em;color:#FFFBEF">Lumin Studio<br>Tài liệu bàn giao<br>cho lập trình</div>
+        <div style="font-family:'Hanken Grotesque',sans-serif;font-size:16px;color:#E7CF92;margin-top:22px;max-width:560px;line-height:1.6">Đặc tả đầy đủ để chuyển bộ thiết kế hi-fi (Storefront · Admin · Extension · Mobile · Pet Tag) sang giai đoạn phát triển: data model, luồng &amp; trạng thái, validation, responsive, hành vi, các quyết định đã chốt và checklist tài nguyên.</div>
+      </div>
+    </div>
+    <div style="padding:30px 56px 40px;display:flex;gap:40px;flex-wrap:wrap;font-family:'Space Mono',monospace;font-size:11px;color:#7C6233">
+      <div><div style="color:#A88B52;margin-bottom:4px">SẢN PHẨM</div><div style="color:#492F10;font-weight:700;font-size:13px">Web bán hàng in 3D theo đơn</div></div>
+      <div><div style="color:#A88B52;margin-bottom:4px">NỀN TẢNG</div><div style="color:#492F10;font-weight:700;font-size:13px">Web khách · Admin · Extension · Mobile · Pet Tag</div></div>
+      <div><div style="color:#A88B52;margin-bottom:4px">DESIGN SYSTEM</div><div style="color:#492F10;font-weight:700;font-size:13px">Lumin Studio DS (đã có token)</div></div>
+      <div><div style="color:#A88B52;margin-bottom:4px">NGÀY</div><div style="color:#492F10;font-weight:700;font-size:13px">24·06·2026</div></div>
+    </div>
+    <div style="padding:0 56px 44px">
+      <div style="background:#FFFBEF;border:1.5px solid #EFE6CC;border-radius:14px;padding:22px 26px">
+        <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:16px;color:#492F10;margin-bottom:14px">Mục lục</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;font-size:13.5px;color:#3A2A12">
+          <div><b style="color:#FF6B4A;font-family:'Space Mono',monospace">01</b> &nbsp;Tổng quan &amp; kiến trúc</div>
+          <div><b style="color:#FF6B4A;font-family:'Space Mono',monospace">06</b> &nbsp;Responsive &amp; breakpoints</div>
+          <div><b style="color:#FF6B4A;font-family:'Space Mono',monospace">02</b> &nbsp;Data model &amp; enums</div>
+          <div><b style="color:#FF6B4A;font-family:'Space Mono',monospace">07</b> &nbsp;Hành vi &amp; animation</div>
+          <div><b style="color:#FF6B4A;font-family:'Space Mono',monospace">03</b> &nbsp;Luồng &amp; trạng thái màn hình</div>
+          <div><b style="color:#FF6B4A;font-family:'Space Mono',monospace">08</b> &nbsp;Auth · phân quyền · analytics</div>
+          <div><b style="color:#FF6B4A;font-family:'Space Mono',monospace">04</b> &nbsp;Bộ trạng thái đơn hàng</div>
+          <div><b style="color:#FF6B4A;font-family:'Space Mono',monospace">09</b> &nbsp;Pet Tag NFC &amp; trang pet</div>
+          <div><b style="color:#FF6B4A;font-family:'Space Mono',monospace">05</b> &nbsp;Validation &amp; microcopy</div>
+          <div><b style="color:#FF6B4A;font-family:'Space Mono',monospace">10</b> &nbsp;Tài nguyên &amp; quyết định</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 01 ARCHITECTURE ============ -->
+  <div class="page" style="max-width:860px;margin:26px auto 0;background:#fff;border:1.5px solid #EFE6CC;border-radius:16px;box-shadow:0 2px 14px rgba(73,47,16,.07);padding:46px 56px 52px">
+    <div style="display:flex;align-items:center;gap:13px;margin-bottom:8px"><span style="font-family:'Space Mono',monospace;font-weight:700;font-size:13px;color:#fff;background:#FF6B4A;padding:4px 11px;border-radius:8px">01</span><span style="font-family:'Space Mono',monospace;font-size:11px;color:#A88B52;letter-spacing:.08em">KIẾN TRÚC</span></div>
+    <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:32px;color:#492F10;letter-spacing:-0.02em;margin:0 0 18px">Tổng quan &amp; kiến trúc hệ thống</h2>
+    <p style="font-size:14.5px;color:#3A2A12;line-height:1.7">Lumin Studio là cửa hàng thiết kế &amp; in 3D đèn và đồ trang trí theo đơn. Mọi đơn được in sau khi khách thanh toán — không có tồn kho thành phẩm. Hệ thống gồm web khách, admin, extension và admin mobile, vận hành trên một <b>bộ trạng thái đơn duy nhất</b>.</p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:22px 0 8px">
+      <div style="border:2px solid #492F10;border-radius:14px;padding:16px 18px;box-shadow:3px 3px 0 rgba(73,47,16,.1)"><div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:16px;color:#492F10">🛒 Storefront (web khách)</div><div style="font-size:12.5px;color:#785B34;margin-top:6px;line-height:1.6">Catalog · chi tiết sản phẩm · cá nhân hoá (khắc tên, chọn màu) · giỏ · checkout · tra cứu đơn. Mobile-first responsive.</div></div>
+      <div style="border:2px solid #492F10;border-radius:14px;padding:16px 18px;box-shadow:3px 3px 0 rgba(73,47,16,.1)"><div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:16px;color:#492F10">⚙️ Admin (desktop-first)</div><div style="font-size:12.5px;color:#785B34;margin-top:6px;line-height:1.6">Dashboard · đơn hàng · hàng đợi in · sản phẩm (model 3D + màu + option) · danh mục · đánh giá · cài đặt. Có bản mobile.</div></div>
+      <div style="border:2px solid #492F10;border-radius:14px;padding:16px 18px;box-shadow:3px 3px 0 rgba(73,47,16,.1)"><div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:16px;color:#492F10">🧩 Extension trình duyệt</div><div style="font-size:12.5px;color:#785B34;margin-top:6px;line-height:1.6">Hiện cạnh Messenger/Instagram. Tạo đơn nhanh từ chat · tra cứu đơn (quét link/mã trong tin nhắn) · mẫu trả lời 1 chạm.</div></div>
+      <div style="border:2px solid #492F10;border-radius:14px;padding:16px 18px;box-shadow:3px 3px 0 rgba(73,47,16,.1)"><div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:16px;color:#492F10">📱 Admin Mobile</div><div style="font-size:12.5px;color:#785B34;margin-top:6px;line-height:1.6">Bản rút gọn của admin để xử lý đơn &amp; cập nhật trạng thái khi không ở máy tính.</div></div>
+    </div>
+
+    <div style="background:#FFF4E0;border:1.5px solid #F0D49B;border-radius:12px;padding:14px 18px;margin:20px 0 0;font-size:13px;color:#6B4A18;line-height:1.65"><b>Kênh đặt hàng:</b> đơn đến từ <b>web</b> (thanh toán xong → tạo đơn) hoặc <b>inbox MXH</b> (khách báo đã chuyển khoản → nhân viên tạo đơn qua extension). Trường <code>channel</code> phân biệt hai nguồn này.</div>
+
+    <div style="background:#E7F6F2;border:1.5px solid #6FD3C4;border-radius:12px;padding:14px 18px;margin:14px 0 0;font-size:13px;color:#0B5247;line-height:1.65"><b>Dòng sản phẩm mới — Pet Tag NFC:</b> vòng định danh in 3D gắn chip NFC, quét là ra trang hồ sơ thú cưng. Bán &amp; in như sản phẩm thường nhưng thêm <b>bước ghi chip</b> và sinh ra <b>trang pet</b> riêng. Đặc tả đầy đủ ở mục 09.</div>
+  </div>
+
+  <!-- ============ 02 DATA MODEL ============ -->
+  <div class="page" style="max-width:860px;margin:26px auto 0;background:#fff;border:1.5px solid #EFE6CC;border-radius:16px;box-shadow:0 2px 14px rgba(73,47,16,.07);padding:46px 56px 52px">
+    <div style="display:flex;align-items:center;gap:13px;margin-bottom:8px"><span style="font-family:'Space Mono',monospace;font-weight:700;font-size:13px;color:#fff;background:#FF6B4A;padding:4px 11px;border-radius:8px">02</span><span style="font-family:'Space Mono',monospace;font-size:11px;color:#A88B52;letter-spacing:.08em">DỮ LIỆU</span></div>
+    <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:32px;color:#492F10;letter-spacing:-0.02em;margin:0 0 18px">Data model &amp; enums</h2>
+    <p style="font-size:14.5px;color:#3A2A12;line-height:1.7">Các thực thể cốt lõi. Kiểu chỉ mang tính gợi ý; điều chỉnh theo ORM thực tế. Tiền tệ lưu là <b>số nguyên VND</b> (không phần thập phân). Thời gian lưu ISO-8601 UTC.</p>
+
+    <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:26px 0 10px">Product</h3>
+    <table>
+      <tr><th style="width:26%">Trường</th><th style="width:22%">Kiểu</th><th>Ghi chú</th></tr>
+      <tr><td><code>id</code></td><td>uuid</td><td>Khóa chính</td></tr>
+      <tr><td><code>slug</code></td><td>string</td><td>Duy nhất, dùng cho URL</td></tr>
+      <tr><td><code>name</code></td><td>string</td><td>Tên hiển thị</td></tr>
+      <tr><td><code>description</code></td><td>richtext</td><td>Mô tả + cách dùng</td></tr>
+      <tr><td><code>categoryId</code></td><td>uuid → Category</td><td>Đèn bàn, đèn treo, đồ trang trí…</td></tr>
+      <tr><td><code>basePrice</code></td><td>int (VND)</td><td>Giá khởi điểm; option có thể cộng thêm</td></tr>
+      <tr><td><code>dimensions</code></td><td>{w,d,h} mm</td><td>Hiển thị dạng <code>180 × 180 × 240 mm</code></td></tr>
+      <tr><td><code>material</code></td><td>enum</td><td>PLA · PETG · recycled-PLA …</td></tr>
+      <tr><td><code>model3dUrl</code></td><td>url</td><td>File model (.glb để xem, .stl/.3mf để in)</td></tr>
+      <tr><td><code>images[]</code></td><td>Image[]</td><td>Ảnh thật; ảnh đầu là ảnh đại diện</td></tr>
+      <tr><td><code>colors[]</code></td><td>Color[]</td><td>Màu in <b>có tên</b> (xem dưới)</td></tr>
+      <tr><td><code>options[]</code></td><td>Option[]</td><td>Tuỳ chọn có mô tả (khắc tên, kích cỡ…)</td></tr>
+      <tr><td><code>status</code></td><td>enum</td><td><code>active</code> · <code>draft</code> · <code>archived</code></td></tr>
+      <tr><td><code>ratingAvg</code> · <code>reviewCount</code></td><td>float · int</td><td>Tính sẵn để hiển thị nhanh</td></tr>
+    </table>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:24px">
+      <div>
+        <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:0 0 10px">Color (màu in có tên)</h3>
+        <table>
+          <tr><th>Trường</th><th>Kiểu</th></tr>
+          <tr><td><code>id</code></td><td>uuid</td></tr>
+          <tr><td><code>name</code></td><td>string · "Kem sữa"</td></tr>
+          <tr><td><code>hex</code></td><td>string</td></tr>
+          <tr><td><code>available</code></td><td>bool (còn cuộn nhựa)</td></tr>
+          <tr><td><code>priceDelta</code></td><td>int (VND, có thể 0)</td></tr>
+        </table>
+      </div>
+      <div>
+        <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:0 0 10px">Option (tuỳ chọn)</h3>
+        <table>
+          <tr><th>Trường</th><th>Kiểu</th></tr>
+          <tr><td><code>id</code></td><td>uuid</td></tr>
+          <tr><td><code>label</code></td><td>string</td></tr>
+          <tr><td><code>description</code></td><td>string</td></tr>
+          <tr><td><code>type</code></td><td>enum: text · choice</td></tr>
+          <tr><td><code>priceDelta</code></td><td>int (VND)</td></tr>
+          <tr><td><code>maxChars</code></td><td>int? (giới hạn khắc, đặt khi tạo SP)</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:26px 0 10px">Order &amp; OrderItem</h3>
+    <table>
+      <tr><th style="width:26%">Trường</th><th style="width:24%">Kiểu</th><th>Ghi chú</th></tr>
+      <tr><td><code>id</code> / code</td><td>string</td><td>Mã hiển thị dạng <code>#LMN-2261</code></td></tr>
+      <tr><td><code>channel</code></td><td>enum</td><td><code>web</code> · <code>inbox</code></td></tr>
+      <tr><td><code>status</code></td><td>OrderStatus</td><td>Enum dùng chung — xem mục 05</td></tr>
+      <tr><td><code>customer</code></td><td>Customer</td><td>Tên · SĐT · email · MXH handle</td></tr>
+      <tr><td><code>shippingAddress</code></td><td>Address</td><td>Đường · phường · quận · tỉnh</td></tr>
+      <tr><td><code>items[]</code></td><td>OrderItem[]</td><td>product · color · options · <b>personalization</b> · qty · unitPrice</td></tr>
+      <tr><td><code>subtotal</code> · <code>shippingFee</code> · <code>total</code></td><td>int (VND)</td><td>Tính phía server, không tin client</td></tr>
+      <tr><td><code>paymentMethod</code></td><td>enum</td><td><code>bank_transfer</code> (giai đoạn 1)</td></tr>
+      <tr><td><code>paymentConfirmedAt</code></td><td>datetime?</td><td>Khi shop đối soát xong CK</td></tr>
+      <tr><td><code>trackingCode</code></td><td>string?</td><td>Mã vận đơn khi giao</td></tr>
+      <tr><td><code>note</code></td><td>string?</td><td>Ghi chú của khách / nội bộ</td></tr>
+      <tr><td><code>statusHistory[]</code></td><td>StatusEvent[]</td><td>{from, to, at, byUser, reason} — bắt buộc cho huỷ/hoàn</td></tr>
+    </table>
+    <div style="background:#FFF4E0;border:1.5px solid #F0D49B;border-radius:12px;padding:13px 17px;margin-top:16px;font-size:12.5px;color:#6B4A18;line-height:1.6"><b>Personalization</b> (khắc tên): mỗi OrderItem có thể mang <code>{ text, zoneId }</code> — vị trí khắc là một trong các "điểm khắc hợp lệ" định nghĩa trên model (xem demo Storefront). Lưu cả text lẫn zone để xưởng in đặt đúng chỗ.</div>
+
+    <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:28px 0 10px">Các thực thể khác</h3>
+    <table>
+      <tr><th style="width:24%">Thực thể</th><th>Trường chính</th></tr>
+      <tr><td><code>PrintJob</code> (hàng đợi in)</td><td>orderItemRef · stage (<code>Cần in</code> · <code>Đang in</code> · <code>Đóng gói</code> · <code>Đã giao</code>) · printer · colorName · eta — ánh xạ từ order status</td></tr>
+      <tr><td><code>Review</code></td><td>productId · customer · rating(1–5) · text · images[] · reply? · status(published/hidden) · createdAt</td></tr>
+      <tr><td><code>Customer</code></td><td>id · name · phone · email? · socialHandles[] · addresses[]</td></tr>
+      <tr><td><code>User</code> (nhân viên)</td><td>id · name · email · role(<code>owner</code>/<code>staff</code>) · active</td></tr>
+      <tr><td><code>ReplyTemplate</code> (extension)</td><td>id · title · body · variables[] (vd {tên}, {mã đơn}, {STK})</td></tr>
+      <tr><td><code>Setting</code></td><td>shopInfo · bankAccount(VietQR) · shippingRules · returnPolicy</td></tr>
+    </table>
+  </div>
+
+  <!-- ============ 03 FLOWS & STATES ============ -->
+  <div class="page" style="max-width:860px;margin:26px auto 0;background:#fff;border:1.5px solid #EFE6CC;border-radius:16px;box-shadow:0 2px 14px rgba(73,47,16,.07);padding:46px 56px 52px">
+    <div style="display:flex;align-items:center;gap:13px;margin-bottom:8px"><span style="font-family:'Space Mono',monospace;font-weight:700;font-size:13px;color:#fff;background:#FF6B4A;padding:4px 11px;border-radius:8px">03</span><span style="font-family:'Space Mono',monospace;font-size:11px;color:#A88B52;letter-spacing:.08em">MÀN HÌNH</span></div>
+    <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:32px;color:#492F10;letter-spacing:-0.02em;margin:0 0 8px">Luồng &amp; trạng thái từng màn</h2>
+    <p style="font-size:14.5px;color:#3A2A12;line-height:1.7">Thiết kế hi-fi hiện thể hiện "happy path". Mỗi màn chính cần bổ sung <b>empty · loading · error</b>. Bảng dưới là các state phải dựng cho dev.</p>
+
+    <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:24px 0 10px">Storefront</h3>
+    <table>
+      <tr><th style="width:24%">Màn</th><th style="width:30%">States cần có</th><th>Ghi chú</th></tr>
+      <tr><td>Catalog / danh sách</td><td>loading (skeleton) · empty (không kết quả lọc) · error (tải lỗi + thử lại)</td><td>Giữ bộ lọc khi reload; phân trang/“xem thêm”</td></tr>
+      <tr><td>Chi tiết sản phẩm</td><td>loading · hết hàng (màu <code>available:false</code>) · 404</td><td>Khoá nút "Thêm vào giỏ" khi chưa chọn màu/khắc</td></tr>
+      <tr><td>Cá nhân hoá (khắc)</td><td>trống (chưa nhập) · text quá dài · vùng khắc không hợp lệ</td><td>Chữ chỉ "hít" vào điểm khắc hợp lệ trên model</td></tr>
+      <tr><td>Giỏ hàng</td><td><b>giỏ rỗng</b> · cập nhật số lượng · xoá item · lỗi đồng bộ</td><td>Empty state có CTA "Khám phá bộ sưu tập"</td></tr>
+      <tr><td>Checkout</td><td>lỗi validate form · đang gửi (disable nút) · tạo đơn lỗi · thành công → VietQR</td><td>Hiện QR + hướng dẫn CK; nhắc "đơn tạo sau khi CK"</td></tr>
+      <tr><td>Tra cứu đơn</td><td>không tìm thấy (sai mã/SĐT) · loading</td><td>Hiện timeline trạng thái khi tìm thấy</td></tr>
+    </table>
+
+    <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:24px 0 10px">Admin</h3>
+    <table>
+      <tr><th style="width:24%">Màn</th><th style="width:30%">States cần có</th><th>Ghi chú</th></tr>
+      <tr><td>Dashboard</td><td>loading · chưa có đơn nào hôm nay</td><td>Số liệu rỗng hiển thị 0, không để trống</td></tr>
+      <tr><td>Đơn hàng</td><td>danh sách rỗng · lọc rỗng · lỗi · đổi trạng thái (confirm + lý do khi huỷ/hoàn)</td><td>Bộ lọc theo trạng thái dùng chung mục 05</td></tr>
+      <tr><td>Hàng đợi in</td><td>không có việc cần in · kéo-thả đổi chặng · lỗi cập nhật</td><td>Ánh xạ stage ↔ order status</td></tr>
+      <tr><td>Sản phẩm</td><td>tạo mới · upload model/ảnh đang chạy · upload lỗi · nháp (draft)</td><td>Quản lý màu có tên + option có mô tả</td></tr>
+      <tr><td>Đánh giá</td><td>chưa có đánh giá · trả lời · ẩn/hiện</td><td>—</td></tr>
+      <tr><td>Cài đặt</td><td>lưu thành công · lỗi · chưa cấu hình STK (cảnh báo)</td><td>Thiếu STK → chặn checkout web</td></tr>
+    </table>
+
+    <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:24px 0 10px">Extension</h3>
+    <table>
+      <tr><th style="width:24%">Màn</th><th style="width:30%">States cần có</th><th>Ghi chú</th></tr>
+      <tr><td>Đăng nhập</td><td>chưa kết nối · sai thông tin · mất mạng</td><td>Chỉ hoạt động trên domain Messenger/IG</td></tr>
+      <tr><td>Tạo đơn nhanh</td><td>thiếu trường bắt buộc · tạo lỗi · tạo xong (toast + mã đơn)</td><td>Tự điền từ hội thoại nếu nhận diện được</td></tr>
+      <tr><td>Tra cứu đơn</td><td>không quét được mã trong tin nhắn · không tìm thấy</td><td>Nút "Cập nhật nhanh trạng thái" dùng bộ chung</td></tr>
+      <tr><td>Mẫu trả lời</td><td>chưa có mẫu · chèn 1 chạm</td><td>Hỗ trợ biến {tên}, {mã đơn}, {STK}</td></tr>
+    </table>
+  </div>
+
+  <!-- ============ 05 ORDER STATUS ============ -->
+  <div class="page" style="max-width:860px;margin:26px auto 0;background:#fff;border:1.5px solid #EFE6CC;border-radius:16px;box-shadow:0 2px 14px rgba(73,47,16,.07);padding:46px 56px 52px">
+    <div style="display:flex;align-items:center;gap:13px;margin-bottom:8px"><span style="font-family:'Space Mono',monospace;font-weight:700;font-size:13px;color:#fff;background:#FF6B4A;padding:4px 11px;border-radius:8px">04</span><span style="font-family:'Space Mono',monospace;font-size:11px;color:#A88B52;letter-spacing:.08em">TRẠNG THÁI</span></div>
+    <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:32px;color:#492F10;letter-spacing:-0.02em;margin:0 0 8px">Bộ trạng thái đơn hàng (dùng chung)</h2>
+    <p style="font-size:14.5px;color:#3A2A12;line-height:1.7">Một enum duy nhất — Web khách, Admin, Extension đều khớp. 5 mốc tiến trình + 2 ngoại lệ.</p>
+
+    <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:20px 0 6px;font-family:'Hanken Grotesque',sans-serif;font-weight:700;font-size:13px">
+      <span style="padding:5px 13px;border-radius:999px;border:2px solid #FF6B4A;color:#C93A1A;background:#fff">Chờ xác nhận</span>
+      <span style="color:#C9B98E">→</span>
+      <span style="padding:5px 13px;border-radius:999px;background:#FFE7DD;color:#C93A1A;border:1.5px solid #F3B49B">Đã thanh toán</span>
+      <span style="color:#C9B98E">→</span>
+      <span style="padding:5px 13px;border-radius:999px;background:#FF6B4A;color:#fff;border:2px solid #492F10">Đang in</span>
+      <span style="color:#C9B98E">→</span>
+      <span style="padding:5px 13px;border-radius:999px;background:#E6EEFC;color:#2D5FB8;border:1.5px solid #4C8DFF">Đang giao</span>
+      <span style="color:#C9B98E">→</span>
+      <span style="padding:5px 13px;border-radius:999px;background:#D6F0EA;color:#0E7C68;border:1.5px solid #0E7C68">Hoàn tất</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:12px 0 0">
+      <span style="font-family:'Space Mono',monospace;font-size:11px;color:#7C6233">Ngoại lệ:</span>
+      <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:700;font-size:13px;padding:5px 13px;border-radius:999px;background:#FBE6E2;color:#C0392B;border:1.5px solid #D8473A">Đã huỷ</span>
+      <span style="font-family:'Hanken Grotesque',sans-serif;font-weight:700;font-size:13px;padding:5px 13px;border-radius:999px;background:#FBEFD9;color:#9A6B2F;border:1.5px solid #E0A458">Hoàn hàng</span>
+    </div>
+
+    <table style="margin-top:24px">
+      <tr><th style="width:22%">Mã enum</th><th style="width:22%">Nhãn</th><th>Ý nghĩa &amp; chuyển tiếp hợp lệ</th></tr>
+      <tr><td><code>PENDING_CONFIRM</code></td><td>Chờ xác nhận</td><td>Khách đã báo/đã CK, chờ shop đối soát → <code>PAID</code> hoặc <code>CANCELLED</code></td></tr>
+      <tr><td><code>PAID</code></td><td>Đã thanh toán</td><td>Đã đối soát CK; vào hàng đợi in (= "Cần in") → <code>PRINTING</code></td></tr>
+      <tr><td><code>PRINTING</code></td><td>Đang in</td><td>Đang in/đóng gói → <code>SHIPPING</code></td></tr>
+      <tr><td><code>SHIPPING</code></td><td>Đang giao</td><td>Đã bàn giao vận chuyển (= "Đã giao" ở hàng đợi) → <code>COMPLETED</code></td></tr>
+      <tr><td><code>COMPLETED</code></td><td>Hoàn tất</td><td>Trạng thái cuối của trục tiến trình</td></tr>
+      <tr><td><code>CANCELLED</code></td><td>Đã huỷ</td><td><b>Ngoại lệ</b> — từ bất kỳ mốc nào trước Hoàn tất; bắt buộc <code>reason</code></td></tr>
+      <tr><td><code>RETURNED</code></td><td>Hoàn hàng</td><td><b>Ngoại lệ</b> — bom hàng/trả về; bắt buộc <code>reason</code></td></tr>
+    </table>
+
+    <div style="background:#FFF4E0;border:1.5px solid #F0D49B;border-radius:12px;padding:14px 18px;margin-top:18px;font-size:13px;color:#6B4A18;line-height:1.65">
+      <b>Ánh xạ Hàng đợi in:</b> <code>Cần in</code> = PAID · <code>Đang in / Đóng gói</code> = PRINTING · <code>Đã giao</code> = SHIPPING. Huỷ/Hoàn luôn hiển thị <b>tách riêng</b>, không phải một mốc tiến trình. Mọi lần đổi trạng thái ghi vào <code>statusHistory</code> {from, to, at, byUser, reason?}. Riêng <b>Pet Tag</b> có thêm chặng <code>Ghi chip NFC</code> giữa Đang in và Đóng gói (xem mục 09).
+    </div>
+  </div>
+
+  <!-- ============ 06 VALIDATION & MICROCOPY ============ -->
+  <div class="page" style="max-width:860px;margin:26px auto 0;background:#fff;border:1.5px solid #EFE6CC;border-radius:16px;box-shadow:0 2px 14px rgba(73,47,16,.07);padding:46px 56px 52px">
+    <div style="display:flex;align-items:center;gap:13px;margin-bottom:8px"><span style="font-family:'Space Mono',monospace;font-weight:700;font-size:13px;color:#fff;background:#FF6B4A;padding:4px 11px;border-radius:8px">05</span><span style="font-family:'Space Mono',monospace;font-size:11px;color:#A88B52;letter-spacing:.08em">VALIDATION</span></div>
+    <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:32px;color:#492F10;letter-spacing:-0.02em;margin:0 0 18px">Validation &amp; microcopy</h2>
+
+    <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:6px 0 10px">Quy tắc field (checkout &amp; tạo đơn)</h3>
+    <table>
+      <tr><th style="width:24%">Trường</th><th style="width:30%">Quy tắc</th><th>Thông báo lỗi (sentence case)</th></tr>
+      <tr><td>Tên</td><td>bắt buộc, 2–60 ký tự</td><td>"Bạn cho mình xin tên nhé."</td></tr>
+      <tr><td>SĐT</td><td>bắt buộc, regex VN <code>(0|+84)…</code> 10 số</td><td>"Số điện thoại chưa đúng định dạng."</td></tr>
+      <tr><td>Email</td><td>tuỳ chọn, định dạng email</td><td>"Email này nhìn chưa hợp lệ."</td></tr>
+      <tr><td>Địa chỉ</td><td>bắt buộc đủ tỉnh/quận/phường + đường</td><td>"Vui lòng chọn đủ tỉnh, quận, phường."</td></tr>
+      <tr><td>Khắc tên</td><td>≤ giới hạn ký tự theo vùng khắc</td><td>"Tên hơi dài so với vị trí khắc này."</td></tr>
+      <tr><td>Mã giảm giá</td><td>kiểm tra tồn tại + hạn dùng</td><td>"Mã này đã hết hạn rồi."</td></tr>
+      <tr><td>Tra cứu đơn</td><td>mã + SĐT phải khớp</td><td>"Không tìm thấy đơn khớp mã và số này."</td></tr>
+    </table>
+
+    <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:26px 0 10px">Microcopy chuẩn (giọng Lumin: ấm, mộc, "chúng mình / bạn")</h3>
+    <table>
+      <tr><th style="width:30%">Ngữ cảnh</th><th>Nội dung</th></tr>
+      <tr><td>Giỏ rỗng</td><td>"Giỏ còn trống — mình đi ngắm bộ sưu tập nhé." + nút <i>Khám phá bộ sưu tập</i></td></tr>
+      <tr><td>Trấn an checkout</td><td>"Giao trong 3–5 ngày · đổi trả miễn phí trong 30 ngày"</td></tr>
+      <tr><td>Sau đặt hàng (VietQR)</td><td>"Quét mã để chuyển khoản. Đơn được xác nhận ngay khi chúng mình nhận được CK."</td></tr>
+      <tr><td>Toast tạo đơn (extension)</td><td>"Đã tạo đơn #LMN-2261 🎉"</td></tr>
+      <tr><td>Lỗi mạng chung</td><td>"Mất kết nối một chút — thử lại giúp mình nhé."</td></tr>
+      <tr><td>Hết hàng (màu)</td><td>"Màu này tạm hết nhựa — chọn màu khác nha."</td></tr>
+    </table>
+    <div style="background:#E9F4FB;border:1.5px solid #B9DDF2;border-radius:12px;padding:13px 17px;margin-top:16px;font-size:12.5px;color:#1F557F;line-height:1.6"><b>i18n:</b> sentence case mọi nơi (không ALL-CAPS). Tiền tệ VND mặc định <code>390.000₫</code>. Kích thước/spec dùng Space Mono <code>180 × 180 × 240 mm</code>. Tiếng Việt là ngôn ngữ chính; chuẩn bị khoá chuỗi nếu cần thêm Anh sau.</div>
+  </div>
+
+  <!-- ============ 07 RESPONSIVE ============ -->
+  <div class="page" style="max-width:860px;margin:26px auto 0;background:#fff;border:1.5px solid #EFE6CC;border-radius:16px;box-shadow:0 2px 14px rgba(73,47,16,.07);padding:46px 56px 52px">
+    <div style="display:flex;align-items:center;gap:13px;margin-bottom:8px"><span style="font-family:'Space Mono',monospace;font-weight:700;font-size:13px;color:#fff;background:#FF6B4A;padding:4px 11px;border-radius:8px">06</span><span style="font-family:'Space Mono',monospace;font-size:11px;color:#A88B52;letter-spacing:.08em">RESPONSIVE</span></div>
+    <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:32px;color:#492F10;letter-spacing:-0.02em;margin:0 0 18px">Responsive &amp; breakpoints</h2>
+    <table>
+      <tr><th style="width:22%">Breakpoint</th><th style="width:20%">Khoảng</th><th>Hành vi</th></tr>
+      <tr><td>Mobile</td><td>&lt; 640px</td><td>Storefront 1 cột; nav thu gọn thành menu; CTA "Thêm vào giỏ" dính đáy</td></tr>
+      <tr><td>Tablet</td><td>640–1024px</td><td>Lưới sản phẩm 2 cột; admin chuyển sidebar thành drawer</td></tr>
+      <tr><td>Desktop</td><td>1024–1440px</td><td>Storefront lưới 3–4 cột; admin sidebar cố định</td></tr>
+      <tr><td>Wide</td><td>&gt; 1440px</td><td>Nội dung tối đa 1160–1320px, canh giữa, gutter 28px</td></tr>
+    </table>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:20px">
+      <div style="border:1.5px solid #EFE6CC;border-radius:12px;padding:16px"><div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;color:#492F10">Storefront</div><div style="font-size:12.5px;color:#785B34;margin-top:6px;line-height:1.6">Mobile-first. Hit target ≥ 44px. Giỏ &amp; checkout ưu tiên 1 cột trên mobile.</div></div>
+      <div style="border:1.5px solid #EFE6CC;border-radius:12px;padding:16px"><div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;color:#492F10">Admin</div><div style="font-size:12.5px;color:#785B34;margin-top:6px;line-height:1.6">Desktop-first; đã có bản mobile riêng (xem <code>Lumin Admin Mobile</code>). Bảng cuộn ngang khi hẹp.</div></div>
+      <div style="border:1.5px solid #EFE6CC;border-radius:12px;padding:16px"><div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;color:#492F10">Extension</div><div style="font-size:12.5px;color:#785B34;margin-top:6px;line-height:1.6">Panel cố định ~360–400px cạnh khung chat; không responsive theo viewport.</div></div>
+      <div style="border:1.5px solid #EFE6CC;border-radius:12px;padding:16px"><div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;color:#492F10">Token đã có sẵn</div><div style="font-size:12.5px;color:#785B34;margin-top:6px;line-height:1.6">Màu, type, spacing (4px grid), radius, shadow nằm trong <code>_ds/…/tokens/*.css</code> — dùng trực tiếp dạng CSS variables.</div></div>
+    </div>
+  </div>
+
+  <!-- ============ 08 BEHAVIOR ============ -->
+  <div class="page" style="max-width:860px;margin:26px auto 0;background:#fff;border:1.5px solid #EFE6CC;border-radius:16px;box-shadow:0 2px 14px rgba(73,47,16,.07);padding:46px 56px 52px">
+    <div style="display:flex;align-items:center;gap:13px;margin-bottom:8px"><span style="font-family:'Space Mono',monospace;font-weight:700;font-size:13px;color:#fff;background:#FF6B4A;padding:4px 11px;border-radius:8px">07</span><span style="font-family:'Space Mono',monospace;font-size:11px;color:#A88B52;letter-spacing:.08em">HÀNH VI</span></div>
+    <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:32px;color:#492F10;letter-spacing:-0.02em;margin:0 0 18px">Hành vi &amp; animation</h2>
+    <table>
+      <tr><th style="width:28%">Thành phần</th><th>Đặc tả</th></tr>
+      <tr><td>Transition chung</td><td>120–300ms. Toggle/knob/toast dùng spring <code>cubic-bezier(.34,1.56,.64,1)</code>; drawer/sheet dùng <code>(.4,0,.2,1)</code></td></tr>
+      <tr><td>Nút "pop" (CTA)</td><td>Đổ bóng đặc 4px không blur. Hover: <code>translate(-1px,-1px)</code> bóng lớn hơn. Press: <code>translate(2px,2px)</code> lún vào bóng</td></tr>
+      <tr><td>Card</td><td>Hover nhấc 4px + bóng lớn hơn. Focus: ring sky 3px</td></tr>
+      <tr><td>Switch</td><td>Knob bật lò xo; track chuyển teal khi on</td></tr>
+      <tr><td>Marquee landing</td><td>Dải cocoa chạy lặp — animation trang trí <b>duy nhất</b></td></tr>
+      <tr><td>Reduced motion</td><td>Tôn trọng <code>prefers-reduced-motion</code>: tắt entrance + dừng loop</td></tr>
+    </table>
+
+    <div style="background:#FFEDE7;border:2px solid #FF6B4A;border-radius:14px;padding:18px 20px;margin-top:22px">
+      <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:16px;color:#C93A1A;margin-bottom:6px">🐱 Cat Peek — đặc tả riêng đã có</div>
+      <div style="font-size:13px;color:#6B4A18;line-height:1.65">Tính năng "2 con mèo nhút nhát" có spec kỹ thuật đầy đủ ở <code>Cat Peek - Behavior Spec.md</code> và bản chạy được <code>Lumin Cat Peek.dc.html</code>. Khi port vào web thật: gắn <code>data-anchor</code> lên element làm chỗ núp, giữ 3 quy tắc cốt lõi (núp sau / trốn-tuck-vào-sau / chỉ chọn spot trong viewport), <code>pointer-events:none</code>, bọc checkout bằng <code>[data-no-cat]</code>, và tôn trọng reduced-motion. <b>Đề xuất:</b> bật giai đoạn sau, không chặn release lõi thương mại.</div>
+    </div>
+  </div>
+
+  <!-- ============ 09 AUTH / ANALYTICS ============ -->
+  <div class="page" style="max-width:860px;margin:26px auto 0;background:#fff;border:1.5px solid #EFE6CC;border-radius:16px;box-shadow:0 2px 14px rgba(73,47,16,.07);padding:46px 56px 52px">
+    <div style="display:flex;align-items:center;gap:13px;margin-bottom:8px"><span style="font-family:'Space Mono',monospace;font-weight:700;font-size:13px;color:#fff;background:#FF6B4A;padding:4px 11px;border-radius:8px">08</span><span style="font-family:'Space Mono',monospace;font-size:11px;color:#A88B52;letter-spacing:.08em">AUTH · DỮ LIỆU</span></div>
+    <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:32px;color:#492F10;letter-spacing:-0.02em;margin:0 0 18px">Auth · phân quyền · analytics</h2>
+
+    <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:4px 0 10px">Phân quyền nhân viên</h3>
+    <table>
+      <tr><th style="width:22%">Vai trò</th><th>Quyền</th></tr>
+      <tr><td><code>owner</code></td><td>Toàn quyền: sản phẩm, cài đặt, STK, nhân viên, đối soát thanh toán</td></tr>
+      <tr><td><code>staff</code></td><td>Đơn hàng, hàng đợi in, trả lời đánh giá, dùng extension. Không sửa cài đặt/STK</td></tr>
+    </table>
+    <p style="font-size:12.5px;color:#785B34;margin-top:8px;line-height:1.6">Storefront <b>có tài khoản khách</b> (đăng nhập + xem lịch sử đơn) — đã chốt. Vẫn cho đặt nhanh không bắt buộc đăng nhập; khách vãng lai tra đơn bằng mã đơn + SĐT.</p>
+
+    <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:24px 0 10px">Sự kiện analytics nên gắn</h3>
+    <table>
+      <tr><th style="width:34%">Event</th><th>Khi nào</th></tr>
+      <tr><td><code>product_viewed</code></td><td>Mở chi tiết sản phẩm</td></tr>
+      <tr><td><code>personalize_started</code></td><td>Bắt đầu khắc tên / chọn màu</td></tr>
+      <tr><td><code>add_to_cart</code></td><td>Thêm vào giỏ (kèm color/option)</td></tr>
+      <tr><td><code>checkout_started</code> · <code>order_placed</code></td><td>Vào checkout · tạo đơn thành công</td></tr>
+      <tr><td><code>order_status_changed</code></td><td>Mỗi lần đổi trạng thái (admin/extension)</td></tr>
+      <tr><td><code>extension_quick_order</code></td><td>Tạo đơn nhanh từ chat</td></tr>
+    </table>
+  </div>
+
+  <!-- ============ 09 PET TAG ============ -->
+  <div class="page" style="max-width:860px;margin:26px auto 0;background:#fff;border:1.5px solid #EFE6CC;border-radius:16px;box-shadow:0 2px 14px rgba(73,47,16,.07);padding:46px 56px 52px">
+    <div style="display:flex;align-items:center;gap:13px;margin-bottom:8px"><span style="font-family:'Space Mono',monospace;font-weight:700;font-size:13px;color:#fff;background:#FF6B4A;padding:4px 11px;border-radius:8px">09</span><span style="font-family:'Space Mono',monospace;font-size:11px;color:#A88B52;letter-spacing:.08em">PET TAG NFC</span></div>
+    <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:32px;color:#492F10;letter-spacing:-0.02em;margin:0 0 8px">Pet Tag NFC &amp; trang hồ sơ thú cưng</h2>
+    <p style="font-size:14.5px;color:#3A2A12;line-height:1.7">Pet Tag là <b>một sản phẩm trong cửa hàng</b> — vòng định danh in 3D gắn chip NFC. Khách mua → in → <b>ghi URL vào chip</b> → giao. Khi khách quét tag &amp; đăng nhập, tag được <b>kích hoạt</b> và sinh ra một <b>trang pet</b> riêng (link-in-bio). Cùng một URL phục vụ 3 trạng thái xem khác nhau. Tham chiếu bản chạy được: <code>Lumin Pet Tag</code> (khách) và <code>Lumin Admin Mobile</code> mục 9 (vận hành).</p>
+
+    <!-- lifecycle pills -->
+    <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:20px 0 6px;font-family:'Hanken Grotesque',sans-serif;font-weight:700;font-size:13px">
+      <span style="padding:5px 13px;border-radius:999px;border:2px solid #FF6B4A;color:#C93A1A;background:#fff">Chờ ghi chip</span>
+      <span style="color:#C9B98E">→</span>
+      <span style="padding:5px 13px;border-radius:999px;background:#FBEFD9;color:#9A6B2F;border:1.5px solid #E0A458">Đã ghi</span>
+      <span style="color:#C9B98E">→</span>
+      <span style="padding:5px 13px;border-radius:999px;background:#D6F0EA;color:#0E7C68;border:1.5px solid #0E7C68">Đã kích hoạt</span>
+      <span style="font-family:'Space Mono',monospace;font-size:11px;color:#7C6233;margin-left:6px">+ cờ thất lạc bật/tắt trên hồ sơ</span>
+    </div>
+
+    <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:26px 0 10px">PetTag</h3>
+    <table>
+      <tr><th style="width:26%">Trường</th><th style="width:24%">Kiểu</th><th>Ghi chú</th></tr>
+      <tr><td><code>id</code> / code</td><td>string</td><td>Mã hiển thị <code>#LMN-T0231</code></td></tr>
+      <tr><td><code>orderItemRef</code></td><td>uuid → OrderItem</td><td>Đơn bán tag (dùng chung Order/PrintJob)</td></tr>
+      <tr><td><code>status</code></td><td>enum</td><td><code>UNENCODED</code> · <code>ENCODED</code> · <code>ACTIVATED</code> — xem dưới</td></tr>
+      <tr><td><code>chipUid</code></td><td>string?</td><td>UID chip NFC, ghi nhận khi encode</td></tr>
+      <tr><td><code>url</code></td><td>string</td><td>Ghi vào chip — <code>lumin.pet/t/{shortId}</code></td></tr>
+      <tr><td><code>profileId</code></td><td>uuid? → PetProfile</td><td><code>null</code> đến khi kích hoạt</td></tr>
+      <tr><td><code>ownerAccountId</code></td><td>uuid? → Account</td><td>Gắn khi khách đăng nhập lần đầu</td></tr>
+      <tr><td><code>encodedAt</code> · <code>activatedAt</code></td><td>datetime?</td><td>Mốc ghi chip · mốc kích hoạt</td></tr>
+    </table>
+
+    <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:24px 0 10px">PetProfile</h3>
+    <table>
+      <tr><th style="width:26%">Trường</th><th style="width:24%">Kiểu</th><th>Ghi chú</th></tr>
+      <tr><td><code>id</code> · <code>tagId</code> · <code>ownerAccountId</code></td><td>uuid</td><td>Thuộc 1 tag &amp; 1 tài khoản khách</td></tr>
+      <tr><td><code>petName</code> · <code>species</code> · <code>breed</code> · <code>age</code> · <code>weight</code></td><td>string · enum(dog/cat/other) · …</td><td>Hồ sơ bé (bước 1 onboarding)</td></tr>
+      <tr><td><code>photoUrl</code> · <code>gallery[]</code></td><td>url · Image[]</td><td>Ảnh đại diện + album</td></tr>
+      <tr><td><code>bio</code> · <code>favorites[]</code></td><td>text · string[]</td><td>Giới thiệu + chip "khoái khẩu"</td></tr>
+      <tr><td><code>medical</code></td><td>{vaccinated, neutered, allergies, vetClinic}</td><td>Cảnh báo dị ứng hiển thị nổi bật</td></tr>
+      <tr><td><code>ownerContact</code></td><td>{name, phone, zalo, email?}</td><td>Hiện khi bé thất lạc; <code>phone</code> bắt buộc</td></tr>
+      <tr><td><code>socials[]</code></td><td>{platform, handle}[]</td><td>Instagram · TikTok… (tuỳ chọn)</td></tr>
+      <tr><td><code>lostMode</code></td><td>bool</td><td><b>Mặc định false</b> (ở nhà); chủ gạt bật</td></tr>
+      <tr><td><code>theme</code></td><td>{palette, background, bgOpacity, nameFont}</td><td>5 colorway brand + Đêm cocoa; nền ảnh riêng có độ mờ</td></tr>
+      <tr><td><code>blocks[]</code></td><td>ProfileBlock[]</td><td>Thứ tự &amp; ẩn/hiện khối nội dung</td></tr>
+    </table>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:24px">
+      <div>
+        <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:0 0 10px">ProfileBlock</h3>
+        <table>
+          <tr><th>Trường</th><th>Kiểu</th></tr>
+          <tr><td><code>id</code></td><td>uuid</td></tr>
+          <tr><td><code>type</code></td><td>enum: photo_name · bio · gallery · favorites · medical · socials</td></tr>
+          <tr><td><code>order</code></td><td>int</td></tr>
+          <tr><td><code>visible</code></td><td>bool</td></tr>
+        </table>
+        <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;line-height:1.6;margin-top:7px"><code>photo_name</code> luôn ở trên cùng &amp; không ẩn được.</div>
+      </div>
+      <div>
+        <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:0 0 10px">LostEvent</h3>
+        <table>
+          <tr><th>Trường</th><th>Kiểu</th></tr>
+          <tr><td><code>id</code> · <code>tagId</code></td><td>uuid</td></tr>
+          <tr><td><code>scannedAt</code></td><td>datetime</td></tr>
+          <tr><td><code>finderLocation</code></td><td>{lat,lng}?</td></tr>
+          <tr><td><code>ownerNotifiedAt</code></td><td>datetime?</td></tr>
+        </table>
+        <div style="font-family:'Space Mono',monospace;font-size:9px;color:#7C6233;line-height:1.6;margin-top:7px">Sinh khi người lạ quét tag đang <code>lostMode</code> &amp; chia sẻ vị trí (1 lần).</div>
+      </div>
+    </div>
+
+    <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:28px 0 10px">Trạng thái tag (fulfillment)</h3>
+    <table>
+      <tr><th style="width:22%">Mã enum</th><th style="width:20%">Nhãn</th><th>Ý nghĩa &amp; chuyển tiếp</th></tr>
+      <tr><td><code>UNENCODED</code></td><td>Chờ ghi chip</td><td>Tag đã in, chip trắng. Nhân viên ghi URL → <code>ENCODED</code> (chặng "Ghi chip NFC" trong hàng đợi in, giữa Đang in và Đóng gói)</td></tr>
+      <tr><td><code>ENCODED</code></td><td>Đã ghi</td><td>Chip đã ghi URL &amp; <b>khoá chống ghi đè</b>; đóng gói &amp; giao. Chờ khách quét + đăng nhập → <code>ACTIVATED</code></td></tr>
+      <tr><td><code>ACTIVATED</code></td><td>Đã kích hoạt</td><td>Đã gắn tài khoản + có PetProfile. Trang pet hoạt động; chủ tự sửa được</td></tr>
+    </table>
+    <div style="background:#FFF4E0;border:1.5px solid #F0D49B;border-radius:12px;padding:13px 17px;margin-top:14px;font-size:12.5px;color:#6B4A18;line-height:1.6"><b>Ghi chip:</b> ghi <code>url</code> (NDEF) vào chip <b>NTAG215</b>, ghi 1 lần rồi khoá. Admin theo dõi tag theo 3 trạng thái ở màn "Pet Tag" (tab Thêm). <b>Kích hoạt</b> không cần nhập mã — đăng nhập (Google/email) là tag tự gắn vào tài khoản.</div>
+
+    <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:26px 0 10px">Trang pet — 1 URL, 3 trạng thái xem</h3>
+    <table>
+      <tr><th style="width:30%">Người xem</th><th>Hiển thị</th></tr>
+      <tr><td>Chủ (đã đăng nhập)</td><td>Đầy đủ + nút <b>Sửa trang</b> + <b>công tắc thất lạc</b> (đặt đầu trang)</td></tr>
+      <tr><td>Người lạ · <code>lostMode=false</code></td><td>Bản A chỉ-đọc: ảnh, bio, social, album, khoái khẩu, cảnh báo dị ứng + nút gọi sen. <b>Không có nút sửa</b></td></tr>
+      <tr><td>Người lạ · <code>lostMode=true</code></td><td>Chế độ cứu hộ: ưu tiên liên hệ chủ + nút "Gửi vị trí của tôi" (GPS 1 lần). Dải cam đỏ cảnh báo không bị theme làm mờ</td></tr>
+    </table>
+
+    <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:26px 0 10px">Quyết định đã chốt — Pet Tag</h3>
+    <table>
+      <tr><th style="width:30%">Hạng mục</th><th style="width:32%">Quyết định</th><th>Tác động kỹ thuật</th></tr>
+      <tr><td>Chip &amp; ghi dữ liệu</td><td>NFC <b>NTAG215</b>, ghi URL 1 lần + khoá</td><td>Web NFC / app ghi NDEF; lưu <code>chipUid</code>, <code>encodedAt</code></td></tr>
+      <tr><td>URL trang pet</td><td><code>lumin.pet/t/{shortId}</code> — mở trình duyệt</td><td><b>Không cần app</b>; routing nhận diện 3 trạng thái xem theo auth + <code>lostMode</code></td></tr>
+      <tr><td>Kích hoạt</td><td>Đăng nhập (Google/email) → tag tự gắn tài khoản</td><td>Không nhập mã; bỏ bước "kích hoạt" rườm rà</td></tr>
+      <tr><td>Tùy chỉnh trang</td><td><b>Sửa-tại-chỗ</b> (WYSIWYG) + chế độ <b>Sắp xếp khối</b> riêng</td><td>Block-based; khối <code>photo_name</code> cố định trên cùng</td></tr>
+      <tr><td>Giao diện</td><td>5 colorway brand + Đêm cocoa; nền ảnh riêng có độ mờ</td><td>Không picker tự do; cocoa luôn là chữ/viền; cảnh báo dị ứng &amp; nút khẩn không bị theme ghi đè</td></tr>
+      <tr><td>Chế độ thất lạc</td><td>Mặc định TẮT; chủ gạt bật; GPS người nhặt gửi 1 lần</td><td>Cờ <code>lostMode</code>; tạo <code>LostEvent</code> + thông báo chủ</td></tr>
+      <tr><td>Vận hành admin</td><td>Thêm chặng <b>Ghi chip NFC</b> + màn <b>Pet Tag</b> liệt kê tag</td><td>Map vào PrintJob stage; danh sách lọc theo 3 trạng thái</td></tr>
+    </table>
+    <div style="background:#E9F4FB;border:1.5px solid #B9DDF2;border-radius:12px;padding:13px 17px;margin-top:16px;font-size:12.5px;color:#1F557F;line-height:1.6"><b>Microcopy &amp; ràng buộc:</b> giọng Lumin ("sen của bé", "chạm tag…"). <code>petName</code> bắt buộc; <code>ownerContact.phone</code> bắt buộc (để hiện khi lạc). Lost banner: "Mình đi lạc rồi!"; xác nhận GPS: "Đã gửi vị trí cho sen của Bơ!". Tôn trọng <code>prefers-reduced-motion</code> cho ripple NFC &amp; entrance.</div>
+  </div>
+
+  <!-- ============ 10 ASSETS & OPEN QUESTIONS ============ -->
+  <div class="page" style="max-width:860px;margin:26px auto 0;background:#fff;border:1.5px solid #EFE6CC;border-radius:16px;box-shadow:0 2px 14px rgba(73,47,16,.07);padding:46px 56px 52px">
+    <div style="display:flex;align-items:center;gap:13px;margin-bottom:8px"><span style="font-family:'Space Mono',monospace;font-weight:700;font-size:13px;color:#fff;background:#FF6B4A;padding:4px 11px;border-radius:8px">10</span><span style="font-family:'Space Mono',monospace;font-size:11px;color:#A88B52;letter-spacing:.08em">BÀN GIAO</span></div>
+    <h2 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:32px;color:#492F10;letter-spacing:-0.02em;margin:0 0 18px">Tài nguyên &amp; quyết định đã chốt</h2>
+
+    <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:4px 0 10px">Checklist tài nguyên cần cung cấp</h3>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:11px;align-items:flex-start;font-size:13.5px;color:#3A2A12"><span style="color:#16B5A0;font-weight:800">✓</span><div><b>Đã có:</b> design tokens (màu/type/spacing/radius/shadow) trong <code>_ds/…/tokens</code>; bộ component DS; logo SVG; tất cả màn hi-fi; spec Cat Peek.</div></div>
+      <div style="display:flex;gap:11px;align-items:flex-start;font-size:13.5px;color:#3A2A12"><span style="color:#FF6B4A;font-weight:800">○</span><div><b>Cần bổ sung:</b> ảnh sản phẩm thật (hi-fi đang dùng placeholder "glow"); file model 3D (.glb để xem, .stl/.3mf để in).</div></div>
+      <div style="display:flex;gap:11px;align-items:flex-start;font-size:13.5px;color:#3A2A12"><span style="color:#FF6B4A;font-weight:800">○</span><div>Favicon, ảnh OG/social share, icon app (nếu có).</div></div>
+      <div style="display:flex;gap:11px;align-items:flex-start;font-size:13.5px;color:#3A2A12"><span style="color:#FF6B4A;font-weight:800">○</span><div>Nội dung thật: danh sách sản phẩm + giá VND + màu có tên + mô tả; chính sách đổi trả/vận chuyển; thông tin STK (VietQR).</div></div>
+      <div style="display:flex;gap:11px;align-items:flex-start;font-size:13.5px;color:#3A2A12"><span style="color:#FF6B4A;font-weight:800">○</span><div>Bộ mẫu trả lời (reply templates) cho extension.</div></div>
+    </div>
+
+    <h3 style="font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:17px;color:#492F10;margin:26px 0 10px">Quyết định đã chốt</h3>
+    <table>
+      <tr><th style="width:30%">Hạng mục</th><th style="width:32%">Quyết định</th><th>Tác động kỹ thuật</th></tr>
+      <tr><td>Xem model 3D</td><td><b>Có</b> — cần xem model xoay 360° trên web</td><td>Dùng file <code>.glb</code> + 3D viewer (model-viewer / three.js); chuẩn bị model cho mọi SP</td></tr>
+      <tr><td>Phí vận chuyển</td><td><b>Theo khu vực</b></td><td>Bảng phí ship theo vùng trong Settings; <code>shippingFee</code> tính ở server theo địa chỉ</td></tr>
+      <tr><td>Đối soát chuyển khoản</td><td><b>Thủ công</b></td><td>Nhân viên xác nhận CK → <code>PAID</code>; chưa cần webhook ngân hàng</td></tr>
+      <tr><td>Tài khoản khách</td><td><b>Có</b> — tài khoản + lịch sử đơn</td><td>Thêm auth phía storefront + trang lịch sử đơn; vẫn cho đặt nhanh không bắt buộc đăng nhập</td></tr>
+      <tr><td>Đa ngôn ngữ</td><td><b>Chỉ tiếng Việt</b> lúc đầu, nhưng sẵn sàng i18n</td><td>Tách khóa chuỗi ngay từ đầu, mặc định <code>vi</code>; không hard-code text để thêm ngôn ngữ sau dễ dàng</td></tr>
+      <tr><td>Giới hạn ký tự khắc</td><td>Cấu hình <b>theo từng sản phẩm</b> lúc tạo</td><td>Trường <code>maxChars</code> trên Option/Product, nhập khi tạo SP; validation khắc dựa vào giá trị này</td></tr>
+    </table>
+
+    <div style="margin-top:30px;border-top:2px dashed #EFE6CC;padding-top:20px;display:flex;align-items:center;gap:12px">
+      <div style="font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:20px;color:#492F10">Lumin◖</div>
+      <div style="font-family:'Space Mono',monospace;font-size:10px;color:#A88B52;line-height:1.6">Developer handoff v1.1 · 24·06·2026<br>Tham chiếu: các file <code>*.dc.html</code> trong project + <code>_ds/</code> design system</div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>
