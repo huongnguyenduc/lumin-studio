@@ -9,13 +9,27 @@ on:
       - '.claude/**'
       - 'tests/harness/**'
       - 'docs/agent-harness.md'
+      - 'docs/acceptance.md'
       - '.github/workflows/harness.yml'
+      # audit r3: app-code paths — để ARM-GUARD (guard.test.sh) chạy đúng PR land Phase-0. Thiếu các dòng này
+      # thì PR chỉ chạm packages/services/apps KHÔNG trigger self-test ⇒ arm-check vô dụng đúng lúc cần nhất.
+      - 'packages/**'
+      - 'services/**'
+      - 'apps/**'
+      - 'package.json'
+      - 'Makefile'
   pull_request:
     paths:
       - '.claude/**'
       - 'tests/harness/**'
       - 'docs/agent-harness.md'
+      - 'docs/acceptance.md'
       - '.github/workflows/harness.yml'
+      - 'packages/**'
+      - 'services/**'
+      - 'apps/**'
+      - 'package.json'
+      - 'Makefile'
 
 jobs:
   selftest:

@@ -13,13 +13,14 @@
 - **Surface chạm:** `[ ] Storefront  [ ] Admin  [ ] Admin Mobile  [ ] Extension`  ·  **BFF/core:** `[ ] core-api (Go)  [ ] packages/core  [ ] asset-worker (Rust)`
 - **ADR liên quan (đọc trước, đừng relitigate):** `<ADR-0xx, ADR-0yy>` — [`decisions.md`](../decisions.md)
 - **Spec nguồn:** `/spec.md §<…>`  ·  **Acceptance id sẽ phủ:** `<OSM-0x, MNY-0x, CHK-0x…>` ([`acceptance.md`](../acceptance.md))
+- **Lưu plan:** `docs/plans/<feature>.md` (plansDirectory — ADR-027); sống sót `/clear`+compaction, review được như PR.
 
 ## 1. Global constraints (verbatim — KHÔNG diễn giải lại)
 > Dán **nguyên văn** ràng buộc luôn-đúng + giá trị spec đặc thù của feature. Mục đích: mỗi task đọc được luật mà không
 > phải nhớ. Đây là copy của [`conventions.md`](../conventions.md) — nếu thấy mâu thuẫn, `conventions.md` thắng.
 
 **Luôn-đúng (4 luật always-must + nền):**
-- **statusHistory:** mọi đổi `OrderStatus` đi qua transition guard của `packages/core` và **append** `statusHistory{from,to,at,byUser,reason?}`; `reason` bắt buộc cho `CANCELLED`/`RETURNED`.
+- **statusHistory:** mọi đổi `OrderStatus` đi qua transition guard của `packages/core` và **append** `statusHistory{from,to,at,byUser,reason?}`; `reason` bắt buộc cho `CANCELLED`/`REFUNDED` (`REFUNDED` kèm `refundProofUrl`).
 - **Tiền:** lưu **int VND** (không thập phân); `subtotal/shippingFee/total` **tính ở server**, không tin total client; format qua **một** formatter `packages/core` → `390.000₫` (U+20AB, không space). Không gọi `Intl.NumberFormat`/`toLocaleString` ngoài `core`.
 - **i18n:** không hard-code chuỗi UI — `next-intl` ICU, default `vi`, tách khoá từ commit đầu.
 - **prefers-reduced-motion:** tắt entrance + dừng loop (viewer 3D, Cat Peek).
@@ -75,5 +76,8 @@ apps/admin/…           <…>
 - [ ] Acceptance id đã tick đều có test **pass thật** (không `.skip`, không special-case)?
 - [ ] RBAC: staff không reconcile→PAID / không sửa STK ở luồng này?
 - [ ] Đã cập nhật [`active-context.md`](../active-context.md) (focus · ledger task · lần verify xanh)?
+- [ ] (UI) Đã **đối chiếu thị giác** màn mới vs `designs/*.dc.html` (ADR-027 §Visual-fidelity)?
+- [ ] Hành vi có lệch `spec.md`/`acceptance.md`? Nếu có, đã sửa **cùng PR** (spec-sync, ADR-027)?
+- [ ] Đã append **EARS + test-id** cho hành vi-invariant mới vào `acceptance.md` (ADR-027)?
 
 > Xong self-review → gọi **spec-guardian** (compliance) và, nếu muốn ý kiến design, **oracle** — xem `agent-harness.md` §Reviewer (hai verdict tách riêng).

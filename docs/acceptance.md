@@ -11,6 +11,9 @@
 >   `[x]` có test id không resolve được / không pass. Khi test đó tồn tại, `verify-before-stop` tự ép qua green-suite gate
 >   — ledger trở thành cổng chặn thật, không chỉ là checklist.
 > - `spec-guardian` chỉ **WARN** nếu một dòng có vẻ chưa được test (LLM enforce phủ định yếu); **test mới là gate**.
+> - **EARS-per-feature (ADR-027):** feature có hành vi-invariant thật → lúc duyệt plan, append 1-3 dòng EARS +
+>   test-id MỚI vào file này (đừng để ledger đứng yên ở 3 cụm Phase-0). Backbone (money/state) nên là
+>   **property-test** generative + **mutation kill-gate** (ADR-027 · `plan.md` ARM).
 
 ## Cụm 1 — Order state machine (`spec.md` §04 · `domain-core.md`)
 
@@ -18,8 +21,8 @@
   từ chối transition không hợp lệ. *(test: `order_state.transition_table`)*
 - [ ] `OSM-02` — WHEN bất kỳ transition hợp lệ nào xảy ra, the system shall **append** `statusHistory {from, to, at, byUser}`
   (đúng một bản ghi). *(test: `order_state.appends_status_history`)*
-- [ ] `OSM-03` — WHEN đơn chuyển sang `CANCELLED` hoặc `RETURNED`, the system shall **bắt buộc** `reason` không rỗng.
-  *(test: `order_state.cancel_return_requires_reason`)*
+- [ ] `OSM-03` — WHEN đơn chuyển sang `CANCELLED` hoặc `REFUNDED`, the system shall **bắt buộc** `reason` không rỗng (và `REFUNDED` cần `refundProofUrl`).
+  *(test: `order_state.cancel_refund_requires_reason`)*
 - [ ] `OSM-04` — WHEN một staff (không phải owner) cố `reconcile → PAID`, the system shall **từ chối** (owner-only, ADR-010).
   *(test: `order_state.reconcile_paid_owner_only`)*
 - [ ] `OSM-05` — WHEN transition guard chạy theo `role`, the system shall enforce RBAC cho mọi (from, to, role) — staff
