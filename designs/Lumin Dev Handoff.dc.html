@@ -237,7 +237,7 @@ html,body{margin:0;padding:0;background:#EAE7DF}
       <tr><td><code>SHIPPING</code></td><td>Đang giao</td><td>Đã bàn giao vận chuyển (= "Đã giao" ở hàng đợi) → <code>COMPLETED</code></td></tr>
       <tr><td><code>COMPLETED</code></td><td>Hoàn tất</td><td>Trạng thái cuối của trục tiến trình</td></tr>
       <tr><td><code>CANCELLED</code></td><td>Đã huỷ</td><td><b>Ngoại lệ</b> — từ bất kỳ mốc nào trước Hoàn tất; bắt buộc <code>reason</code></td></tr>
-      <tr><td><code>RETURNED</code></td><td>Hoàn hàng</td><td><b>Ngoại lệ</b> — bom hàng/trả về; bắt buộc <code>reason</code></td></tr>
+      <tr><td><code>REFUNDED</code></td><td>Đã hoàn tiền</td><td><b>Ngoại lệ</b> — đã chuyển hoàn cho khách (thường lỗi shop); bắt buộc <code>reason</code> + <code>refundProofUrl</code></td></tr>
     </table>
 
     <div style="background:#FFF4E0;border:1.5px solid #F0D49B;border-radius:12px;padding:14px 18px;margin-top:18px;font-size:13px;color:#6B4A18;line-height:1.65">
