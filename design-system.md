@@ -113,3 +113,39 @@ token & props ở trên.
 
 > Token CSS gốc: `tokens/colors.css · typography.css · spacing.css · radius.css · shadow.css · base.css · components.css`.
 > `base.css` chứa reset + `.lumin-dotgrid`; `components.css` chứa state hover/press.
+
+---
+
+## Pet Tag — component & pattern trang pet
+
+Tính năng Pet Tag NFC (hành vi/dữ liệu xem `spec.md §10`; thiết kế `designs/Lumin Pet Tag - Hi-fi.dc.html`).
+Trang sản phẩm Pet Tag **tái dùng nguyên** khung product detail của storefront — KHÔNG component mới. Phần dưới
+là các pattern **mới riêng cho trang pet** (link-in-bio + cứu hộ + tùy chỉnh).
+
+| Component / pattern | Mô tả & lưu ý |
+|---|---|
+| **LostModeSwitch** | Công tắc thất lạc đầu trang. OFF = "ở nhà" (yên tĩnh); ON = chuyển trang sang chế độ cứu hộ với **dải cam-đỏ cảnh báo** — KHÔNG dùng track teal như `Switch` thường. Mặc định **OFF** |
+| **RescueBanner** | Banner cứu hộ (4a): "Mình đi lạc rồi! / I'm lost…". Luôn **màu hệ thống cam/đỏ**, **không** themeable |
+| **PetProfileLayout (A)** | Bố cục "link-in-bio" — khối `ProfileBlock`: `photo_name` (ảnh & tên — **cố định, không ẩn**) · `bio` · `gallery` · `favorites` · `medical` · `socials` + liên hệ chủ (hiện khi lạc). Cùng 1 layout cho **3 trạng thái** (chủ / lạ-ở-nhà / cứu hộ) |
+| **AllergyChip / MedicalWarning** | Ô cảnh báo dị ứng ⚠️ — màu hệ thống (cam/đỏ), **không** themeable |
+| **EmergencyCallButton** | Nút gọi sen — màu hệ thống (teal/coral), **không** themeable |
+| **BlockReorderList** | Sắp xếp khối: kéo `⠿` đổi thứ tự + gạt ẩn/hiện (`visible`). Khối `photo_name` cố định ở đầu |
+| **InlineEditable** | "Sửa tại chỗ" — chạm thẳng phần cần đổi (tên/bio/album) rồi gõ; **bỏ** nút ✎ riêng từng dòng (1 chạm = 1 việc) |
+| **PetThemeSheet** | Sheet 🎨 chọn colorway / nền / phông, **preview trực tiếp** ở đầu sheet |
+| **FavoriteChip** | Chip "khoái khẩu" — emoji + label (🧀 Phô mai) |
+| **OnboardingStepper** | Chỉ báo bước `1/2` · `2/2` khi nhập hồ sơ bé |
+
+### Theme trang pet (lớp phủ trên brand token)
+- **5 bảng màu dựng sẵn:** **Bơ** (cam) · **Bạc hà** (mint) · **Cam nắng** · **Trời xanh** · **Nắng** — mỗi bảng
+  đổi **nền + chip + nút CTA** cùng lúc. + **Đêm cocoa** (dark mode). **Không picker tự do.**
+- **Tương phản đảm bảo sẵn:** bảng sáng → **cocoa giữ vai chữ & viền** (chữ ký thị giác). Đêm cocoa → chữ **kem**
+  + accent **nắng**. Không cho tổ hợp chữ tối trên nền tối.
+- **Nền:** Chấm bi (`.lumin-dotgrid`) · Trơn · Vân giấy · **Ảnh riêng** (chủ upload, **opacity slider mặc định 40%**
+  để chữ & chip luôn đọc rõ).
+- **Phông tên:** Bricolage (`--font-display`) hoặc Space Mono (`--font-mono`).
+- **Bất biến — không themeable (ưu tiên an toàn):** dải cảnh báo thất lạc (cam-đỏ) · ô cảnh báo dị ứng · nút gọi
+  khẩn. Theme áp cho cả 3 trạng thái nhưng **không** ghi đè 3 phần này.
+- Tôn trọng `prefers-reduced-motion`; hit target ≥ 44px (mobile-first, thao tác 1 tay).
+
+> **Triển khai:** định nghĩa colorway thành **theme variants** (CSS vars override trên scope `.pet-theme-*`,
+> `.pet-bg-*`) map từ brand token — **không** hardcode hex trong component.

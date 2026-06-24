@@ -18,9 +18,9 @@ trên **một bộ trạng thái đơn duy nhất**:
 | 📱 **Admin Mobile** | Bản rút gọn của Admin để xử lý đơn & đổi trạng thái khi không ở máy tính. |
 | 🧩 **Browser Extension** | Hiện cạnh Messenger/Instagram. Tạo đơn nhanh từ chat · tra cứu đơn (quét link/mã trong tin nhắn) · mẫu trả lời 1 chạm. |
 
-**Kênh đặt hàng (`channel`):** đơn đến từ **web** (khách chuyển khoản + **gửi ảnh biên lai** → frontend tạo đơn ở "Chờ xác nhận") hoặc **inbox MXH**
-(khách báo đã chuyển khoản → nhân viên tạo đơn qua extension). Trường `channel` phân biệt 2 nguồn:
-`web` · `inbox`. **Cả hai kênh: đơn chỉ tạo SAU khi khách đã chuyển khoản** — không tạo đơn ở bước checkout.
+**Kênh đặt hàng (`channel`):** đơn đến từ **web** (khách chuyển khoản + **gửi ảnh biên lai** → frontend tạo đơn ở `PENDING_CONFIRM` "Chờ xác nhận" để chủ đối soát) hoặc **inbox MXH**
+(nhân viên **tự kiểm tra thấy tiền đã về** rồi mới bấm tạo đơn qua extension → đơn vào thẳng `PAID`, **không** qua "Chờ xác nhận"). Trường `channel` phân biệt 2 nguồn:
+`web` · `inbox`. **Cả hai kênh: đơn chỉ tạo SAU khi đã chuyển khoản** — không tạo đơn ở bước checkout. Tạo đơn inbox-đã-`PAID` được phép cho cả nhân viên (xem RBAC §04).
 
 ---
 
@@ -73,15 +73,16 @@ Thời gian lưu **ISO-8601 UTC**.
 | `channel` | enum | `web` · `inbox` |
 | `status` | OrderStatus | Enum dùng chung — xem §04 |
 | `customer` | Customer | Tên · SĐT · email · MXH handle |
-| `shippingAddress` | Address | Đường · phường · quận · tỉnh |
+| `shippingAddress` | Address | Đường · phường/xã · tỉnh (**bỏ quận/huyện**, ADR-017) |
 | `items[]` | OrderItem[] | product · color · options · **personalization** · qty · unitPrice |
 | `subtotal` · `shippingFee` · `total` | int (VND) | **Tính phía server**, không tin client |
 | `paymentMethod` | enum | `bank_transfer` (giai đoạn 1) |
 | `paymentProofUrl` | url? | Ảnh chụp biên lai CK khách đính khi tạo đơn (web); shop xem để đối soát |
 | `paymentConfirmedAt` | datetime? | Khi shop đối soát xong CK |
+| `refundProofUrl` | url? | Ảnh chụp CK hoàn tiền khi đơn vào `REFUNDED` (đối xứng `paymentProofUrl`) |
 | `trackingCode` | string? | Mã vận đơn khi giao |
 | `note` | string? | Ghi chú của khách / nội bộ |
-| `statusHistory[]` | StatusEvent[] | `{from, to, at, byUser, reason}` — **bắt buộc** cho huỷ/hoàn |
+| `statusHistory[]` | StatusEvent[] | `{from, to, at, byUser, reason}` — `reason` **bắt buộc** cho `CANCELLED`/`REFUNDED` |
 
 > **Personalization (khắc tên):** mỗi OrderItem có thể mang `{ text, zoneId }` — vị trí khắc là
 > một trong các "điểm khắc hợp lệ" định nghĩa trên model. Lưu cả `text` lẫn `zone` để xưởng in
@@ -95,7 +96,7 @@ Thời gian lưu **ISO-8601 UTC**.
 | `Customer` | `id` · `name` · `phone` · `email?` · `socialHandles[]` · `addresses[]` |
 | `User` (nhân viên) | `id` · `name` · `email` · `role(owner/staff)` · `active` |
 | `ReplyTemplate` (extension) | `id` · `title` · `body` · `variables[]` (vd `{tên}`, `{mã đơn}`, `{STK}`) |
-| `Setting` | `shopInfo` · `bankAccount(VietQR)` · `shippingRules` · `returnPolicy` |
+| `Setting` | `shopInfo` · `bankAccount(VietQR)` · `shippingRules` · `refundPolicy` |
 
 ---
 
@@ -135,26 +136,44 @@ Thiết kế hi-fi thể hiện **happy path**. Mỗi màn chính cần bổ sun
 
 ## 04 · Bộ trạng thái đơn hàng (state machine dùng chung)
 
-**Một enum duy nhất** — Web khách, Admin, Extension đều khớp. 5 mốc tiến trình + 2 ngoại lệ.
+**Một enum duy nhất** — Web khách, Admin, Extension đều khớp. 5 mốc tiến trình + 2 trạng thái đóng đơn (huỷ / hoàn tiền).
 
 ```
 PENDING_CONFIRM → PAID → PRINTING → SHIPPING → COMPLETED
-ngoại lệ (tách riêng):  CANCELLED   RETURNED
+đóng đơn (tách riêng):  CANCELLED (không hoàn tiền)   REFUNDED (đã hoàn tiền)
 ```
+> **Điểm vào theo kênh:** web → `PENDING_CONFIRM`; inbox → thẳng `PAID` (nhân viên đã tự kiểm tra tiền trước khi tạo). `PENDING_CONFIRM` chỉ tồn tại ở kênh web.
 
 | Mã enum | Nhãn | Ý nghĩa & chuyển tiếp hợp lệ |
 |---|---|---|
-| `PENDING_CONFIRM` | Chờ xác nhận | Khách đã báo/đã CK, chờ shop đối soát → `PAID` hoặc `CANCELLED` |
-| `PAID` | Đã thanh toán | Đã đối soát CK; vào hàng đợi in (= "Cần in") → `PRINTING` |
-| `PRINTING` | Đang in | Đang in/đóng gói → `SHIPPING` |
-| `SHIPPING` | Đang giao | Đã bàn giao vận chuyển (= "Đã giao" ở hàng đợi) → `COMPLETED` |
-| `COMPLETED` | Hoàn tất | Trạng thái cuối của trục tiến trình |
-| `CANCELLED` | Đã huỷ | **Ngoại lệ** — từ bất kỳ mốc nào trước Hoàn tất; bắt buộc `reason` |
-| `RETURNED` | Hoàn hàng | **Ngoại lệ** — bom hàng/trả về; bắt buộc `reason` |
+| `PENDING_CONFIRM` | Chờ xác nhận | (Chỉ web) khách đã CK + gửi biên lai, chờ chủ đối soát → `PAID` hoặc `CANCELLED` |
+| `PAID` | Đã thanh toán | Đã đối soát CK (web) / đã kiểm tra tiền (inbox); vào hàng đợi in (= "Cần in") → `PRINTING` · `CANCELLED` · `REFUNDED` |
+| `PRINTING` | Đang in | Đang in/đóng gói → `SHIPPING` · `CANCELLED` · `REFUNDED` |
+| `SHIPPING` | Đang giao | Đã bàn giao vận chuyển (= "Đã giao" ở hàng đợi) → `COMPLETED` · `CANCELLED` · `REFUNDED` |
+| `COMPLETED` | Hoàn tất | **Terminal** — mốc cuối trục tiến trình, không có đường ra (không hoàn hàng) |
+| `CANCELLED` | Đã huỷ | **Terminal** — đóng đơn **không hoàn tiền** (tiền chưa về, hoặc lỗi do khách + hàng đã in → giữ tiền); bắt buộc `reason` |
+| `REFUNDED` | Đã hoàn tiền | **Terminal** — đóng đơn **đã chuyển tiền lại** khách (thường lỗi do shop); bắt buộc `reason` + `refundProofUrl` |
+
+#### Bảng chuyển trạng thái (transition table — guard ở `packages/core`)
+| from | → to | Ai được bấm (RBAC) | Điều kiện / guard | `reason` |
+|---|---|---|---|---|
+| *(tạo, web)* | `PENDING_CONFIRM` | Khách (frontend) | đã upload ảnh biên lai | — |
+| *(tạo, inbox)* | `PAID` | Nhân viên/chủ (Extension) | đã **tự kiểm tra** thấy tiền về | — |
+| `PENDING_CONFIRM` | `PAID` | **Chỉ chủ** | ảnh biên lai ↔ sao kê khớp số tiền | — |
+| `PENDING_CONFIRM` | `CANCELLED` | Chủ/nhân viên | tiền không về / khách bỏ | ✅ |
+| `PAID` | `PRINTING` | Nhân viên/chủ | thủ công, kéo trong hàng đợi in | — |
+| `PRINTING` | `SHIPPING` | Nhân viên/chủ | có **ảnh QC** + mã vận chuyển | — |
+| `SHIPPING` | `COMPLETED` | Nv/chủ/hệ thống | xác nhận đã giao | — |
+| `PAID` · `PRINTING` · `SHIPPING` | `CANCELLED` | Chủ/nhân viên | đóng đơn, **không** hoàn tiền | ✅ |
+| `PAID` · `PRINTING` · `SHIPPING` | `REFUNDED` | **Chỉ chủ** (tiền ra) | đã chuyển hoàn cho khách | ✅ + `refundProofUrl` |
+
+**Cấm (guard chặn):** đi lùi (vd `PRINTING → PAID`), nhảy cóc (`PAID → SHIPPING`), mọi đường ra khỏi terminal (`COMPLETED`/`CANCELLED`/`REFUNDED`). `REFUNDED` **không** đạt được từ `PENDING_CONFIRM` (tiền chưa xác nhận) hay `COMPLETED`.
 
 **Ánh xạ Hàng đợi in:** `Cần in` = PAID · `Đang in / Đóng gói` = PRINTING · `Đã giao` = SHIPPING.
-Huỷ/Hoàn luôn hiển thị **tách riêng**, không phải một mốc tiến trình. Mọi lần đổi trạng thái ghi
+Huỷ/Hoàn tiền luôn hiển thị **tách riêng**, không phải một mốc tiến trình. Mọi lần đổi trạng thái ghi
 vào `statusHistory {from, to, at, byUser, reason?}`.
+
+**Kế toán:** `Doanh thu ròng = (đơn đã thu: PAID/PRINTING/SHIPPING/COMPLETED) − (đơn REFUNDED)`. `CANCELLED` sau `PAID` mà không hoàn → shop **giữ tiền** = vẫn tính doanh thu. Hàng custom không nhập lại kho; chỉ ghi **filament đã tiêu thành phế phẩm** nếu huỷ sau PRINTING (Spoolman).
 
 ---
 
@@ -166,7 +185,7 @@ vào `statusHistory {from, to, at, byUser, reason?}`.
 | Tên | bắt buộc, 2–60 ký tự | "Bạn cho mình xin tên nhé." |
 | SĐT | bắt buộc, regex VN `(0\|+84)…` 10 số | "Số điện thoại chưa đúng định dạng." |
 | Email | tuỳ chọn, định dạng email | "Email này nhìn chưa hợp lệ." |
-| Địa chỉ | bắt buộc đủ tỉnh/quận/phường + đường | "Vui lòng chọn đủ tỉnh, quận, phường." |
+| Địa chỉ | bắt buộc đủ tỉnh/phường + đường | "Vui lòng chọn đủ tỉnh, phường và đường." |
 | Khắc tên | ≤ giới hạn ký tự theo vùng khắc (`maxChars`) | "Tên hơi dài so với vị trí khắc này." |
 | Mã giảm giá | kiểm tra tồn tại + hạn dùng | "Mã này đã hết hạn rồi." |
 | Tra cứu đơn | mã + SĐT phải khớp | "Không tìm thấy đơn khớp mã và số này." |
@@ -175,7 +194,7 @@ vào `statusHistory {from, to, at, byUser, reason?}`.
 | Ngữ cảnh | Nội dung |
 |---|---|
 | Giỏ rỗng | "Giỏ còn trống — mình đi ngắm bộ sưu tập nhé." + nút *Khám phá bộ sưu tập* |
-| Trấn an checkout | "Giao trong 3–5 ngày · đổi trả miễn phí trong 30 ngày" |
+| Trấn an checkout | "Giao trong 3–5 ngày · in lại miễn phí nếu lỗi do shop" |
 | Màn QR (sau checkout) | "Quét mã để chuyển khoản, rồi gửi ảnh biên lai và bấm xác nhận để chúng mình tạo đơn nhé. Đơn được xác nhận ngay khi chúng mình đối soát xong." |
 | Toast tạo đơn (extension) | "Đã tạo đơn #LMN-2261 🎉" |
 | Lỗi mạng chung | "Mất kết nối một chút — thử lại giúp mình nhé." |
@@ -261,3 +280,166 @@ bắt buộc đăng nhập; khách vãng lai tra đơn bằng **mã đơn + SĐT
 | Tài khoản khách | **Có** — tài khoản + lịch sử đơn | Thêm auth phía storefront + trang lịch sử đơn; vẫn cho đặt nhanh |
 | Đa ngôn ngữ | **Chỉ tiếng Việt** lúc đầu, sẵn sàng i18n | Tách khóa chuỗi ngay, default `vi`; không hard-code text |
 | Giới hạn ký tự khắc | Cấu hình **theo từng sản phẩm** lúc tạo | Trường `maxChars` trên Option/Product; validation khắc dựa vào giá trị này |
+
+---
+
+## 10 · Pet Tag NFC (định danh thú cưng)
+
+> Bản thiết kế: `designs/Lumin Pet Tag - Hi-fi.dc.html`. Tính năng mới — bán qua storefront, có trang quản trị riêng ở admin.
+
+Pet Tag NFC là **vòng định danh in 3D theo đơn** gắn chip NFC. Khách mua như **một sản phẩm bình thường**
+trong storefront (tái dùng đúng khung product detail: status bar, swatch màu, pill nắng, thanh "Thêm vào giỏ").
+Sau khi nhận hàng: **chạm điện thoại vào tag → mở trang riêng của bé** ngay trên trình duyệt (không cần app).
+Trang pet dùng bố cục "link-in-bio" (layout A) với **1 URL · 3 trạng thái xem** và **công tắc thất lạc** bật
+chế độ cứu hộ + gửi GPS cho chủ.
+
+> Pet Tag **không** phải một template riêng — nó là một `Product` + một lớp "trang pet" động. Đơn Pet Tag chạy
+> **đúng state machine §04** (`PENDING_CONFIRM → … → COMPLETED`). Việc **kích hoạt & tạo trang pet** diễn ra
+> **sau giao hàng**, tách hẳn khỏi vòng đời đơn.
+
+### Sản phẩm Pet Tag (mở rộng Product)
+| Trường | Giá trị mẫu | Ghi chú |
+|---|---|---|
+| `productType` | `nfc_tag` | enum mới trên Product: `standard` · `nfc_tag`. `nfc_tag` báo storefront/admin cần cấp tag + kích hoạt |
+| `name` | "Pet Tag NFC" | Hiển thị "Vòng định danh · SMART TAG" |
+| `basePrice` | `390000` | `390.000₫`; compare-at `520000` (`520.000₫`, −25%) |
+| `material` | `recycled-PLA` | "rPLA tái chế" |
+| `dimensions` | `32 mm ø` | Mono; tag tròn đường kính 32 mm |
+| `nfcChip` | `NTAG215` | Mono. Mỗi tag in ra → 1 bản ghi `PetTag` với URL quét riêng |
+| `colors[]` | swatch 34px | Như mọi SP — chọn màu in, mẫu 3D đổi màu ngay |
+
+### Data model — thực thể mới
+**PetTag** (vòng vật lý)
+| Trường | Kiểu | Ghi chú |
+|---|---|---|
+| `id` / `code` | string | Mã hiển thị `#LMN-T0231` |
+| `orderItemRef` | uuid → OrderItem | Đơn bán tag (dùng chung Order/PrintJob) |
+| `status` | enum | `UNENCODED` · `ENCODED` · `ACTIVATED` — xem "Trạng thái tag" dưới |
+| `chipUid` | string? | UID chip NFC, ghi nhận khi encode |
+| `url` | string | Ghi vào chip — `lumin.pet/t/{shortId}` |
+| `profileId` | uuid? → PetProfile | `null` đến khi kích hoạt |
+| `ownerAccountId` | uuid? → Account | Gắn khi khách **đăng nhập lần đầu** |
+| `encodedAt` · `activatedAt` | datetime? | Mốc ghi chip · mốc kích hoạt (ISO-8601 UTC) |
+
+**PetProfile** (trang của bé)
+| Trường | Kiểu | Ghi chú |
+|---|---|---|
+| `id` · `tagId` · `ownerAccountId` | uuid | Thuộc 1 tag & 1 tài khoản khách (§08) |
+| `petName` · `species` · `breed` · `age` · `weight` | string · enum(`dog`/`cat`/`other`) · … | Hồ sơ bé (bước 1 onboarding) |
+| `photoUrl` · `gallery[]` | url · Image[] | Ảnh đại diện + album |
+| `bio` · `favorites[]` | text · string[] | Giới thiệu + chip "khoái khẩu" |
+| `medical` | `{vaccinated, neutered, allergies, vetClinic}` | Cảnh báo dị ứng hiển thị nổi bật |
+| `ownerContact` | `{name, phone, zalo, email?}` | **Hiện khi bé thất lạc; `phone` bắt buộc** |
+| `socials[]` | `{platform, handle}[]` | Instagram · TikTok… (tuỳ chọn) |
+| `lostMode` | bool | Mặc định `false` (ở nhà); chủ gạt bật |
+| `theme` | `{palette, background, bgOpacity, nameFont}` | 5 colorway brand + Đêm cocoa; nền ảnh riêng có độ mờ |
+| `blocks[]` | ProfileBlock[] | Thứ tự & ẩn/hiện khối nội dung |
+
+**ProfileBlock** (khối nội dung): `id` · `type` enum `photo_name` · `bio` · `gallery` · `favorites` · `medical` · `socials` · `order` int · `visible` bool.
+> Khối `photo_name` (ảnh & tên) **luôn ở đầu, không ẩn được**.
+
+**LostEvent** (lượt quét khi lạc / chia sẻ vị trí): `id` · `tagId` · `scannedAt` · `finderLocation?` `{lat,lng}` (chỉ khi người nhặt **đồng ý gửi 1 lần**) · `ownerNotifiedAt?`. Dùng cho thông báo "Bơ vừa được quét tại {khu vực}" + mở bản đồ.
+
+> **Quan hệ:** `PetTag` 1–1 `PetProfile` (sau kích hoạt) · `PetTag.orderItemRef` → OrderItem · `PetProfile.ownerAccountId` → Account (= tài khoản khách §08). Một tài khoản có thể có **nhiều** PetProfile (nhiều bé).
+
+### Trạng thái tag (fulfillment)
+| Mã enum | Nhãn | Ý nghĩa & chuyển tiếp |
+|---|---|---|
+| `UNENCODED` | Chờ ghi chip | Tag đã in, chip trắng. Nhân viên ghi URL → `ENCODED` (chặng **"Ghi chip NFC"** trong hàng đợi in, **giữa Đang in và Đóng gói**) |
+| `ENCODED` | Đã ghi | Chip đã ghi URL & **khoá chống ghi đè**; đóng gói & giao. Chờ khách quét + đăng nhập → `ACTIVATED` |
+| `ACTIVATED` | Đã kích hoạt | Đã gắn tài khoản + có `PetProfile`. Trang pet hoạt động; chủ tự sửa được |
+
+> Đây là vòng đời **vật lý của tag**, song song nhưng **tách khỏi** OrderStatus §04 (đơn vẫn `PENDING_CONFIRM → … → COMPLETED`). "Ghi chip NFC" là **chặng PrintJob mới** chỉ áp cho SP `nfc_tag` (xem "Vận hành admin" dưới).
+
+### Luồng kích hoạt & onboarding (quét lần đầu)
+1. **Quét tag mới (2a):** URL `lumin.pet/t/{shortId}` của tag `ENCODED` → "Đã nhận tag mới" → đăng nhập (Google / email). **Tag tự gắn vào tài khoản** vừa đăng nhập — **không nhập mã, không bước "kích hoạt" riêng**, **bỏ field số microchip**.
+2. **Hồ sơ bé — bước 1/2 (2b):** ảnh · tên · loài · giống · tuổi · nặng · dị ứng/lưu ý y tế.
+3. **Liên hệ · y tế · social — bước 2/2 (2c):** liên hệ chủ (tên, SĐT, Zalo) · y tế (tiêm phòng, triệt sản, phòng khám — tuỳ chọn) · social (instagram, tiktok — tuỳ chọn).
+4. **Xong (2d):** `PetTag.status → ACTIVATED` (gắn `ownerAccountId` + tạo `PetProfile`); trang pet sẵn sàng. Từ giờ chạm tag là mở.
+> Lần quét **sau** (tag `ACTIVATED`): mở thẳng trang pet theo trạng thái xem, bỏ qua onboarding.
+
+### 1 URL · 3 trạng thái + công tắc thất lạc
+Công tắc thất lạc = cờ **`lostMode` (bool)** trên PetProfile: **`false`** (ở nhà, mặc định) ↔ **`true`** (thất lạc).
+Chỉ **chủ** bật/tắt; đặt ngay đầu trang. Mỗi lần bật/tắt tạo dấu vết (audit) để hỗ trợ thông báo & an toàn.
+Routing nhận diện trạng thái xem theo **auth (chủ/người lạ) + `lostMode`**.
+
+| Người xem | `lostMode` | Màn |
+|---|---|---|
+| **Chủ** (đăng nhập, là owner) | bất kỳ | Layout A **có sửa** (nút ✏️ Sửa trang) + công tắc |
+| Người lạ | `false` | **4c** — layout A **chỉ-đọc**, nhãn "🏠 ở nhà · safe", nút liên hệ sen, không nút sửa |
+| Người lạ | `true` | **4a** — chế độ cứu hộ: banner "Mình đi lạc rồi! / I'm lost", cảnh báo dị ứng, gọi/Zalo/email sen + **chia sẻ vị trí 1 lần** |
+
+**Cứu hộ → gửi vị trí (4a → 4b):** người nhặt bấm "Gửi vị trí của tôi" → **đồng ý** → **1 lượt** ping vị trí → tạo `LostEvent`, báo chủ ("Bơ vừa được quét tại {khu vực}" + bản đồ + gọi người nhặt). **Chỉ gửi một lần.**
+
+### States cần có (màn mới — ngoài happy path)
+| Màn | States |
+|---|---|
+| Trang pet (`lumin.pet/t/{shortId}`) | loading (skeleton) · tag `UNENCODED`/`ENCODED` chưa kích hoạt (chủ → onboarding; người lạ → "trang chưa sẵn sàng") · 404 (shortId sai) |
+| Onboarding 2b/2c | lỗi validate field · đang lưu · lưu lỗi |
+| Chia sẻ vị trí (4a) | **từ chối quyền vị trí** (fallback: vẫn gọi/nhắn được) · đang gửi · gửi lỗi · đã gửi (4b) |
+| Sửa tại chỗ (5a) / sắp xếp (5b) | đang lưu · lưu lỗi · offline |
+| Theme sheet (6) | upload ảnh nền đang chạy/lỗi |
+
+### Validation & microcopy (Pet Tag)
+| Trường | Quy tắc | Thông báo (sentence case) |
+|---|---|---|
+| Tên bé | bắt buộc, 1–40 ký tự | "Bé tên gì nhỉ?" |
+| `handle` | auto từ tên, **unique**, slug | "Tên trang này có bé khác dùng rồi — đổi chút nhé." |
+| SĐT chủ | regex VN; **cần** để lost mode hữu ích | "Số điện thoại chưa đúng định dạng." |
+| instagram / tiktok | tuỳ chọn, là handle (không full URL) | "Chỉ cần tên người dùng thôi nha." |
+| Ảnh nền | jpg/png, ≤ giới hạn dung lượng | "Ảnh hơi nặng — chọn ảnh nhẹ hơn giúp mình." |
+| Độ mờ nền | 0–100, mặc định 40 | — |
+
+| Ngữ cảnh | Nội dung |
+|---|---|
+| Lost mode TẮT | "Bơ đang an toàn ở nhà" · phụ: "Gạt sang phải khi bé đi lạc — trang sẽ chuyển sang chế độ cứu hộ & gửi GPS." |
+| Banner cứu hộ (4a) | "📣 Mình đi lạc rồi!" / "I'm lost — please help me get home" |
+| Xin vị trí (4a) | "Chia sẻ vị trí của bạn để gửi cho sen biết bé đang ở đâu. Chỉ gửi một lần." |
+| Đã gửi (4b) | "Đã gửi vị trí cho sen của Bơ! Cảm ơn bạn đã giúp đỡ 🎉" |
+| Người lạ · ở nhà (4c) | "Mình không bị lạc đâu — chỉ là chào bạn thôi! 😄" · footer "Chỉ chủ mới sửa được trang này · powered by Lumin" |
+
+### Theme trang pet (chi tiết ở `design-system.md`)
+**5 bảng màu dựng sẵn** — Bơ · Bạc hà · Cam nắng · Trời xanh · Nắng — + **Đêm cocoa** (dark). Mỗi bảng đổi
+**nền + chip + nút CTA** cùng lúc. Nền: Chấm bi · Trơn · Vân giấy · **Ảnh riêng** (opacity slider, mặc định 40%).
+Phông tên: Bricolage · Space Mono. **Không picker tự do.** Theme áp cho **cả 3 trạng thái**; nhưng **chế độ
+thất lạc giữ dải cam-đỏ cảnh báo**, ô cảnh báo dị ứng và nút gọi khẩn luôn dùng **màu hệ thống** — theme
+**không** ghi đè (ưu tiên an toàn).
+
+### Privacy & tuân thủ (PDPL)
+- Trang pet **công khai** (ai quét cũng xem) → **tối thiểu hoá dữ liệu**: SĐT chủ **che một phần** công khai
+  (vd `+84 90 •••• 261`); số đầy đủ + nút gọi chỉ lộ khi `lostMode = true` ("hiện khi bé lạc") hoặc cho chủ.
+- **Vị trí người nhặt:** chỉ thu khi người nhặt **đồng ý**, **gửi một lần**, dùng để báo chủ; nêu rõ mục đích
+  trước khi xin quyền; lưu tối thiểu, có **hạn lưu (retention)** + cho phép xoá.
+- Chủ pet = tài khoản khách storefront (§08); chủ kiểm soát **ẩn/hiện từng khối** & thông tin.
+- ⚠️ **Phải theo `docs/compliance.md` + skill `vn-compliance`** (consent log/replay, PDPL) **trước khi hoàn tất**
+  luồng chia sẻ vị trí & lưu PII bé/chủ. Ghi consent tại 2 điểm: (1) tạo profile (PII bé + chủ), (2) người nhặt chia sẻ vị trí.
+
+### Sự kiện analytics (Pet Tag)
+| Event | Khi nào |
+|---|---|
+| `pettag_scanned` | Mỗi lần quét (kèm `state`: encoded · home · lost) |
+| `pet_activated` | Hoàn tất onboarding (tag → `ACTIVATED`) |
+| `lostmode_toggled` | Bật/tắt công tắc thất lạc |
+| `finder_location_shared` | Người nhặt gửi vị trí thành công |
+| `pet_profile_edited` · `pet_theme_changed` | Sửa nội dung · đổi giao diện |
+
+### Hành vi / a11y
+- Tôn trọng `prefers-reduced-motion` (toggle lò xo, sheet, entrance). Hit target ≥ 44px (mobile-first, thao tác **1 tay**).
+- **Sửa tại chỗ:** 1 chạm = 1 việc — bỏ nút ✎ riêng từng dòng; "sắp xếp khối" (kéo ⠿, gạt ẩn/hiện) tách thành chế độ riêng để khỏi bấm lộn.
+
+### Vận hành admin (Pet Tag)
+> Thiết kế: `designs/Lumin Admin - Hi-fi.dc.html` · `designs/Lumin Admin Mobile - Hi-fi.dc.html` (#9 · Pet Tag NFC, "Vòng đời 1 tag").
+
+- **Hàng đợi in** có thêm chặng **"Ghi chip NFC"** (giữa *Đang in* và *Đóng gói*) — **chỉ** áp cho SP `nfc_tag`; ánh xạ `PrintJob.stage`. Ghi URL `lumin.pet/t/{shortId}` (NDEF) vào chip NTAG215, **ghi 1 lần rồi khoá**, lưu `chipUid` + `encodedAt` → tag `ENCODED`.
+- Màn **Pet Tag** (admin + admin mobile *tab Thêm*, màn #9): liệt kê tag, **lọc theo 3 trạng thái** `UNENCODED` / `ENCODED` / `ACTIVATED`; xem `chipUid`, URL, chủ (@handle), trạng thái thất lạc ("Chủ đã bật chế độ thất lạc · 2 giờ trước").
+
+### Quyết định đã chốt (Pet Tag)
+| Hạng mục | Quyết định | Tác động kỹ thuật |
+|---|---|---|
+| Chip & ghi dữ liệu | **NTAG215**, ghi URL **1 lần + khoá** | Web NFC / app ghi NDEF; lưu `chipUid`, `encodedAt` |
+| URL trang pet | **`lumin.pet/t/{shortId}`** — mở trình duyệt | Không cần app; routing nhận diện 3 trạng thái xem theo **auth + `lostMode`** |
+| Kích hoạt | Đăng nhập (Google/email) → **tag tự gắn tài khoản** | Không nhập mã; bỏ bước "kích hoạt" rườm rà |
+| Tùy chỉnh trang | **Sửa-tại-chỗ (WYSIWYG)** + chế độ Sắp xếp khối riêng | Block-based; khối `photo_name` cố định trên cùng |
+| Giao diện | **5 colorway brand + Đêm cocoa**; nền ảnh riêng có độ mờ | Không picker tự do; cocoa luôn là chữ/viền; cảnh báo dị ứng & nút khẩn **không** bị theme ghi đè |
+| Chế độ thất lạc | Mặc định **TẮT**; chủ gạt bật; GPS người nhặt **gửi 1 lần** | Cờ `lostMode`; tạo `LostEvent` + thông báo chủ |
+| Vận hành admin | Thêm chặng **Ghi chip NFC** + màn Pet Tag liệt kê tag | Map vào `PrintJob.stage`; danh sách lọc theo 3 trạng thái |
