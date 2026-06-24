@@ -20,7 +20,7 @@
 > phải nhớ. Đây là copy của [`conventions.md`](../conventions.md) — nếu thấy mâu thuẫn, `conventions.md` thắng.
 
 **Luôn-đúng (4 luật always-must + nền):**
-- **statusHistory:** mọi đổi `OrderStatus` đi qua transition guard của `packages/core` và **append** `statusHistory{from,to,at,byUser,reason?}`; `reason` bắt buộc cho `CANCELLED`/`RETURNED`.
+- **statusHistory:** mọi đổi `OrderStatus` đi qua transition guard của `packages/core` và **append** `statusHistory{from,to,at,byUser,reason?}`; `reason` bắt buộc cho `CANCELLED`/`REFUNDED` (`REFUNDED` kèm `refundProofUrl`).
 - **Tiền:** lưu **int VND** (không thập phân); `subtotal/shippingFee/total` **tính ở server**, không tin total client; format qua **một** formatter `packages/core` → `390.000₫` (U+20AB, không space). Không gọi `Intl.NumberFormat`/`toLocaleString` ngoài `core`.
 - **i18n:** không hard-code chuỗi UI — `next-intl` ICU, default `vi`, tách khoá từ commit đầu.
 - **prefers-reduced-motion:** tắt entrance + dừng loop (viewer 3D, Cat Peek).
