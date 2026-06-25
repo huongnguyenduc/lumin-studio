@@ -6,25 +6,28 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
-**Phase 0 — `packages/ui` primitives slice (branch `feat/phase-0-ui-primitives`, off main=30c5652).**
-Dựng `packages/ui` (React 18 + cva + clsx/tailwind-merge `cn()`, vitest+jsdom+Testing-Library) — **13
-primitive** từ `design-system.md §Component`: Button · IconButton · Badge · Tag · Avatar · Card · Input ·
-Switch · Checkbox · QuantityStepper · Rating · PriceTag · ProductCard (composite). Tiền/số **chỉ qua
-`@lumin/core`** (PriceTag→`formatVnd`, Rating→`formatVnNumber`; ESLint cấm `Intl` ngoài core) · không
-hard-code copy (label/aria qua props) · a11y (role/label, focus-visible, `motion-reduce`, hit ≥44px). Mở
-rộng `@lumin/tokens` preset: `danger` (=danger-600 cho AA), soft tints `accent-*-soft`, `accent-sky-strong`,
-alias `on-dark`/`surface-sunken`/`border-default`/`text-subtle`. **Gate mới:** `token-coverage.test.ts`
-(mọi util class màu phải map preset key — chống "silent no-op" vì chưa có Tailwind chạy) + lock contrast
-badge-solid trong `tokens.contrast.test`. **Build qua workflow đa-agent (1 agent/primitive) → spec-guardian
-review → sửa 2 a11y finding** (Badge solid teal/sky/danger fail AA; QuantityStepper md 36→44px).
-Spec nguồn: `design-system.md` · `tokens/*.css` · conventions §A11y/§i18n/§Tiền.
+**Phase 0 — app shells slice 1/2: STOREFRONT (branch `feat/phase-0-storefront-shell`, off main=296c44a).**
+Dựng `apps/storefront` (Next 14.2 App Router + React 18) — app đầu tiên boot bằng `pnpm dev`, là nơi
+**mount 13 primitive** `@lumin/ui` lần đầu trên surface thật (visual-fidelity ADR-027 deferred từ PR #6).
+Wiring nền (dùng lại cho admin): `pnpm-workspace` thêm `apps/*` · `turbo` thêm `dev`/`build` · **Tailwind 3.4
++ `luminPreset`** (content scan `packages/ui/src` để primitive class không bị tree-shake) · **next-intl (vi +
+ICU, không locale-routing)** — catalog = chrome `messages/vi.ts` + `@lumin/core` domain dưới namespace `core`
+· **self-host font qua Fontsource** (Bricolage Variable display · Plus Jakarta Sans Variable body [thay Hanken
+— Next/Fontsource không ship, design-system cho phép swap] · Space Mono; subset `vietnamese`) · **ESLint arm
+cho `apps/**`**: `jsx-a11y` recommended + `i18next/no-literal-string` (jsx-text-only) — luật i18n/a11y giờ có
+enforcement. Shell = header sticky (logo+search+nav) · bottom-nav mobile · hero (pop CTA) · featured grid
+(ProductCard + empty state) · trust · footer · `loading`/`error` route states. Tiền chỉ qua PriceTag/`@lumin/core`
+· mọi copy qua i18n key · a11y (skip-link, aria, focus-visible, hit≥44, motion-reduce, heading leading 1.18).
+**spec-guardian: PASS (0 BLOCKER/0 WARN/2 NOTE).** Nguồn: `designs/Lumin Storefront - Hi-fi.dc.html` ·
+`design-system.md` · conventions §A11y/§i18n/§Tiền/§State/§Visual-fidelity.
 
 ## Next steps (1–3)
-1. **Chủ review + merge PR #6** `feat/phase-0-ui-primitives` (off main, squash — conventions §Scope&PR).
-   Đã commit (`4568520`) + push + mở PR. Chưa có app surface nên visual-fidelity check để PR app-shell.
-2. Phase-0 tiếp: **Next app shells (storefront/admin)** mount primitives + **next-intl runtime (vi + ICU)** +
-   self-host font (subset `vietnamese`, leading heading ~1.15–1.2) + wire Tailwind preset. Đối chiếu thị
-   giác vs `designs/*.dc.html` (ADR-027) — đây là nơi verify visual-fidelity các primitive.
+1. **Chủ review + merge PR storefront-shell** (squash — conventions §Scope&PR; ~1062 dòng source, 1-trục:
+   infra app + storefront, không tách được vì infra vô nghĩa nếu đứng riêng). **Visual-fidelity (ADR-027):**
+   chạy `pnpm dev` → chụp mobile+desktop → đối chiếu mắt thường vs `designs/Lumin Storefront - Hi-fi.dc.html`.
+2. **Phase-0 slice 2/2: ADMIN shell** (`apps/admin`, PR kế) — dùng lại infra trên (preset/fonts/next-intl/eslint).
+   Sidebar 9 mục + topbar greeting + dashboard (stat Card + bảng đơn + status Badge map `ORDER_STATUSES`).
+   Desktop-first. Nguồn: `designs/Lumin Admin - Hi-fi.dc.html`.
 3. Phase-0 tiếp: Go `core-api` (Chi BFF) + Rust `asset-worker`. ARM gate khi `services/**/*.go` land:
    `Makefile verify-go` (plan.md §Phase-0 ARM checklist). GPU gate (operations.md §3) làm trên host WSL2.
 
@@ -41,24 +44,26 @@ Spec nguồn: `design-system.md` · `tokens/*.css` · conventions §A11y/§i18n/
 | **Phase 0 — backbone (tokens + core + arm gates)** | **done (PR #4 open)** | `feat/phase-0-backbone` `eef1755` | verify rc=0 · guard 139 · osm 22 |
 | **Phase 0 — fix ultrareview PR #4 (A/B/C/D, 25 finding)** | **done (PR #4)** | `feat/phase-0-backbone` (+1 commit) | verify rc=0 · 43 test · guard 139 · osm 22 |
 | **Phase 0 — compose skeleton** | **merged (PR #5)** | `origin/main` `30c5652` | `docker compose config -q` OK · verify rc=0 |
-| **Phase 0 — `packages/ui` 13 primitives + token-coverage gate** | **done (PR #6 open)** | `feat/phase-0-ui-primitives` `4568520`+review | verify rc=0 · ui 105 / tokens 9 / core 37 · guard 139 · osm 22 · spec-guardian + /review: 2+2 a11y fixed |
-| Phase 0 — app shells (storefront/admin) + next-intl/fonts | todo | — | — |
+| **Phase 0 — `packages/ui` 13 primitives + token-coverage gate** | **merged (PR #6)** | `origin/main` `296c44a` | verify rc=0 · ui 105 / tokens 9 / core 37 · guard 139 · osm 22 · spec-guardian + /review: 2+2 a11y fixed |
+| **Phase 0 — app shell 1/2: storefront (Next+next-intl+fonts+Tailwind)** | **done (PR open)** | `feat/phase-0-storefront-shell` (off `296c44a`) | `next build` ✓ · verify rc=0 · storefront i18n test + ui 105/tokens 9/core 37 · guard 139 · osm 22 · spec-guardian PASS (0/0/2) |
+| Phase 0 — app shell 2/2: admin (reuse infra) | todo | — | — |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất
-`pnpm verify` — **rc=0** (lint[ESLint 10] + typecheck + **149 test** + format:check) · `tests/harness/guard.test.sh`
-— **139 / 0** · `tests/harness/osm-mutation.test.sh` — **22 / 0** (2026-06-25, **`packages/ui` primitives**:
-ui 105 [13 primitive + token-coverage + Card-keyboard + ProductCard-no-nested-button] / tokens 9 [+2 lock
-contrast badge-solid] / core 37 = 151). spec-guardian + `/review`: money/i18n/controlled/ADR/exports CLEAN;
-**4 a11y finding đã sửa** — Badge solid AA + stepper 44px (spec-guardian); Card `interactive` keyboard
-(Enter/Space→click) + ProductCard bỏ nested button-role → stretched-link, + Switch.label required + Tag
-removeLabel-required union (/review). Chưa có app surface → visual-fidelity check để PR app-shell.
+`pnpm verify` — **rc=0** (lint[ESLint 10 + jsx-a11y + i18next cho apps] + typecheck + test + format:check) ·
+`next build` storefront **✓** (4 static page) · `tests/harness/guard.test.sh` — **139 / 0** (ARM-GUARD thấy
+`apps/*.tsx` → xác nhận ESLint Intl-ban armed) · `osm-mutation.test.sh` — **22 / 0** (2026-06-26, **storefront
+shell**: storefront i18n-catalog test [non-empty + no-baked-price + core namespace] / ui 105 / tokens 9 /
+core 37). spec-guardian: **PASS 0 BLOCKER/0 WARN/2 NOTE** (money/i18n/a11y/§State/ARM CLEAN). CI-fresh
+`tsc --noEmit` chạy được **không cần** `next-env.d.ts` (verify không phụ thuộc prior build).
 
-## Lưu ý git (2026-06-25)
-- PR #5 (compose skeleton) đã **merge** vào `origin/main` (squash → `30c5652`). Local `main` đang **sau**
-  origin (cd6c171) — `git fetch && git checkout main && git merge --ff-only origin/main` khi cần.
-- Branch **`feat/phase-0-ui-primitives`** (off `origin/main`=30c5652): commit `4568520` (38 file:
-  `packages/ui/**` + edit `packages/tokens/src/{theme,preset}.ts` + `tokens.contrast.test` + lock) đã
-  **push + mở PR #6**. *(Edit `active-context.md` sau commit là uncommitted — sẽ vào commit slice kế.)*
-- Branch cũ stale (content đã trong main qua squash, git coi chưa-merge): `feat/phase-0-backbone`,
-  `feat/phase-0-compose-skeleton`. Xoá tay ngoài phiên: `git branch -D <branch>` (guard-bash chặn `-D`).
+## Lưu ý git (2026-06-26)
+- `origin/main` = `296c44a` (PR #6 ui-primitives đã merge). Local `main` đã ff sync.
+- Branch **`feat/phase-0-storefront-shell`** (off `296c44a`): app shell 1/2. 29 file (24 storefront + 5 root
+  wiring: `pnpm-workspace`/`turbo`/`eslint.config`/`package.json`/lock). `apps/storefront/.gitignore` chặn
+  `.next`/`next-env.d.ts`/`.turbo`. **Chưa push** — sắp commit + mở PR.
+- **Deferred (ghi để PR sau):** `@lumin/ui` Button `lg` dùng `h-13` không có spacing token → render 0 height;
+  shell tránh `lg`. Fix gọn ở packages/ui (thêm token `13`/đổi `h-[52px]`) — KHÔNG trộn vào PR app-shell.
+- **Substitution disclosed:** body font Hanken Grotesque → Plus Jakarta Sans (Next/Fontsource không ship
+  Hanken); design-system cho phép swap font placeholder. `prettier-plugin-tailwindcss` + `@next/eslint-plugin`
+  deferred (tránh reformat `packages/ui` / finicky flat-config) — không phải ARM gate.

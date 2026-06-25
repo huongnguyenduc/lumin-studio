@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base element styling driven by the @lumin/tokens preset (via theme()). Kept INSIDE @layer base so
+ * the design-system utility classes from @lumin/ui (font-display, bg-primary, …) always win over
+ * these element defaults. We intentionally do NOT import tokens.css — primitives consume the Tailwind
+ * preset, not CSS vars; the few extras we need (dot-grid, reduced-motion) are reproduced below. */
+@layer base {
+  body {
+    font-family: theme('fontFamily.body');
+    color: theme('colors.text-body');
+    background-color: theme('colors.surface-page');
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: theme('fontFamily.display');
+    font-weight: 700;
+    color: theme('colors.text-strong');
+    /* VN diacritics need a touch more leading than a tight display line-height — conventions §A11y. */
+    line-height: 1.18;
+    letter-spacing: -0.02em;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  :focus-visible {
+    outline: 3px solid theme('colors.accent-sky');
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: theme('colors.accent-flame');
+    color: theme('colors.on-primary');
+  }
+}
+
+@layer components {
+  /* Organic dot-grid play-surface used behind product placeholders (matches @lumin/ui ProductCard). */
+  .lumin-dotgrid {
+    background-color: theme('colors.surface-sunken');
+    background-image: radial-gradient(rgba(73, 47, 16, 0.13) 1.5px, transparent 1.5px);
+    background-size: 22px 22px;
+  }
+}
+
+/* Honour reduced-motion globally (conventions §A11y) — the primitives also use motion-reduce:*, this
+ * is the backstop for anything that slips through. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
