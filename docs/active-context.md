@@ -18,13 +18,12 @@ real-arm · contrast test khoá `tokens.css` thật · acceptance-ledger đòi `
 Plan: [`plans/phase-0-backbone.md`](plans/phase-0-backbone.md). Spec nguồn: `spec.md §02/§04` · conventions.
 
 ## Next steps (1–3)
-1. **Chủ review + merge PR #4** (off `main`, squash — conventions §Scope&PR). Defer (ghi PR): `tsc -b`
-   project references (ADR-020) — hoãn tới khi packages có cross-dep; per-package `tsc --noEmit` qua turbo
-   đang tương đương cho typecheck.
-2. Phase-0 tiếp: **docker-compose skeleton** (Postgres/NATS/Garage/Caddy/cloudflared). *(app-CI lane đã
-   land trong PR #4: job `app-gates` cài node → `pnpm verify` + real-mutation-arm.)*
-3. Phase-0 tiếp: `packages/ui` primitives + Next app shells (storefront/admin) + next-intl runtime + self-host
-   font (subset `vietnamese`). Sau đó Go `core-api` (toolchain `go` chưa có ở máy này) + Rust `asset-worker`.
+1. **Chủ review + merge PR cho `feat/phase-0-compose-skeleton`** (off `main`, squash — conventions §Scope&PR).
+   Smoke-test thật trên host WSL2 (daemon Docker ở Mac dev đang tắt; chỉ validate được `docker compose config`).
+2. Phase-0 tiếp: `packages/ui` primitives + Next app shells (storefront/admin) + next-intl runtime + self-host
+   font (subset `vietnamese`). **`go` + `docker` GIỜ đã có ở máy dev** (go1.23.6 darwin/arm64; compose v5.1.0).
+3. Phase-0 tiếp: Go `core-api` (Chi BFF) + Rust `asset-worker`. ARM gate khi `services/**/*.go` land:
+   `Makefile verify-go` (plan.md §Phase-0 ARM checklist). GPU gate (operations.md §3) làm trên host WSL2.
 
 ## Open questions
 - *(không có cho slice backbone — scope đã chốt "backbone only" với user; ADR đã khoá quyết định.)*
@@ -38,11 +37,18 @@ Plan: [`plans/phase-0-backbone.md`](plans/phase-0-backbone.md). Spec nguồn: `s
 | Harness audit r2/r3 + ADR-027 (workflow giao-PR) | done | PR #1/#2 (main=f751a41) | guard.test 138 / osm 11 |
 | **Phase 0 — backbone (tokens + core + arm gates)** | **done (PR #4 open)** | `feat/phase-0-backbone` `eef1755` | verify rc=0 · guard 139 · osm 22 |
 | **Phase 0 — fix ultrareview PR #4 (A/B/C/D, 25 finding)** | **done (PR #4)** | `feat/phase-0-backbone` (+1 commit) | verify rc=0 · 43 test · guard 139 · osm 22 |
-| Phase 0 — compose skeleton | todo | — | — |
+| **Phase 0 — compose skeleton** | **done (branch open)** | `feat/phase-0-compose-skeleton` | `docker compose config -q` OK · verify rc=0 |
 | Phase 0 — packages/ui + app shells + next-intl/fonts | todo | — | — |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất
 `pnpm verify` — **rc=0** (lint[ESLint 10] + typecheck + **43 test** + format:check) · `tests/harness/guard.test.sh` —
 **139 / 0** · `tests/harness/osm-mutation.test.sh` — **22 / 0** (toy + REAL OSM + REAL money mutants đều bị
-KILL) (2026-06-25, Phase-0 backbone + vòng sửa ultrareview).
+KILL) (2026-06-25, Phase-0 backbone + vòng sửa ultrareview). **Compose skeleton (2026-06-25):**
+`pnpm verify` rc=0 (FULL TURBO) + `docker compose config -q` OK (`infra/`) — daemon Docker tắt nên chưa `up`.
+
+## Lưu ý git (2026-06-25)
+- PR #4 đã **merge** vào `origin/main` (squash → `cd6c171`). Local `main` từng kẹt 2 commit sau →
+  đã `ff-only` lên `cd6c171`. Branch hiện tại: **`feat/phase-0-compose-skeleton`** (off main mới).
+- Branch cũ `feat/phase-0-backbone` (local) **stale, content đã trong main** nhưng git coi là chưa-merge
+  (squash). Xoá tay: `git branch -D feat/phase-0-backbone` (guard-bash chặn `-D` trong phiên — chạy ngoài).
