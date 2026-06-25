@@ -14,8 +14,9 @@ describe('i18n catalog (vi) — sentence case (conventions §Giọng & chữ)', 
     expect(strings.length).toBeGreaterThan(0);
   });
 
-  it('no ALL-CAPS sentences (no run of 4+ uppercase Latin letters)', () => {
-    for (const s of strings) expect(s, s).not.toMatch(/[A-Z]{4,}/);
+  it('no ALL-CAPS sentences (no run of 4+ uppercase letters, incl. Vietnamese diacritics)', () => {
+    // \p{Lu} catches uppercase across scripts — ASCII [A-Z]{4,} missed e.g. ALL-CAPS "ƯU ĐÃI".
+    for (const s of strings) expect(s, s).not.toMatch(/\p{Lu}{4,}/u);
   });
 
   it('no message is entirely uppercase', () => {

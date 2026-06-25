@@ -4,11 +4,18 @@
  * spacing · radius · shadow · base · components). Do not guess values — if a token changes,
  * change it in /tokens/*.css first, then mirror here.
  *
- * ONE deliberate divergence from the raw source (conventions §A11y · WCAG 2.2 AA):
- * the PRIMARY ACTION must not be white-on-flame-500 (2.82:1, FAIL). The semantic `--primary`
- * here resolves to flame-700 (#C93A1A → 5.12:1 with white) instead of flame-500. The brand coral
- * flame-500 stays available as `--accent-flame` for non-text accents (badges, sprites, glows).
- * Locked by packages/tokens/test/tokens.contrast.test.ts.
+ * DELIBERATE DIVERGENCES from the raw source — all in the PRIMARY action ramp, for WCAG 2.2 AA
+ * (conventions §A11y): white-on-primary must clear 4.5:1, but the source flame-500/600 do not.
+ *   - primary:       flame-500 -> flame-700 (#C93A1A, 5.12:1)   [source 2.82:1 FAIL]
+ *   - primary-hover: flame-600 -> flame-700                     [source flame-600 ~3.3:1 FAIL]
+ *   - primary-press: flame-700 -> cocoa-900 (deep ink, very high contrast pressed state)
+ * The brand coral flame-500 stays available as the accent token for non-text accents (badges,
+ * sprites, glows). All three states are locked by packages/tokens/test/tokens.contrast.test.ts,
+ * which asserts THIS file (the shipped CSS), not just theme.ts.
+ *
+ * OPEN UX NOTE: with the flame ramp capped at 700, primary-hover currently equals primary, so hover
+ * has no colour change on its own — hover/press feedback is expected from the interaction layer
+ * (brightness/elevation in tokens/components.css) once ported. Revisit when packages/ui lands.
  */
 
 :root {

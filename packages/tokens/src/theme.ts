@@ -40,7 +40,8 @@ export const palette = {
   white: '#FFFFFF',
 } as const;
 
-// Semantic colors — `primary` is the A11y-fixed coral (flame-700, white text ≥ 4.5:1).
+// Semantic colors — the PRIMARY ramp diverges from /tokens/colors.css for WCAG 2.2 AA (see the
+// tokens.css header): primary flame-500→flame-700, hover flame-600→flame-700, press flame-700→cocoa-900.
 export const color = {
   textStrong: palette.cocoa900,
   textBody: palette.cocoa800,
@@ -57,9 +58,9 @@ export const color = {
   borderSubtle: '#EFE6CC',
   borderDefault: '#E3D5B0',
   borderStrong: palette.cocoa900,
-  primary: palette.flame700,
-  primaryHover: palette.flame700,
-  primaryPress: palette.cocoa900,
+  primary: palette.flame700, // a11y: source flame-500 (2.82:1 FAIL)
+  primaryHover: palette.flame700, // a11y: source flame-600 fails too; == primary until UI hover layer
+  primaryPress: palette.cocoa900, // pressed state (deep ink)
   onPrimary: palette.white,
   accentFlame: palette.flame500,
   accentTeal: palette.teal500,

@@ -1,7 +1,9 @@
 // Acceptance ledger gate (docs/acceptance.md). A line ticked `[x]` MUST name a `(test: …)` id that
-// appears in some packages/**/*.test.ts — otherwise the suite fails. Since the whole `pnpm test`
-// suite must be green, a referenced-but-failing test still fails the build elsewhere, so together
-// they enforce "ticked ⇒ test exists AND passes". Also pins OSM-02 + MNY-03 directly (plan.md ARM).
+// appears in the TITLE of a non-skipped `it()`/`test()` in some packages/**/*.test.ts — a bare
+// comment or an `it.skip(...)` no longer satisfies it (audit r-PR4 A5b: substring-presence was
+// gameable). Since the whole `pnpm test` suite must be green, a referenced-but-failing test still
+// fails the build elsewhere, so together they enforce "ticked ⇒ test exists AND passes". Also pins
+// OSM-02 + MNY-03 directly (plan.md ARM). (Limitation: a `describe.skip` wrapper is not detected.)
 import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -20,23 +22,36 @@ function repoRoot(): string {
   throw new Error('repo root (pnpm-workspace.yaml) không tìm thấy');
 }
 
-function collectTestSources(root: string): string {
-  const acc: string[] = [];
+// Extract `it()` / `test()` TITLES (not raw source), split by whether the call is skipped/todo.
+interface TestTitles {
+  active: string;
+  skipped: string;
+}
+function collectTestTitles(root: string): TestTitles {
+  const active: string[] = [];
+  const skipped: string[] = [];
+  const decl = /\b(?:it|test)(\.[A-Za-z]+)?\s*\(\s*(['"`])([\s\S]*?)\2/g;
   const walk = (d: string): void => {
     for (const entry of readdirSync(d)) {
       if (entry === 'node_modules' || entry === '.turbo' || entry === 'dist') continue;
       const p = join(d, entry);
       if (statSync(p).isDirectory()) walk(p);
-      else if (entry.endsWith('.test.ts')) acc.push(readFileSync(p, 'utf8'));
+      else if (entry.endsWith('.test.ts')) {
+        const src = readFileSync(p, 'utf8');
+        for (const m of src.matchAll(decl)) {
+          const mod = m[1] ?? '';
+          (/\.(skip|todo|fails)\b/.test(mod) ? skipped : active).push(m[3]);
+        }
+      }
     }
   };
   walk(join(root, 'packages'));
-  return acc.join('\n');
+  return { active: active.join('\n'), skipped: skipped.join('\n') };
 }
 
 const root = repoRoot();
 const md = readFileSync(join(root, 'docs', 'acceptance.md'), 'utf8');
-const haystack = collectTestSources(root);
+const titles = collectTestTitles(root);
 // A criterion is its marker line plus any indented continuation lines (the `(test: …)` ref often
 // wraps onto the next, indented line in acceptance.md).
 interface LedgerEntry {
@@ -76,9 +91,13 @@ describe('acceptance ledger gate (docs/acceptance.md)', () => {
       expect(refMatch, `dòng [x] ${entry.id} thiếu (test: \`…\`)`).not.toBeNull();
       if (!refMatch) return;
       const ref = refMatch[1];
+      const inActive = titles.active.includes(ref);
+      const inSkipped = titles.skipped.includes(ref);
       expect(
-        haystack.includes(ref),
-        `acceptance ${entry.id} tick [x] nhưng không thấy test '${ref}' trong packages/**/*.test.ts`,
+        inActive,
+        inSkipped
+          ? `acceptance ${entry.id} tick [x] nhưng test '${ref}' chỉ nằm trong it.skip/todo — không ràng buộc`
+          : `acceptance ${entry.id} tick [x] nhưng không thấy it()/test() có tên chứa '${ref}' trong packages/**/*.test.ts`,
       ).toBe(true);
     });
   }

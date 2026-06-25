@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { color, palette } from '../src/theme';
 
 // WCAG 2.1 relative luminance + contrast ratio (conventions §A11y · WCAG 2.2 AA).
@@ -20,6 +23,28 @@ function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+// ---- Shipped CSS is the artifact apps consume (package.json exports ./tokens.css). The theme.ts
+// assertions below alone do NOT protect it: someone could revert `--primary` to flame-500 in
+// tokens.css and a theme-only test stays green. So we parse the real CSS, resolve the var() chain,
+// and assert contrast on THAT — plus lockstep with theme.ts (conventions §A11y: khoá semantic alias).
+const cssPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'tokens.css');
+// Strip block comments first — the file header documents tokens like `--primary:` in prose, which
+// would otherwise be mis-parsed as declarations. `[^;\n]+` keeps each match on its own line.
+const css = readFileSync(cssPath, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const cssVars = new Map<string, string>();
+for (const m of css.matchAll(/(--[\w-]+)\s*:\s*([^;\n]+);/g)) {
+  cssVars.set(m[1], m[2].trim());
+}
+/** Resolve a `--name` through its `var(--…)` chain down to a concrete hex (lowercased). */
+function resolveCssVar(name: string, depth = 0): string {
+  if (depth > 10) throw new Error(`var chain too deep / cyclic at ${name}`);
+  const raw = cssVars.get(name);
+  if (raw === undefined) throw new Error(`tokens.css thiếu ${name}`);
+  const varRef = raw.match(/^var\((--[\w-]+)\)$/);
+  if (varRef) return resolveCssVar(varRef[1], depth + 1);
+  return raw.toLowerCase();
+}
+
 describe('tokens contrast (WCAG 2.2 AA — conventions §A11y)', () => {
   it('primary action vs on-primary clears 4.5:1 (coral fix: flame-700, not flame-500)', () => {
     expect(contrast(color.primary, color.onPrimary)).toBeGreaterThanOrEqual(4.5);
@@ -39,5 +64,23 @@ describe('tokens contrast (WCAG 2.2 AA — conventions §A11y)', () => {
 
   it('strong text on card surface clears 4.5:1', () => {
     expect(contrast(color.textStrong, color.surfaceCard)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // ---- The SHIPPED tokens.css (not just theme.ts) ----
+  it('shipped tokens.css: all three primary states clear 4.5:1 against --on-primary', () => {
+    const onPrimary = resolveCssVar('--on-primary');
+    for (const state of ['--primary', '--primary-hover', '--primary-press'] as const) {
+      expect(
+        contrast(resolveCssVar(state), onPrimary),
+        `${state} (${resolveCssVar(state)}) on ${onPrimary} fails AA 4.5:1`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('shipped tokens.css is in lockstep with theme.ts (so the theme-based tests transitively guard it)', () => {
+    expect(resolveCssVar('--primary')).toBe(color.primary.toLowerCase());
+    expect(resolveCssVar('--primary-hover')).toBe(color.primaryHover.toLowerCase());
+    expect(resolveCssVar('--primary-press')).toBe(color.primaryPress.toLowerCase());
+    expect(resolveCssVar('--on-primary')).toBe(color.onPrimary.toLowerCase());
   });
 });

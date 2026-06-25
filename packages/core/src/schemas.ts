@@ -1,5 +1,8 @@
 // Zod schemas for the domain (spec §02). Server-authoritative: the create-order input has NO
 // total/subtotal — the server computes them via money.calcTotals (conventions §Tiền).
+//
+// User-facing validation messages are i18n KEYS (catalog: i18n/vi.ts → `validation.*`), never inline
+// Vietnamese literals — the UI resolves them via next-intl (conventions §i18n). Keep keys in sync.
 import { z } from 'zod';
 
 export const orderStatusEnum = z.enum([
@@ -28,7 +31,7 @@ export const AddressSchema = z.object({
 
 export const CustomerSchema = z.object({
   name: z.string().min(2).max(60),
-  phone: z.string().regex(/^(0|\+84)\d{9}$/, 'Số điện thoại chưa đúng định dạng.'),
+  phone: z.string().regex(/^(0|\+84)\d{9}$/, 'validation.phoneInvalid'),
   email: z.string().email().optional(),
   socialHandle: z.string().optional(),
 });
@@ -79,8 +82,9 @@ const hasPersonalization = (items: { personalization?: unknown }[]): boolean =>
   items.some((it) => it.personalization !== undefined);
 
 /**
- * Web create-order input. NOTE: no total/subtotal (server computes). Personalized items require
- * the "không đổi trả" acknowledgement before payment (CHK-03 · ADR-012).
+ * Web create-order input. NOTE: no total/subtotal (server computes). Personalized items require,
+ * before payment (CHK-03 · ADR-012), BOTH: the "không đổi trả" acknowledgement and an explicit
+ * echo confirmation of the engraving content.
  */
 export const CreateWebOrderInput = z
   .object({
@@ -90,10 +94,15 @@ export const CreateWebOrderInput = z
     items: z.array(OrderItemSchema).min(1),
     paymentProofUrl: z.string().url(),
     personalizationAck: z.boolean().optional(),
+    engraveEchoConfirmed: z.boolean().optional(),
   })
   .refine((data) => !hasPersonalization(data.items) || data.personalizationAck === true, {
-    message: 'Đơn có khắc tên cần tick "không đổi trả" trước khi thanh toán.',
+    message: 'validation.personalizationAckRequired',
     path: ['personalizationAck'],
+  })
+  .refine((data) => !hasPersonalization(data.items) || data.engraveEchoConfirmed === true, {
+    message: 'validation.engraveEchoRequired',
+    path: ['engraveEchoConfirmed'],
   });
 
 export type Address = z.infer<typeof AddressSchema>;

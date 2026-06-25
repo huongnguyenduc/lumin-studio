@@ -1,7 +1,10 @@
-// Flat config (ESLint 9, typescript-eslint). The load-bearing rule for Lumin is the money
+// Flat config (ESLint 10, typescript-eslint). The load-bearing rule for Lumin is the money
 // formatting ban: no `Intl.NumberFormat` / `.toLocaleString` ANYWHERE outside `packages/core`
 // (ADR-019 · conventions §Tiền — money is formatted by the single formatter in packages/core).
 // The Phase-0 ARM-GUARD (tests/harness/guard.test.sh) greps this file for that ban.
+// LIMITATION: this is a SYNTACTIC ban — it catches `Intl.NumberFormat(...)` / `x.toLocaleString()`
+// but not aliasing (`const NF = Intl.NumberFormat`). The real-mutation money gate
+// (osm-mutation.test.sh) + spec-guardian review are the backstop for that escape hatch.
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 

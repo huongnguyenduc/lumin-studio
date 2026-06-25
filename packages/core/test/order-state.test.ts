@@ -184,4 +184,12 @@ describe('order_state', () => {
       ),
     );
   });
+
+  it('replayStatus — a creation event (from: null) at the head replays to the final status', () => {
+    const history: StatusEvent[] = [
+      { from: null, to: 'PENDING_CONFIRM', at: AT, byUser: 'system' },
+      { from: 'PENDING_CONFIRM', to: 'PAID', at: AT, byUser: 'owner' },
+    ];
+    expect(replayStatus(history)).toBe('PAID');
+  });
 });

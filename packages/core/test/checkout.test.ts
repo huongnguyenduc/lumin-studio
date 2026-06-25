@@ -32,7 +32,7 @@ describe('checkout', () => {
     expect(initialStatusForChannel('inbox', { hasPaymentProof: false })).toBe('PAID');
   });
 
-  it('checkout.personalized_requires_ack — CHK-03: personalized item needs the no-return ack', () => {
+  it('checkout.personalized_requires_ack — CHK-03: personalized item needs no-return ack + engrave echo', () => {
     const personalized = {
       ...baseInput,
       items: [
@@ -44,9 +44,22 @@ describe('checkout', () => {
         },
       ],
     };
+    // Missing both acks → rejected.
     expect(CreateWebOrderInput.safeParse(personalized).success).toBe(false);
+    // ADR-012 requires BOTH halves before payment, so either ack alone is still rejected.
     expect(
       CreateWebOrderInput.safeParse({ ...personalized, personalizationAck: true }).success,
+    ).toBe(false);
+    expect(
+      CreateWebOrderInput.safeParse({ ...personalized, engraveEchoConfirmed: true }).success,
+    ).toBe(false);
+    // No-return ack + engrave-echo confirmation → accepted.
+    expect(
+      CreateWebOrderInput.safeParse({
+        ...personalized,
+        personalizationAck: true,
+        engraveEchoConfirmed: true,
+      }).success,
     ).toBe(true);
   });
 

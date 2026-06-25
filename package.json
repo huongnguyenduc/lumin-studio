@@ -18,12 +18,12 @@
     "verify": "pnpm -s lint && pnpm -s typecheck && pnpm -s test && pnpm -s format:check"
   },
   "devDependencies": {
-    "@eslint/js": "^9.18.0",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.10.7",
-    "eslint": "^9.18.0",
+    "eslint": "^10.5.0",
     "prettier": "^3.4.2",
     "turbo": "^2.3.4",
     "typescript": "^5.7.3",
-    "typescript-eslint": "^8.21.0"
+    "typescript-eslint": "^8.62.0"
   }
 }

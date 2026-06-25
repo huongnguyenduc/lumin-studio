@@ -21,11 +21,13 @@ export const vi = {
     emailInvalid: 'Email này nhìn chưa hợp lệ.',
     addressIncomplete: 'Vui lòng chọn đủ tỉnh, phường và đường.',
     engravingTooLong: 'Tên hơi dài so với vị trí khắc này.',
+    personalizationAckRequired: 'Đơn có khắc tên cần tick "không đổi trả" trước khi thanh toán.',
+    engraveEchoRequired: 'Xác nhận lại nội dung khắc giúp mình trước khi thanh toán nhé.',
     discountExpired: 'Mã này đã hết hạn rồi.',
     orderLookupNotFound: 'Không tìm thấy đơn khớp mã và số này.',
   },
   order: {
-    extensionToast: 'Đã tạo đơn {code} 🎉',
+    extensionToast: 'Đã tạo đơn #{code} 🎉',
   },
 } as const;
 

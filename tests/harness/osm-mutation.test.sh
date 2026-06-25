@@ -119,7 +119,7 @@ else
   fi
   # Họ mutant OSM (anchor #GUARDCALL/#GUARDMATCH/#EDGES/#HISTORY/#REASON) → OSM-01..03 phải đỏ.
   run_real "allow-all guard"                "$osm_src" 's~.*#GUARDCALL~  // mut-allow-all~'                                                                       test/order-state.test.ts "OSM-01"
-  run_real "swap from/to"                   "$osm_src" 's~from}>${to~to}>${from~'                                                                                test/order-state.test.ts "OSM-01"
+  run_real "swap from/to"                   "$osm_src" '/#GUARDMATCH/ s~from}>${to~to}>${from~'                                                                   test/order-state.test.ts "OSM-01"
   run_real "drop-edge PAID>PRINTING"        "$osm_src" 's~PAID>PRINTING ~~'                                                                                      test/order-state.test.ts "OSM-01"
   run_real "add-illegal PAID>SHIPPING"      "$osm_src" "/#EDGES/ s/= '/= 'PAID>SHIPPING /"                                                                        test/order-state.test.ts "OSM-01"
   run_real "terminal-escape CANCELLED>PAID" "$osm_src" "/#EDGES/ s/= '/= 'CANCELLED>PAID /"                                                                      test/order-state.test.ts "OSM-01"

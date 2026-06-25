@@ -1,6 +1,9 @@
 # Harness self-test lane (agent-harness.md §"Harness self-test (CI)" / ADR-023).
 # Mọi hook self-no-op tới Phase 0 ⇒ "gate no-op" trông y hệt "gate pass"; self-test là cái phân biệt.
-# Chạy được pre-Phase-0 (không phụ thuộc toolchain app: pnpm/golangci-lint…).
+# `selftest` job chạy được pre-Phase-0 (không phụ thuộc toolchain app) — chỉ bash.
+# `app-gates` job (Phase-0 trở đi) cài node + pnpm để chạy `pnpm verify` VÀ real-mutation-arm:
+#   nếu vắng node_modules, osm-mutation.test.sh skip nhánh REAL ⇒ trên lane bash-only nó chỉ chạy
+#   toy-check, "xanh" mà KHÔNG phủ source thật. app-gates đóng đúng lỗ hổng đó (audit r-PR4 A3/A4).
 name: harness-selftest
 
 on:
@@ -38,5 +41,22 @@ jobs:
       - uses: actions/checkout@v4
       - name: guard.test.sh (chặn rm-rf/secret/contract/test-weaken/loop/special-casing…)
         run: bash tests/harness/guard.test.sh
-      - name: osm-mutation.test.sh (chứng minh test OSM ràng buộc transition)
+      - name: osm-mutation.test.sh (toy self-check — bash-only, không cần node)
+        run: bash tests/harness/osm-mutation.test.sh
+
+  # Phase-0 trở đi: có node ⇒ pnpm verify + real-mutation-arm (mutate source thật → test phải đỏ).
+  # Đây là nơi DUY NHẤT chứng minh test OSM/money không vacuous so với source production trong CI.
+  app-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: pnpm verify (lint + typecheck + test + format:check)
+        run: pnpm verify
+      - name: osm-mutation real-arm (có node_modules ⇒ mutant trên source thật phải bị KILL)
         run: bash tests/harness/osm-mutation.test.sh

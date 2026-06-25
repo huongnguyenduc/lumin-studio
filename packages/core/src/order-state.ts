@@ -78,7 +78,9 @@ export type TransitionErrorCode =
   | 'RBAC'
   | 'REASON_REQUIRED'
   | 'REFUND_PROOF_REQUIRED'
-  | 'PROOF_REQUIRED';
+  | 'PROOF_REQUIRED'
+  | 'INVALID_ACTOR'
+  | 'INVALID_TIMESTAMP';
 
 export class TransitionError extends Error {
   constructor(
@@ -87,6 +89,24 @@ export class TransitionError extends Error {
   ) {
     super(message);
     this.name = 'TransitionError';
+  }
+}
+
+/** ISO-8601 UTC instant — must carry an explicit Z (or ±hh:mm offset) and parse. conventions §Tiền. */
+function isIsoUtc(s: unknown): boolean {
+  if (typeof s !== 'string') return false;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/.test(s)) return false;
+  return !Number.isNaN(Date.parse(s));
+}
+
+/** Non-empty http/https URL (mirrors StatusEventSchema.refundProofUrl.url() at the guard layer). */
+function isHttpUrl(s: unknown): boolean {
+  if (typeof s !== 'string' || !s.trim()) return false;
+  try {
+    const u = new URL(s.trim());
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
   }
 }
 
@@ -146,12 +166,24 @@ export function transition<T extends OrderLike>(
       `Vai trò ${ctx.role} không được phép chuyển ${from} → ${to}.`,
     );
   }
+  if (!ctx.byUser?.trim()) {
+    throw new TransitionError(
+      'INVALID_ACTOR',
+      'statusHistory cần byUser (người thực hiện) không rỗng.',
+    );
+  }
+  if (!isIsoUtc(ctx.at)) {
+    throw new TransitionError(
+      'INVALID_TIMESTAMP',
+      'statusHistory.at phải là ISO-8601 UTC (vd 2026-06-25T00:00:00.000Z).',
+    );
+  }
   // prettier-ignore
   if (REASON_REQUIRED.has(to) && !ctx.reason?.trim()) throw new TransitionError('REASON_REQUIRED', `Chuyển sang ${to} cần lý do.`); // #REASON
-  if (to === 'REFUNDED' && !ctx.refundProofUrl?.trim()) {
+  if (to === 'REFUNDED' && !isHttpUrl(ctx.refundProofUrl)) {
     throw new TransitionError(
       'REFUND_PROOF_REQUIRED',
-      'REFUNDED cần refundProofUrl (ảnh chuyển hoàn).',
+      'REFUNDED cần refundProofUrl hợp lệ (ảnh chuyển hoàn, http/https).',
     );
   }
   const event: StatusEvent = {
