@@ -9,26 +9,20 @@ const config: Config = {
   presets: [luminPreset as unknown as NonNullable<Config['presets']>[number]],
   content: ['./src/**/*.{ts,tsx}', '../../packages/ui/src/**/*.{ts,tsx}'],
   theme: {
-    // Map the design-system font roles to the self-hosted Fontsource family names (REPLACE, not
-    // extend, so these win over the preset's literal family strings). Plus Jakarta Sans stands in
-    // for Hanken Grotesque (not shipped by Next/Fontsource) — design-system.md marks it swappable.
+    // Map the design-system font roles to the self-hosted next/font CSS variables (REPLACE, not
+    // extend, so these win over the preset's literal family strings). The vars are set on <html> by
+    // next/font in layout.tsx. Hanken Grotesque is the canonical body font (Next 15 font manifest).
     fontFamily: {
       display: [
-        '"Bricolage Grotesque Variable"',
+        'var(--font-bricolage)',
         'Bricolage Grotesque',
         'Arial Black',
         'system-ui',
         'sans-serif',
       ],
-      body: [
-        '"Plus Jakarta Sans Variable"',
-        'Plus Jakarta Sans',
-        'system-ui',
-        '-apple-system',
-        'sans-serif',
-      ],
-      mono: ['"Space Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
-      sans: ['"Plus Jakarta Sans Variable"', 'system-ui', 'sans-serif'],
+      body: ['var(--font-hanken)', 'Hanken Grotesk', 'system-ui', '-apple-system', 'sans-serif'],
+      mono: ['var(--font-space-mono)', 'Space Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+      sans: ['var(--font-hanken)', 'system-ui', 'sans-serif'],
     },
   },
   plugins: [],

@@ -12,8 +12,8 @@ Dựng `apps/storefront` (Next 14.2 App Router + React 18) — app đầu tiên 
 Wiring nền (dùng lại cho admin): `pnpm-workspace` thêm `apps/*` · `turbo` thêm `dev`/`build` · **Tailwind 3.4
 + `luminPreset`** (content scan `packages/ui/src` để primitive class không bị tree-shake) · **next-intl (vi +
 ICU, không locale-routing)** — catalog = chrome `messages/vi.ts` + `@lumin/core` domain dưới namespace `core`
-· **self-host font qua Fontsource** (Bricolage Variable display · Plus Jakarta Sans Variable body [thay Hanken
-— Next/Fontsource không ship, design-system cho phép swap] · Space Mono; subset `vietnamese`) · **ESLint arm
+· **self-host font qua `next/font/google` (Next 15)** (Bricolage Grotesque display · **Hanken Grotesk** body ·
+Space Mono; subset `vietnamese`, CSS-var → tailwind fontFamily) · **ESLint arm
 cho `apps/**`**: `jsx-a11y` recommended + `i18next/no-literal-string` (jsx-text-only) — luật i18n/a11y giờ có
 enforcement. Shell = header sticky (logo+search+nav) · bottom-nav mobile · hero (pop CTA) · featured grid
 (ProductCard + empty state) · trust · footer · `loading`/`error` route states. Tiền chỉ qua PriceTag/`@lumin/core`
@@ -64,6 +64,8 @@ core 37). spec-guardian: **PASS 0 BLOCKER/0 WARN/2 NOTE** (money/i18n/a11y/§Sta
   `.next`/`next-env.d.ts`/`.turbo`. **Chưa push** — sắp commit + mở PR.
 - **Deferred (ghi để PR sau):** `@lumin/ui` Button `lg` dùng `h-13` không có spacing token → render 0 height;
   shell tránh `lg`. Fix gọn ở packages/ui (thêm token `13`/đổi `h-[52px]`) — KHÔNG trộn vào PR app-shell.
-- **Substitution disclosed:** body font Hanken Grotesque → Plus Jakarta Sans (Next/Fontsource không ship
-  Hanken); design-system cho phép swap font placeholder. `prettier-plugin-tailwindcss` + `@next/eslint-plugin`
-  deferred (tránh reformat `packages/ui` / finicky flat-config) — không phải ARM gate.
+- **Font name fix (2026-06-26):** body font dùng đúng **Hanken Grotesk** (design-system.md/tokens viết sai
+  "Hanken Grotesque" — đó là lý do trước đây tưởng không có). **Upgrade Next 14→15** (React giữ 18.3, peer cho
+  phép) để next/font/google; bỏ Fontsource. design-system.md/tokens vẫn ghi "Hanken Grotesque" → nên sửa ở PR
+  packages sau (literal name bị app override qua CSS-var nên không vỡ). `prettier-plugin-tailwindcss` +
+  `@next/eslint-plugin` vẫn deferred — không phải ARM gate.

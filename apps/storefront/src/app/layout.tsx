@@ -2,14 +2,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages, getTranslations } from 'next-intl/server';
-// Self-hosted fonts (Fontsource — bundled woff2 including the `vietnamese` subset; no runtime font
-// CDN, no build-time fetch). Registered families: 'Bricolage Grotesque Variable' · 'Plus Jakarta
-// Sans Variable' · 'Space Mono', mapped in tailwind.config.ts. Plus Jakarta Sans stands in for
-// Hanken Grotesque (not shipped by Next/Fontsource); design-system.md marks the body font swappable.
-import '@fontsource-variable/bricolage-grotesque';
-import '@fontsource-variable/plus-jakarta-sans';
-import '@fontsource/space-mono/400.css';
-import '@fontsource/space-mono/700.css';
+import { fontBody, fontDisplay, fontMono } from '@/fonts';
 import { SiteHeader } from '@/components/site-header';
 import { SiteFooter } from '@/components/site-footer';
 import { BottomNav } from '@/components/bottom-nav';
@@ -27,7 +20,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const t = await getTranslations('nav');
 
   return (
-    <html lang={locale}>
+    <html
+      lang={locale}
+      className={`${fontDisplay.variable} ${fontBody.variable} ${fontMono.variable}`}
+    >
       <body className="flex min-h-dvh flex-col">
         <a
           href="#main"
