@@ -54,7 +54,7 @@ enforcement. Shell = header sticky (logo+search+nav) · bottom-nav mobile · her
 | **Phase 0 — compose skeleton** | **merged (PR #5)** | `origin/main` `30c5652` | `docker compose config -q` OK · verify rc=0 |
 | **Phase 0 — `packages/ui` 13 primitives + token-coverage gate** | **merged (PR #6)** | `origin/main` `296c44a` | verify rc=0 · ui 105 / tokens 9 / core 37 · guard 139 · osm 22 · spec-guardian + /review: 2+2 a11y fixed |
 | **Phase 0 — app shell 1/2: storefront (Next+next-intl+fonts+Tailwind)** | **merged?→PR #7 open** | `feat/phase-0-storefront-shell` (off `296c44a`) | `next build` ✓ · verify rc=0 · storefront i18n test + ui 105/tokens 9/core 37 · guard 139 · osm 22 · spec-guardian PASS (0/0/2) |
-| **Phase 0 — app shell 2/2: admin (sidebar+dashboard, reuse infra)** | **done (PR open, stacked on #7)** | `feat/phase-0-admin-shell` (off storefront-shell) | `next build` ✓ · verify rc=0 · admin i18n test · guard 139 · osm 22 · spec-guardian PASS (0/0/2) · status-Badge map = 7 ORDER_STATUSES |
+| **Phase 0 — app shell 2/2: admin (sidebar+dashboard, reuse infra)** | **done (PR #8 open, stacked on #7)** | `feat/phase-0-admin-shell` (rebased on storefront-shell) | Next 15 + Hanken Grotesk · `next build` ✓ · verify rc=0 · admin i18n test · guard 139 · osm 22 · spec-guardian PASS (0/0/2) · status-Badge map = 7 ORDER_STATUSES |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất

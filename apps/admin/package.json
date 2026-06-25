@@ -12,12 +12,9 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@fontsource-variable/bricolage-grotesque": "^5.2.10",
-    "@fontsource-variable/plus-jakarta-sans": "^5.2.8",
-    "@fontsource/space-mono": "^5.2.9",
     "@lumin/core": "workspace:*",
     "@lumin/ui": "workspace:*",
-    "next": "^14.2.15",
+    "next": "^15.5.19",
     "next-intl": "^3.26.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
