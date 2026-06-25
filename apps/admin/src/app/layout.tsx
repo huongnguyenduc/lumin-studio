@@ -2,14 +2,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages, getTranslations } from 'next-intl/server';
-// Self-hosted fonts (Fontsource — bundled woff2 including the `vietnamese` subset; no runtime font
-// CDN, no build-time fetch). Registered families: 'Bricolage Grotesque Variable' · 'Plus Jakarta
-// Sans Variable' · 'Space Mono', mapped in tailwind.config.ts. Plus Jakarta Sans stands in for
-// Hanken Grotesque (not shipped by Next/Fontsource); design-system.md marks the body font swappable.
-import '@fontsource-variable/bricolage-grotesque';
-import '@fontsource-variable/plus-jakarta-sans';
-import '@fontsource/space-mono/400.css';
-import '@fontsource/space-mono/700.css';
+import { fontBody, fontDisplay, fontMono } from '@/fonts';
 import { Sidebar } from '@/components/sidebar';
 import { locale } from '@/messages';
 import './globals.css';
@@ -28,7 +21,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // screens the sidebar collapses to a scrolling top bar and the main content sits below it (admin is
   // a desktop-first tool — see Sidebar). The content area is itself capped + padded.
   return (
-    <html lang={locale}>
+    <html
+      lang={locale}
+      className={`${fontDisplay.variable} ${fontBody.variable} ${fontMono.variable}`}
+    >
       <body className="min-h-dvh bg-surface-page">
         <a
           href="#main"
