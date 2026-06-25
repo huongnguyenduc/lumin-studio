@@ -1,0 +1,13 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": [
+    "tsconfig.base.json",
+    "eslint.config.mjs",
+    ".prettierrc",
+    "pnpm-lock.yaml"
+  ],
+  "tasks": {
+    "typecheck": {},
+    "test": {}
+  }
+}

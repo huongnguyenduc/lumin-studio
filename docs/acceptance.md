@@ -17,32 +17,32 @@
 
 ## Cụm 1 — Order state machine (`spec.md` §04 · `domain-core.md`)
 
-- [ ] `OSM-01` — WHEN một đơn đổi trạng thái (mọi cặp `from × to`), the system shall đi qua **transition guard** chung và
+- [x] `OSM-01` — WHEN một đơn đổi trạng thái (mọi cặp `from × to`), the system shall đi qua **transition guard** chung và
   từ chối transition không hợp lệ. *(test: `order_state.transition_table`)*
-- [ ] `OSM-02` — WHEN bất kỳ transition hợp lệ nào xảy ra, the system shall **append** `statusHistory {from, to, at, byUser}`
+- [x] `OSM-02` — WHEN bất kỳ transition hợp lệ nào xảy ra, the system shall **append** `statusHistory {from, to, at, byUser}`
   (đúng một bản ghi). *(test: `order_state.appends_status_history`)*
-- [ ] `OSM-03` — WHEN đơn chuyển sang `CANCELLED` hoặc `REFUNDED`, the system shall **bắt buộc** `reason` không rỗng (và `REFUNDED` cần `refundProofUrl`).
+- [x] `OSM-03` — WHEN đơn chuyển sang `CANCELLED` hoặc `REFUNDED`, the system shall **bắt buộc** `reason` không rỗng (và `REFUNDED` cần `refundProofUrl`).
   *(test: `order_state.cancel_refund_requires_reason`)*
-- [ ] `OSM-04` — WHEN một staff (không phải owner) cố `reconcile → PAID`, the system shall **từ chối** (owner-only, ADR-010).
+- [x] `OSM-04` — WHEN một staff (không phải owner) cố `reconcile → PAID`, the system shall **từ chối** (owner-only, ADR-010).
   *(test: `order_state.reconcile_paid_owner_only`)*
-- [ ] `OSM-05` — WHEN transition guard chạy theo `role`, the system shall enforce RBAC cho mọi (from, to, role) — staff
+- [x] `OSM-05` — WHEN transition guard chạy theo `role`, the system shall enforce RBAC cho mọi (from, to, role) — staff
   không sửa cài đặt/STK. *(test: `order_state.rbac_matrix`)*
 
 ## Cụm 2 — Tiền (`conventions.md` §Tiền · ADR-019)
 
-- [ ] `MNY-01` — WHEN tính tổng đơn, the system shall tính ở **server** và đảm bảo `sum(parts) == total` (int VND, không
+- [x] `MNY-01` — WHEN tính tổng đơn, the system shall tính ở **server** và đảm bảo `sum(parts) == total` (int VND, không
   thập phân). *(test: `money.parts_sum_equals_total`)*
-- [ ] `MNY-02` — WHEN client gửi `total`, the system shall **bỏ qua/ từ chối** giá trị đó và tính lại từ parts.
+- [x] `MNY-02` — WHEN client gửi `total`, the system shall **bỏ qua/ từ chối** giá trị đó và tính lại từ parts.
   *(test: `money.rejects_client_total`)*
-- [ ] `MNY-03` — WHEN format tiền hiển thị, the system shall dùng **một** formatter trong `packages/core` → `390.000₫`
+- [x] `MNY-03` — WHEN format tiền hiển thị, the system shall dùng **một** formatter trong `packages/core` → `390.000₫`
   (không space, U+20AB); không nơi nào khác gọi `Intl.NumberFormat`/`toLocaleString`. *(test: `money.single_formatter` +
   ESLint `no-restricted-syntax`)*
 
 ## Cụm 3 — Checkout / thanh toán (`spec.md` §Order lifecycle · ADR-010)
 
-- [ ] `CHK-01` — WHEN khách ở màn QR tĩnh chưa đính ảnh CK, the system shall **chưa** tạo đơn. *(test:
+- [x] `CHK-01` — WHEN khách ở màn QR tĩnh chưa đính ảnh CK, the system shall **chưa** tạo đơn. *(test:
   `checkout.no_order_before_proof`)*
-- [ ] `CHK-02` — WHEN khách đính ảnh biên lai + bấm xác nhận, the system shall `POST /orders` tạo đơn ở `PENDING_CONFIRM`
+- [x] `CHK-02` — WHEN khách đính ảnh biên lai + bấm xác nhận, the system shall `POST /orders` tạo đơn ở `PENDING_CONFIRM`
   kèm ảnh CK. *(test: `checkout.creates_order_on_proof`)*
-- [ ] `CHK-03` — WHEN tạo đơn hàng cá nhân hoá, the system shall yêu cầu tickbox "không đổi trả" + bước echo nội dung khắc
+- [x] `CHK-03` — WHEN tạo đơn hàng cá nhân hoá, the system shall yêu cầu tickbox "không đổi trả" + bước echo nội dung khắc
   **trước** thanh toán (ADR-012). *(test: `checkout.personalized_requires_ack`)*

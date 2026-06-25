@@ -1,0 +1,26 @@
+# Dependency / build output
+node_modules
+dist
+.turbo
+coverage
+.next
+build
+out
+pnpm-lock.yaml
+
+# Pre-existing handcrafted content — NOT prettier-managed (authored by hand, source of truth).
+# Prettier only formats the code we own (root config + packages/**).
+# NOTE: leading slash anchors to repo root — a bare `tokens/` also matches `packages/tokens/`
+# (gitignore semantics), which would silently drop an owned package from format:check.
+/designs/
+/docs/
+/tokens/
+/.claude/
+/.github/
+/tests/harness/
+spec.md
+design-system.md
+CLAUDE.md
+AGENTS.md
+Cat Peek - Behavior Spec.md
+.gitignore
