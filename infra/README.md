@@ -24,15 +24,21 @@ Hạ tầng self-host tại nhà cho Lumin Studio. Nguồn chân lý: [`docs/ope
 cd infra
 cp .env.example .env
 
-# Sinh secret cho Garage (đừng để trống RPC_SECRET/ADMIN_TOKEN)
-openssl rand -hex 32   # → GARAGE_RPC_SECRET
-openssl rand -hex 32   # → GARAGE_ADMIN_TOKEN
-# (sửa POSTGRES_PASSWORD khác mặc định)
+# Điền secret VÀO .env (bắt buộc — các key này để trống, compose ${VAR:?} sẽ chặn `up`).
+# Linux/WSL2 (GNU sed). macOS: đổi `sed -i` → `sed -i ''`.
+sed -i "s|^GARAGE_RPC_SECRET=.*|GARAGE_RPC_SECRET=$(openssl rand -hex 32)|"   .env
+sed -i "s|^GARAGE_ADMIN_TOKEN=.*|GARAGE_ADMIN_TOKEN=$(openssl rand -hex 32)|" .env
+sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 24)|"   .env
+# (tuỳ chọn) auth cho endpoint metrics garage:
+# sed -i "s|^GARAGE_METRICS_TOKEN=.*|GARAGE_METRICS_TOKEN=$(openssl rand -hex 32)|" .env
 
 docker compose up -d                  # local infra (không cần Cloudflare)
-docker compose ps                     # tất cả phải "healthy"
+docker compose ps                     # 4 service infra phải "healthy"
 curl localhost:8080/healthz           # → ok   (Caddy hello)
 ```
+
+> ⚠️ `garage` báo **healthy** ngay cả khi **chưa** `layout apply` — healthcheck chỉ là
+> liveness RPC, chưa phải S3 sẵn-sàng. Chạy bước [layout](#garage--khởi-tạo-layout-1-lần-sau-up-đầu-tiên) bên dưới trước khi ghi object.
 
 Bật tunnel ra internet (cần `TUNNEL_TOKEN` trong `.env`):
 

@@ -10,6 +10,8 @@ db_engine = "lmdb"
 replication_factor = 1
 
 rpc_bind_addr = "[::]:3901"
+# CHỈ đúng cho single-node (peer dùng địa chỉ này để gọi RPC). Thêm node thứ 2 hoặc
+# RPC-client ngoài container → ĐỔI sang địa chỉ reachable, không để 127.0.0.1.
 rpc_public_addr = "127.0.0.1:3901"
 
 [s3_api]

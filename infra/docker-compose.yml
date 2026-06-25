@@ -60,6 +60,8 @@ services:
     environment:
       GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:?set GARAGE_RPC_SECRET (openssl rand -hex 32)}
       GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:?set GARAGE_ADMIN_TOKEN (openssl rand -hex 32)}
+      # empty = endpoint metrics (:3903) KHÔNG auth. Admin port bind 127.0.0.1 nên chỉ
+      # lộ local; đặt token khi expose metrics ra observability (operations.md §6).
       GARAGE_METRICS_TOKEN: ${GARAGE_METRICS_TOKEN:-}
     volumes:
       - ./garage/garage.toml:/etc/garage.toml:ro
@@ -69,16 +71,20 @@ services:
       - '127.0.0.1:${GARAGE_S3_PORT:-3900}:3900' # S3 API
       - '127.0.0.1:${GARAGE_ADMIN_PORT:-3903}:3903' # admin API
     healthcheck:
-      # garage image là scratch (chỉ có binary /garage); status exit 0 khi RPC sống
+      # garage image là scratch (chỉ có binary /garage); status exit 0 khi RPC sống.
+      # CHỈ là liveness RPC — KHÔNG đảm bảo S3 sẵn-sàng: node fresh chưa `layout apply`
+      # vẫn báo healthy nhưng 503 mọi PutObject. App services sau (gate trên garage) phải
+      # tự kiểm S3-readiness, không chỉ dựa healthy này. Layout init: xem README.
       test: ['CMD', '/garage', 'status']
       interval: 15s
       timeout: 5s
       retries: 5
+      start_period: 20s
     networks: [lumin]
 
   # --- Caddy: routing nội bộ; cloudflared trỏ public hostname → http://caddy:80 ---
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2.11.4-alpine
     restart: unless-stopped
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
@@ -96,10 +102,14 @@ services:
   # --- Cloudflare named tunnel: lộ Caddy ra internet, ẩn IP + TLS (operations.md §7) ---
   # profile=edge: local dev không cần token; chỉ bật khi muốn tunnel ra ngoài.
   cloudflared:
-    image: cloudflare/cloudflared:2024.10.0
+    # Connector server-coupled: Cloudflare deprecate build cũ → giữ tag mới gần đây
+    # (bump định kỳ; không pin xa). Image distroless (không shell/wget) nên KHÔNG đặt
+    # được healthcheck container — `--metrics` lộ /ready cho probe ngoài (Uptime Kuma,
+    # operations.md §6/§8: liveness public-path đo từ ngoài host, không từ trong box).
+    image: cloudflare/cloudflared:2026.6.1
     restart: unless-stopped
     profiles: [edge]
-    command: ['tunnel', '--no-autoupdate', 'run']
+    command: ['tunnel', '--no-autoupdate', '--metrics', '0.0.0.0:2000', 'run']
     environment:
       # Token named-tunnel từ dashboard Cloudflare. Ingress (hostname → http://caddy:80)
       # cấu hình ở dashboard khi dùng token (không cần config.yml).
