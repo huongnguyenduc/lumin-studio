@@ -1,26 +1,29 @@
 # Active context — focus đang chạy
 
-> **File "đang ở đâu"** (volatile, đổi liên tục). `session-start` echo 40 dòng đầu khi mở phiên · `pre-compact`
-> ghim làm "plan sống" · `verify-before-stop` nhắc cập nhật khi đổi >1 file source. Giữ phần load-bearing
-> (Focus · Next · Ledger) **trong 40 dòng đầu**. Đây **không** phải nguồn chân lý — chỉ scratchpad phối hợp;
-> muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
+> **File "đang ở đâu"** (volatile, đổi liên tục). `session-start` echo ~3000 byte đầu khi mở phiên ·
+> `pre-compact` ghim làm "plan sống" · `verify-before-stop` nhắc cập nhật khi đổi >1 file source. Giữ phần
+> load-bearing (Focus · Next · Ledger) **gần đầu file**. Đây **không** phải nguồn chân lý — chỉ scratchpad phối
+> hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
-**ADR-027 — vòng cải tiến workflow giao-PR (2026-06-24, run wf_00bf70da):** best-practice ngoài (Anthropic
-explore→plan→code→commit · spec-driven · property/mutation · PR hygiene · context-eng) + 3 lăng kính phản biện
-vs file thật. Kết luận: harness đã chín; lỗ hổng #1 = **thiếu visual-fidelity** (shop design-heavy). **Đang
-thực thi A+B (user duyệt):** B = doc/template (không gate); A = ADR-027 · conventions §Visual-fidelity/§Scope/
-§Session · settings `plansDirectory` · spec-guardian WARN · verify-before-stop risk-banner + guard.test. 2 item
-CODE hoãn về **Phase-0 ARM** (mutation→money · property-test backbone). **Đã commit** — tách 2 PR off `main`:
-A=`chore/harness-workflow-adr027` (harness/workflow), B=`feat/pet-tag-nfc-spec` (spec+Pet Tag); merge A trước.
+**Phase 0 — backbone slice (nhánh `feat/phase-0-backbone`).** Đã dựng monorepo (pnpm + Turborepo) +
+`packages/tokens` (theme từ `tokens/*.css`, **sửa contrast nút coral** → `--primary` = flame-700) +
+`packages/core` (OrderStatus state machine + RBAC + statusHistory · money formatter `₫`/`calcTotals` ·
+Zod schemas · i18n keys vi) + **arm toàn bộ gate** (root `verify`, `acceptance.ledger.test.ts`, ESLint cấm
+`Intl` ngoài core, **OSM + money real-mutation-arm** trong `osm-mutation.test.sh`) + property-test fast-check.
+Plan: [`plans/phase-0-backbone.md`](plans/phase-0-backbone.md). Spec nguồn: `spec.md §02/§04` · conventions.
 
 ## Next steps (1–3)
-1. Hoàn tất A: thêm test risk-banner → `guard.test.sh` xanh (≥ cũ + 2); xoá van `.allow-contract-edit`.
-2. Bắt đầu **Phase 0** (scaffold) — verify-before-stop & lint sống thật + arm 2 item ADR-027.
-3. ADR-026 lane B (REC-20): `pre-compact.sh` → `active-context.history.md` (kênh dead-ends; spec-sync gối vào).
+1. **Review + commit slice này** (1 PR `feat/phase-0-backbone`, off `main`, squash — conventions §Scope&PR).
+   Chủ là người merge.
+2. Phase-0 tiếp: **docker-compose skeleton** (Postgres/NATS/Garage/Caddy/cloudflared) + **app-CI lane**
+   (node + `pnpm verify` + chạy real-mutation-arm trong CI — hiện CI harness-lane toolchain-free nên real-arm
+   *skip rõ ràng* ở CI, chỉ chạy local).
+3. Phase-0 tiếp: `packages/ui` primitives + Next app shells (storefront/admin) + next-intl runtime + self-host
+   font (subset `vietnamese`). Sau đó Go `core-api` (toolchain `go` chưa có ở máy này) + Rust `asset-worker`.
 
 ## Open questions
-- *(không có — ADR-026 khoá B→A→C→D; ADR-027 user đã duyệt A+B. Không relitigate.)*
+- *(không có cho slice backbone — scope đã chốt "backbone only" với user; ADR đã khoá quyết định.)*
 
 ## Task ledger (git-anchored — B3 / ADR-025)
 > **Convention:** sau `/compact` hay sang phiên mới, **tin ledger + `git log` hơn trí nhớ** — đừng re-dispatch
@@ -28,11 +31,13 @@ A=`chore/harness-workflow-adr027` (harness/workflow), B=`feat/pet-tag-nfc-spec` 
 
 | Task | Trạng thái | Commits | Review |
 |---|---|---|---|
-| Harness audit 2026-06-23 + ADR-025 B1–B5 + Tier A | done | 53c311c + follow-up | guard.test 85 / osm 11 |
-| Harness audit r3 + ADR-026 lane A (REC-38) | done | PR A `chore/harness-workflow-adr027` | guard.test 136 / osm 11 |
-| ADR-027 workflow giao-PR (visual·risk-banner·spec-sync·plan-drift) | done | PR A `chore/harness-workflow-adr027` | guard.test 138 / osm 11 |
+| Harness audit r2/r3 + ADR-027 (workflow giao-PR) | done | PR #1/#2 (main=f751a41) | guard.test 138 / osm 11 |
+| **Phase 0 — backbone (tokens + core + arm gates)** | **done (chưa commit)** | nhánh `feat/phase-0-backbone` | verify rc=0 · guard 139 · osm 22 |
+| Phase 0 — compose skeleton + app-CI lane | todo | — | — |
+| Phase 0 — packages/ui + app shells + next-intl/fonts | todo | — | — |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
-| REC-40 Phase A · COLLECT session-log (chờ Phase-0 code) | todo | — | — |
 
 ## Lần verify xanh gần nhất
-`bash tests/harness/guard.test.sh` — **138 pass / 0 fail** (2026-06-24, ADR-027) · `osm-mutation.test.sh` — **11 / 0**.
+`pnpm verify` — **rc=0** (lint + typecheck + 38 test + format:check) · `tests/harness/guard.test.sh` —
+**139 / 0** · `tests/harness/osm-mutation.test.sh` — **22 / 0** (toy + REAL OSM + REAL money mutants đều bị
+KILL) (2026-06-25, Phase-0 backbone).

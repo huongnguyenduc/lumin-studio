@@ -1,0 +1,256 @@
+/* Lumin Studio — design tokens (theme layer).
+ *
+ * Values are copied VERBATIM from the source of truth /tokens/*.css (colors · typography ·
+ * spacing · radius · shadow · base · components). Do not guess values — if a token changes,
+ * change it in /tokens/*.css first, then mirror here.
+ *
+ * ONE deliberate divergence from the raw source (conventions §A11y · WCAG 2.2 AA):
+ * the PRIMARY ACTION must not be white-on-flame-500 (2.82:1, FAIL). The semantic `--primary`
+ * here resolves to flame-700 (#C93A1A → 5.12:1 with white) instead of flame-500. The brand coral
+ * flame-500 stays available as `--accent-flame` for non-text accents (badges, sprites, glows).
+ * Locked by packages/tokens/test/tokens.contrast.test.ts.
+ */
+
+:root {
+  /* ---------- Brand core: Cream (butter) ---------- */
+  --cream-50: #fffbef;
+  --cream-100: #fdf3d4;
+  --cream-200: #ffe9a4; /* logo background — signature brand cream */
+  --cream-300: #f4d67e;
+  --cream-400: #eac25a;
+
+  /* ---------- Brand core: Cocoa (ink) ---------- */
+  --cocoa-900: #492f10; /* logo blob — primary ink & outlines */
+  --cocoa-800: #432e12;
+  --cocoa-700: #5a411f;
+  --cocoa-600: #785b34;
+  --cocoa-400: #a98f63;
+  --cocoa-200: #d8c7a2;
+  --cocoa-100: #ece0c6;
+
+  /* ---------- Accent: Flame (coral orange-red — primary action / "pop") ---------- */
+  --flame-100: #ffe3d8;
+  --flame-300: #ffa98f;
+  --flame-500: #ff6b4a;
+  --flame-600: #f04e29;
+  --flame-700: #c93a1a;
+
+  /* ---------- Accent: Teal (fresh blue-green — success-leaning) ---------- */
+  --teal-100: #cdefe9;
+  --teal-300: #6fd3c4;
+  --teal-500: #16b5a0;
+  --teal-600: #0e9384;
+  --teal-700: #0b7569;
+
+  /* ---------- Accent: Sky (info / links) ---------- */
+  --sky-100: #dce8ff;
+  --sky-300: #9dbdff;
+  --sky-500: #4c8dff;
+  --sky-600: #2e6be0;
+  --sky-700: #2253b8;
+
+  /* ---------- Accent: Sun (highlight / warning-leaning) ---------- */
+  --sun-100: #ffefc2;
+  --sun-300: #ffd668;
+  --sun-500: #ffc233;
+  --sun-600: #f2a60e;
+  --sun-700: #c9870a;
+
+  /* ---------- Semantic raw ---------- */
+  --danger-100: #ffd9d2;
+  --danger-500: #f0492b;
+  --danger-600: #d2371c;
+  --success-100: var(--teal-100);
+  --success-500: var(--teal-500);
+  --success-600: var(--teal-600);
+  --warning-100: var(--sun-100);
+  --warning-500: var(--sun-500);
+  --warning-600: var(--sun-600);
+  --info-100: var(--sky-100);
+  --info-500: var(--sky-500);
+  --info-600: var(--sky-600);
+
+  /* ====================================================== */
+  /* Semantic aliases — use THESE in components             */
+  /* ====================================================== */
+
+  /* Text */
+  --text-strong: var(--cocoa-900);
+  --text-body: var(--cocoa-800);
+  --text-muted: var(--cocoa-600);
+  --text-subtle: var(--cocoa-400);
+  --text-on-dark: var(--cream-50);
+  --text-on-accent: #ffffff;
+  --text-link: var(--sky-600);
+
+  /* Surfaces */
+  --surface-page: var(--cream-50);
+  --surface-card: #ffffff;
+  --surface-sunken: var(--cream-100);
+  --surface-cream: var(--cream-200);
+  --surface-brand: var(--cocoa-900);
+  --surface-inverse: var(--cocoa-900);
+
+  /* Borders */
+  --border-subtle: #efe6cc;
+  --border-default: #e3d5b0;
+  --border-strong: var(--cocoa-900);
+
+  /* Actions — PRIMARY is coral. A11y fix (conventions §A11y): primary action background is
+     flame-700 so white text clears 4.5:1. flame-500 brand coral lives on as --accent-flame. */
+  --primary: var(--flame-700);
+  --primary-hover: var(--flame-700);
+  --primary-press: var(--cocoa-900);
+  --on-primary: #ffffff;
+
+  --accent-flame: var(--flame-500);
+  --accent-teal: var(--teal-500);
+  --accent-sky: var(--sky-500);
+  --accent-sun: var(--sun-500);
+
+  /* Focus */
+  --focus-ring: var(--sky-500);
+
+  /* ---------- Typography ---------- */
+  --font-display: 'Bricolage Grotesque', 'Arial Black', system-ui, sans-serif;
+  --font-body: 'Hanken Grotesque', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Space Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-extra: 800;
+
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 30px;
+  --text-4xl: 38px;
+  --text-5xl: 48px;
+  --text-6xl: 64px;
+  --text-7xl: 84px;
+
+  --leading-tight: 1.05;
+  --leading-snug: 1.2;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.7;
+
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0em;
+  --tracking-wide: 0.04em;
+  --tracking-wider: 0.12em;
+
+  /* ---------- Spacing (4px base grid) ---------- */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+  --space-32: 128px;
+
+  --container-max: 1200px;
+  --gutter: 24px;
+
+  /* ---------- Radius ---------- */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+  --radius-2xl: 44px;
+  --radius-pill: 999px;
+  --radius-blob: 48% 52% 55% 45% / 52% 48% 52% 48%; /* organic logo-blob shape */
+
+  /* ---------- Elevation (warm cocoa-tinted shadows) ---------- */
+  --shadow-sm: 0 1px 2px rgba(50, 32, 10, 0.08);
+  --shadow-md: 0 4px 14px rgba(50, 32, 10, 0.1);
+  --shadow-lg: 0 14px 36px rgba(50, 32, 10, 0.14);
+  --shadow-xl: 0 28px 60px rgba(50, 32, 10, 0.18);
+
+  /* Signature "pop" — solid offset, no blur. */
+  --shadow-pop: 4px 4px 0 var(--cocoa-900);
+  --shadow-pop-sm: 3px 3px 0 var(--cocoa-900);
+  --shadow-pop-flame: 4px 4px 0 var(--flame-700);
+
+  --shadow-inset: inset 0 2px 4px rgba(50, 32, 10, 0.1);
+
+  --ring-focus: 0 0 0 3px rgba(76, 141, 255, 0.45);
+}
+
+/* ---------- Base element styles & brand helpers ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--text-body);
+  background: var(--surface-page);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: var(--weight-bold);
+  color: var(--text-strong);
+  /* VN diacritics (ế/ữ/ợ) need a touch more leading than the raw 1.05 — conventions §A11y. */
+  line-height: var(--leading-snug);
+  letter-spacing: var(--tracking-tight);
+  margin: 0;
+}
+
+a {
+  color: var(--text-link);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+::selection {
+  background: var(--flame-300);
+  color: var(--cocoa-900);
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Brand utility: dotted/grid play-surface used on hero areas */
+.lumin-dotgrid {
+  background-image: radial-gradient(var(--cocoa-200) 1.5px, transparent 1.5px);
+  background-size: 22px 22px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

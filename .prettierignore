@@ -1,0 +1,24 @@
+# Dependency / build output
+node_modules
+dist
+.turbo
+coverage
+.next
+build
+out
+pnpm-lock.yaml
+
+# Pre-existing handcrafted content — NOT prettier-managed (authored by hand, source of truth).
+# Prettier only formats the code we own (root config + packages/**).
+designs/
+docs/
+tokens/
+.claude/
+.github/
+tests/harness/
+spec.md
+design-system.md
+CLAUDE.md
+AGENTS.md
+Cat Peek - Behavior Spec.md
+.gitignore

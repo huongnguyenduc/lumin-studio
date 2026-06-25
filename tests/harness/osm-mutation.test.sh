@@ -83,14 +83,54 @@ run_mutant "drop-edge PAID>IN_PRODUCTION"   's~PAID>IN_PRODUCTION ~~'           
 run_mutant "add-illegal PAID>SHIPPED"       's~^ALLOWED="~ALLOWED="PAID>SHIPPED ~'   t_osm01  "OSM-01"
 run_mutant "terminal-escape CANCELLED>PAID" 's~^ALLOWED="~ALLOWED="CANCELLED>PAID ~' t_osm01t "OSM-01"
 
-echo "== real-check: packages/core OSM (tự kích khi Phase-0 land) =="
-osm_src="$(find "$ROOT/packages/core" -type f \( -iname '*state*' -o -iname '*osm*' -o -iname '*transition*' \) 2>/dev/null | head -1)"
+echo "== real-check: packages/core OSM + money (Phase-0 ĐÃ WIRE) =="
+# audit r3 ARM-cliff RESOLVED: áp CÙNG họ mutant lên FILE NGUỒN thật (src, KHÔNG phải test), chạy
+# vitest cho test tương ứng, assert nó CHUYỂN ĐỎ rồi khôi phục. Mutant SỐNG (test vẫn xanh) ⇒ test
+# vacuous ⇒ bad. Skip RÕ RÀNG (không phải no-op âm thầm) khi vắng node_modules (vd CI harness-lane
+# không cài node) — toy self-check ở trên vẫn là bảo đảm máy-móc ở mọi nơi; app-CI (có node) chạy real.
+CORE="$ROOT/packages/core"
+osm_src="$(find "$CORE/src" -type f \( -iname '*state*' -o -iname '*osm*' -o -iname '*transition*' \) 2>/dev/null | head -1)"
+money_src="$(find "$CORE/src" -type f -iname 'money*' 2>/dev/null | head -1)"
 if [ -z "$osm_src" ]; then
   skip "packages/core OSM chưa tồn tại (pre-Phase-0) — self-check toy ở trên là bảo đảm hiện hành; real-arm tự kích khi OSM land."
+elif [ ! -d "$CORE/node_modules" ] && [ ! -d "$ROOT/node_modules" ]; then
+  skip "real-mutation-arm ĐÃ wire nhưng vắng node_modules (vd CI harness-lane không cài node) — chạy ở môi trường có vitest (local / app-CI)."
 else
-  # audit r3: ARM-cliff — khi OSM thật land mà real-mutation-arm CHƯA wire thì FAIL (không skip im lặng).
-  # "gate no-op trông y hệt gate pass": để skip ở đây nghĩa là OSM thật có thể vacuous mà CI vẫn xanh.
-  bad "ARM: OSM thật ĐÃ land ($osm_src) nhưng real-mutation-arm CHƯA wire — Phase-0 TODO: copy file → sed-mutant họ (allow-all/swap/drop-edge/add-illegal/terminal-escape/drop-history/drop-reason) → chạy 'pnpm -s test'/'go test' assert OSM-01..03 chuyển ĐỎ → restore. Wire xong: thay dòng bad() này bằng phép kiểm thực."
+  # Khôi phục file nguồn kể cả khi bị ngắt giữa chừng (per-call backup + trap toàn cục).
+  cp "$osm_src" "$TMP/osm.orig"
+  [ -n "$money_src" ] && cp "$money_src" "$TMP/money.orig"
+  trap 'cp -f "$TMP/osm.orig" "$osm_src" 2>/dev/null; [ -n "$money_src" ] && cp -f "$TMP/money.orig" "$money_src" 2>/dev/null; rm -rf "$TMP"' EXIT
+  run_vitest() {
+    if [ -x "$CORE/node_modules/.bin/vitest" ]; then ( cd "$CORE" && ./node_modules/.bin/vitest run "$1" ) >/dev/null 2>&1
+    else ( cd "$CORE" && pnpm -s exec vitest run "$1" ) >/dev/null 2>&1; fi
+  }
+  run_real() { # $1=label  $2=src-file  $3=sed-expr  $4=test-glob  $5=osm-id
+    local label="$1" file="$2" expr="$3" glob="$4" id="$5" bak rc
+    bak="$(mktemp)"; cp "$file" "$bak"
+    sed "$expr" "$bak" > "$file"
+    run_vitest "$glob"; rc=$?
+    cp "$bak" "$file"; rm -f "$bak"
+    if [ "$rc" -ne 0 ]; then ok "REAL $id — mutant '$label' bị KILL (test đỏ)"; else bad "REAL $id — mutant '$label' SỐNG (test vẫn xanh sau đột biến!)"; fi
+  }
+  if run_vitest test/order-state.test.ts && run_vitest test/money.test.ts; then
+    ok "REAL baseline: order-state + money test XANH trước khi mutate"
+  else
+    bad "REAL baseline ĐỎ — sửa OSM/money/test trước khi tin mutation gate (đừng mutate trên nền đỏ)"
+  fi
+  # Họ mutant OSM (anchor #GUARDCALL/#GUARDMATCH/#EDGES/#HISTORY/#REASON) → OSM-01..03 phải đỏ.
+  run_real "allow-all guard"                "$osm_src" 's~.*#GUARDCALL~  // mut-allow-all~'                                                                       test/order-state.test.ts "OSM-01"
+  run_real "swap from/to"                   "$osm_src" 's~from}>${to~to}>${from~'                                                                                test/order-state.test.ts "OSM-01"
+  run_real "drop-edge PAID>PRINTING"        "$osm_src" 's~PAID>PRINTING ~~'                                                                                      test/order-state.test.ts "OSM-01"
+  run_real "add-illegal PAID>SHIPPING"      "$osm_src" "/#EDGES/ s/= '/= 'PAID>SHIPPING /"                                                                        test/order-state.test.ts "OSM-01"
+  run_real "terminal-escape CANCELLED>PAID" "$osm_src" "/#EDGES/ s/= '/= 'CANCELLED>PAID /"                                                                      test/order-state.test.ts "OSM-01"
+  run_real "drop statusHistory"             "$osm_src" 's~.*#HISTORY~  const statusHistory = order.statusHistory; // mut-drop-history~'                           test/order-state.test.ts "OSM-02"
+  run_real "drop reason-check"              "$osm_src" 's~.*#REASON~  // mut-drop-reason~'                                                                        test/order-state.test.ts "OSM-03"
+  # Họ mutant money (#GROUP/#SUBTOTAL/#TOTAL) → MNY-01/03 phải đỏ (plan.md ARM "mở osm-mutation sang money").
+  if [ -n "$money_src" ]; then
+    run_real "money drop-grouping"          "$money_src" "s~.*#GROUP~  return String(amount) + '₫'; // mut-group~"                                                test/money.test.ts "MNY-03"
+    run_real "money subtotal off-by-one"    "$money_src" 's~.*#SUBTOTAL~    subtotal += item.quantity * (item.unitPrice + colorDelta + optionsTotal) + 1; // mut-sub~' test/money.test.ts "MNY-01"
+    run_real "money total minus-fee"        "$money_src" 's~.*#TOTAL~  const total = subtotal - input.shippingFee; // mut-total~'                                 test/money.test.ts "MNY-01"
+  fi
 fi
 
 echo
