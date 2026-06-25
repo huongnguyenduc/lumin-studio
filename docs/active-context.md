@@ -67,9 +67,16 @@ core 37). spec-guardian: **PASS 0 BLOCKER/0 WARN/2 NOTE** (money/i18n/a11y/§Sta
 
 ## Lưu ý git (2026-06-26)
 - `origin/main` = `296c44a` (PR #6 ui-primitives đã merge). Local `main` đã ff sync.
-- Branch **`feat/phase-0-storefront-shell`** (off `296c44a`): app shell 1/2. 29 file (24 storefront + 5 root
-  wiring: `pnpm-workspace`/`turbo`/`eslint.config`/`package.json`/lock). `apps/storefront/.gitignore` chặn
-  `.next`/`next-env.d.ts`/`.turbo`. **Chưa push** — sắp commit + mở PR.
+- Branch **`feat/phase-0-storefront-shell`** (off `296c44a`): app shell 1/2 → **PR #7** (tip `5b95786`, đã push).
+- Branch **`feat/phase-0-admin-shell`** (stacked trên #7): app shell 2/2 → **PR #8** (tip `e1690e7`, đã push).
+- **/review fixes round (2026-06-26, force-push cả 2 PR — chủ duyệt):** (1) `error.tsx` retry (cả 2 app) đổi
+  pill thủ công → `@lumin/ui <Button>` (md=h-11=44px, token primary AA) khỏi drift design-system; (2) thêm
+  `CtaLink` (storefront) gói pop/outline cho CTA-điều-hướng (Button render `<button>`, không mang href được) +
+  ép `min-h-[44px]` → bỏ 3 blob class lặp ở hero/featured; (3) sửa comment "Hanken Grotesque"→"Grotesk" ở
+  storefront `tailwind.config.ts`; (4) `TODO(phase-1)` scope client catalog khi `@lumin/core` phình; (5) viết
+  lại body PR #7/#8 (xoá claim "Fontsource/Plus Jakarta" cũ — thực tế là `next/font/google` + Hanken Grotesk).
+  build/verify/guard 139/osm 22 xanh lại sau fix. Copyright year `© 2026` để **cố ý** baked (deterministic, né
+  `new Date()`) — không phải defect.
 - **Deferred (ghi để PR sau):** `@lumin/ui` Button `lg` dùng `h-13` không có spacing token → render 0 height;
   shell tránh `lg`. Fix gọn ở packages/ui (thêm token `13`/đổi `h-[52px]`) — KHÔNG trộn vào PR app-shell.
 - **Font name fix (2026-06-26):** body font dùng đúng **Hanken Grotesk** (design-system.md/tokens viết sai
