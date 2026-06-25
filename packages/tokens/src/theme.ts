@@ -66,6 +66,21 @@ export const color = {
   accentTeal: palette.teal500,
   accentSky: palette.sky500,
   accentSun: palette.sun500,
+  // Soft accent tints (the -100 ramp) — tinted backgrounds for soft Badge/Tag tones in packages/ui.
+  accentFlameSoft: palette.flame100,
+  accentTealSoft: palette.teal100,
+  accentSkySoft: palette.sky100,
+  accentSunSoft: palette.sun100,
+  // Strong sky (sky-600) — a solid sky Badge needs a darker fill so white text clears AA 4.5:1
+  // (white on sky-500 is only 3.2:1; on sky-600 it's ~4.9:1).
+  accentSkyStrong: palette.sky600,
+  // Danger ramp — mirrors tokens.css --danger-*. A11y (frontend-a11y-i18n §Contrast KHOÁ): the
+  // action/danger semantic is danger-600 (#D2371C), NOT danger-500 — danger-500 fails AA as error text
+  // on white (3.9:1) and as a solid fill under white text (3.7:1); danger-600 clears 4.5:1 both ways.
+  // Soft = danger-100 tint (cocoa text).
+  danger: palette.danger600,
+  dangerSoft: palette.danger100,
+  onDanger: palette.white,
   focusRing: palette.sky500,
 } as const;
 
