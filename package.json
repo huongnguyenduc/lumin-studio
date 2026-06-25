@@ -15,12 +15,16 @@
     "format:check": "prettier --check .",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "dev": "turbo run dev",
+    "build": "turbo run build",
     "verify": "pnpm -s lint && pnpm -s typecheck && pnpm -s test && pnpm -s format:check"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.10.7",
     "eslint": "^10.5.0",
+    "eslint-plugin-i18next": "^6.1.4",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
     "prettier": "^3.4.2",
     "turbo": "^2.3.4",
     "typescript": "^5.7.3",
