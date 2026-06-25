@@ -92,10 +92,14 @@ export class TransitionError extends Error {
   }
 }
 
-/** ISO-8601 UTC instant — must carry an explicit Z (or ±hh:mm offset) and parse. conventions §Tiền. */
+/**
+ * ISO-8601 UTC instant — must carry an explicit `Z` and parse. conventions §Tiền (store UTC).
+ * Z-only on purpose: this mirrors StatusEventSchema.at (`z.string().datetime()`, whose default also
+ * rejects numeric offsets), so the guard and the schema accept exactly the same set of timestamps.
+ */
 function isIsoUtc(s: unknown): boolean {
   if (typeof s !== 'string') return false;
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/.test(s)) return false;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(s)) return false;
   return !Number.isNaN(Date.parse(s));
 }
 

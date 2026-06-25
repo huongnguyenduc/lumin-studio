@@ -13,6 +13,7 @@ import {
   type Role,
   type StatusEvent,
 } from '../src/order-state';
+import { StatusEventSchema } from '../src/schemas';
 
 const AT = '2026-06-25T00:00:00.000Z';
 const order = (status: OrderStatus, statusHistory: StatusEvent[] = []) => ({
@@ -147,6 +148,31 @@ describe('order_state', () => {
       TransitionError,
     );
     expect(initialStatusForChannel('inbox', { hasPaymentProof: false })).toBe('PAID');
+  });
+
+  it('statusHistory.at must be Z-only UTC — guard + schema accept the same set (no numeric offset)', () => {
+    const withAt = (at: string) =>
+      transition(order('PAID'), 'PRINTING', { role: 'owner', byUser: 'u', at });
+    // Canonical Z instant: accepted by the guard AND by StatusEventSchema.
+    expect(withAt('2026-06-25T00:00:00.000Z').status).toBe('PRINTING');
+    // A numeric offset (+07:00) is rejected by BOTH layers — they agree (review PR #4, finding #1).
+    expect(() => withAt('2026-06-25T07:00:00+07:00')).toThrow(/ISO-8601 UTC/);
+    expect(
+      StatusEventSchema.safeParse({
+        from: 'PAID',
+        to: 'PRINTING',
+        at: '2026-06-25T07:00:00+07:00',
+        byUser: 'u',
+      }).success,
+    ).toBe(false);
+    expect(
+      StatusEventSchema.safeParse({
+        from: 'PAID',
+        to: 'PRINTING',
+        at: '2026-06-25T00:00:00.000Z',
+        byUser: 'u',
+      }).success,
+    ).toBe(true);
   });
 
   it('property — any reachable statusHistory replays back to the current status via valid edges', () => {
