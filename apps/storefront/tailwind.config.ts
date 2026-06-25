@@ -11,7 +11,7 @@ const config: Config = {
   theme: {
     // Map the design-system font roles to the self-hosted next/font CSS variables (REPLACE, not
     // extend, so these win over the preset's literal family strings). The vars are set on <html> by
-    // next/font in layout.tsx. Hanken Grotesque is the canonical body font (Next 15 font manifest).
+    // next/font in layout.tsx. Hanken Grotesk is the canonical body font (Next 15 font manifest).
     fontFamily: {
       display: [
         'var(--font-bricolage)',

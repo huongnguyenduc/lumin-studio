@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { ProductCard } from '@lumin/ui';
+import { CtaLink } from './cta-link';
 import { demoProducts } from '@/lib/demo-products';
 
 /**
@@ -37,12 +38,9 @@ export function FeaturedProducts() {
       {products.length === 0 ? (
         <div className="rounded-lg border-2 border-dashed border-border-default bg-surface-sunken p-10 text-center">
           <p className="text-text-muted">{t('empty')}</p>
-          <Link
-            href="/"
-            className="mt-4 inline-flex items-center rounded-pill border-2 border-border-strong bg-accent-sun px-6 py-3 font-display font-bold text-text-strong shadow-pop hover:-translate-x-px hover:-translate-y-px motion-reduce:transform-none"
-          >
+          <CtaLink href="/" className="mt-4">
             {t('emptyCta')}
-          </Link>
+          </CtaLink>
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">

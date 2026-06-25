@@ -1,12 +1,12 @@
-import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Badge } from '@lumin/ui';
+import { CtaLink } from './cta-link';
 import { ArrowRightIcon } from './icons';
 
 /**
- * Landing hero on the signature buttercream surface. The CTAs are real navigation links styled to
- * mirror the `pop` (gold + offset cocoa shadow) and `outline` buttons — links navigate, so this stays
- * a server component (no onClick). Padding (not `h-13`) sizes the primary CTA so it clears 44px.
+ * Landing hero on the signature buttercream surface. The CTAs are real navigation links (so this
+ * stays a server component, no onClick); they use the shared CtaLink, which mirrors the `pop` (gold +
+ * offset cocoa shadow) and `outline` button variants and guarantees the 44px hit target.
  */
 export function Hero() {
   const t = useTranslations('hero');
@@ -25,20 +25,14 @@ export function Hero() {
             </p>
 
             <div className="flex flex-wrap items-center gap-3 pt-1">
-              <Link
-                href="/danh-muc"
-                className="inline-flex items-center gap-2 rounded-pill border-2 border-border-strong bg-accent-sun px-7 py-3.5 font-display font-bold text-text-strong shadow-pop transition-transform duration-150 ease-out hover:-translate-x-px hover:-translate-y-px active:translate-x-0.5 active:translate-y-0.5 active:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2 motion-reduce:transform-none"
-              >
+              <CtaLink href="/danh-muc">
                 {t('primaryCta')}
                 <ArrowRightIcon className="h-5 w-5" />
-              </Link>
+              </CtaLink>
 
-              <Link
-                href="/cau-chuyen"
-                className="inline-flex items-center rounded-pill border-2 border-border-strong bg-transparent px-6 py-3 font-display font-semibold text-text-strong transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
-              >
+              <CtaLink variant="outline" href="/cau-chuyen">
                 {t('secondaryCta')}
-              </Link>
+              </CtaLink>
             </div>
 
             <p className="font-mono text-xs text-text-muted">{t('note')}</p>

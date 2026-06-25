@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import { Button } from '@lumin/ui';
 
 /** Route-level error boundary (conventions §State: error has a retry). Must be a client component. */
 export default function ErrorBoundary({ reset }: { reset: () => void }) {
@@ -13,13 +14,9 @@ export default function ErrorBoundary({ reset }: { reset: () => void }) {
     >
       <h1 className="text-2xl">{t('errorTitle')}</h1>
       <p className="text-text-muted">{t('errorBody')}</p>
-      <button
-        type="button"
-        onClick={reset}
-        className="inline-flex items-center rounded-pill border-2 border-border-strong bg-primary px-6 py-3 font-display font-bold text-on-primary transition-colors hover:bg-primary-press focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
-      >
-        {t('retry')}
-      </button>
+      {/* The @lumin/ui Button primitive (md = h-11 = 44px, AA-vetted primary tokens) instead of a
+          hand-rolled pill, so the retry control can't drift from the design system. */}
+      <Button onClick={reset}>{t('retry')}</Button>
     </div>
   );
 }

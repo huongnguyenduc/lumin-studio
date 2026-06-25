@@ -16,6 +16,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   // Whole catalog goes to the client provider so client components (header, grid) can translate.
+  // TODO(phase-1): scope this to the namespaces the client tree actually uses — once @lumin/core's
+  // domain catalog grows, shipping it whole to every client page is wasted bytes.
   const messages = await getMessages();
   const t = await getTranslations('nav');
 
