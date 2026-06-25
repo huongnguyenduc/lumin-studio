@@ -1,5 +1,5 @@
 import { forwardRef, type HTMLAttributes, type MouseEvent, type Ref } from 'react';
-import { cva, type VariantProps } from 'class-variance-authority';
+import { cva } from 'class-variance-authority';
 import { cn } from './lib/cn';
 
 // HOUSE-STYLE REFERENCE for @lumin/ui primitives:
@@ -29,19 +29,24 @@ const tag = cva(
   },
 );
 
-export interface TagProps
-  extends Omit<HTMLAttributes<HTMLElement>, 'onClick'>, VariantProps<typeof tag> {
+interface TagBaseProps extends Omit<HTMLAttributes<HTMLElement>, 'onClick'> {
   /** When true, render a toggle `<button>` with `aria-pressed`; otherwise a static `<span>`. */
   selectable?: boolean;
   /** Pressed/active visual state — only meaningful when `selectable`. */
   selected?: boolean;
-  /** When set, render an inner round × button that removes the chip. */
-  onRemove?: () => void;
-  /** Accessible name for the × button. REQUIRED when `onRemove` is set (no hard-coded copy). */
-  removeLabel?: string;
   /** Toggle handler for a selectable chip. */
   onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
 }
+
+/**
+ * `removeLabel` is REQUIRED whenever `onRemove` is set — the × button must carry an accessible name
+ * (no hard-coded copy). The discriminated union turns "onRemove without removeLabel" into a type error.
+ */
+export type TagProps = TagBaseProps &
+  (
+    | { onRemove: () => void; removeLabel: string }
+    | { onRemove?: undefined; removeLabel?: undefined }
+  );
 
 /**
  * Filter / material chip. `selectable` makes it a toggle button (`aria-pressed={selected}`);

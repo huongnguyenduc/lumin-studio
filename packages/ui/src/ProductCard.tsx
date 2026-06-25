@@ -78,8 +78,14 @@ export const ProductCard = forwardRef<HTMLDivElement, ProductCardProps>(function
     <Card
       ref={ref}
       elevation="pop"
-      interactive
-      className={cn('flex flex-col gap-3 p-3', className)}
+      className={cn(
+        // Visual lift only — deliberately NOT `interactive`: the tile is navigated via the stretched
+        // title link below, so the Card must not become a role="button" wrapping its own link + buttons
+        // (that nesting is invalid + a focusable dead control for AT). See the PR-6 review.
+        'group relative flex flex-col gap-3 p-3',
+        'transition-transform duration-150 ease-out hover:-translate-x-px hover:-translate-y-px motion-reduce:transform-none',
+        className,
+      )}
       {...props}
     >
       <div className="relative aspect-square overflow-hidden rounded-md bg-surface-sunken">
@@ -101,7 +107,7 @@ export const ProductCard = forwardRef<HTMLDivElement, ProductCardProps>(function
           label={favLabel}
           aria-pressed={faved}
           onClick={onToggleFav}
-          className="absolute right-2 top-2 shadow-md"
+          className="absolute right-2 top-2 z-10 shadow-md"
         >
           {faved ? '♥' : '♡'}
         </IconButton>
@@ -109,11 +115,13 @@ export const ProductCard = forwardRef<HTMLDivElement, ProductCardProps>(function
 
       <h3 className="line-clamp-2 font-display font-semibold leading-tight text-text-strong">
         {href ? (
+          // Stretched link: the ::after overlay makes the whole card navigate to the product, while the
+          // fav/add buttons (z-10) stay independently clickable — one link, no nested button-role.
           <a
             href={href}
             className={cn(
-              'rounded-sm hover:underline',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2',
+              "rounded-sm after:absolute after:inset-0 after:content-['']",
+              'hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2',
             )}
           >
             {title}
@@ -129,7 +137,7 @@ export const ProductCard = forwardRef<HTMLDivElement, ProductCardProps>(function
 
       <PriceTag amount={price} compareAt={compareAt} />
 
-      <Button onClick={onAdd} className="w-full">
+      <Button onClick={onAdd} className="relative z-10 w-full">
         {addLabel}
       </Button>
     </Card>

@@ -73,4 +73,25 @@ describe('ProductCard', () => {
     render(<ProductCard {...base} ref={ref} />);
     expect(ref.current).toBeInstanceOf(HTMLDivElement);
   });
+
+  it('navigates via a stretched title link, not a nested button-role (a11y)', () => {
+    const { container } = render(
+      <ProductCard
+        {...base}
+        href="/san-pham/den-gom-nho"
+        onAdd={() => {}}
+        onToggleFav={() => {}}
+      />,
+    );
+    const root = container.firstElementChild!;
+    // The tile root is a plain surface, NOT a role="button" wrapping its own link + buttons.
+    expect(root).not.toHaveAttribute('role', 'button');
+    expect(root).not.toHaveAttribute('tabindex');
+    // Exactly the fav + add buttons live inside; the title is the sole (stretched) link.
+    expect(screen.getAllByRole('button')).toHaveLength(2);
+    expect(screen.getByRole('link', { name: 'Đèn gốm nhỏ' })).toHaveAttribute(
+      'href',
+      '/san-pham/den-gom-nho',
+    );
+  });
 });

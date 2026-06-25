@@ -58,6 +58,19 @@ describe('Card', () => {
     expect(onClick).toHaveBeenCalledOnce();
   });
 
+  it('is keyboard-operable: Enter and Space activate an interactive card (WCAG 2.1.1)', async () => {
+    const onClick = vi.fn();
+    render(
+      <Card interactive onClick={onClick}>
+        x
+      </Card>,
+    );
+    screen.getByRole('button').focus();
+    await userEvent.keyboard('{Enter}');
+    await userEvent.keyboard(' ');
+    expect(onClick).toHaveBeenCalledTimes(2);
+  });
+
   it('lets a caller className override the default background (tailwind-merge)', () => {
     const { container } = render(<Card className="bg-surface-sunken">x</Card>);
     const el = container.firstElementChild!;

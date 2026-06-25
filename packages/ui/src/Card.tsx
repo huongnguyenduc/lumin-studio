@@ -28,11 +28,13 @@ export interface CardProps extends HTMLAttributes<HTMLDivElement>, VariantProps<
 
 /**
  * Rounded surface container. `elevation` md = quiet hairline card; `pop` = chunky cocoa outline with the
- * signature offset shadow (design-system.md §Component). `interactive` makes the whole card a focusable
- * button (role + tabIndex + hover lift) for tap-anywhere tiles.
+ * signature offset shadow (design-system.md §Component). `interactive` makes the whole card a focusable,
+ * keyboard-operable button (role + tabIndex + Enter/Space activation + hover lift) — pass an `onClick`.
+ * For tap-anywhere tiles that already contain their own links/buttons, prefer a stretched link over
+ * `interactive` (see ProductCard) so you don't nest controls inside a button role.
  */
 export const Card = forwardRef<HTMLDivElement, CardProps>(function Card(
-  { className, elevation, interactive = false, ...props },
+  { className, elevation, interactive = false, onKeyDown, ...props },
   ref,
 ) {
   return (
@@ -40,6 +42,19 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(function Card(
       ref={ref}
       role={interactive ? 'button' : undefined}
       tabIndex={interactive ? 0 : undefined}
+      // A <div role="button"> gets NO native Enter/Space activation (only real <button> does), so when
+      // interactive we translate Enter/Space into a click — otherwise it's keyboard-inoperable (WCAG 2.1.1).
+      onKeyDown={
+        interactive
+          ? (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                event.currentTarget.click();
+              }
+              onKeyDown?.(event);
+            }
+          : onKeyDown
+      }
       className={cn(card({ elevation, interactive }), className)}
       {...props}
     />

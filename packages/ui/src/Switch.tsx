@@ -43,8 +43,8 @@ export interface SwitchProps extends Omit<
   checked: boolean;
   /** Called with the negated value when the user toggles (omitted while disabled). */
   onCheckedChange?: (checked: boolean) => void;
-  /** Visually-hidden accessible name; becomes the button's aria-label when provided. */
-  label?: string;
+  /** Accessible name (required) — a role="switch" has no text of its own, so this is its aria-label. */
+  label: string;
 }
 
 /**
