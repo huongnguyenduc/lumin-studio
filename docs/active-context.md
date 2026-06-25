@@ -6,7 +6,15 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
-**Phase 0 — app shells slice 1/2: STOREFRONT (branch `feat/phase-0-storefront-shell`, off main=296c44a).**
+**Phase 0 — app shells: BOTH slices built. (1/2 storefront → PR #7; 2/2 admin → PR stacked on #7.)**
+Admin (`apps/admin`, branch `feat/phase-0-admin-shell` off storefront-shell): reuse 100% infra slice-1; chrome
+= sidebar 9 mục (`usePathname` active) + topbar greeting (Avatar + `formatVnDate` demo) + dashboard (4 stat
+Card: count`formatVnNumber`/tiền`formatVnd` · bảng đơn gần đây + `OrderStatusBadge` map 7 `ORDER_STATUSES`→
+Badge tone · "Cần xử lý" list) + `loading`/`error` + empty-state bảng. Desktop-first (sidebar fixed ≥lg).
+Built qua subagent mirror storefront → tự verify lại (build/verify/guard/osm green) + spec-guardian PASS.
+Merge order: **#7 (storefront, có infra) TRƯỚC**, rồi rebase admin lên main.
+
+### Slice 1/2 — STOREFRONT (PR #7, branch `feat/phase-0-storefront-shell`, off main=296c44a).
 Dựng `apps/storefront` (Next 14.2 App Router + React 18) — app đầu tiên boot bằng `pnpm dev`, là nơi
 **mount 13 primitive** `@lumin/ui` lần đầu trên surface thật (visual-fidelity ADR-027 deferred từ PR #6).
 Wiring nền (dùng lại cho admin): `pnpm-workspace` thêm `apps/*` · `turbo` thêm `dev`/`build` · **Tailwind 3.4
@@ -45,8 +53,8 @@ enforcement. Shell = header sticky (logo+search+nav) · bottom-nav mobile · her
 | **Phase 0 — fix ultrareview PR #4 (A/B/C/D, 25 finding)** | **done (PR #4)** | `feat/phase-0-backbone` (+1 commit) | verify rc=0 · 43 test · guard 139 · osm 22 |
 | **Phase 0 — compose skeleton** | **merged (PR #5)** | `origin/main` `30c5652` | `docker compose config -q` OK · verify rc=0 |
 | **Phase 0 — `packages/ui` 13 primitives + token-coverage gate** | **merged (PR #6)** | `origin/main` `296c44a` | verify rc=0 · ui 105 / tokens 9 / core 37 · guard 139 · osm 22 · spec-guardian + /review: 2+2 a11y fixed |
-| **Phase 0 — app shell 1/2: storefront (Next+next-intl+fonts+Tailwind)** | **done (PR open)** | `feat/phase-0-storefront-shell` (off `296c44a`) | `next build` ✓ · verify rc=0 · storefront i18n test + ui 105/tokens 9/core 37 · guard 139 · osm 22 · spec-guardian PASS (0/0/2) |
-| Phase 0 — app shell 2/2: admin (reuse infra) | todo | — | — |
+| **Phase 0 — app shell 1/2: storefront (Next+next-intl+fonts+Tailwind)** | **merged?→PR #7 open** | `feat/phase-0-storefront-shell` (off `296c44a`) | `next build` ✓ · verify rc=0 · storefront i18n test + ui 105/tokens 9/core 37 · guard 139 · osm 22 · spec-guardian PASS (0/0/2) |
+| **Phase 0 — app shell 2/2: admin (sidebar+dashboard, reuse infra)** | **done (PR open, stacked on #7)** | `feat/phase-0-admin-shell` (off storefront-shell) | `next build` ✓ · verify rc=0 · admin i18n test · guard 139 · osm 22 · spec-guardian PASS (0/0/2) · status-Badge map = 7 ORDER_STATUSES |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất
