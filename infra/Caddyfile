@@ -1,0 +1,30 @@
+# Lumin Studio — Caddy routing nội bộ (Phase 0 skeleton).
+# cloudflared trỏ public hostname → http://caddy:80. Phase 0: chỉ "hello" + healthz.
+# Phase 1+: reverse_proxy tới Next storefront/admin + core-api (xem khối comment dưới).
+
+{
+	admin off
+	auto_https off
+}
+
+:80 {
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	# Phase 0 "tunnel ra hello" (plan.md §Phase 0 Done)
+	handle {
+		respond "Lumin Studio — Phase 0 skeleton. Caddy up. Nếu bạn thấy dòng này qua hostname Cloudflare thì tunnel OK." 200
+	}
+
+	# --- Phase 1+ (bật khi app services có image) ---
+	# handle /api/* {
+	# 	reverse_proxy core-api:8080
+	# }
+	# handle /admin* {
+	# 	reverse_proxy admin:3000
+	# }
+	# handle {
+	# 	reverse_proxy storefront:3000
+	# }
+}

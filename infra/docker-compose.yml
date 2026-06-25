@@ -1,0 +1,151 @@
+# Lumin Studio — infra compose skeleton (Phase 0)
+# Self-host tại nhà: WSL2 Ubuntu + Docker (operations.md §1/§2). ADR-009.
+#
+# Cái này CHỈ là phần hạ tầng (data + edge). App services (core-api Go, asset-worker
+# Rust+Blender) CHƯA có image — xem README "Deferred app services".
+#
+#   docker compose up -d                  # local infra: postgres + nats + garage + caddy
+#   docker compose --profile edge up -d   # + cloudflared (cần TUNNEL_TOKEN)
+#
+# Secrets: copy .env.example → .env (gitignored). Prod giải mã từ SOPS+age lúc deploy
+# (conventions.md §Secrets / ADR-024) — KHÔNG commit .env thật.
+
+name: lumin
+
+services:
+  # --- PostgreSQL: dữ liệu app + bảng outbox + queue/job state (architecture.md §3) ---
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lumin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-lumin}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    ports:
+      # localhost-only: tunnel/Caddy là lối vào public, không expose DB ra LAN
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-lumin} -d ${POSTGRES_DB:-lumin}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [lumin]
+
+  # --- NATS JetStream: hàng đợi AssetJob (WorkQueue, DLQ); file store (architecture.md §3) ---
+  nats:
+    image: nats:2.10-alpine
+    restart: unless-stopped
+    command:
+      - '--name=lumin-nats'
+      - '--jetstream'
+      - '--store_dir=/data'
+      - '--http_port=8222' # monitoring → healthz
+    volumes:
+      - nats-data:/data
+    ports:
+      - '127.0.0.1:${NATS_PORT:-4222}:4222'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O-', 'http://localhost:8222/healthz']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [lumin]
+
+  # --- Garage: S3-compatible object storage, replication=1, không versioning (ADR-005) ---
+  garage:
+    image: dxflrs/garage:v1.0.1
+    restart: unless-stopped
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:?set GARAGE_RPC_SECRET (openssl rand -hex 32)}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:?set GARAGE_ADMIN_TOKEN (openssl rand -hex 32)}
+      # empty = endpoint metrics (:3903) KHÔNG auth. Admin port bind 127.0.0.1 nên chỉ
+      # lộ local; đặt token khi expose metrics ra observability (operations.md §6).
+      GARAGE_METRICS_TOKEN: ${GARAGE_METRICS_TOKEN:-}
+    volumes:
+      - ./garage/garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
+    ports:
+      - '127.0.0.1:${GARAGE_S3_PORT:-3900}:3900' # S3 API
+      - '127.0.0.1:${GARAGE_ADMIN_PORT:-3903}:3903' # admin API
+    healthcheck:
+      # garage image là scratch (chỉ có binary /garage); status exit 0 khi RPC sống.
+      # CHỈ là liveness RPC — KHÔNG đảm bảo S3 sẵn-sàng: node fresh chưa `layout apply`
+      # vẫn báo healthy nhưng 503 mọi PutObject. App services sau (gate trên garage) phải
+      # tự kiểm S3-readiness, không chỉ dựa healthy này. Layout init: xem README.
+      test: ['CMD', '/garage', 'status']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks: [lumin]
+
+  # --- Caddy: routing nội bộ; cloudflared trỏ public hostname → http://caddy:80 ---
+  caddy:
+    image: caddy:2.11.4-alpine
+    restart: unless-stopped
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      - '127.0.0.1:${CADDY_HTTP_PORT:-8080}:80'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O-', 'http://localhost:80/healthz']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [lumin]
+
+  # --- Cloudflare named tunnel: lộ Caddy ra internet, ẩn IP + TLS (operations.md §7) ---
+  # profile=edge: local dev không cần token; chỉ bật khi muốn tunnel ra ngoài.
+  cloudflared:
+    # Connector server-coupled: Cloudflare deprecate build cũ → giữ tag mới gần đây
+    # (bump định kỳ; không pin xa). Image distroless (không shell/wget) nên KHÔNG đặt
+    # được healthcheck container — `--metrics` lộ /ready cho probe ngoài (Uptime Kuma,
+    # operations.md §6/§8: liveness public-path đo từ ngoài host, không từ trong box).
+    image: cloudflare/cloudflared:2026.6.1
+    restart: unless-stopped
+    profiles: [edge]
+    command: ['tunnel', '--no-autoupdate', '--metrics', '0.0.0.0:2000', 'run']
+    environment:
+      # Token named-tunnel từ dashboard Cloudflare. Ingress (hostname → http://caddy:80)
+      # cấu hình ở dashboard khi dùng token (không cần config.yml).
+      # default-empty: `up` không-edge interpolate cả file nên không thể dùng :? ở đây.
+      # Bật profile edge mà token rỗng → cloudflared crash-loop (đặt TUNNEL_TOKEN trong .env).
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      caddy:
+        condition: service_healthy
+    networks: [lumin]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Deferred app services (image chưa tồn tại — bật khi services/ có Dockerfile):
+#
+#   core-api:        # Go + Chi BFF — services/core-api
+#     build: ../services/core-api
+#     depends_on: [postgres, nats, garage]
+#     networks: [lumin]
+#
+#   asset-worker:    # Rust + Blender — services/asset-worker; cần GPU (operations.md §3)
+#     build: ../services/asset-worker
+#     gpus: all                      # nvidia-container-toolkit; concurrency=1 (ADR-014)
+#     depends_on: [nats, garage]
+#     networks: [lumin]
+#
+# Storefront/Admin (Next) build thành image, Caddy reverse_proxy tới (xem Caddyfile).
+# ─────────────────────────────────────────────────────────────────────────────
+
+volumes:
+  pg-data:
+  nats-data:
+  garage-meta:
+  garage-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  lumin:
+    driver: bridge
