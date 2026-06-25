@@ -6,22 +6,25 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
-**Phase 0 — backbone slice (PR #4 `feat/phase-0-backbone`).** Đã dựng monorepo (pnpm + Turborepo) +
-`packages/tokens` (theme từ `tokens/*.css`, **sửa contrast nút coral** → `--primary` = flame-700) +
-`packages/core` (OrderStatus state machine + RBAC + statusHistory · money formatter `₫`/`calcTotals` ·
-Zod schemas · i18n keys vi) + **arm toàn bộ gate** (root `verify`, `acceptance.ledger.test.ts`, ESLint cấm
-`Intl` ngoài core, **OSM + money real-mutation-arm** trong `osm-mutation.test.sh`) + property-test fast-check.
-**Đã commit (`eef1755`) + vòng review đa-agent (local ultrareview, 25 finding) → đã sửa A/B/C/D:** gate-
-integrity (`/tokens/` un-hide format:check · turbo `globalDependencies` · CI `app-gates` job chạy
-real-arm · contrast test khoá `tokens.css` thật · acceptance-ledger đòi `it()` non-skip) · TZ-pin
-`formatVnDate` · i18n key hoá message Zod · ESLint 9→10 (ADR-020) · CHK-03 echo-ack · nhiều nit.
-Plan: [`plans/phase-0-backbone.md`](plans/phase-0-backbone.md). Spec nguồn: `spec.md §02/§04` · conventions.
+**Phase 0 — `packages/ui` primitives slice (branch `feat/phase-0-ui-primitives`, off main=30c5652).**
+Dựng `packages/ui` (React 18 + cva + clsx/tailwind-merge `cn()`, vitest+jsdom+Testing-Library) — **13
+primitive** từ `design-system.md §Component`: Button · IconButton · Badge · Tag · Avatar · Card · Input ·
+Switch · Checkbox · QuantityStepper · Rating · PriceTag · ProductCard (composite). Tiền/số **chỉ qua
+`@lumin/core`** (PriceTag→`formatVnd`, Rating→`formatVnNumber`; ESLint cấm `Intl` ngoài core) · không
+hard-code copy (label/aria qua props) · a11y (role/label, focus-visible, `motion-reduce`, hit ≥44px). Mở
+rộng `@lumin/tokens` preset: `danger` (=danger-600 cho AA), soft tints `accent-*-soft`, `accent-sky-strong`,
+alias `on-dark`/`surface-sunken`/`border-default`/`text-subtle`. **Gate mới:** `token-coverage.test.ts`
+(mọi util class màu phải map preset key — chống "silent no-op" vì chưa có Tailwind chạy) + lock contrast
+badge-solid trong `tokens.contrast.test`. **Build qua workflow đa-agent (1 agent/primitive) → spec-guardian
+review → sửa 2 a11y finding** (Badge solid teal/sky/danger fail AA; QuantityStepper md 36→44px).
+Spec nguồn: `design-system.md` · `tokens/*.css` · conventions §A11y/§i18n/§Tiền.
 
 ## Next steps (1–3)
-1. **Chủ review + merge PR cho `feat/phase-0-compose-skeleton`** (off `main`, squash — conventions §Scope&PR).
-   Smoke-test thật trên host WSL2 (daemon Docker ở Mac dev đang tắt; chỉ validate được `docker compose config`).
-2. Phase-0 tiếp: `packages/ui` primitives + Next app shells (storefront/admin) + next-intl runtime + self-host
-   font (subset `vietnamese`). **`go` + `docker` GIỜ đã có ở máy dev** (go1.23.6 darwin/arm64; compose v5.1.0).
+1. **Chủ review + merge PR #6** `feat/phase-0-ui-primitives` (off main, squash — conventions §Scope&PR).
+   Đã commit (`4568520`) + push + mở PR. Chưa có app surface nên visual-fidelity check để PR app-shell.
+2. Phase-0 tiếp: **Next app shells (storefront/admin)** mount primitives + **next-intl runtime (vi + ICU)** +
+   self-host font (subset `vietnamese`, leading heading ~1.15–1.2) + wire Tailwind preset. Đối chiếu thị
+   giác vs `designs/*.dc.html` (ADR-027) — đây là nơi verify visual-fidelity các primitive.
 3. Phase-0 tiếp: Go `core-api` (Chi BFF) + Rust `asset-worker`. ARM gate khi `services/**/*.go` land:
    `Makefile verify-go` (plan.md §Phase-0 ARM checklist). GPU gate (operations.md §3) làm trên host WSL2.
 
@@ -37,18 +40,25 @@ Plan: [`plans/phase-0-backbone.md`](plans/phase-0-backbone.md). Spec nguồn: `s
 | Harness audit r2/r3 + ADR-027 (workflow giao-PR) | done | PR #1/#2 (main=f751a41) | guard.test 138 / osm 11 |
 | **Phase 0 — backbone (tokens + core + arm gates)** | **done (PR #4 open)** | `feat/phase-0-backbone` `eef1755` | verify rc=0 · guard 139 · osm 22 |
 | **Phase 0 — fix ultrareview PR #4 (A/B/C/D, 25 finding)** | **done (PR #4)** | `feat/phase-0-backbone` (+1 commit) | verify rc=0 · 43 test · guard 139 · osm 22 |
-| **Phase 0 — compose skeleton** | **done (branch open)** | `feat/phase-0-compose-skeleton` | `docker compose config -q` OK · verify rc=0 |
-| Phase 0 — packages/ui + app shells + next-intl/fonts | todo | — | — |
+| **Phase 0 — compose skeleton** | **merged (PR #5)** | `origin/main` `30c5652` | `docker compose config -q` OK · verify rc=0 |
+| **Phase 0 — `packages/ui` 13 primitives + token-coverage gate** | **done (PR #6 open)** | `feat/phase-0-ui-primitives` `4568520`+review | verify rc=0 · ui 105 / tokens 9 / core 37 · guard 139 · osm 22 · spec-guardian + /review: 2+2 a11y fixed |
+| Phase 0 — app shells (storefront/admin) + next-intl/fonts | todo | — | — |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất
-`pnpm verify` — **rc=0** (lint[ESLint 10] + typecheck + **43 test** + format:check) · `tests/harness/guard.test.sh` —
-**139 / 0** · `tests/harness/osm-mutation.test.sh` — **22 / 0** (toy + REAL OSM + REAL money mutants đều bị
-KILL) (2026-06-25, Phase-0 backbone + vòng sửa ultrareview). **Compose skeleton (2026-06-25):**
-`pnpm verify` rc=0 (FULL TURBO) + `docker compose config -q` OK (`infra/`) — daemon Docker tắt nên chưa `up`.
+`pnpm verify` — **rc=0** (lint[ESLint 10] + typecheck + **149 test** + format:check) · `tests/harness/guard.test.sh`
+— **139 / 0** · `tests/harness/osm-mutation.test.sh` — **22 / 0** (2026-06-25, **`packages/ui` primitives**:
+ui 105 [13 primitive + token-coverage + Card-keyboard + ProductCard-no-nested-button] / tokens 9 [+2 lock
+contrast badge-solid] / core 37 = 151). spec-guardian + `/review`: money/i18n/controlled/ADR/exports CLEAN;
+**4 a11y finding đã sửa** — Badge solid AA + stepper 44px (spec-guardian); Card `interactive` keyboard
+(Enter/Space→click) + ProductCard bỏ nested button-role → stretched-link, + Switch.label required + Tag
+removeLabel-required union (/review). Chưa có app surface → visual-fidelity check để PR app-shell.
 
 ## Lưu ý git (2026-06-25)
-- PR #4 đã **merge** vào `origin/main` (squash → `cd6c171`). Local `main` từng kẹt 2 commit sau →
-  đã `ff-only` lên `cd6c171`. Branch hiện tại: **`feat/phase-0-compose-skeleton`** (off main mới).
-- Branch cũ `feat/phase-0-backbone` (local) **stale, content đã trong main** nhưng git coi là chưa-merge
-  (squash). Xoá tay: `git branch -D feat/phase-0-backbone` (guard-bash chặn `-D` trong phiên — chạy ngoài).
+- PR #5 (compose skeleton) đã **merge** vào `origin/main` (squash → `30c5652`). Local `main` đang **sau**
+  origin (cd6c171) — `git fetch && git checkout main && git merge --ff-only origin/main` khi cần.
+- Branch **`feat/phase-0-ui-primitives`** (off `origin/main`=30c5652): commit `4568520` (38 file:
+  `packages/ui/**` + edit `packages/tokens/src/{theme,preset}.ts` + `tokens.contrast.test` + lock) đã
+  **push + mở PR #6**. *(Edit `active-context.md` sau commit là uncommitted — sẽ vào commit slice kế.)*
+- Branch cũ stale (content đã trong main qua squash, git coi chưa-merge): `feat/phase-0-backbone`,
+  `feat/phase-0-compose-skeleton`. Xoá tay ngoài phiên: `git branch -D <branch>` (guard-bash chặn `-D`).

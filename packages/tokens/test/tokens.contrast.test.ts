@@ -83,4 +83,18 @@ describe('tokens contrast (WCAG 2.2 AA — conventions §A11y)', () => {
     expect(resolveCssVar('--primary-press')).toBe(color.primaryPress.toLowerCase());
     expect(resolveCssVar('--on-primary')).toBe(color.onPrimary.toLowerCase());
   });
+
+  // ---- Badge solid palette (packages/ui) — lock each fg/bg pair so a tone can't regress to a failing
+  // combination. text-xs label ⇒ the 4.5:1 small-text threshold applies (not the 3:1 large-text one).
+  it('badge solid tones clear AA 4.5:1 for small text', () => {
+    expect(contrast(color.accentTeal, color.textStrong)).toBeGreaterThanOrEqual(4.5); // cocoa on teal-500
+    expect(contrast(color.accentSkyStrong, color.onPrimary)).toBeGreaterThanOrEqual(4.5); // white on sky-600
+    expect(contrast(color.accentSun, color.textStrong)).toBeGreaterThanOrEqual(4.5); // cocoa on sun-500
+    expect(contrast(color.danger, color.onDanger)).toBeGreaterThanOrEqual(4.5); // white on danger-600
+    expect(contrast(color.surfaceBrand, color.textOnDark)).toBeGreaterThanOrEqual(4.5); // cream on cocoa
+  });
+
+  it('danger as text clears AA 4.5:1 on the card surface (Input error text)', () => {
+    expect(contrast(color.danger, color.surfaceCard)).toBeGreaterThanOrEqual(4.5);
+  });
 });
