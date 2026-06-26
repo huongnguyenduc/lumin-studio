@@ -24,8 +24,9 @@ OpenAPI là hợp đồng TS↔Go). Local `main` đã ff về `10b31f6`; nhánh 
 **ĐANG Ở Slice 2 (data layer).** Plan 7 sub-PR `docs/plans/core-data-layer.md` (run wf_0952e60c-e3d). Quyết định
 chủ: **golang-migrate** + **defer AssetJob** (ADR-028). **PR-2a (infra) ✅ MERGED #12 → `main` `7441072`.**
 **PR-2b (outbox table + tx-insert seam) ✅ MERGED #13 → `main` `861808d`.**
-**PR-2c (catalog: categories/products/colors/options/reviews) ĐÃ DỰNG local trên nhánh `feat/core-data-layer-2c`
-off `861808d`, verify xanh — CHƯA commit/PR.** Tiếp sau 2c: 2d identity/consent → 2e orders → 2f jobs → 2g settings.
+**PR-2c (catalog) ✅ MERGED #14 → `main` `881bc86`.**
+**PR-2d (identity: customers/consent_grants/users + reviews.customer_id FK) ĐÃ DỰNG local trên nhánh
+`feat/core-data-layer-2d` off `881bc86`, verify xanh — CHƯA commit/PR.** Tiếp sau 2d: 2e orders → 2f jobs → 2g settings.
 
 > Lịch sử app-shell/backbone Phase-0 (storefront/admin/services scaffold) đã archive — xem `git log` + PR #5–#10.
 
@@ -60,10 +61,17 @@ off `861808d`, verify xanh — CHƯA commit/PR.** Tiếp sau 2c: 2d identity/con
 | **Core slice 2 — data layer** | planned (7 sub-PR) | plan `docs/plans/core-data-layer.md` (wf_0952e60c-e3d) | critique: 1 blocker fixed (sqlc up-only glob) + 4 important folded; user chose golang-migrate + defer AssetJob (ADR-028) |
 | **Core slice 2 · PR-2a — data-layer infra (migrate + sqlc + pgx pool + gate arming)** | **merged (PR #12)** | squash → `origin/main` `7441072` | `make verify-go` ✓ (gofmt+vet+golangci 0+**sqlc vet+sqlc diff** no-DB+`go test -race`) · guard.test.sh **141** (sqlc ARM-GUARD proven binding mutate→RED) · osm 22 · ADR-028 · pgx v5.7.5/go 1.23/sqlc v1.30.0 · 3-lens review: spec-guardian PASS (0/0/1 NOTE→`extension` doc'd) + Go-correctness SOUND + harness-gate SOUND. Defer→2b: testcontainers + reversibility test (no local Docker) |
 | **Core slice 2 · PR-2b — outbox table + tx-insert seam (dual-write spine)** | **merged (PR #13)** | squash → `origin/main` `861808d` | `make verify-go` ✓ (sqlc vet validates `InsertOutbox`; integration tests RAN in CI — services-gates 1m38s); guard **141** (testcontainers real-check ACTIVE → `postgres.Run`) · osm 22 · `EnqueueOutbox(pgx.Tx,…)` tx-first-arg dual-write guard ADR-006 · deps +google/uuid v1.6.0 (runtime) +testcontainers v0.34.0 (test); in-test SQL applier (no golang-migrate dep). Relay→slice 3 · 3-lens review PASS (1 test-isolation fix) |
-| **Core slice 2 · PR-2c — catalog (categories/products/colors/options/reviews)** | **built local, verify green (chưa commit/PR)** | `feat/core-data-layer-2c` off `main` `861808d` | `make verify-go` ✓ (sqlc vet validates 9 catalog queries; round-trip/CHECK/rating tests via testcontainers skip-local/run-CI) · guard 141 · osm 22 · material TEXT+CHECK; money int8 CHECK≥0; nullable reviews.customer_id→pgtype.UUID (FK in 000004); thin `Catalog` repo; **no new deps**; EARS deferred |
+| **Core slice 2 · PR-2c — catalog (categories/products/colors/options/reviews)** | **merged (PR #14)** | squash → `origin/main` `881bc86` | `make verify-go` ✓ (services-gates 1m16s CI); guard 141 · osm 22 · material TEXT+CHECK; money int8 CHECK≥0; nullable reviews.customer_id→pgtype.UUID (FK in 000004); thin `Catalog` repo; **no new deps**; EARS deferred · 2-lens review PASS/SOUND |
+| **Core slice 2 · PR-2d — identity (customers/consent_grants/users + reviews FK)** | **built local, verify green (chưa commit/PR)** | `feat/core-data-layer-2d` off `main` `881bc86` | `make verify-go` ✓ (sqlc vet 8 queries; consent append-then-mark + no-district + user-role-no-system tests via testcontainers skip-local/run-CI) · guard 141 · osm 22 · consent partial-UNIQUE active; addresses jsonb NO district (ADR-017); ON DELETE SET NULL reviews FK (PDPL erase); thin `Identity` repo; vn-compliance loaded; **no new deps** |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất
+**Core slice 2 · PR-2d — identity + PDPL consent (2026-06-26):** `make verify-go` ✓ — `000004_identity` (customers/
+consent_grants/users + ALTER reviews ADD customer_id FK→customers ON DELETE SET NULL) + 8 sqlc queries + thin
+`Identity` repo. consent_grants append-then-mark (partial UNIQUE active per customer/scope/channel; withdraw=now(),
+no delete); addresses jsonb NO district (ADR-017); user_role owner/staff only (no system). Tests (testcontainers
+skip-local/run-CI): customer round-trip + address-no-district + consent grant/withdraw/re-grant + active-uniqueness
++ user round-trip. vn-compliance skill loaded. **No new deps.** guard 141, osm 22.
 **Core slice 2 · PR-2c — catalog (2026-06-26):** `make verify-go` ✓ (GOTOOLCHAIN=local go 1.23.6) — `000003_catalog`
 (categories/products/colors/options/reviews; material TEXT+CHECK, money int8 CHECK≥0, product_status/option_type/
 review_status native enums, reviews.customer_id bare uuid→FK in 000004) + 9 sqlc queries + thin `Catalog` repo
