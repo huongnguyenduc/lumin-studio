@@ -444,6 +444,31 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 	return string(ns.UserRole), nil
 }
 
+type Category struct {
+	ID   uuid.UUID `json:"id"`
+	Slug string    `json:"slug"`
+	Name string    `json:"name"`
+}
+
+type Color struct {
+	ID         uuid.UUID `json:"id"`
+	ProductID  uuid.UUID `json:"productId"`
+	Name       string    `json:"name"`
+	Hex        string    `json:"hex"`
+	Available  bool      `json:"available"`
+	PriceDelta int64     `json:"priceDelta"`
+}
+
+type Option struct {
+	ID          uuid.UUID  `json:"id"`
+	ProductID   uuid.UUID  `json:"productId"`
+	Label       string     `json:"label"`
+	Description string     `json:"description"`
+	Type        OptionType `json:"type"`
+	PriceDelta  int64      `json:"priceDelta"`
+	MaxChars    *int32     `json:"maxChars"`
+}
+
 type Outbox struct {
 	ID            uuid.UUID          `json:"id"`
 	Seq           int64              `json:"seq"`
@@ -456,4 +481,33 @@ type Outbox struct {
 	Attempts      int32              `json:"attempts"`
 	CreatedAt     pgtype.Timestamptz `json:"createdAt"`
 	PublishedAt   pgtype.Timestamptz `json:"publishedAt"`
+}
+
+type Product struct {
+	ID          uuid.UUID          `json:"id"`
+	Slug        string             `json:"slug"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	CategoryID  uuid.UUID          `json:"categoryId"`
+	BasePrice   int64              `json:"basePrice"`
+	Dimensions  []byte             `json:"dimensions"`
+	Material    string             `json:"material"`
+	Model3dUrl  string             `json:"model3dUrl"`
+	Images      []byte             `json:"images"`
+	Status      ProductStatus      `json:"status"`
+	RatingAvg   *float32           `json:"ratingAvg"`
+	ReviewCount int32              `json:"reviewCount"`
+	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
+}
+
+type Review struct {
+	ID         uuid.UUID          `json:"id"`
+	ProductID  uuid.UUID          `json:"productId"`
+	CustomerID pgtype.UUID        `json:"customerId"`
+	Rating     int16              `json:"rating"`
+	Body       string             `json:"body"`
+	Images     []byte             `json:"images"`
+	Reply      []byte             `json:"reply"`
+	Status     ReviewStatus       `json:"status"`
+	CreatedAt  pgtype.Timestamptz `json:"createdAt"`
 }

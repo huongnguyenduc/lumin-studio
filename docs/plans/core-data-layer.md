@@ -108,6 +108,21 @@ max_chars` int NULL), `reviews` (`rating` smallint CHECK 1..5, `customer_id` **n
 `customers` ADDED forward-only in `000004`). Queries: `GetProductBySlug`, `ListProductsByStatus`,
 `ListColorsByProduct`, `ListOptionsByProduct`, `InsertReview`.
 
+> **As-built (PR-2c, 2026-06-26 — committed):** `000003_catalog` (categories/products/colors/options/reviews).
+> `material` TEXT+CHECK (PLA/PETG/recycled-PLA); money int8 CHECK≥0; product_status/option_type/review_status
+> native enums from 000001; `reviews.customer_id` bare uuid (FK → customers added forward-only in 000004); FK
+> children `ON DELETE CASCADE`. 9 queries (Insert{Category,Product,Color,Option,Review} + GetProductBySlug +
+> ListProductsByStatus/ListColorsByProduct/ListOptionsByProduct) + thin `internal/db/catalog.go` `Catalog` repo
+> (wraps Querier, ErrNotFound on the slug-get). Generated types: non-null uuid → google/uuid.UUID, **nullable
+> `reviews.customer_id` → pgtype.UUID** (sqlc's nullable form; the uuid override is non-null only), `max_chars`
+> → *int32, `rating_avg` → *float32, jsonb (dimensions/images/reply) → []byte. Note: catalog has **no TS contract**
+> (`packages/core` is order-only) so no contract-parity enum overrides needed. The review-body column is named
+> `body` (spec §02 calls the field `text` — renamed to avoid the SQL keyword; map `text`⇄`body` at the slice-3 DTO). Tests (testcontainers, skip-local/
+> run-CI): round-trip product + 2 colors + option (int-VND exact, dimensions jsonb, maxChars), ErrNotFound,
+> base_price=-1 rejected (CHECK), review rating 6 rejected + rating 5/NULL-customer ok. **No new deps.** EARS
+> deferred (slice-1 precedent — no Go-side acceptance ids until `acceptance.ledger.test` exists). `make verify-go`
+> green (sqlc vet validates 9 queries); guard 141; osm 22.
+
 ### PR-2d — identity + privacy (vn-compliance territory)
 Migration `000004_identity`: `customers` (name CHECK len 2..60, phone [VN regex app-side], email NULL,
 `social_handle` NULL, **`addresses` jsonb** = province/ward/street + ward admin-code + name/phone, **NO district**
