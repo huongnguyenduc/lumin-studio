@@ -6,14 +6,27 @@ package sqlc
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 type Querier interface {
+	GetProductBySlug(ctx context.Context, slug string) (Product, error)
+	// catalog.sql — catalog read/write queries (PR-2c). spec.md §02. Inserts return the row so
+	// callers (slice-3 admin handlers, tests) get the persisted record back.
+	InsertCategory(ctx context.Context, arg InsertCategoryParams) (Category, error)
+	InsertColor(ctx context.Context, arg InsertColorParams) (Color, error)
+	InsertOption(ctx context.Context, arg InsertOptionParams) (Option, error)
 	// outbox.sql — the transactional outbox write path (PR-2b). InsertOutbox is the only
 	// mutation slice 2 performs on this table; the relay's SELECT/mark-published queries land
 	// in slice 3. seq/status/attempts/created_at use column defaults; published_at stays NULL
 	// until the relay publishes.
 	InsertOutbox(ctx context.Context, arg InsertOutboxParams) error
+	InsertProduct(ctx context.Context, arg InsertProductParams) (Product, error)
+	InsertReview(ctx context.Context, arg InsertReviewParams) (Review, error)
+	ListColorsByProduct(ctx context.Context, productID uuid.UUID) ([]Color, error)
+	ListOptionsByProduct(ctx context.Context, productID uuid.UUID) ([]Option, error)
+	ListProductsByStatus(ctx context.Context, status ProductStatus) ([]Product, error)
 	// ping.sql — the sqlc pipeline smoke query. It gives `sqlc vet`/`sqlc diff`
 	// substantive content before the first domain query lands (InsertOutbox, PR-2b) and
 	// proves codegen end-to-end. Readiness uses pgxpool.Ping directly, not this query.
