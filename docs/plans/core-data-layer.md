@@ -136,6 +136,19 @@ export/erase scaffold, `InsertUser`, `GetUserByEmail`. Optional partial unique i
 finalizing consent + address.** **Amend `plan.md` line 29 in this PR** (critique important #2): "zalo added to
 `consent_channel` only; `Order.channel` stays web/inbox per status.go".
 
+> **As-built (PR-2d, 2026-06-26 — committed):** `000004_identity` (customers / consent_grants / users) + `ALTER
+> reviews ADD` the deferred customer_id FK → customers (`ON DELETE SET NULL` for PDPL erasure). consent_grants
+> **append-then-mark**: partial `UNIQUE(customer_id,scope,channel) WHERE withdrawn_at IS NULL` (≤1 active grant;
+> re-grant = new row); withdraw sets `withdrawn_at = now()` (never deletes). addresses jsonb, **NO district**
+> (ADR-017). user_role native enum = owner/staff only (no `system` — compile-time: sqlc has only UserRoleOwner/
+> Staff). Queries: InsertCustomer/GetCustomerByID/GetCustomerByPhone/InsertConsentGrant/WithdrawConsent/
+> ListActiveConsents + InsertUser/GetUserByEmail; thin `internal/db/identity.go` Identity repo (ErrNotFound on
+> gets). Generated: nullable email/social_handle → *string, addresses → []byte, withdrawn_at/granted_at →
+> pgtype.Timestamptz. Tests (testcontainers skip-local/run-CI): customer round-trip + **address-has-no-district** +
+> ErrNotFound; consent append-then-mark (fresh=0 active → grant → withdraw → re-grant) + active-uniqueness
+> violation; user round-trip. vn-compliance skill loaded first. The plan.md zalo→consent_channel amendment already
+> landed in PR-2a. **No new deps.** `make verify-go` green; guard 141; osm 22.
+
 ### PR-2e — order spine
 Migration `000005_orders`: `orders` (`code` UNIQUE, `channel`/`status` native enums byte-identical to `status.go`,
 `customer_id` FK, `shipping_address` jsonb no-district, `subtotal`/`shipping_fee`/`total` int8 NOT NULL CHECK≥0,

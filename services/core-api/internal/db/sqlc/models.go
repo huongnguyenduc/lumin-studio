@@ -459,6 +459,26 @@ type Color struct {
 	PriceDelta int64     `json:"priceDelta"`
 }
 
+type ConsentGrant struct {
+	ID            uuid.UUID          `json:"id"`
+	CustomerID    uuid.UUID          `json:"customerId"`
+	Scope         ConsentScope       `json:"scope"`
+	Channel       ConsentChannel     `json:"channel"`
+	GrantedAt     pgtype.Timestamptz `json:"grantedAt"`
+	PolicyVersion string             `json:"policyVersion"`
+	WithdrawnAt   pgtype.Timestamptz `json:"withdrawnAt"`
+}
+
+type Customer struct {
+	ID           uuid.UUID          `json:"id"`
+	Name         string             `json:"name"`
+	Phone        string             `json:"phone"`
+	Email        *string            `json:"email"`
+	SocialHandle *string            `json:"socialHandle"`
+	Addresses    []byte             `json:"addresses"`
+	CreatedAt    pgtype.Timestamptz `json:"createdAt"`
+}
+
 type Option struct {
 	ID          uuid.UUID  `json:"id"`
 	ProductID   uuid.UUID  `json:"productId"`
@@ -510,4 +530,12 @@ type Review struct {
 	Reply      []byte             `json:"reply"`
 	Status     ReviewStatus       `json:"status"`
 	CreatedAt  pgtype.Timestamptz `json:"createdAt"`
+}
+
+type User struct {
+	ID     uuid.UUID `json:"id"`
+	Name   string    `json:"name"`
+	Email  string    `json:"email"`
+	Role   UserRole  `json:"role"`
+	Active bool      `json:"active"`
 }

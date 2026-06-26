@@ -11,11 +11,18 @@ import (
 )
 
 type Querier interface {
+	GetCustomerByID(ctx context.Context, id uuid.UUID) (Customer, error)
+	GetCustomerByPhone(ctx context.Context, phone string) (Customer, error)
 	GetProductBySlug(ctx context.Context, slug string) (Product, error)
+	GetUserByEmail(ctx context.Context, email string) (User, error)
 	// catalog.sql — catalog read/write queries (PR-2c). spec.md §02. Inserts return the row so
 	// callers (slice-3 admin handlers, tests) get the persisted record back.
 	InsertCategory(ctx context.Context, arg InsertCategoryParams) (Category, error)
 	InsertColor(ctx context.Context, arg InsertColorParams) (Color, error)
+	// Append a granted purpose. granted_at defaults to now(); withdrawn_at is NULL (active).
+	InsertConsentGrant(ctx context.Context, arg InsertConsentGrantParams) (ConsentGrant, error)
+	// customers.sql — customer + PDPL consent queries (PR-2d). spec.md §02 + vn-compliance.
+	InsertCustomer(ctx context.Context, arg InsertCustomerParams) (Customer, error)
 	InsertOption(ctx context.Context, arg InsertOptionParams) (Option, error)
 	// outbox.sql — the transactional outbox write path (PR-2b). InsertOutbox is the only
 	// mutation slice 2 performs on this table; the relay's SELECT/mark-published queries land
@@ -24,6 +31,9 @@ type Querier interface {
 	InsertOutbox(ctx context.Context, arg InsertOutboxParams) error
 	InsertProduct(ctx context.Context, arg InsertProductParams) (Product, error)
 	InsertReview(ctx context.Context, arg InsertReviewParams) (Review, error)
+	// users.sql — staff/owner account queries (PR-2d). spec.md §02 User.
+	InsertUser(ctx context.Context, arg InsertUserParams) (User, error)
+	ListActiveConsents(ctx context.Context, customerID uuid.UUID) ([]ConsentGrant, error)
 	ListColorsByProduct(ctx context.Context, productID uuid.UUID) ([]Color, error)
 	ListOptionsByProduct(ctx context.Context, productID uuid.UUID) ([]Option, error)
 	ListProductsByStatus(ctx context.Context, status ProductStatus) ([]Product, error)
@@ -32,6 +42,8 @@ type Querier interface {
 	// proves codegen end-to-end. Readiness uses pgxpool.Ping directly, not this query.
 	// (No leading underscore in the filename — Go ignores `_`-prefixed source files.)
 	Ping(ctx context.Context) (int32, error)
+	// Mark the active grant for (customer, scope, channel) as withdrawn. Never deletes the row.
+	WithdrawConsent(ctx context.Context, arg WithdrawConsentParams) error
 }
 
 var _ Querier = (*Queries)(nil)
