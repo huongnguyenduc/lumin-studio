@@ -256,6 +256,43 @@ ADR-012, `bank_account` jsonb VietQR), `setting_bank_audit` (**append-only owner
 conventions §57 — NO UPDATE/DELETE in the data path). **No e-invoice/tax columns** (compliance §5 deferred). Queries:
 `GetSettings`, `UpdateSettings`, `InsertBankAudit`, `ListBankAudit`, `InsertReplyTemplate`, `ListReplyTemplates`.
 
+> **As-built (PR-2g, 2026-06-26 — committed):** `000007_settings` (reply_templates + the `settings` SINGLETON +
+> `setting_bank_audit`) + `db/queries/settings.sql` + `internal/db/settings.go` (`Settings` repo + the
+> `UpdateBankAccountTx` audit-on-commit seam). **Singleton** = `id boolean PRIMARY KEY DEFAULT true CHECK (id)` +
+> a seeded row, so `GetSettings`/`UpdateSettings` always hit a row (a 2nd `id=true` → PK reject, `id=false` →
+> CHECK reject). **bank_account is split off `UpdateSettings`** (which writes only shop_info/shipping_rules/
+> refund_policy) and changed ONLY through `UpdateBankAccountTx(ctx, tx, …)` — it runs `UpdateBankAccount` +
+> `InsertBankAudit` on ONE tx, so an STK change can never land without its audit row (the conventions §57
+> analogue of the outbox publish-on-commit seam). **Append-only is DB-enforced:** a row-level `BEFORE UPDATE OR
+> DELETE` trigger AND a statement-level `BEFORE TRUNCATE` trigger both RAISE (the same plpgsql function), so the
+> trail can't be rewritten or wiped by UPDATE/DELETE/TRUNCATE — not just "no such query exists". `setting_bank_audit.seq`
+> (bigserial, mirrors `outbox.seq`) gives a deterministic monotonic "newest first" order (a random-uuid tiebreaker
+> would not). `refund_policy` per ADR-012; **NO e-invoice/tax columns** (compliance §5). jsonb columns kept as
+> `[]byte` (no sqlc override — house style, like catalog images/identity addresses); camelCase JSON tags via
+> the gen default. `vn-compliance` skill loaded first. **+1 query over the §1 list** (`UpdateBankAccount`, used
+> inside the seam) **+1** (`GetReplyTemplateByID`, ErrNotFound parity) — documented deviation, same axis.
+> **Verified:** `make verify-go` green (gofmt + vet + golangci **0** + sqlc vet + sqlc diff + `go test -race`);
+> **6 settings integration tests RAN vs real Postgres** (testcontainers via local colima, not just CI) — singleton
+> guard, the audit seam (atomic update+audit, rollback leaves neither, history accumulates), **DB-enforced
+> append-only (UPDATE + DELETE + TRUNCATE all blocked)**, `validate()` rejecting null/`{}`/`[]`/non-object STK,
+> seq-ordered newest-first + nil-reason-as-NULL, reply-template round-trip — and `TestMigrationsReversible`
+> re-passes (000007 down drops both tables + the trigger function; no new enum types). guard.test.sh **141**
+> (no new gate machinery — sqlc/testcontainers armed in 2a/2b), osm 22. **No new deps.** Decision recorded here
+> (not decisions.md) per the 2c–2f as-built precedent.
+>
+> **Adversarial review (wf_70129d8e, 5 lenses → per-finding verify): 12 raw → 7 confirmed / 5 refuted, all
+> confirmed addressed.** Two IMPORTANT money-out fixes: (1) the append-only trigger was `FOR EACH ROW BEFORE
+> UPDATE OR DELETE`, which **does NOT fire on TRUNCATE** (verified against real Postgres — `TRUNCATE setting_bank_audit`
+> wiped the trail) → added a statement-level `BEFORE TRUNCATE` guard + a TRUNCATE assertion to the test + scoped the
+> overclaiming comment (superuser DISABLE TRIGGER still possible → needs WORM backups, noted); (2) `validate()`
+> accepted JSON `null`/`{}`/`[]`/scalars (jsonb NOT NULL is not a SQL-NULL backstop) → now requires a non-empty JSON
+> object, since the server renders the static QR from this value. Plus the audit "newest first" order was untested
+> with a non-deterministic random-uuid tiebreaker → added `seq` + bound the ordering and the nil-reason-NULL case
+> in the test. Refuted (kept as-is, sound): seam "bypassable" via raw sqlc (matches ALL sibling seams, documented),
+> no `old_bank_account` column (history reconstructable by chaining), trigger not idempotent on re-run-up (re-runnable
+> = down→up, matches all 7 migrations), FK-on-changed_by untested (declarative constraint, no sibling precedent),
+> and a derivative validate-coverage NOTE (folded into fix #2).
+
 ## 2. Locked decisions (picked per conflict, not averaged)
 
 1. **statusHistory = jsonb column on `orders`, NOT a child table** (ADR-004 locks "JSON column cho statusHistory/

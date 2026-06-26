@@ -35,16 +35,22 @@ flip+append; REFUNDED denormalizes refundProofUrl). Totals via `money.CalcTotals
 green; **integration tests RAN vs real Postgres (colima, not just CI)** incl. a `-race` concurrent-reconcile lock
 proof; guard 141 / osm 22. 4-lens adversarial review (wf_ac186d9c): 14→9 confirmed, all fixed (2 IMPORTANT:
 empty-items guard + FOR-UPDATE test). **No new deps.**
-**PR-2f (fulfillment/asset) ✅ DONE — branch `feat/core-data-layer-2f` off `cf31cb2`, PR #17 OPEN (await owner merge).**
+**PR-2f (fulfillment/asset) ✅ MERGED #17 → `main` `b1b28a0` (2026-06-26, squash; local main ff'd).**
 `000006_jobs` (asset_jobs + print_jobs + 2 new enums) + `db/queries/jobs.sql` + `internal/db/jobs.go` (`Jobs` repo +
 3rd emit-seam `CreateAssetJobTx` → `asset_job.created`). **D3 resolved (user):** AssetJob shape inferred (no spec
 §02 table) → SPLIT `asset_job_type` {model_ingest, sprite_render}; `source_model_url`+`source_version` (content-hash)
 reconstructable (ADR-006); outputs→Product (job input-only). **D6 resolved (user):** `print_jobs.stage` STORED (staff
 drag-drop, finer than order status, Pet-Tag NFC stage later). print_jobs no emit-seam (admin-internal SSE slice 3).
 `make verify-go` green; **9 jobs integration tests RAN vs real Postgres (colima)** + reversibility re-passes; guard
-141 / osm 22; **no new deps**. **NEXT = PR-2g — config/reference** (`000007_settings`: reply_templates + settings
-singleton [refund_policy, bank_account VietQR] + `setting_bank_audit` append-only owner-only; NO e-invoice/tax cols);
-invoke `vn-compliance`. Then slice 3 (HTTP/relay).
+141 / osm 22; **no new deps**.
+**PR-2g (config/reference) ✅ DONE — branch `feat/core-data-layer-2g` off `b1b28a0` (in adversarial review).**
+`000007_settings` (reply_templates + settings singleton [shop_info/bank_account VietQR/shipping_rules/refund_policy] +
+`setting_bank_audit` append-only) + `db/queries/settings.sql` + `internal/db/settings.go` (`Settings` repo +
+`UpdateBankAccountTx` audit-on-commit seam). **Singleton** = `id boolean PK DEFAULT true CHECK (id)` + seed row.
+**Append-only** = BEFORE UPDATE/DELETE trigger RAISEs (DB-enforced, not just no-query). **refund_policy** per ADR-012
+(NOT return_policy); NO e-invoice/tax cols (compliance §5). vn-compliance loaded. `make verify-go` green; **6 settings
+integration tests RAN vs real Postgres (colima)** + reversibility re-passes; guard 141 / osm 22; **no new deps**.
+**This closes slice 2 (all 7 sub-PRs). NEXT = slice 3 (HTTP/relay).**
 
 > Lịch sử app-shell/backbone Phase-0 (storefront/admin/services scaffold) đã archive — xem `git log` + PR #5–#10.
 
