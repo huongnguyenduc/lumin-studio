@@ -24,9 +24,19 @@ OpenAPI là hợp đồng TS↔Go). Local `main` đã ff về `10b31f6`; nhánh 
 **ĐANG Ở Slice 2 (data layer).** Plan 7 sub-PR `docs/plans/core-data-layer.md` (run wf_0952e60c-e3d). Quyết định
 chủ: **golang-migrate** + **defer AssetJob** (ADR-028). **PR-2a (infra) ✅ MERGED #12 → `main` `7441072`.**
 **PR-2b (outbox table + tx-insert seam) ✅ MERGED #13 → `main` `861808d`.**
-**PR-2c (catalog) ✅ MERGED #14 → `main` `881bc86`.**
-**PR-2d (identity: customers/consent_grants/users + reviews.customer_id FK) ĐÃ DỰNG local trên nhánh
-`feat/core-data-layer-2d` off `881bc86`, verify xanh — CHƯA commit/PR.** Tiếp sau 2d: 2e orders → 2f jobs → 2g settings.
+**PR-2c (catalog) ✅ MERGED #14 → `881bc86`. PR-2d (identity: customers/consent_grants/users + reviews FK)
+✅ MERGED #15 → `main` `59d4f98`.**
+**PR-2e (order spine) ✅ DONE — branch `feat/core-data-layer-2e` off `59d4f98`, PR #16 OPEN (awaiting owner merge).**
+`000005_orders` (orders + order_items) + sqlc overrides (`order_status`/`order_channel`→`order.Status`/`Channel`,
+`status_history`→`[]order.StatusEvent`, `shipping_address`→`order.Address`, `personalization`→`*order.Personalization`)
++ 3 tx seams in `internal/db/orders.go`: `CreateOrderTx` (genesis event + items + `order.created`), `ConfirmPaymentTx`
+(owner-only reconcile→PAID + `order.paid`), `AdvanceStatusTx` (`FOR UPDATE` lock → `order.Transition` → atomic
+flip+append; REFUNDED denormalizes refundProofUrl). Totals via `money.CalcTotals` (no client total). `make verify-go`
+green; **integration tests RAN vs real Postgres (colima, not just CI)** incl. a `-race` concurrent-reconcile lock
+proof; guard 141 / osm 22. 4-lens adversarial review (wf_ac186d9c): 14→9 confirmed, all fixed (2 IMPORTANT:
+empty-items guard + FOR-UPDATE test). **No new deps.**
+**NEXT = PR-2f — fulfillment/asset** (`000006_jobs`: print_jobs + asset_jobs [shape inferred, ADR-028 D3 — may
+defer], 3rd emit-seam `asset_job.created`); invoke `event-outbox` + `render-worker-gpu` skills. Then 2g settings.
 
 > Lịch sử app-shell/backbone Phase-0 (storefront/admin/services scaffold) đã archive — xem `git log` + PR #5–#10.
 
@@ -62,10 +72,21 @@ chủ: **golang-migrate** + **defer AssetJob** (ADR-028). **PR-2a (infra) ✅ ME
 | **Core slice 2 · PR-2a — data-layer infra (migrate + sqlc + pgx pool + gate arming)** | **merged (PR #12)** | squash → `origin/main` `7441072` | `make verify-go` ✓ (gofmt+vet+golangci 0+**sqlc vet+sqlc diff** no-DB+`go test -race`) · guard.test.sh **141** (sqlc ARM-GUARD proven binding mutate→RED) · osm 22 · ADR-028 · pgx v5.7.5/go 1.23/sqlc v1.30.0 · 3-lens review: spec-guardian PASS (0/0/1 NOTE→`extension` doc'd) + Go-correctness SOUND + harness-gate SOUND. Defer→2b: testcontainers + reversibility test (no local Docker) |
 | **Core slice 2 · PR-2b — outbox table + tx-insert seam (dual-write spine)** | **merged (PR #13)** | squash → `origin/main` `861808d` | `make verify-go` ✓ (sqlc vet validates `InsertOutbox`; integration tests RAN in CI — services-gates 1m38s); guard **141** (testcontainers real-check ACTIVE → `postgres.Run`) · osm 22 · `EnqueueOutbox(pgx.Tx,…)` tx-first-arg dual-write guard ADR-006 · deps +google/uuid v1.6.0 (runtime) +testcontainers v0.34.0 (test); in-test SQL applier (no golang-migrate dep). Relay→slice 3 · 3-lens review PASS (1 test-isolation fix) |
 | **Core slice 2 · PR-2c — catalog (categories/products/colors/options/reviews)** | **merged (PR #14)** | squash → `origin/main` `881bc86` | `make verify-go` ✓ (services-gates 1m16s CI); guard 141 · osm 22 · material TEXT+CHECK; money int8 CHECK≥0; nullable reviews.customer_id→pgtype.UUID (FK in 000004); thin `Catalog` repo; **no new deps**; EARS deferred · 2-lens review PASS/SOUND |
-| **Core slice 2 · PR-2d — identity (customers/consent_grants/users + reviews FK)** | **built local, verify green (chưa commit/PR)** | `feat/core-data-layer-2d` off `main` `881bc86` | `make verify-go` ✓ (sqlc vet 8 queries; consent append-then-mark + no-district + user-role-no-system tests via testcontainers skip-local/run-CI) · guard 141 · osm 22 · consent partial-UNIQUE active; addresses jsonb NO district (ADR-017); ON DELETE SET NULL reviews FK (PDPL erase); thin `Identity` repo; vn-compliance loaded; **no new deps** |
+| **Core slice 2 · PR-2d — identity (customers/consent_grants/users + reviews FK)** | **merged (PR #15)** | squash → `origin/main` `59d4f98` | `make verify-go` ✓ (sqlc vet 8 queries; consent append-then-mark + no-district + user-role-no-system tests via testcontainers skip-local/run-CI) · guard 141 · osm 22 · consent partial-UNIQUE active; addresses jsonb NO district (ADR-017); ON DELETE SET NULL reviews FK (PDPL erase); thin `Identity` repo; vn-compliance loaded; **no new deps** |
+| **Core slice 2 · PR-2e — order spine (orders/order_items + 3 tx seams)** | **done (PR #16 open)** | `feat/core-data-layer-2e` off `59d4f98` | `make verify-go` ✓ (golangci 0, sqlc vet+diff clean, `go test -race`); **integration tests RAN vs real Postgres (colima)** — 12 order tests incl. `-race` concurrent-reconcile FOR-UPDATE proof, jsonb/enum overrides, outbox atomicity, refund-proof consistency, RBAC, money CHECK · guard 141 · osm 22 · 4-lens review wf_ac186d9c: 14→9 confirmed all fixed (2 IMPORTANT: empty-items guard `ErrNoItems` + concurrent-lock test) · **no new deps** |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất
+**Core slice 2 · PR-2e — order spine (2026-06-26):** `make verify-go` ✓ (golangci **0**, sqlc vet+diff clean,
+`go test -race`). **Integration tests RAN against real Postgres** (testcontainers via local **colima**, not just CI):
+all order tests PASS incl. `TestConcurrentReconcileSerializes` (two goroutines race PENDING_CONFIRM→PAID under
+`-race`; FOR-UPDATE lock → 1 commit + 1 INVALID_EDGE, exactly one `order.paid`, no double-append) + jsonb/enum sqlc
+override round-trips + outbox rollback-atomicity + refund-proof denormalization consistency + owner-only RBAC + money
+CHECK + multi-hop replay. `000005_orders` + `db/queries/orders.sql` (incl. `GetOrderForUpdate` FOR UPDATE) +
+`internal/db/orders.go` (3 tx seams) + `internal/order/order.go` (Address/Personalization/GenesisEvent). Totals via
+`money.CalcTotals` (no client total). 4-lens adversarial review (wf_ac186d9c): 14 raw → 9 confirmed, **all addressed**
+(2 IMPORTANT: `CreateOrderTx` empty-items guard `ErrNoItems` + concurrent-reconcile lock test). guard 141 · osm 22 ·
+**no new deps**. NOTE: colima started locally to run integration tests — stop after merge (home box normally Docker-less).
 **Core slice 2 · PR-2d — identity + PDPL consent (2026-06-26):** `make verify-go` ✓ — `000004_identity` (customers/
 consent_grants/users + ALTER reviews ADD customer_id FK→customers ON DELETE SET NULL) + 8 sqlc queries + thin
 `Identity` repo. consent_grants append-then-mark (partial UNIQUE active per customer/scope/channel; withdraw=now(),

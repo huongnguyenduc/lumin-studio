@@ -31,3 +31,33 @@ sql:
           # Outbox payload stays raw JSON — the relay forwards it verbatim to NATS.
           - column: "outbox.payload"
             go_type: "encoding/json.RawMessage"
+          # Order spine (PR-2e): map the enum + jsonb columns to the EXISTING slice-1 domain
+          # types so the DB layer and the state machine share one set of types and cannot
+          # drift (plan core-data-layer §3, ADR-004). order_status/order_channel are used only
+          # by the new orders table, so these db_type overrides have no retroactive effect on
+          # earlier axes. payment_method/user_role keep sqlc's generated enums (no slice-1
+          # equivalent for the former; the latter is owned by the already-merged identity axis).
+          - db_type: "order_status"
+            go_type:
+              import: "github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
+              type: "Status"
+          - db_type: "order_channel"
+            go_type:
+              import: "github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
+              type: "Channel"
+          # statusHistory jsonb reuses the exact slice the state machine appends.
+          - column: "orders.status_history"
+            go_type:
+              import: "github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
+              type: "StatusEvent"
+              slice: true
+          - column: "orders.shipping_address"
+            go_type:
+              import: "github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
+              type: "Address"
+          # personalization is a nullable jsonb column → pointer (nil = no engraving).
+          - column: "order_items.personalization"
+            go_type:
+              import: "github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
+              type: "Personalization"
+              pointer: true

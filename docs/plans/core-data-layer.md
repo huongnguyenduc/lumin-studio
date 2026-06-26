@@ -165,6 +165,43 @@ reconcile→PAID commits status flip + statusHistory append + `order.paid` atomi
 the appended StatusEvent **and** the order-level column in the same atomic UPDATE (order-level = denormalized copy of
 the latest REFUNDED event); add a test asserting they match.
 
+> **As-built (PR-2e, 2026-06-26 — committed):** `000005_orders` (orders + order_items) + `db/queries/orders.sql`
+> (CreateOrder / GetOrderByID / GetOrderByCode / **GetOrderForUpdate** `FOR UPDATE` / ListOrdersByStatus /
+> UpdateOrderStatus / InsertOrderItem / ListOrderItems) + `internal/db/orders.go` (`Orders` read repo + 3 tx
+> seams) + `internal/order/order.go` (new `Address`, `Personalization`, `GenesisEvent`). **sqlc overrides:**
+> `order_status`→`order.Status`, `order_channel`→`order.Channel` (db_type — only the new orders table uses them,
+> zero retroactive churn), `orders.status_history`→`[]order.StatusEvent` (slice), `orders.shipping_address`→
+> `order.Address`, `order_items.personalization`→`*order.Personalization` (pointer). **Seams** (all take `pgx.Tx`
+> first-arg, ADR-006): `CreateOrderTx` (status from `InitialStatusForChannel`; web needs proof, inbox born PAID +
+> stamps `payment_confirmed_at`; totals via **`money.CalcTotals`** — no client total column; inserts items;
+> genesis `StatusEvent` from=nil; enqueues `order.created`); `ConfirmPaymentTx` (owner-only reconcile→PAID, appends
+> history, stamps confirmed_at, enqueues `order.paid`); `AdvanceStatusTx` (general transition: `GetOrderForUpdate`
+> lock → `order.Transition` → single `UpdateOrderStatus`; →REFUNDED denormalizes the event's `refundProofUrl` into
+> the order-level column in the SAME UPDATE; →PAID stamps confirmed_at). dedup_key = `order:<id>:<event>` (UNIQUE
+> rejects double-insert). **Deliberate deviations from the §1/§3 sketch (documented in code):** (1) `payment_method`
+> omitted from `CreateOrder` — relies on the column `DEFAULT 'bank_transfer'` (phase-1 only); (2) `customers.addresses`
+> kept as `[]byte` from PR-2d (different merged axis — NOT retrofitted to `order.Address`); (3) `user_role` NOT
+> overridden to `order.Role` (`order.Role` carries an extra `system` runtime actor with no DB column; identity axis
+> owns the enum); (4) added `order.GenesisEvent` (no TS-reference equivalent — the from=nil creation event is built
+> at the app boundary in TS; the Go helper centralizes its actor/timestamp validation). **Verified:** `make verify-go`
+> green (golangci **0**, sqlc vet+diff clean, `go test -race`); **all 10 order integration tests RAN against real
+> Postgres** (testcontainers via local colima, not just CI) — jsonb/enum overrides, `FOR UPDATE` atomic flip+append,
+> outbox rollback-atomicity, refund-proof consistency, owner-only RBAC, money CHECK, multi-hop replay all PASS.
+> guard.test.sh **141** (no new gate machinery — sqlc/testcontainers armed in 2a/2b), osm 22. **No new deps.**
+> hand-written ≈500 lines (2 migrations + queries + value types + 4 seams; generated `*.sql.go`/`models.go` excluded
+> per §1 note) + ~540 test lines.
+>
+> **Adversarial review (wf_ac186d9c, 4 lenses → per-finding verify): 14 raw → 9 confirmed, all addressed.** Two
+> IMPORTANT fixed with binding tests: (1) `CreateOrderTx` now rejects an empty `Items` slice (`ErrNoItems`) — the
+> seam is the authoritative write path and `OrderSchema` requires `items.min(1)`, which can't be a column CHECK;
+> (2) added `TestConcurrentReconcileSerializes` — two goroutines race PENDING_CONFIRM→PAID, the `FOR UPDATE` lock
+> serializes them (1 commit + 1 INVALID_EDGE, exactly one `order.paid`, no double-append) under `-race`, proving the
+> central concurrency guarantee (previously unobserved). NOTEs: louder `AdvanceStatusTx` doc (money-in reconcile MUST
+> use `ConfirmPaymentTx` — the walk test now asserts an `AdvanceStatusTx` walk emits 0 `order.paid`); `UnitPrice`
+> authenticity caveat doc'd (slice-3 derives it from catalog); refund test gained a post-commit read-back; fixed two
+> stale docs (this plan's 5-field address §2.4/§3 → 3-field; the migration's "set at reconcile time too" comment).
+> 3 findings refuted; the rest dup/out-of-scope (slice-3 re-pricing, HTTP cart validation).
+
 ### PR-2f — fulfillment/asset
 Migration `000006_jobs`: `asset_jobs` (**shape INFERRED — decision D3, may defer**), `print_jobs` (`stage`
 `print_stage` enum OR derived from `order.status` — decision D6). Third emit-seam: `CreateAssetJobTx(ctx, tx, …)`
@@ -195,8 +232,11 @@ conventions §57 — NO UPDATE/DELETE in the data path). **No e-invoice/tax colu
 3. **Money** = every money column `BIGINT NOT NULL CHECK(col>=0)` VND, never numeric/float. Server-computed via
    slice-1 `internal/money.CalcTotals`; client total never accepted (not even a create-input column). `sum(parts)
    ==total` enforced in Go + tests, not SQL.
-4. **Address** = jsonb {province, ward, street, name, phone}, **no district key** (ADR-017); enforced in the Go
-   struct + validation (jsonb sub-fields can't be Postgres-constrained).
+4. **Address** = jsonb, **no district key** (ADR-017); enforced in the Go struct + validation (jsonb sub-fields
+   can't be Postgres-constrained). *As-built:* `orders.shipping_address` is the 3-field `{province, ward, street}`
+   shape, byte-identical to `packages/core` `AddressSchema` (the contract carries no recipient name/phone on the
+   shipping address). `customers.addresses` is a richer `{…, name, phone}` jsonb kept as `[]byte` in PR-2d — a
+   different already-merged axis, deliberately NOT unified to the order `Address` struct.
 5. **PDPL consent** = first-class **append-then-mark** child table `consent_grants` (one row per purpose), never a
    boolean, never pre-defaulted true, never gates checkout; withdrawal = set `withdrawn_at` (never hard-delete);
    `policy_version` plain string this slice.
@@ -218,7 +258,8 @@ db/migrations/*.up.sql`** (up-only glob — see BLOCKER below) · `queries: db/q
 
 **`overrides` map jsonb / enum columns to EXISTING slice-1 Go types so persistence can't drift:**
 - `orders.status_history` → `[]…/internal/order.StatusEvent`
-- `orders.shipping_address` + `customers.addresses` → a shared `Address` struct
+- `orders.shipping_address` → `order.Address` (3-field `{province, ward, street}`). *As-built:* `customers.addresses`
+  was NOT unified to this struct — it stays `[]byte` from PR-2d (richer `{…, name, phone}` shape, different axis).
 - `order_items.personalization` → `*Personalization {Text, ZoneID}`
 - `outbox.payload` → `encoding/json.RawMessage`
 - **`order_status`/`order_channel`/`user_role`/`payment_method` enums → the EXISTING `internal/order` types**

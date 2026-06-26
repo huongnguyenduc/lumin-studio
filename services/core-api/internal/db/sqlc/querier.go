@@ -8,11 +8,24 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
 )
 
 type Querier interface {
+	// orders.sql — order spine read/write queries (PR-2e). spec.md §02/§04.
+	//
+	// The seams in internal/db/orders.go orchestrate these inside the caller's transaction so the
+	// domain row, the statusHistory append and the outbox event commit as one unit (ADR-006).
+	// payment_method is intentionally NOT a CreateOrder param — phase 1 is bank_transfer only, so
+	// the column DEFAULT supplies it; add the param when a second method arrives.
+	CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error)
 	GetCustomerByID(ctx context.Context, id uuid.UUID) (Customer, error)
 	GetCustomerByPhone(ctx context.Context, phone string) (Customer, error)
+	GetOrderByCode(ctx context.Context, code string) (Order, error)
+	GetOrderByID(ctx context.Context, id uuid.UUID) (Order, error)
+	// GetOrderForUpdate locks the row for the duration of the caller's tx so a status flip reads
+	// and writes the order atomically (no lost-update race between concurrent transitions).
+	GetOrderForUpdate(ctx context.Context, id uuid.UUID) (Order, error)
 	GetProductBySlug(ctx context.Context, slug string) (Product, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	// catalog.sql — catalog read/write queries (PR-2c). spec.md §02. Inserts return the row so
@@ -24,6 +37,7 @@ type Querier interface {
 	// customers.sql — customer + PDPL consent queries (PR-2d). spec.md §02 + vn-compliance.
 	InsertCustomer(ctx context.Context, arg InsertCustomerParams) (Customer, error)
 	InsertOption(ctx context.Context, arg InsertOptionParams) (Option, error)
+	InsertOrderItem(ctx context.Context, arg InsertOrderItemParams) (OrderItem, error)
 	// outbox.sql — the transactional outbox write path (PR-2b). InsertOutbox is the only
 	// mutation slice 2 performs on this table; the relay's SELECT/mark-published queries land
 	// in slice 3. seq/status/attempts/created_at use column defaults; published_at stays NULL
@@ -36,12 +50,19 @@ type Querier interface {
 	ListActiveConsents(ctx context.Context, customerID uuid.UUID) ([]ConsentGrant, error)
 	ListColorsByProduct(ctx context.Context, productID uuid.UUID) ([]Color, error)
 	ListOptionsByProduct(ctx context.Context, productID uuid.UUID) ([]Option, error)
+	ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]OrderItem, error)
+	ListOrdersByStatus(ctx context.Context, status order.Status) ([]Order, error)
 	ListProductsByStatus(ctx context.Context, status ProductStatus) ([]Product, error)
 	// ping.sql — the sqlc pipeline smoke query. It gives `sqlc vet`/`sqlc diff`
 	// substantive content before the first domain query lands (InsertOutbox, PR-2b) and
 	// proves codegen end-to-end. Readiness uses pgxpool.Ping directly, not this query.
 	// (No leading underscore in the filename — Go ignores `_`-prefixed source files.)
 	Ping(ctx context.Context) (int32, error)
+	// UpdateOrderStatus persists a transition: the new status, the full appended statusHistory,
+	// and — only when supplied — the denormalized refund_proof_url and payment_confirmed_at
+	// (COALESCE keeps the existing value when the narg is NULL). The append itself is computed in
+	// Go by order.Transition; this statement just writes the result in one UPDATE.
+	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) (Order, error)
 	// Mark the active grant for (customer, scope, channel) as withdrawn. Never deletes the row.
 	WithdrawConsent(ctx context.Context, arg WithdrawConsentParams) error
 }

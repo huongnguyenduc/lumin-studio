@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -487,6 +488,38 @@ type Option struct {
 	Type        OptionType `json:"type"`
 	PriceDelta  int64      `json:"priceDelta"`
 	MaxChars    *int32     `json:"maxChars"`
+}
+
+type Order struct {
+	ID                 uuid.UUID           `json:"id"`
+	Code               string              `json:"code"`
+	Channel            order.Channel       `json:"channel"`
+	Status             order.Status        `json:"status"`
+	CustomerID         uuid.UUID           `json:"customerId"`
+	ShippingAddress    order.Address       `json:"shippingAddress"`
+	Subtotal           int64               `json:"subtotal"`
+	ShippingFee        int64               `json:"shippingFee"`
+	Total              int64               `json:"total"`
+	PaymentMethod      PaymentMethod       `json:"paymentMethod"`
+	PaymentProofUrl    *string             `json:"paymentProofUrl"`
+	PaymentConfirmedAt pgtype.Timestamptz  `json:"paymentConfirmedAt"`
+	RefundProofUrl     *string             `json:"refundProofUrl"`
+	TrackingCode       *string             `json:"trackingCode"`
+	Note               *string             `json:"note"`
+	StatusHistory      []order.StatusEvent `json:"statusHistory"`
+	CreatedAt          pgtype.Timestamptz  `json:"createdAt"`
+	UpdatedAt          pgtype.Timestamptz  `json:"updatedAt"`
+}
+
+type OrderItem struct {
+	ID              uuid.UUID              `json:"id"`
+	OrderID         uuid.UUID              `json:"orderId"`
+	ProductID       uuid.UUID              `json:"productId"`
+	ColorID         pgtype.UUID            `json:"colorId"`
+	OptionIds       []byte                 `json:"optionIds"`
+	Personalization *order.Personalization `json:"personalization"`
+	Quantity        int32                  `json:"quantity"`
+	UnitPrice       int64                  `json:"unitPrice"`
 }
 
 type Outbox struct {
