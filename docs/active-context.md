@@ -6,43 +6,32 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
-**Phase 0 — app shells DONE trên main: storefront (#7=`b77acb7`) + admin (#9=`bf1b7a5`, **MERGED** 2026-06-25,
-base=main; stacked-merge footgun đã xử lý — git-note dưới). Slice ĐANG CHẠY = services backbone
-(`feat/phase-0-services-backbone` off main): Go `core-api` (Chi v5 BFF) + Rust `asset-worker` scaffold + ARM
-`Makefile verify-go|verify-rs` + CI job `services-gates`. Đây là slice CUỐI của Phase 0.** (Context app-shell
-bên dưới giữ làm lịch sử.)
-Admin (`apps/admin`, branch `feat/phase-0-admin-shell` off storefront-shell): reuse 100% infra slice-1; chrome
-= sidebar 9 mục (`usePathname` active) + topbar greeting (Avatar + `formatVnDate` demo) + dashboard (4 stat
-Card: count`formatVnNumber`/tiền`formatVnd` · bảng đơn gần đây + `OrderStatusBadge` map 7 `ORDER_STATUSES`→
-Badge tone · "Cần xử lý" list) + `loading`/`error` + empty-state bảng. Desktop-first (sidebar fixed ≥lg).
-Built qua subagent mirror storefront → tự verify lại (build/verify/guard/osm green) + spec-guardian PASS.
-Merge order: **#7 (storefront, có infra) TRƯỚC**, rồi rebase admin lên main.
+**PHASE 0 DONE — cả 5 slice trên `main` (`ab99360`):** compose(#5) · ui(#6) · storefront(#7) · admin(#9) ·
+services backbone(#10, squash-merged 2026-06-26 03:28Z). Local `main` đã ff về `ab99360`; nhánh
+`feat/phase-0-services-backbone` đã xoá local (remote còn — chưa được duyệt xoá). Còn nợ Phase 0 = **ops (không
+code):** GPU gate WSL2 (driver Win + cuda-toolkit + nvidia-container-toolkit + Blender-thấy-GPU) + Dockerfile 2
+service (gắn GPU gate) — việc của chủ ở máy nhà, không scaffold được.
 
-### Slice 1/2 — STOREFRONT (PR #7, branch `feat/phase-0-storefront-shell`, off main=296c44a).
-Dựng `apps/storefront` (Next 14.2 App Router + React 18) — app đầu tiên boot bằng `pnpm dev`, là nơi
-**mount 13 primitive** `@lumin/ui` lần đầu trên surface thật (visual-fidelity ADR-027 deferred từ PR #6).
-Wiring nền (dùng lại cho admin): `pnpm-workspace` thêm `apps/*` · `turbo` thêm `dev`/`build` · **Tailwind 3.4
-+ `luminPreset`** (content scan `packages/ui/src` để primitive class không bị tree-shake) · **next-intl (vi +
-ICU, không locale-routing)** — catalog = chrome `messages/vi.ts` + `@lumin/core` domain dưới namespace `core`
-· **self-host font qua `next/font/google` (Next 15)** (Bricolage Grotesque display · **Hanken Grotesk** body ·
-Space Mono; subset `vietnamese`, CSS-var → tailwind fontFamily) · **ESLint arm
-cho `apps/**`**: `jsx-a11y` recommended + `i18next/no-literal-string` (jsx-text-only) — luật i18n/a11y giờ có
-enforcement. Shell = header sticky (logo+search+nav) · bottom-nav mobile · hero (pop CTA) · featured grid
-(ProductCard + empty state) · trust · footer · `loading`/`error` route states. Tiền chỉ qua PriceTag/`@lumin/core`
-· mọi copy qua i18n key · a11y (skip-link, aria, focus-visible, hit≥44, motion-reduce, heading leading 1.18).
-**spec-guardian: PASS (0 BLOCKER/0 WARN/2 NOTE).** Nguồn: `designs/Lumin Storefront - Hi-fi.dc.html` ·
-`design-system.md` · conventions §A11y/§i18n/§Tiền/§State/§Visual-fidelity.
+**ĐANG CHẠY = Phase "Core · Data model + OrderStatus" (xương sống). Branch `feat/core-data-model` off main.**
+Plan: `docs/plans/core-data-model.md` (3 slice tuần tự). **Slice 1 (PR này) = domain spine THUẦN Go, KHÔNG DB:**
+`services/core-api/internal/order` (state machine port từ `packages/core/order-state.ts` — edges/RBAC/reason/
+owner-only/statusHistory/replay/channel-entry) + `internal/money` (`CalcTotals` server-authoritative, port nửa
+server của `money.ts`; `formatVnd` DEFER tới surface email/OG). Test: OSM-01..05 + MNY-01/02 + property-test
+(`testing/quick`, KHÔNG thêm dep). `make verify-go` xanh (gofmt+vet+golangci v2+`go test -race`, **15 test**).
+ADR-003 (Go re-implement spine server-side; OpenAPI là hợp đồng TS↔Go). Slice 2 = sqlc+migration+outbox;
+slice 3 = HTTP `POST /orders`+transition endpoints+RBAC mw.
+
+> Lịch sử app-shell/backbone Phase-0 (storefront/admin/services scaffold) đã archive — xem `git log` + PR #5–#10.
 
 ## Next steps (1–3)
-1. **Chủ review + merge PR services-backbone** (squash, base=`main`). Scaffold-only, không có domain/DB/NATS-live.
-   Diff lớn do lock-file sinh (go.sum + Cargo.lock) — code tay nhỏ. Sau merge: **Phase 0 DONE.**
-2. **Còn nợ trong Phase 0 (ops, không phải code):** GPU gate (operations.md §3) trên host WSL2 — driver Win +
-   cuda-toolkit + nvidia-container-toolkit + **Blender thấy GPU trong container** (skill `render-worker-gpu`).
-   Đây là việc của chủ trên máy nhà, không scaffold được. Cũng còn: Dockerfile cho 2 service (deferred — ảnh
-   asset-worker = CUDA+Blender, gắn với GPU gate) → mở comment block trong `infra/docker-compose.yml`.
-3. **Phase 1** (Core data model + OrderStatus, rồi Storefront): Core API aggregates thật thay
-   `apps/admin/src/lib/demo-dashboard.ts` placeholder; sqlc models (`spec.md §02`) + outbox; ADR-026 lane
-   B/C/D · REC-20/28/39.
+1. **Slice 1 (Go spine): review xong (workflow wf_3ccae648 + spec-guardian PASS) → sửa finding nếu có → commit
+   → PR (squash, base=main).** Chưa push/commit khi chưa được chủ duyệt.
+2. **Slice 2 — data layer:** sqlc models `spec.md §02` (Product/Color/Option/Order/OrderItem/PrintJob/AssetJob/
+   Review/Customer/User/ReplyTemplate/Setting) + **outbox** + migration + pgx pool; arm `sqlc vet`+testcontainers
+   (ADR-020). Address province→ward→street (ADR-017); `channel` enum + zalo; consent record trên Customer.
+3. **Slice 3 — HTTP:** `POST /orders` (web→PENDING_CONFIRM+ảnh CK, inbox→PAID) + transition endpoints + RBAC mw +
+   outbox publish-on-commit; thay `apps/admin/src/lib/demo-dashboard.ts` placeholder bằng aggregate thật. Sau đó:
+   ADR-026 lane B/C/D · REC-20/28/39.
 
 ## Open questions
 - *(không có cho slice backbone — scope đã chốt "backbone only" với user; ADR đã khoá quyết định.)*
@@ -60,10 +49,18 @@ enforcement. Shell = header sticky (logo+search+nav) · bottom-nav mobile · her
 | **Phase 0 — `packages/ui` 13 primitives + token-coverage gate** | **merged (PR #6)** | `origin/main` `296c44a` | verify rc=0 · ui 105 / tokens 9 / core 37 · guard 139 · osm 22 · spec-guardian + /review: 2+2 a11y fixed |
 | **Phase 0 — app shell 1/2: storefront (Next+next-intl+fonts+Tailwind)** | **merged → main** | PR #7 squash → `origin/main` `b77acb7` | `next build` ✓ · verify rc=0 · storefront i18n test + ui 105/tokens 9/core 37 · guard 139 · osm 22 · spec-guardian PASS (0/0/2) |
 | **Phase 0 — app shell 2/2: admin (sidebar+dashboard, reuse infra)** | **merged → main** | PR #9 squash → `origin/main` `bf1b7a5` (re-land of #8) | Next 15 + Hanken Grotesk · `next build` ✓ · verify rc=0 · admin i18n test · guard 139 · osm 22 · spec-guardian PASS (0/0/2) · status-Badge map = 7 ORDER_STATUSES |
-| **Phase 0 — services backbone (Go core-api + Rust asset-worker scaffold + arm gates)** | **done (PR open)** | `feat/phase-0-services-backbone` off `bf1b7a5` | make verify-go ✓ (golangci-lint **v2.12.2** + `go test -race`) · make verify-rs ✓ (go test 6 / cargo test 3) · ARM-GUARD .go→verify-go + .rs→verify-rs ✓ · guard 139 · osm 22 · pnpm verify rc=0 · CI `services-gates` · 4-lens review 0 BLOCKER |
+| **Phase 0 — services backbone (Go core-api + Rust asset-worker scaffold + arm gates)** | **merged (PR #10)** | squash → `origin/main` `ab99360` | make verify-go ✓ (golangci v2.12.2 + `go test -race`) · make verify-rs ✓ · ARM-GUARD .go→verify-go+.rs→verify-rs ✓ · guard 139 · osm 22 · 4-lens review 0 BLOCKER |
+| **Core slice 1 — Go domain spine (OrderStatus state machine + money, no DB)** | **done (review PASS · 2 fix)** | `feat/core-data-model` off `ab99360` (chưa commit) | `make verify-go` ✓ (gofmt+vet+golangci v2+`go test -race`, **17 test**) · 5-lens review wf_3ccae648: 0 BLOCKER · 2 fix proven binding (money overflow-guard + impossible-date test, mutate-run-restore) · 3 NOTE doc'd (Go server intentionally stricter on malformed ts/url) · guard 139 · osm 22 · spec-guardian PASS |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất
+**Core slice 1 — Go spine (2026-06-26):** `make verify-go` ✓ (gofmt + go vet + golangci v2.12.2 + `go test -race`,
+**17 test**: `internal/order` state machine OSM-01..05 + replay + property; `internal/money` `CalcTotals` MNY-01/02
++ overflow + property). 5-lens adversarial review (wf_3ccae648, 16 agent): 0 BLOCKER, 7 confirmed (2 positive),
+fix 2 — (a) money int64 **overflow guard** (`addChecked`/`mulChecked` → `errOverflow` thay vì wrap âm câm; vector
+= quantity ác ý) + (b) test ngày bất-khả (`2026-13-99...Z`) ép **time.Parse backstop** của `isISOUTC`; cả hai
+**proven binding** (mutate-run-restore → RED). 3 NOTE giữ-nguyên-có-chủ-đích: server Go **strict hơn** TS reference
+ở ts/url dị dạng (an toàn hơn — đã ghi comment). guard 139 · osm 22 · spec-guardian PASS.
 **Services backbone (2026-06-26):** `make verify-go` ✓ (gofmt-clean + `go vet` + **golangci-lint v2.12.2**
 [ADR-020 — local tool nâng v1.64.8→v2, `.golangci.yml` v2-schema] + **`go test -race ./...`** — config 3 /
 httpapi 3 = **6** test, `health`/`readyz`/404) · `make verify-rs` ✓ (`cargo fmt --check` + `cargo clippy
@@ -78,9 +75,10 @@ deprecated (SA1019, IP-spoofable) → bỏ, dùng CF-Connecting-IP ở edge-phas
 spec-guardian PASS (0/0/2).
 
 ## Lưu ý git (2026-06-26, cập nhật)
-- `origin/main` = **`bf1b7a5`** (PR #9 admin re-land squash-merged 2026-06-25). Chứa `apps/storefront` +
-  `apps/admin` + toàn bộ infra. **PR #9 ĐÃ MERGED** (active-context cũ ghi nhầm "open" → đã sửa). Verify:
-  `git cat-file -t origin/main:apps/admin/package.json` = blob; `services/` chưa có trên main (slice này thêm).
+- `origin/main` = **`ab99360`** (PR #10 services-backbone squash-merged 2026-06-26 03:28Z). Chứa app-shells +
+  infra + `services/core-api`+`services/asset-worker` scaffold. Local main ĐÃ ff về `ab99360`. Verify:
+  `git cat-file -t origin/main:services/core-api/go.mod` = blob. **Slice Core off `ab99360`.** (cũ: PR #9 admin
+  `bf1b7a5` 2026-06-25; PR #7 storefront `b77acb7`.)
 - **Services-backbone slice (nhánh `feat/phase-0-services-backbone` off `bf1b7a5`):** thêm `services/core-api`
   (Go+Chi) + `services/asset-worker` (Rust+tokio+async-nats) + root `Makefile` (verify-go/verify-rs) + CI
   `services-gates` + `/services/` vào `.prettierignore`. Go module = `github.com/huongnguyenduc/lumin-studio/
