@@ -21,10 +21,10 @@ property (`testing/quick`); `make verify-go` xanh (**17 test**). ADR-003 (Go re-
 OpenAPI là hợp đồng TS↔Go). Local `main` đã ff về `10b31f6`; nhánh `feat/core-data-model` đã squash-merged
 (còn local + remote, chưa duyệt xoá).
 
-**ĐANG Ở Slice 2 (data layer), nhánh `feat/core-data-layer` off `main` `10b31f6`.** Plan 7 sub-PR
-`docs/plans/core-data-layer.md` (run wf_0952e60c-e3d). Quyết định chủ: **golang-migrate** + **defer AssetJob**
-(ADR-028). **PR-2a (infra) ĐÃ DỰNG local, verify xanh — CHƯA commit/PR.** Tiếp: PR-2b outbox table + tx-insert
-seam + test integration testcontainers ĐẦU TIÊN (arm reversibility + atomicity); rồi 2c catalog … 2g settings.
+**ĐANG Ở Slice 2 (data layer).** Plan 7 sub-PR `docs/plans/core-data-layer.md` (run wf_0952e60c-e3d). Quyết định
+chủ: **golang-migrate** + **defer AssetJob** (ADR-028). **PR-2a (infra) ✅ MERGED #12 → `main` `7441072`.**
+**PR-2b (outbox table + tx-insert seam) ĐÃ DỰNG local trên nhánh `feat/core-data-layer-2b` off `7441072`, verify
+xanh — CHƯA commit/PR.** Tiếp sau 2b: 2c catalog → 2d identity/consent → 2e orders → 2f jobs → 2g settings.
 
 > Lịch sử app-shell/backbone Phase-0 (storefront/admin/services scaffold) đã archive — xem `git log` + PR #5–#10.
 
@@ -57,10 +57,20 @@ seam + test integration testcontainers ĐẦU TIÊN (arm reversibility + atomici
 | **Phase 0 — services backbone (Go core-api + Rust asset-worker scaffold + arm gates)** | **merged (PR #10)** | squash → `origin/main` `ab99360` | make verify-go ✓ (golangci v2.12.2 + `go test -race`) · make verify-rs ✓ · ARM-GUARD .go→verify-go+.rs→verify-rs ✓ · guard 139 · osm 22 · 4-lens review 0 BLOCKER |
 | **Core slice 1 — Go domain spine (OrderStatus state machine + money, no DB)** | **merged (PR #11)** | squash → `origin/main` `10b31f6` (2026-06-26 05:01Z) | `make verify-go` ✓ (gofmt+vet+golangci v2+`go test -race`, **17 test**) · 5-lens review wf_3ccae648: 0 BLOCKER · 2 fix proven binding (money overflow-guard + impossible-date test, mutate-run-restore) · 3 NOTE doc'd (Go server intentionally stricter on malformed ts/url) · guard 139 · osm 22 · spec-guardian PASS |
 | **Core slice 2 — data layer** | planned (7 sub-PR) | plan `docs/plans/core-data-layer.md` (wf_0952e60c-e3d) | critique: 1 blocker fixed (sqlc up-only glob) + 4 important folded; user chose golang-migrate + defer AssetJob (ADR-028) |
-| **Core slice 2 · PR-2a — data-layer infra (migrate + sqlc + pgx pool + gate arming)** | **built local, verify green (chưa commit/PR)** | `feat/core-data-layer` off `main` `10b31f6` | `make verify-go` ✓ (gofmt+vet+golangci 0+**sqlc vet+sqlc diff** no-DB+`go test -race`) · guard.test.sh **141** (sqlc ARM-GUARD proven binding mutate→RED) · osm 22 · ADR-028 · pgx v5.7.5/go 1.23/sqlc v1.30.0 · 3-lens review: spec-guardian PASS (0/0/1 NOTE→`extension` doc'd) + Go-correctness SOUND + harness-gate SOUND. Defer→2b: testcontainers + reversibility test (no local Docker) |
+| **Core slice 2 · PR-2a — data-layer infra (migrate + sqlc + pgx pool + gate arming)** | **merged (PR #12)** | squash → `origin/main` `7441072` | `make verify-go` ✓ (gofmt+vet+golangci 0+**sqlc vet+sqlc diff** no-DB+`go test -race`) · guard.test.sh **141** (sqlc ARM-GUARD proven binding mutate→RED) · osm 22 · ADR-028 · pgx v5.7.5/go 1.23/sqlc v1.30.0 · 3-lens review: spec-guardian PASS (0/0/1 NOTE→`extension` doc'd) + Go-correctness SOUND + harness-gate SOUND. Defer→2b: testcontainers + reversibility test (no local Docker) |
+| **Core slice 2 · PR-2b — outbox table + tx-insert seam (dual-write spine)** | **built local, verify green (chưa commit/PR)** | `feat/core-data-layer-2b` off `main` `7441072` | `make verify-go` ✓ (sqlc vet validates `InsertOutbox`; integration tests skip no-Docker via recover-guard, RUN in CI) · guard **141** (testcontainers real-check ACTIVE → `postgres.Run`) · osm 22 · `EnqueueOutbox(pgx.Tx,…)` tx-first-arg dual-write guard ADR-006 · deps +google/uuid v1.6.0 (runtime) +testcontainers v0.34.0 (test); in-test SQL applier (no golang-migrate dep). Relay→slice 3 |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất
+**Core slice 2 · PR-2b — outbox table + tx-insert seam (2026-06-26):** `make verify-go` ✓ (GOTOOLCHAIN=local
+go 1.23.6) — migration `000002_outbox` + `InsertOutbox` query + `EnqueueOutbox(ctx, tx pgx.Tx, ev OutboxEvent)`
+(tx-first-arg dual-write guard, ADR-006). sqlc overrides uuid→google/uuid, outbox.payload→json.RawMessage.
+Tests: pure `validate` (runs everywhere) + testcontainers atomicity (rollback→0/commit→1/dup-dedup→reject) +
+migration-reversibility (in-test SQL applier, no golang-migrate dep) — **skip local (no Docker, recover-guard
+quanh `SkipIfProviderIsNotHealthy` panic), RUN in CI**. `sqlc vet` giờ validate `InsertOutbox` vs outbox schema.
+guard.test.sh **141** (testcontainers real-check ACTIVE), osm 22. Deps +google/uuid v1.6.0 (runtime) +
+testcontainers-go v0.34.0/postgres module (test) — go directive giữ 1.23. go.sum phình (lock-file, docker/otel
+transitive). macOS arm64: cảnh báo cgo go-m1cpu vô hại (không có ở CI linux).
 **Core slice 2 · PR-2a — data-layer infra (2026-06-26):** `make verify-go` ✓ — gofmt + go vet + golangci v2.12.2
 (**0 issues**) + **`sqlc vet`** + **`sqlc diff`** (no-DB: query↔schema compile + generated-code không stale) +
 `go test -race ./...` (config 6 / db 3 / httpapi 4 incl readyz-503-khi-DB-chết / money / order; sqlc + cmd no-test).
