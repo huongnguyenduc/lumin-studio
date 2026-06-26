@@ -36,7 +36,17 @@ type Querier interface {
 	GetOrderForUpdate(ctx context.Context, id uuid.UUID) (Order, error)
 	GetPrintJobByID(ctx context.Context, id uuid.UUID) (PrintJob, error)
 	GetProductBySlug(ctx context.Context, slug string) (Product, error)
+	GetReplyTemplateByID(ctx context.Context, id uuid.UUID) (ReplyTemplate, error)
+	// settings.sql — config/reference queries (PR-2g): the settings singleton, the append-only
+	// bank-account audit log, and the extension reply templates. spec.md §02 · conventions.md §57.
+	//
+	// bank_account is NOT changed through UpdateSettings — money-out config goes through
+	// internal/db/settings.go UpdateBankAccountTx, which runs UpdateBankAccount + InsertBankAudit on ONE
+	// tx so the STK change and its audit row commit together (conventions §57). setting_bank_audit has
+	// INSERT + SELECT only — no UPDATE/DELETE query exists, and a DB trigger blocks them anyway.
+	GetSettings(ctx context.Context) (Setting, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
+	InsertBankAudit(ctx context.Context, arg InsertBankAuditParams) (SettingBankAudit, error)
 	// catalog.sql — catalog read/write queries (PR-2c). spec.md §02. Inserts return the row so
 	// callers (slice-3 admin handlers, tests) get the persisted record back.
 	InsertCategory(ctx context.Context, arg InsertCategoryParams) (Category, error)
@@ -54,17 +64,23 @@ type Querier interface {
 	InsertOutbox(ctx context.Context, arg InsertOutboxParams) error
 	InsertPrintJob(ctx context.Context, arg InsertPrintJobParams) (PrintJob, error)
 	InsertProduct(ctx context.Context, arg InsertProductParams) (Product, error)
+	InsertReplyTemplate(ctx context.Context, arg InsertReplyTemplateParams) (ReplyTemplate, error)
 	InsertReview(ctx context.Context, arg InsertReviewParams) (Review, error)
 	// users.sql — staff/owner account queries (PR-2d). spec.md §02 User.
 	InsertUser(ctx context.Context, arg InsertUserParams) (User, error)
 	ListActiveConsents(ctx context.Context, customerID uuid.UUID) ([]ConsentGrant, error)
 	ListAssetJobsByStatus(ctx context.Context, status AssetJobStatus) ([]AssetJob, error)
+	// ListBankAudit returns the money-out config history, newest first (the owner audit view). Ordering is
+	// by seq (monotonic insertion order), so it is deterministic even when two changes share a created_at
+	// microsecond — a random-uuid tiebreaker would not be.
+	ListBankAudit(ctx context.Context) ([]SettingBankAudit, error)
 	ListColorsByProduct(ctx context.Context, productID uuid.UUID) ([]Color, error)
 	ListOptionsByProduct(ctx context.Context, productID uuid.UUID) ([]Option, error)
 	ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]OrderItem, error)
 	ListOrdersByStatus(ctx context.Context, status order.Status) ([]Order, error)
 	ListPrintJobsByStage(ctx context.Context, stage PrintStage) ([]PrintJob, error)
 	ListProductsByStatus(ctx context.Context, status ProductStatus) ([]Product, error)
+	ListReplyTemplates(ctx context.Context) ([]ReplyTemplate, error)
 	// ping.sql — the sqlc pipeline smoke query. It gives `sqlc vet`/`sqlc diff`
 	// substantive content before the first domain query lands (InsertOutbox, PR-2b) and
 	// proves codegen end-to-end. Readiness uses pgxpool.Ping directly, not this query.
@@ -74,6 +90,9 @@ type Querier interface {
 	// the attempt count, last_error (set on 'failed', NULL clears it on 'ready'), and completed_at when
 	// supplied (COALESCE keeps the prior value when the narg is NULL).
 	UpdateAssetJobStatus(ctx context.Context, arg UpdateAssetJobStatusParams) (AssetJob, error)
+	// UpdateBankAccount sets the VietQR STK the server renders the static QR from. Called only inside
+	// UpdateBankAccountTx, alongside InsertBankAudit, so every change is audited (conventions §57).
+	UpdateBankAccount(ctx context.Context, bankAccount []byte) (Setting, error)
 	// UpdateOrderStatus persists a transition: the new status, the full appended statusHistory,
 	// and — only when supplied — the denormalized refund_proof_url and payment_confirmed_at
 	// (COALESCE keeps the existing value when the narg is NULL). The append itself is computed in
@@ -81,6 +100,9 @@ type Querier interface {
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) (Order, error)
 	// UpdatePrintJobStage advances the print queue stage (staff drag-drop) and refreshes updated_at.
 	UpdatePrintJobStage(ctx context.Context, arg UpdatePrintJobStageParams) (PrintJob, error)
+	// UpdateSettings writes the non-money config (shop info, shipping rules, refund policy). It does NOT
+	// touch bank_account — that goes through the audited UpdateBankAccountTx seam.
+	UpdateSettings(ctx context.Context, arg UpdateSettingsParams) (Setting, error)
 	// Mark the active grant for (customer, scope, channel) as withdrawn. Never deletes the row.
 	WithdrawConsent(ctx context.Context, arg WithdrawConsentParams) error
 }

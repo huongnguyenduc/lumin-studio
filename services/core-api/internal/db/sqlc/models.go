@@ -664,6 +664,15 @@ type Product struct {
 	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
 }
 
+type ReplyTemplate struct {
+	ID        uuid.UUID          `json:"id"`
+	Title     string             `json:"title"`
+	Body      string             `json:"body"`
+	Variables []byte             `json:"variables"`
+	CreatedAt pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt pgtype.Timestamptz `json:"updatedAt"`
+}
+
 type Review struct {
 	ID         uuid.UUID          `json:"id"`
 	ProductID  uuid.UUID          `json:"productId"`
@@ -674,6 +683,24 @@ type Review struct {
 	Reply      []byte             `json:"reply"`
 	Status     ReviewStatus       `json:"status"`
 	CreatedAt  pgtype.Timestamptz `json:"createdAt"`
+}
+
+type Setting struct {
+	ID            bool               `json:"id"`
+	ShopInfo      []byte             `json:"shopInfo"`
+	BankAccount   []byte             `json:"bankAccount"`
+	ShippingRules []byte             `json:"shippingRules"`
+	RefundPolicy  string             `json:"refundPolicy"`
+	UpdatedAt     pgtype.Timestamptz `json:"updatedAt"`
+}
+
+type SettingBankAudit struct {
+	ID          uuid.UUID          `json:"id"`
+	Seq         int64              `json:"seq"`
+	ChangedBy   uuid.UUID          `json:"changedBy"`
+	BankAccount []byte             `json:"bankAccount"`
+	Reason      *string            `json:"reason"`
+	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
 }
 
 type User struct {
