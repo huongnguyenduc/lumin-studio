@@ -1,0 +1,25 @@
+# sqlc v2 codegen for core-api (ADR-020/ADR-028). Run via `make sqlc`; the
+# generated package is committed and validated in `make verify-go` (see Makefile).
+#
+# schema points at the UP migrations ONLY (`*.up.sql`) — the golang-migrate dir
+# also holds `.down.sql` DROP statements, and globbing those would feed sqlc an
+# empty/inconsistent schema. The up-migrations are the single schema source sqlc
+# compiles queries against (plan core-data-layer §3, critique BLOCKER fix).
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "db/migrations/*.up.sql"
+    queries: "db/queries"
+    gen:
+      go:
+        package: "sqlc"
+        out: "internal/db/sqlc"
+        sql_package: "pgx/v5"
+        # camelCase JSON tags so generated models match the OpenAPI/TS contract
+        # even though columns are snake_case (ADR-003, no ORM auto-map).
+        emit_json_tags: true
+        json_tags_case_style: "camel"
+        emit_pointers_for_null_types: true
+        emit_interface: true
+        emit_prepared_queries: false
+        emit_exact_table_names: false

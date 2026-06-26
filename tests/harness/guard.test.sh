@@ -365,6 +365,26 @@ if find "$ROOT/services" -name '*.go' 2>/dev/null | grep -q .; then
   { [ -f "$ROOT/Makefile" ] && grep -Eq '^verify-go:' "$ROOT/Makefile"; } \
     && ok "ARM: có .go -> Makefile verify-go" || bad "ARM: .go LAND nhưng thiếu Makefile verify-go (Go gate skip im lặng!)"
 else ok "ARM: chưa có .go (Makefile verify-go arm khi land)"; fi
+# sqlc gate: khi sqlc.yaml land, recipe verify-go PHẢI chạy 'sqlc vet' (gác drift query↔schema).
+# Chỉ grep target '^verify-go:' tồn tại là CHƯA đủ — phải soi THÂN recipe, vì "gate no-op trông y
+# hệt gate pass". Trích đúng block recipe verify-go (single-line backslash-continued) rồi grep.
+if [ -f "$ROOT/services/core-api/sqlc.yaml" ]; then
+  if [ -f "$ROOT/Makefile" ] && sed -n '/^verify-go:/,/^$/p' "$ROOT/Makefile" 2>/dev/null | grep -q 'sqlc vet'; then
+    ok "ARM: có sqlc.yaml -> recipe verify-go chạy 'sqlc vet'"
+  else
+    bad "ARM: sqlc.yaml LAND nhưng 'sqlc vet' KHÔNG trong recipe verify-go (drift query↔schema không gác!)"
+  fi
+else ok "ARM: chưa có sqlc.yaml (sqlc vet arm khi query land)"; fi
+# testcontainers real-check (mirror osm real-check): test integration PHẢI boot container thật,
+# không phải skip-always stub. Pre-PR-2b: chưa có test nào -> ok "arm khi land".
+TCFILES="$(grep -rl 'testcontainers' "$ROOT/services" --include='*_test.go' 2>/dev/null || true)"
+if [ -n "$TCFILES" ]; then
+  if grep -lq -E 'postgres\.Run|GenericContainer|ContainerRequest|RunContainer' $TCFILES 2>/dev/null; then
+    ok "ARM: testcontainers test boot container thật (không skip-always)"
+  else
+    bad "ARM: testcontainers test KHÔNG boot container (skip-always stub — data gate no-op!)"
+  fi
+else ok "ARM: chưa có testcontainers test (real-check arm khi land — PR-2b)"; fi
 if find "$ROOT/services" -name '*.rs' 2>/dev/null | grep -q .; then
   { [ -f "$ROOT/Makefile" ] && grep -Eq '^verify-rs:' "$ROOT/Makefile"; } \
     && ok "ARM: có .rs -> Makefile verify-rs" || bad "ARM: .rs LAND nhưng thiếu Makefile verify-rs"
