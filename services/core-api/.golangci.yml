@@ -1,0 +1,18 @@
+# golangci-lint v2 config for services/core-api — run via `make verify-go`.
+# ADR-020 locks golangci-lint v2. The standard linters (errcheck, govet,
+# ineffassign, staticcheck, unused) are enabled by default; gofmt is enforced
+# separately in the Makefile. Low-noise, high-signal.
+version: "2"
+
+run:
+  timeout: 3m
+
+linters:
+  enable:
+    - misspell
+  exclusions:
+    rules:
+      # Tests favour readability over exhaustive error checks on helpers.
+      - path: _test\.go
+        linters:
+          - errcheck

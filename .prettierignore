@@ -18,6 +18,8 @@ pnpm-lock.yaml
 /.claude/
 /.github/
 /tests/harness/
+# Native services (Go/Rust) — formatted by gofmt/rustfmt via `make verify-go|verify-rs`, not prettier.
+/services/
 spec.md
 design-system.md
 CLAUDE.md
