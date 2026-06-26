@@ -60,3 +60,29 @@ jobs:
         run: pnpm verify
       - name: osm-mutation real-arm (có node_modules ⇒ mutant trên source thật phải bị KILL)
         run: bash tests/harness/osm-mutation.test.sh
+
+  # Native services (Go core-api, Rust asset-worker) live outside the JS workspace.
+  # ARM-GUARD (guard.test.sh) only proves the Makefile *has* verify-go/verify-rs;
+  # this job makes them actually RUN in CI so an armed gate can't sit vacuous —
+  # same reason app-gates runs pnpm verify. First-party actions + pinned installs
+  # only. Triggers on the services/** · Makefile paths already listed above.
+  services-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache-dependency-path: services/core-api/go.sum
+      - name: install golangci-lint v2 (ADR-020)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.12.2
+          # make verify-go calls golangci-lint by bare name — put GOPATH/bin on PATH
+          # explicitly so the lint step can't silently no-op as command-not-found.
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: rust components (toolchain preinstalled on runner)
+        run: rustup component add clippy rustfmt
+      - name: make verify-go (gofmt + vet + golangci-lint + go test)
+        run: make verify-go
+      - name: make verify-rs (cargo fmt + clippy -D warnings + cargo test)
+        run: make verify-rs

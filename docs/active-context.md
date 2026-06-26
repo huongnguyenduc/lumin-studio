@@ -6,8 +6,11 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
-**Phase 0 — app shells: storefront MERGED to main (#7=b77acb7); admin RE-LANDING via PR #9 (base=main) sau
-stacked-merge footgun làm #8 không tới main — xem git-note dưới.** (Slice gốc-context bên dưới giữ làm lịch sử.)
+**Phase 0 — app shells DONE trên main: storefront (#7=`b77acb7`) + admin (#9=`bf1b7a5`, **MERGED** 2026-06-25,
+base=main; stacked-merge footgun đã xử lý — git-note dưới). Slice ĐANG CHẠY = services backbone
+(`feat/phase-0-services-backbone` off main): Go `core-api` (Chi v5 BFF) + Rust `asset-worker` scaffold + ARM
+`Makefile verify-go|verify-rs` + CI job `services-gates`. Đây là slice CUỐI của Phase 0.** (Context app-shell
+bên dưới giữ làm lịch sử.)
 Admin (`apps/admin`, branch `feat/phase-0-admin-shell` off storefront-shell): reuse 100% infra slice-1; chrome
 = sidebar 9 mục (`usePathname` active) + topbar greeting (Avatar + `formatVnDate` demo) + dashboard (4 stat
 Card: count`formatVnNumber`/tiền`formatVnd` · bảng đơn gần đây + `OrderStatusBadge` map 7 `ORDER_STATUSES`→
@@ -31,15 +34,15 @@ enforcement. Shell = header sticky (logo+search+nav) · bottom-nav mobile · her
 `design-system.md` · conventions §A11y/§i18n/§Tiền/§State/§Visual-fidelity.
 
 ## Next steps (1–3)
-1. **Chủ review + merge PR #9 admin re-land** (squash, base=`main`). Đây là re-land của #8 (xem git-note
-   "stacked-merge footgun" dưới). **Visual-fidelity (ADR-027):** `pnpm --filter admin dev` → đối chiếu mắt
-   thường vs `designs/Lumin Admin - Hi-fi.dc.html`. Sau merge: Phase-0 app-shells (storefront + admin) MỚI
-   thực sự đủ trên main.
-2. **Phase-0 slice cuối: services backbone** — Go `core-api` (Chi BFF) + Rust `asset-worker` scaffold. ARM
-   gate khi `services/**/*.go` land: `Makefile verify-go` (plan.md §Phase-0 ARM checklist). GPU gate
-   (operations.md §3) trên host WSL2 (skill `render-worker-gpu`).
-3. Phase-0 done → Phase 1: Core API aggregates thật thay `apps/admin/src/lib/demo-dashboard.ts` placeholder;
-   ADR-026 lane B/C/D · REC-20/28/39.
+1. **Chủ review + merge PR services-backbone** (squash, base=`main`). Scaffold-only, không có domain/DB/NATS-live.
+   Diff lớn do lock-file sinh (go.sum + Cargo.lock) — code tay nhỏ. Sau merge: **Phase 0 DONE.**
+2. **Còn nợ trong Phase 0 (ops, không phải code):** GPU gate (operations.md §3) trên host WSL2 — driver Win +
+   cuda-toolkit + nvidia-container-toolkit + **Blender thấy GPU trong container** (skill `render-worker-gpu`).
+   Đây là việc của chủ trên máy nhà, không scaffold được. Cũng còn: Dockerfile cho 2 service (deferred — ảnh
+   asset-worker = CUDA+Blender, gắn với GPU gate) → mở comment block trong `infra/docker-compose.yml`.
+3. **Phase 1** (Core data model + OrderStatus, rồi Storefront): Core API aggregates thật thay
+   `apps/admin/src/lib/demo-dashboard.ts` placeholder; sqlc models (`spec.md §02`) + outbox; ADR-026 lane
+   B/C/D · REC-20/28/39.
 
 ## Open questions
 - *(không có cho slice backbone — scope đã chốt "backbone only" với user; ADR đã khoá quyết định.)*
@@ -56,19 +59,39 @@ enforcement. Shell = header sticky (logo+search+nav) · bottom-nav mobile · her
 | **Phase 0 — compose skeleton** | **merged (PR #5)** | `origin/main` `30c5652` | `docker compose config -q` OK · verify rc=0 |
 | **Phase 0 — `packages/ui` 13 primitives + token-coverage gate** | **merged (PR #6)** | `origin/main` `296c44a` | verify rc=0 · ui 105 / tokens 9 / core 37 · guard 139 · osm 22 · spec-guardian + /review: 2+2 a11y fixed |
 | **Phase 0 — app shell 1/2: storefront (Next+next-intl+fonts+Tailwind)** | **merged → main** | PR #7 squash → `origin/main` `b77acb7` | `next build` ✓ · verify rc=0 · storefront i18n test + ui 105/tokens 9/core 37 · guard 139 · osm 22 · spec-guardian PASS (0/0/2) |
-| **Phase 0 — app shell 2/2: admin (sidebar+dashboard, reuse infra)** | **re-landing → PR #9 open (base=main)** | `feat/phase-0-admin` (rebased onto `b77acb7`); orig `feat/phase-0-admin-shell` = backup-admin-pre-reland | Next 15 + Hanken Grotesk · `next build` ✓ · verify rc=0 · admin i18n test · guard 139 · osm 22 · spec-guardian PASS (0/0/2) · status-Badge map = 7 ORDER_STATUSES |
+| **Phase 0 — app shell 2/2: admin (sidebar+dashboard, reuse infra)** | **merged → main** | PR #9 squash → `origin/main` `bf1b7a5` (re-land of #8) | Next 15 + Hanken Grotesk · `next build` ✓ · verify rc=0 · admin i18n test · guard 139 · osm 22 · spec-guardian PASS (0/0/2) · status-Badge map = 7 ORDER_STATUSES |
+| **Phase 0 — services backbone (Go core-api + Rust asset-worker scaffold + arm gates)** | **done (PR open)** | `feat/phase-0-services-backbone` off `bf1b7a5` | make verify-go ✓ (golangci-lint **v2.12.2** + `go test -race`) · make verify-rs ✓ (go test 6 / cargo test 3) · ARM-GUARD .go→verify-go + .rs→verify-rs ✓ · guard 139 · osm 22 · pnpm verify rc=0 · CI `services-gates` · 4-lens review 0 BLOCKER |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất
-`pnpm verify` — **rc=0** (lint[ESLint 10 + jsx-a11y + i18next cho apps] + typecheck + test + format:check) ·
-`next build` storefront **✓** (4 static page) · `tests/harness/guard.test.sh` — **139 / 0** (ARM-GUARD thấy
-`apps/*.tsx` → xác nhận ESLint Intl-ban armed) · `osm-mutation.test.sh` — **22 / 0** (2026-06-26, **storefront
-shell**: storefront i18n-catalog test [non-empty + no-baked-price + core namespace] / ui 105 / tokens 9 /
-core 37). spec-guardian: **PASS 0 BLOCKER/0 WARN/2 NOTE** (money/i18n/a11y/§State/ARM CLEAN). CI-fresh
-`tsc --noEmit` chạy được **không cần** `next-env.d.ts` (verify không phụ thuộc prior build).
+**Services backbone (2026-06-26):** `make verify-go` ✓ (gofmt-clean + `go vet` + **golangci-lint v2.12.2**
+[ADR-020 — local tool nâng v1.64.8→v2, `.golangci.yml` v2-schema] + **`go test -race ./...`** — config 3 /
+httpapi 3 = **6** test, `health`/`readyz`/404) · `make verify-rs` ✓ (`cargo fmt --check` + `cargo clippy
+--all-targets -D warnings` + `cargo test` — **3** test) · `tests/harness/guard.test.sh` — **139 / 0** (ARM-GUARD
+giờ thấy `.go`→`verify-go` + `.rs`→`verify-rs` ✓) · `osm-mutation.test.sh` — **22 / 0** · `pnpm verify` — **rc=0**
+(services NGOÀI JS-workspace; `/services/` vào `.prettierignore` để prettier không tranh gofmt/rustfmt).
+**Review 4-lens (workflow wf_f5948e52, adversarial-verify):** 0 BLOCKER · 2 WARN đã sửa (CI golangci PATH→
+`$GITHUB_PATH`; v1→v2 ADR-020) · notes đã áp (Go timeout/Timeout-cooperative TODO + writeJSON buffer-then-write;
+Rust flush-log + warn-on-err + default-pin test). golangci bắt 1 finding thật lúc dựng: `chi middleware.RealIP`
+deprecated (SA1019, IP-spoofable) → bỏ, dùng CF-Connecting-IP ở edge-phase. core-api `:8080` (khớp Caddy/compose).
+**App shells (2026-06-26, lịch sử):** `pnpm verify` rc=0 · `next build` storefront ✓ · guard 139 · osm 22 ·
+spec-guardian PASS (0/0/2).
 
 ## Lưu ý git (2026-06-26, cập nhật)
-- `origin/main` = **`b77acb7`** (PR #7 storefront-shell squash-merged). Chứa `apps/storefront` + toàn bộ infra.
+- `origin/main` = **`bf1b7a5`** (PR #9 admin re-land squash-merged 2026-06-25). Chứa `apps/storefront` +
+  `apps/admin` + toàn bộ infra. **PR #9 ĐÃ MERGED** (active-context cũ ghi nhầm "open" → đã sửa). Verify:
+  `git cat-file -t origin/main:apps/admin/package.json` = blob; `services/` chưa có trên main (slice này thêm).
+- **Services-backbone slice (nhánh `feat/phase-0-services-backbone` off `bf1b7a5`):** thêm `services/core-api`
+  (Go+Chi) + `services/asset-worker` (Rust+tokio+async-nats) + root `Makefile` (verify-go/verify-rs) + CI
+  `services-gates` + `/services/` vào `.prettierignore`. Go module = `github.com/huongnguyenduc/lumin-studio/
+  services/core-api`. **Scaffold-only:** không DB/NATS-live/domain (await shutdown signal). Dockerfile + mở
+  comment compose = DEFERRED (gắn GPU gate). Lock-file (go.sum + Cargo.lock) committed → diff "lớn" nhưng code
+  tay nhỏ; diff-size advisory sẽ kêu (bỏ qua, do lock-file).
+- **golangci-lint v2 (ADR-020):** local tool ở `~/go/bin` đã nâng **v1.64.8 → v2.12.2** (install.sh) để verify;
+  `.golangci.yml` là **v2-schema** (`version: "2"`). CI `services-gates` cài đúng v2.12.2. Máy khác checkout
+  repo này **cần golangci-lint v2** (v1 không parse được config v2). `verify-go` = gofmt + go vet + golangci v2
+  + `go test -race`. `sqlc vet` (ADR-020) vẫn DEFERRED tới khi có query sqlc (arm-when-land).
+- **(lịch sử)** `b77acb7` = PR #7 storefront-shell. Chứa `apps/storefront` + infra.
 - **⚠️ STACKED-MERGE FOOTGUN (đã sửa):** PR #8 (admin) base = `feat/phase-0-storefront-shell` (KHÔNG phải
   main). Khi #7 squash-merge vào main *riêng*, GitHub auto-đóng #8 là "MERGED" — nhưng diff #8 chỉ vào nhánh
   storefront-shell đã chết (`c13202d`), **chưa bao giờ tới main**. `git cat-file origin/main:apps/admin` =
