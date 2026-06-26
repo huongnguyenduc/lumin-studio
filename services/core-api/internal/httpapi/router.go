@@ -5,6 +5,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -12,11 +13,13 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// NewRouter builds the chi router with the baseline middleware stack and the
-// platform probes.
-func NewRouter(logger *slog.Logger) http.Handler {
+// NewRouter builds the chi router with the baseline middleware stack and the platform
+// probes. The pool backs the readiness check; pass nil in unit tests that don't exercise
+// the database (readiness then degrades to a liveness check).
+func NewRouter(logger *slog.Logger, pool *pgxpool.Pool) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -33,10 +36,10 @@ func NewRouter(logger *slog.Logger) http.Handler {
 	// socket-level backstop is the http.Server Read/Write timeouts (Phase-1).
 	r.Use(middleware.Timeout(30 * time.Second))
 
-	// Liveness: the process is up. Readiness gains real dependency checks
-	// (Postgres, NATS, Garage) once those are wired — see architecture.md §2.
+	// Liveness: the process is up. Readiness adds a Postgres reachability check;
+	// NATS/Garage join it once they are wired — see architecture.md §2.
 	r.Get("/healthz", health)
-	r.Get("/readyz", health)
+	r.Get("/readyz", readiness(pool))
 
 	return r
 }
@@ -62,6 +65,23 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 
 func health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// readiness reports 200 only when the Postgres pool is reachable, 503 otherwise — so a
+// load balancer drains this instance while the database is unreachable. A nil pool (unit
+// tests that don't touch the DB) degrades to a liveness check.
+func readiness(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if pool != nil {
+			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+			defer cancel()
+			if err := pool.Ping(ctx); err != nil {
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
 }
 
 // writeJSON is the shared response helper. It marshals into a buffer first so a

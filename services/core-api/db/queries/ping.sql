@@ -1,0 +1,6 @@
+-- ping.sql — the sqlc pipeline smoke query. It gives `sqlc vet`/`sqlc diff`
+-- substantive content before the first domain query lands (InsertOutbox, PR-2b) and
+-- proves codegen end-to-end. Readiness uses pgxpool.Ping directly, not this query.
+-- (No leading underscore in the filename — Go ignores `_`-prefixed source files.)
+-- name: Ping :one
+SELECT 1 AS ok;
