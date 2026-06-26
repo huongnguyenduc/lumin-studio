@@ -85,6 +85,21 @@ forces callers to enlist in their domain tx. **No relay, no NATS** — rows accu
 testcontainers test: rolled-back domain tx leaves **zero** outbox rows; committed leaves **exactly one**;
 `UNIQUE(dedup_key)` rejects a duplicate logical event. **Invoke the `event-outbox` skill before writing the seam.**
 
+> **As-built (PR-2b, 2026-06-26 — committed):** migration `000002_outbox` (table + partial
+> `outbox_unpublished_idx`) + `db/queries/outbox.sql` `InsertOutbox` + `internal/db/outbox.go`
+> `EnqueueOutbox(ctx, tx pgx.Tx, ev OutboxEvent)` — **tx first-arg** dual-write guard; validates id/keys/JSON
+> payload before the round-trip. sqlc overrides added: `uuid` → `google/uuid.UUID`, `outbox.payload` →
+> `json.RawMessage` (clean params + camelCase tags). **New deps:** google/uuid v1.6.0 (**runtime** — Go has no
+> UUID generator) + testcontainers-go v0.34.0 + postgres module (**test-only**); go directive stays 1.23
+> (corrects the earlier "pgx = sole new require" — now pgx + google/uuid runtime). The atomicity test
+> (rollback→0 / commit→1 / dup dedup_key→reject) **and** the migration-reversibility test (moved from 2a) use
+> testcontainers + an **in-test SQL applier** (reads `*.up.sql`/`*.down.sql`, no golang-migrate dep — decision
+> D4); they **skip locally** (`SkipIfProviderIsNotHealthy` *panics* without Docker → recover-guarded `t.Skip`)
+> and **run in CI** (ubuntu has Docker) under the same `make verify-go`. The pure `validate` unit test runs
+> everywhere. `make verify-go` green (sqlc vet now validates `InsertOutbox` vs the outbox up-schema);
+> guard.test.sh **141** (testcontainers real-check now ACTIVE — greps `postgres.Run`); osm 22. Relay/NATS
+> publisher still deferred to slice 3.
+
 ### PR-2c — catalog
 Migration `000003_catalog`: `categories` (minimal, to satisfy `products.category_id` FK — decision D5), `products`
 (int8 `base_price` CHECK≥0, jsonb dimensions/images, `material` TEXT+CHECK, `product_status` enum, `rating_avg`

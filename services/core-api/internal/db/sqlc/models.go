@@ -6,7 +6,11 @@ package sqlc
 
 import (
 	"database/sql/driver"
+	"encoding/json"
 	"fmt"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type ConsentChannel string
@@ -438,4 +442,18 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.UserRole), nil
+}
+
+type Outbox struct {
+	ID            uuid.UUID          `json:"id"`
+	Seq           int64              `json:"seq"`
+	AggregateType string             `json:"aggregateType"`
+	AggregateID   uuid.UUID          `json:"aggregateId"`
+	EventType     string             `json:"eventType"`
+	Payload       json.RawMessage    `json:"payload"`
+	Status        string             `json:"status"`
+	DedupKey      string             `json:"dedupKey"`
+	Attempts      int32              `json:"attempts"`
+	CreatedAt     pgtype.Timestamptz `json:"createdAt"`
+	PublishedAt   pgtype.Timestamptz `json:"publishedAt"`
 }

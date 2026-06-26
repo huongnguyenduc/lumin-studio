@@ -9,6 +9,11 @@ import (
 )
 
 type Querier interface {
+	// outbox.sql — the transactional outbox write path (PR-2b). InsertOutbox is the only
+	// mutation slice 2 performs on this table; the relay's SELECT/mark-published queries land
+	// in slice 3. seq/status/attempts/created_at use column defaults; published_at stays NULL
+	// until the relay publishes.
+	InsertOutbox(ctx context.Context, arg InsertOutboxParams) error
 	// ping.sql — the sqlc pipeline smoke query. It gives `sqlc vet`/`sqlc diff`
 	// substantive content before the first domain query lands (InsertOutbox, PR-2b) and
 	// proves codegen end-to-end. Readiness uses pgxpool.Ping directly, not this query.
