@@ -209,6 +209,47 @@ inserts `asset_jobs(queued)` AND `EnqueueOutbox(tx,{event_type:'asset_job.create
 carry the model source pointer (URL/version), not just product_id** (critique minor #6, ADR-006 reconstructability).
 **Invoke `event-outbox` + `render-worker-gpu` skills; confirm AssetJob shape before freezing.**
 
+> **As-built (PR-2f, 2026-06-26 — committed):** `000006_jobs` (2 new enums `asset_job_status`
+> {queued,processing,ready,failed} / `asset_job_type` {model_ingest,sprite_render} + `asset_jobs` +
+> `print_jobs`) + `db/queries/jobs.sql` (CreateAssetJob / GetAssetJobByID / ListAssetJobsByStatus /
+> UpdateAssetJobStatus + InsertPrintJob / GetPrintJobByID / ListPrintJobsByStage / UpdatePrintJobStage) +
+> `internal/db/jobs.go` (`Jobs` repo + the 3rd emit-seam `CreateAssetJobTx`). **D3 resolved (user-confirmed):
+> AssetJob has NO spec §02 field-table → shape inferred from architecture §76–82 + ADR-007. SPLIT into two
+> job kinds** — `model_ingest` (normalize geometry, extract dims/material to prefill Product, build LOD .glb)
+> and `sprite_render` (render the 360° sprite alone, re-renderable without re-ingest). `source_model_url` +
+> `source_version` (content hash — Garage has no versioning, ADR-004) make the job reconstructable from the
+> source object (ADR-006 — the `asset_job.created` payload carries the pointer + `jobType`, never a blob; the
+> single WorkQueue consumer dispatches on `jobType`). **Worker OUTPUTS land on Product, not on asset_jobs**
+> (asset_jobs = input + lifecycle only: status/attempts/last_error/completed_at, mutated by the slice-3
+> callback). dedup_key = `asset_job:<id>:asset_job.created` (the `aggregate_type:aggregate_id:event_type`
+> convention §4, same grammar as orders; each re-render = its own row/id, so naturally unique; the
+> UNIQUE index only rejects a buggy double-insert). **D6 resolved (user-confirmed): `print_jobs.stage` is
+> STORED, not derived** from `order.status` — the queue is staff drag-droppable and finer-grained than order
+> status (one PRINTING order status spans the PRINTING + PACKING print stages), and Pet Tag's future
+> NFC-encode stage has no order-status twin (a later `ALTER TYPE print_stage ADD VALUE`). stage is seeded from
+> order status at creation (slice 3) then advanced independently; `order_item_id` FK `ON DELETE CASCADE` (a
+> print job dies with its item). **No emit-seam for print_jobs** — the print queue is admin-internal (SSE in
+> slice 3, never NATS). **Notes carried to slice 3:** the relay bridges `event_type 'asset_job.created'` →
+> the worker's `asset.job` WorkQueue subject; who *creates* a print_job (order→PAID seeds `NEED_PRINT`) is
+> slice-3 wiring. **Verified:** `make verify-go` green (gofmt + vet + golangci **0** + sqlc vet + sqlc diff +
+> `go test -race`); **all 9 jobs integration tests RAN vs real Postgres** (testcontainers via local colima,
+> not just CI) — asset-job create-emits-`asset_job.created` (payload pointer asserted), rollback-atomicity,
+> duplicate-id rejected, both job kinds queued, NotFound, lifecycle mark, print-queue round-trip + stage
+> advance, print-job ON DELETE CASCADE; `TestMigrationsReversible` re-passes (the 000006 down drops both new
+> enums). guard.test.sh **141** (no new gate machinery — sqlc/testcontainers armed in 2a/2b), osm 22. **No new
+> deps.** Decision recorded here (not decisions.md) per the 2c/2d/2e as-built precedent; promote to an ADR-028
+> bullet later if desired.
+>
+> **Adversarial review (wf_baed73b4, 5 lenses → per-finding verify): 3 raw → 3 confirmed (0 refuted), all
+> addressed.** (1 IMPORTANT) `TestMarkAssetJobLifecycle` was tautological on `last_error` — it never materialized
+> a failed job with an error, so the documented "set on failed / cleared on ready" invariant had zero coverage; the
+> test now walks queued→processing→failed (asserts last_error SET + completed_at stamped) →ready (asserts last_error
+> CLEARED + completed_at COALESCE-preserved). (2 NOTE) the `asset_job` dedup_key dropped the aggregate prefix from
+> the event_type (`asset_job:<id>:created`) — realigned to the `aggregate_type:aggregate_id:event_type` convention
+> (`asset_job:<id>:asset_job.created`) via a shared `eventAssetJobCreated` const so EventType + dedup_key can't drift;
+> and the duplicate-id test's comment (it proves the asset_jobs PRIMARY KEY, not the dedup_key UNIQUE) was corrected.
+> Re-verified green after the fixes.
+
 ### PR-2g — config/reference
 Migration `000007_settings`: `reply_templates`, `settings` singleton (`refund_policy` **not** return_policy per
 ADR-012, `bank_account` jsonb VietQR), `setting_bank_audit` (**append-only owner-only** money-out config lock,

@@ -26,7 +26,7 @@ chủ: **golang-migrate** + **defer AssetJob** (ADR-028). **PR-2a (infra) ✅ ME
 **PR-2b (outbox table + tx-insert seam) ✅ MERGED #13 → `main` `861808d`.**
 **PR-2c (catalog) ✅ MERGED #14 → `881bc86`. PR-2d (identity: customers/consent_grants/users + reviews FK)
 ✅ MERGED #15 → `main` `59d4f98`.**
-**PR-2e (order spine) ✅ DONE — branch `feat/core-data-layer-2e` off `59d4f98`, PR #16 OPEN (awaiting owner merge).**
+**PR-2e (order spine) ✅ MERGED #16 → `main` `cf31cb2` (2026-06-26 09:39Z, squash; local main ff'd).**
 `000005_orders` (orders + order_items) + sqlc overrides (`order_status`/`order_channel`→`order.Status`/`Channel`,
 `status_history`→`[]order.StatusEvent`, `shipping_address`→`order.Address`, `personalization`→`*order.Personalization`)
 + 3 tx seams in `internal/db/orders.go`: `CreateOrderTx` (genesis event + items + `order.created`), `ConfirmPaymentTx`
@@ -35,8 +35,16 @@ flip+append; REFUNDED denormalizes refundProofUrl). Totals via `money.CalcTotals
 green; **integration tests RAN vs real Postgres (colima, not just CI)** incl. a `-race` concurrent-reconcile lock
 proof; guard 141 / osm 22. 4-lens adversarial review (wf_ac186d9c): 14→9 confirmed, all fixed (2 IMPORTANT:
 empty-items guard + FOR-UPDATE test). **No new deps.**
-**NEXT = PR-2f — fulfillment/asset** (`000006_jobs`: print_jobs + asset_jobs [shape inferred, ADR-028 D3 — may
-defer], 3rd emit-seam `asset_job.created`); invoke `event-outbox` + `render-worker-gpu` skills. Then 2g settings.
+**PR-2f (fulfillment/asset) ✅ DONE — branch `feat/core-data-layer-2f` off `cf31cb2`, PR pending push.**
+`000006_jobs` (asset_jobs + print_jobs + 2 new enums) + `db/queries/jobs.sql` + `internal/db/jobs.go` (`Jobs` repo +
+3rd emit-seam `CreateAssetJobTx` → `asset_job.created`). **D3 resolved (user):** AssetJob shape inferred (no spec
+§02 table) → SPLIT `asset_job_type` {model_ingest, sprite_render}; `source_model_url`+`source_version` (content-hash)
+reconstructable (ADR-006); outputs→Product (job input-only). **D6 resolved (user):** `print_jobs.stage` STORED (staff
+drag-drop, finer than order status, Pet-Tag NFC stage later). print_jobs no emit-seam (admin-internal SSE slice 3).
+`make verify-go` green; **9 jobs integration tests RAN vs real Postgres (colima)** + reversibility re-passes; guard
+141 / osm 22; **no new deps**. **NEXT = PR-2g — config/reference** (`000007_settings`: reply_templates + settings
+singleton [refund_policy, bank_account VietQR] + `setting_bank_audit` append-only owner-only; NO e-invoice/tax cols);
+invoke `vn-compliance`. Then slice 3 (HTTP/relay).
 
 > Lịch sử app-shell/backbone Phase-0 (storefront/admin/services scaffold) đã archive — xem `git log` + PR #5–#10.
 
@@ -73,10 +81,21 @@ defer], 3rd emit-seam `asset_job.created`); invoke `event-outbox` + `render-work
 | **Core slice 2 · PR-2b — outbox table + tx-insert seam (dual-write spine)** | **merged (PR #13)** | squash → `origin/main` `861808d` | `make verify-go` ✓ (sqlc vet validates `InsertOutbox`; integration tests RAN in CI — services-gates 1m38s); guard **141** (testcontainers real-check ACTIVE → `postgres.Run`) · osm 22 · `EnqueueOutbox(pgx.Tx,…)` tx-first-arg dual-write guard ADR-006 · deps +google/uuid v1.6.0 (runtime) +testcontainers v0.34.0 (test); in-test SQL applier (no golang-migrate dep). Relay→slice 3 · 3-lens review PASS (1 test-isolation fix) |
 | **Core slice 2 · PR-2c — catalog (categories/products/colors/options/reviews)** | **merged (PR #14)** | squash → `origin/main` `881bc86` | `make verify-go` ✓ (services-gates 1m16s CI); guard 141 · osm 22 · material TEXT+CHECK; money int8 CHECK≥0; nullable reviews.customer_id→pgtype.UUID (FK in 000004); thin `Catalog` repo; **no new deps**; EARS deferred · 2-lens review PASS/SOUND |
 | **Core slice 2 · PR-2d — identity (customers/consent_grants/users + reviews FK)** | **merged (PR #15)** | squash → `origin/main` `59d4f98` | `make verify-go` ✓ (sqlc vet 8 queries; consent append-then-mark + no-district + user-role-no-system tests via testcontainers skip-local/run-CI) · guard 141 · osm 22 · consent partial-UNIQUE active; addresses jsonb NO district (ADR-017); ON DELETE SET NULL reviews FK (PDPL erase); thin `Identity` repo; vn-compliance loaded; **no new deps** |
-| **Core slice 2 · PR-2e — order spine (orders/order_items + 3 tx seams)** | **done (PR #16 open)** | `feat/core-data-layer-2e` off `59d4f98` | `make verify-go` ✓ (golangci 0, sqlc vet+diff clean, `go test -race`); **integration tests RAN vs real Postgres (colima)** — 12 order tests incl. `-race` concurrent-reconcile FOR-UPDATE proof, jsonb/enum overrides, outbox atomicity, refund-proof consistency, RBAC, money CHECK · guard 141 · osm 22 · 4-lens review wf_ac186d9c: 14→9 confirmed all fixed (2 IMPORTANT: empty-items guard `ErrNoItems` + concurrent-lock test) · **no new deps** |
+| **Core slice 2 · PR-2e — order spine (orders/order_items + 3 tx seams)** | **merged (PR #16)** | squash → `origin/main` `cf31cb2` | `make verify-go` ✓ (golangci 0, sqlc vet+diff clean, `go test -race`); **integration tests RAN vs real Postgres (colima)** — 12 order tests incl. `-race` concurrent-reconcile FOR-UPDATE proof, jsonb/enum overrides, outbox atomicity, refund-proof consistency, RBAC, money CHECK · guard 141 · osm 22 · 4-lens review wf_ac186d9c: 14→9 confirmed all fixed (2 IMPORTANT: empty-items guard `ErrNoItems` + concurrent-lock test) · **no new deps** |
+| **Core slice 2 · PR-2f — fulfillment/asset (asset_jobs + print_jobs + 3rd emit-seam)** | **done (PR pending push)** | `feat/core-data-layer-2f` off `cf31cb2` | `make verify-go` ✓ (golangci 0, sqlc vet+diff clean, `go test -race`); **9 jobs integration tests RAN vs real Postgres (colima)** — asset_job.created emit + payload pointer, rollback-atomicity, dup-id reject, both job-types, lifecycle mark, print-queue round-trip + stage advance, ON DELETE CASCADE; reversibility re-passes (000006 down drops 2 new enums) · guard 141 · osm 22 · D3 split asset_job_type{model_ingest,sprite_render}/outputs→Product · D6 print stage STORED · **no new deps** |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất
+**Core slice 2 · PR-2f — fulfillment/asset (2026-06-26):** `make verify-go` ✓ (gofmt + go vet + golangci v2 **0** +
+sqlc vet + sqlc diff + `go test -race`). **9 jobs integration tests RAN vs real Postgres** (testcontainers via local
+**colima**, not just CI): asset-job create emits `asset_job.created` (payload carries source pointer + jobType, ADR-006),
+rollback leaves 0 job + 0 outbox, duplicate job-id rejected (PK; dedup_key UNIQUE backstop), both `model_ingest` +
+`sprite_render` queued, NotFound, worker-callback lifecycle mark (queued→processing→ready + completed_at), print-queue
+round-trip + staff stage-advance (NEED_PRINT→PRINTING) + `ON DELETE CASCADE` (print job dies with its order item), and
+`TestMigrationsReversible` re-passes (000006 down drops `asset_job_status`/`asset_job_type`). `000006_jobs` + `db/queries/
+jobs.sql` + `internal/db/jobs.go` (`Jobs` repo + `CreateAssetJobTx`). **D3** (asset shape, user): split `asset_job_type`
+{model_ingest, sprite_render}, `source_model_url`+`source_version`, outputs→Product. **D6** (user): print stage STORED.
+guard 141 · osm 22 · **no new deps**. NOTE: colima started locally to run integration tests — stopped after.
 **Core slice 2 · PR-2e — order spine (2026-06-26):** `make verify-go` ✓ (golangci **0**, sqlc vet+diff clean,
 `go test -race`). **Integration tests RAN against real Postgres** (testcontainers via local **colima**, not just CI):
 all order tests PASS incl. `TestConcurrentReconcileSerializes` (two goroutines race PENDING_CONFIRM→PAID under
@@ -139,10 +158,10 @@ deprecated (SA1019, IP-spoofable) → bỏ, dùng CF-Connecting-IP ở edge-phas
 spec-guardian PASS (0/0/2).
 
 ## Lưu ý git (2026-06-26, cập nhật)
-- `origin/main` = **`ab99360`** (PR #10 services-backbone squash-merged 2026-06-26 03:28Z). Chứa app-shells +
-  infra + `services/core-api`+`services/asset-worker` scaffold. Local main ĐÃ ff về `ab99360`. Verify:
-  `git cat-file -t origin/main:services/core-api/go.mod` = blob. **Slice Core off `ab99360`.** (cũ: PR #9 admin
-  `bf1b7a5` 2026-06-25; PR #7 storefront `b77acb7`.)
+- `origin/main` = **`cf31cb2`** (PR #16 PR-2e order-spine squash-merged 2026-06-26 09:39Z). Local main ĐÃ ff về
+  `cf31cb2`. **Slice 2 còn 2f (fulfillment/asset) + 2g (settings); branch 2f off `cf31cb2`.** Verify:
+  `git cat-file -t origin/main:services/core-api/db/migrations/000005_orders.up.sql` = blob. (lịch sử pointer cũ:
+  PR #10 `ab99360`; PR #9 admin `bf1b7a5`; PR #7 storefront `b77acb7`.)
 - **Services-backbone slice (nhánh `feat/phase-0-services-backbone` off `bf1b7a5`):** thêm `services/core-api`
   (Go+Chi) + `services/asset-worker` (Rust+tokio+async-nats) + root `Makefile` (verify-go/verify-rs) + CI
   `services-gates` + `/services/` vào `.prettierignore`. Go module = `github.com/huongnguyenduc/lumin-studio/

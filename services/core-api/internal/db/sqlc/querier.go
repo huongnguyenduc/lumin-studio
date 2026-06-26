@@ -12,6 +12,13 @@ import (
 )
 
 type Querier interface {
+	// jobs.sql — fulfillment/asset job queries (PR-2f). architecture.md §3D-pipeline · spec.md §02.
+	//
+	// CreateAssetJob is orchestrated by internal/db/jobs.go CreateAssetJobTx, which ALSO enqueues the
+	// `asset_job.created` outbox event on the SAME tx (publish-on-commit, ADR-006). print_jobs has no
+	// emit-seam — the print queue is admin-internal (SSE wiring lands in slice 3). UpdateAssetJobStatus
+	// is the slice-3 worker-callback write; it is defined now so the lifecycle column set is exercised.
+	CreateAssetJob(ctx context.Context, arg CreateAssetJobParams) (AssetJob, error)
 	// orders.sql — order spine read/write queries (PR-2e). spec.md §02/§04.
 	//
 	// The seams in internal/db/orders.go orchestrate these inside the caller's transaction so the
@@ -19,6 +26,7 @@ type Querier interface {
 	// payment_method is intentionally NOT a CreateOrder param — phase 1 is bank_transfer only, so
 	// the column DEFAULT supplies it; add the param when a second method arrives.
 	CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error)
+	GetAssetJobByID(ctx context.Context, id uuid.UUID) (AssetJob, error)
 	GetCustomerByID(ctx context.Context, id uuid.UUID) (Customer, error)
 	GetCustomerByPhone(ctx context.Context, phone string) (Customer, error)
 	GetOrderByCode(ctx context.Context, code string) (Order, error)
@@ -26,6 +34,7 @@ type Querier interface {
 	// GetOrderForUpdate locks the row for the duration of the caller's tx so a status flip reads
 	// and writes the order atomically (no lost-update race between concurrent transitions).
 	GetOrderForUpdate(ctx context.Context, id uuid.UUID) (Order, error)
+	GetPrintJobByID(ctx context.Context, id uuid.UUID) (PrintJob, error)
 	GetProductBySlug(ctx context.Context, slug string) (Product, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	// catalog.sql — catalog read/write queries (PR-2c). spec.md §02. Inserts return the row so
@@ -43,26 +52,35 @@ type Querier interface {
 	// in slice 3. seq/status/attempts/created_at use column defaults; published_at stays NULL
 	// until the relay publishes.
 	InsertOutbox(ctx context.Context, arg InsertOutboxParams) error
+	InsertPrintJob(ctx context.Context, arg InsertPrintJobParams) (PrintJob, error)
 	InsertProduct(ctx context.Context, arg InsertProductParams) (Product, error)
 	InsertReview(ctx context.Context, arg InsertReviewParams) (Review, error)
 	// users.sql — staff/owner account queries (PR-2d). spec.md §02 User.
 	InsertUser(ctx context.Context, arg InsertUserParams) (User, error)
 	ListActiveConsents(ctx context.Context, customerID uuid.UUID) ([]ConsentGrant, error)
+	ListAssetJobsByStatus(ctx context.Context, status AssetJobStatus) ([]AssetJob, error)
 	ListColorsByProduct(ctx context.Context, productID uuid.UUID) ([]Color, error)
 	ListOptionsByProduct(ctx context.Context, productID uuid.UUID) ([]Option, error)
 	ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]OrderItem, error)
 	ListOrdersByStatus(ctx context.Context, status order.Status) ([]Order, error)
+	ListPrintJobsByStage(ctx context.Context, stage PrintStage) ([]PrintJob, error)
 	ListProductsByStatus(ctx context.Context, status ProductStatus) ([]Product, error)
 	// ping.sql — the sqlc pipeline smoke query. It gives `sqlc vet`/`sqlc diff`
 	// substantive content before the first domain query lands (InsertOutbox, PR-2b) and
 	// proves codegen end-to-end. Readiness uses pgxpool.Ping directly, not this query.
 	// (No leading underscore in the filename — Go ignores `_`-prefixed source files.)
 	Ping(ctx context.Context) (int32, error)
+	// UpdateAssetJobStatus records a worker lifecycle transition (slice-3 callback): the new status,
+	// the attempt count, last_error (set on 'failed', NULL clears it on 'ready'), and completed_at when
+	// supplied (COALESCE keeps the prior value when the narg is NULL).
+	UpdateAssetJobStatus(ctx context.Context, arg UpdateAssetJobStatusParams) (AssetJob, error)
 	// UpdateOrderStatus persists a transition: the new status, the full appended statusHistory,
 	// and — only when supplied — the denormalized refund_proof_url and payment_confirmed_at
 	// (COALESCE keeps the existing value when the narg is NULL). The append itself is computed in
 	// Go by order.Transition; this statement just writes the result in one UPDATE.
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) (Order, error)
+	// UpdatePrintJobStage advances the print queue stage (staff drag-drop) and refreshes updated_at.
+	UpdatePrintJobStage(ctx context.Context, arg UpdatePrintJobStageParams) (PrintJob, error)
 	// Mark the active grant for (customer, scope, channel) as withdrawn. Never deletes the row.
 	WithdrawConsent(ctx context.Context, arg WithdrawConsentParams) error
 }

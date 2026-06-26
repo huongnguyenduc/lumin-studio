@@ -14,6 +14,92 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AssetJobStatus string
+
+const (
+	AssetJobStatusQueued     AssetJobStatus = "queued"
+	AssetJobStatusProcessing AssetJobStatus = "processing"
+	AssetJobStatusReady      AssetJobStatus = "ready"
+	AssetJobStatusFailed     AssetJobStatus = "failed"
+)
+
+func (e *AssetJobStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AssetJobStatus(s)
+	case string:
+		*e = AssetJobStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AssetJobStatus: %T", src)
+	}
+	return nil
+}
+
+type NullAssetJobStatus struct {
+	AssetJobStatus AssetJobStatus `json:"assetJobStatus"`
+	Valid          bool           `json:"valid"` // Valid is true if AssetJobStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAssetJobStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.AssetJobStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AssetJobStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAssetJobStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AssetJobStatus), nil
+}
+
+type AssetJobType string
+
+const (
+	AssetJobTypeModelIngest  AssetJobType = "model_ingest"
+	AssetJobTypeSpriteRender AssetJobType = "sprite_render"
+)
+
+func (e *AssetJobType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AssetJobType(s)
+	case string:
+		*e = AssetJobType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AssetJobType: %T", src)
+	}
+	return nil
+}
+
+type NullAssetJobType struct {
+	AssetJobType AssetJobType `json:"assetJobType"`
+	Valid        bool         `json:"valid"` // Valid is true if AssetJobType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAssetJobType) Scan(value interface{}) error {
+	if value == nil {
+		ns.AssetJobType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AssetJobType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAssetJobType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AssetJobType), nil
+}
+
 type ConsentChannel string
 
 const (
@@ -445,6 +531,20 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 	return string(ns.UserRole), nil
 }
 
+type AssetJob struct {
+	ID             uuid.UUID          `json:"id"`
+	ProductID      uuid.UUID          `json:"productId"`
+	JobType        AssetJobType       `json:"jobType"`
+	SourceModelUrl string             `json:"sourceModelUrl"`
+	SourceVersion  string             `json:"sourceVersion"`
+	Status         AssetJobStatus     `json:"status"`
+	Attempts       int32              `json:"attempts"`
+	LastError      *string            `json:"lastError"`
+	CreatedAt      pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt      pgtype.Timestamptz `json:"updatedAt"`
+	CompletedAt    pgtype.Timestamptz `json:"completedAt"`
+}
+
 type Category struct {
 	ID   uuid.UUID `json:"id"`
 	Slug string    `json:"slug"`
@@ -534,6 +634,17 @@ type Outbox struct {
 	Attempts      int32              `json:"attempts"`
 	CreatedAt     pgtype.Timestamptz `json:"createdAt"`
 	PublishedAt   pgtype.Timestamptz `json:"publishedAt"`
+}
+
+type PrintJob struct {
+	ID          uuid.UUID          `json:"id"`
+	OrderItemID uuid.UUID          `json:"orderItemId"`
+	Stage       PrintStage         `json:"stage"`
+	Printer     *string            `json:"printer"`
+	ColorName   *string            `json:"colorName"`
+	Eta         pgtype.Timestamptz `json:"eta"`
+	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt   pgtype.Timestamptz `json:"updatedAt"`
 }
 
 type Product struct {
