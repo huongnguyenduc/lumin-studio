@@ -69,7 +69,7 @@ the data layer deferred to slice-3 RBAC. docs baseline committed `ecd06fa`.
 `internal/natsx` (Connect/EnsureTopology/Reachable/Close) + config NATS/relay knobs + `getenvDuration` + main lifecycle
 + `/readyz` NATS check via `NATSStatus` iface; `nats.go` v1.48.0 PINNED (v1.52 forces go 1.25, like pgx). 4-lens review
 wf_adea04ba (14→5 confirmed / 0 BLOCKER, all fixed: Docker-free non-fail-fast tests + convergence). guard 142.
-**`3b` relay drain loop ✅ PUSHED → PR #20 OPEN · CLEAN · MERGEABLE · CI GREEN (app-gates + selftest + services-gates incl relay-vs-NATS-in-CI ~2m) · chờ owner merge. (branch `feat/core-http-relay-3b` off `main` `280e94b`.)**
+**`3b` relay drain loop ✅ MERGED (PR #20) → `origin/main` `c3b2004` (2026-06-27, merge-commit; local `main` ff'd). RELAY TRACK 3a→3b COMPLETE.**
 `internal/relay` (drain loop: `SelectPendingOutbox`→publishOne→await PubAck→markPublished; transient-vs-poison split;
 panic-recovery; `isTransient` on real nats/jetstream v1.48 sentinels) + 4 outbox sqlc queries (scan pending-SET `ORDER BY
 seq`, NO watermark/SKIP-LOCKED) + natsx `+PublishMsg`/`+ReEnsureOnReconnect` (topology-on-reconnect carry-over from the 3a
@@ -83,18 +83,42 @@ relay-start ARM grep didn't strip `//` comments → commented-out relay false-PA
 ctx-rename không false-RED; re-proven: comment-out→RED, rename→GREEN, delete→RED); (NOTE) `time.NewTicker(poll)` panic ngoài
 drainOnce recover → non-positive RELAY_POLL_INTERVAL crash cả process → `newRelay` clamp poll/batch/maxAtt≤0→default + test;
 (NOTE) panic-recovery 0 coverage → `TestDrainPanicRecovered`; (NOTE) clamp test. guard giữ 144, relay test 9→11.
-Next after `3b`: dependency-free `3c-1` (OpenAPI contract) / `3f` (order-intake prereqs).
+
+**`3c-1` OpenAPI contract authoring ✅ PR #21 OPEN · CLEAN · MERGEABLE · CI GREEN (app-gates + selftest + services-gates) · chờ owner merge. (branch `feat/core-http-relay-3c-1` off `c3b2004`.)**
+Head of the contract/HTTP track (unblocks 3c-2→3d→3e→{3g,3h,3i,3k}→3j). Hand-authored
+`services/core-api/openapi.yaml` (OpenAPI **3.0.3**, slice-3 surfaces ONLY — auth/orders/transitions/dashboard/
+settings-STK/reply-templates; NO catalog read DTOs per scope): nested `Order` DTO (not flat sqlc row) +
+`CreateWebOrderInput`/`CreateInboxOrderInput` (oneOf+discriminator on `channel`; inputs OMIT unitPrice/total/subtotal
+→ server-authoritative, always-must #2) + `TransitionRequest` + `ErrorEnvelope {code,messageKey,fields?}` (ADR-032) +
+Settings/BankAccount{bin,accountNumber,accountName}/ReplyTemplate + DashboardSnapshot + cookieAuth securityScheme.
+Money `integer,format:int64`; props camelCase. **4-way enum parity test** `internal/contract/parity_test.go` (yaml.v3
+indirect→direct): OrderStatus/Channel/Role byte-identical across **OpenAPI == internal/order == packages/core Zod == PG
+000001**; encodes the `system` asymmetry explicitly (actor **Role** {owner,staff,system} vs stored **UserRole**/PG
+`user_role` {owner,staff}). spec-sync `spec.md §02` Review `text`→`body` (DB/Go already `body`). ADR-031 implemented (no
+new ADR — landed `ecd06fa`). `make verify-go` green (golangci 0, sqlc vet+diff, `go test -race` incl parity); **guard
+145** (+1 contract ARM: openapi.yaml→parity must reference all 4 sources, PROVEN binding missing→144/1); osm 22;
+**parity PROVEN binding** (REFUNDED drift→RED→restore). **No EARS row** (contract-authoring, no runtime invariant).
+**Adversarial 4-lens review wf_a95388f8-5d8: 3 confirmed (1 BLOCKER) / 4 refuted, all confirmed FIXED.** BLOCKER
+(openapi lens, reviewer RAN oapi-codegen v2.5.1): inline `oneOf`+discriminator on `POST /orders` → oapi-codegen emits
+an OPAQUE `union json.RawMessage` w/ unexported field + 0 methods → strict-server can't read the order payload → FIX:
+extract into NAMED `CreateOrderInput` schema (+$ref) → **re-ran oapi-codegen: 10 union methods now (As*/From*/Merge*/
+Discriminator/ValueByDiscriminator/Marshal/Unmarshal), exit 0**. NOTE optionIds→`format:uuid` (both item schemas).
+NOTE contract ARM was presence-only → tightened (≥4 `Test*Parity` + `assertSame` + `order.Statuses`, PROVEN binding:
+gamed-stub→144/1). Refuted (sound): trackingCode-→SHIPPING contract is intentional (plan §3h/D12) · Order.createdAt
+deliberate superset · regex/literal can't false-pass (fail-safe). guard stays 145.
 
 > Lịch sử app-shell/backbone Phase-0 (storefront/admin/services scaffold) đã archive — xem `git log` + PR #5–#10.
 
 ## Next steps (1–3)
-1. **Slice 3 · PR-3b — relay drain loop:** awaiting 5-lens review (wf_81c76244); apply confirmed fixes → commit → push →
-   PR (base `main` `280e94b`). Owner merges. **Review FROM-EACH-LINE** the outbox money-path diff (Stop-hook risk banner).
-2. **Slice 3 next sub-PRs** (after 3b): `3c-1` OpenAPI contract authoring (keystone, unblocks 3c-2→3d→3e→3g/3h/3i/3k→3j)
-   + `3f` order-intake prereqs (pricing/shipping/code/customer + migration 000008) — both dependency-free. Then `3d`
-   HTTP foundation. Full sub-PR DAG: `docs/plans/core-http-relay.md §1`.
-3. **Housekeeping:** prune `:gone` local branches + the now-merged `feat/core-http-relay` (3a) when chủ duyệt. Sau Core
-   phase: ADR-026 lane B/C/D · REC-20/28/39.
+1. **Slice 3 · PR-3c-1 — OpenAPI contract:** apply confirmed review fixes (wf_a95388f8-5d8) → commit → push → PR (base
+   `main` `c3b2004`). Owner merges. PR body: note YAML + `*.gen.go`(later) excluded from line budget; one coherent
+   axis (the contract); no EARS row (contract-authoring).
+2. **Slice 3 next sub-PRs** (after 3c-1 merges): `3c-2` codegen+`packages/api-client` scaffolding (oapi-codegen
+   strict-server + openapi-typescript + the long-open `acceptance.ledger.test` already exists → just gen wiring) — OR
+   the independent `3f` order-intake prereqs (pricing/shipping/code/customer + migration 000008). Then `3d` HTTP
+   foundation. Full DAG: `docs/plans/core-http-relay.md §1`.
+3. **Housekeeping:** prune `:gone` local branches + the now-merged `feat/core-http-relay`(3a)/`feat/core-http-relay-3b`
+   when chủ duyệt. Sau Core phase: ADR-026 lane B/C/D · REC-20/28/39.
 
 ## Open questions
 - *(không có cho slice backbone — scope đã chốt "backbone only" với user; ADR đã khoá quyết định.)*
@@ -124,10 +148,32 @@ Next after `3b`: dependency-free `3c-1` (OpenAPI contract) / `3f` (order-intake 
 | **Core slice 2 · PR-2g — config/reference (settings singleton + reply_templates + append-only bank audit)** | **merged (PR #18)** | squash → `origin/main` `ffab5f8` | `make verify-go` ✓ (golangci 0, sqlc vet+diff clean, `go test -race`); **6 settings integration tests RAN vs real Postgres (colima)** — singleton guard, audit seam atomic+rollback+accumulate, **append-only UPDATE+DELETE+TRUNCATE blocked**, validate() rejects null/`{}`/`[]`, seq newest-first + nil-reason→NULL, reply-template round-trip; reversibility re-passes (000007 down drops 2 tables + trigger fn, no new enums) · guard 141 · osm 22 · **closes slice 2** · 5-lens review wf_70129d8e 7 confirmed/5 refuted all fixed (TRUNCATE-bypass + validate hole) · **no new deps** |
 | **Core slice 3 — HTTP + relay (plan + ADR-029..033 locked)** | done (plan) | `feat/core-http-relay` `ecd06fa` | 13 sub-PRs / 2 tracks; planning wf_48252601 |
 | **Core slice 3 · PR-3a — relay substrate (natsx connect + topology + readyz + lifecycle)** | **merged (PR #19)** | squash → `origin/main` `280e94b` (2026-06-27 11:30Z) | `make verify-go` ✓ (golangci 0, sqlc vet+diff, race); **2 natsx integration tests RAN vs real NATS+JetStream (colima)**; guard **142** (NATS ARM proven binding mutate→RED); osm 22; **nats.go v1.48.0 pinned** (v1.52→go1.25); **4-lens review wf_adea04ba 14→5 confirmed / 0 BLOCKER all fixed** (Docker-free non-fail-fast tests + convergence test + main.go comment + config exact-defaults); CI green (app-gates+selftest+services-gates incl first NATS-in-CI testcontainers) |
-| **Core slice 3 · PR-3b — relay drain loop (outbox→NATS publish-on-commit)** | **PR #20 OPEN · CLEAN · CI green · chờ merge** | `feat/core-http-relay-3b` off `280e94b` | `make verify-go` ✓ (golangci 0, sqlc vet+diff, `go test -race`); **9 relay integration tests RAN vs real PG+NATS (colima, -race)** — pending→published+Nats-Msg-Id, **late-low-seq watermark-loss regression**, no-stream→transient→recover (0 attempts burn), dedup-on-republish, poison→failed head-of-line, + **7 Docker-free unit** (isTransient/happy/broker-down/transient/poison/**panic-recovered/clamp**); natsx+db no regression; guard **144** (+2 relay ARM PROVEN binding: scan-pending-SET lock + relay-start-in-main, mutate→RED→restore — relay-start check re-proven comment-out→RED/rename→GREEN/delete→RED after review fix); osm 22; REL-01/02 → acceptance.md Cụm 4 (left `[ ]`: Go-gated by guard ARM + Go tests — the EXISTING TS ledger parser `acceptance.ledger.test.ts` only resolves TS ids; CI caught an initial `[x]`→fixed); **no new deps**; **5-lens review wf_81c76244: 12 raw→4 confirmed (0 BLOCKER)/8 refuted, ALL FIXED** (//-strip+loosen ARM grep · newRelay clamp non-positive knobs · panic-recovery+clamp tests) |
+| **Core slice 3 · PR-3b — relay drain loop (outbox→NATS publish-on-commit)** | **merged (PR #20)** | merge → `origin/main` `c3b2004` (2026-06-27) | `make verify-go` ✓; **9 relay integration tests RAN vs real PG+NATS (colima, -race)** — pending→published+Nats-Msg-Id, **late-low-seq watermark-loss regression**, no-stream→transient→recover (0 attempts burn), dedup-on-republish, poison→failed head-of-line, + **7 Docker-free unit**; guard **144** (+2 relay ARM PROVEN binding: scan-pending-SET lock + relay-start-in-main); osm 22; REL-01/02 → acceptance.md `[ ]` (Go-gated by guard ARM + Go tests); **no new deps**; **5-lens review wf_81c76244: 12 raw→4 confirmed (0 BLOCKER) ALL FIXED**; CI green (incl relay-vs-NATS-in-CI) |
+| **Core slice 3 · PR-3c-1 — OpenAPI contract authoring + 4-way enum parity + spec-sync** | **PR #21 OPEN · CLEAN · CI green · chờ merge** | `feat/core-http-relay-3c-1` off `c3b2004` | hand-authored `openapi.yaml` (3.0.3, slice-3 surfaces only, nested Order DTO, **named `CreateOrderInput` oneOf** web/inbox, inputs omit unitPrice/total → server-authoritative, ErrorEnvelope, Settings/STK/ReplyTemplate/Dashboard, cookieAuth) + `internal/contract/{parity_test,structure_test}.go` (**4-way enum parity** OpenAPI==order==packages/core==PG; Role{owner,staff,system} vs UserRole/PG user_role{owner,staff}; + refs-resolve/opId-unique) + `spec.md §02` Review text→body + guard contract ARM; `make verify-go` ✓ (golangci 0, sqlc vet+diff, race incl parity) · **guard 145** (+1 contract ARM, tightened ≥4 Test*Parity+assertSame, PROVEN binding) · osm 22 · **parity PROVEN binding** REFUNDED-drift→RED · yaml.v3 indirect→direct (only dep change) · ADR-031 (no new ADR) · no EARS · **4-lens review wf_a95388f8-5d8: 3 confirmed (1 BLOCKER oapi-codegen opaque-union → named schema, RE-RAN codegen → 10 union methods) / 4 refuted, all fixed** |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất
+**Core slice 3 · PR-3c-1 — OpenAPI contract authoring (2026-06-28):** `make verify-go` ✓ (gofmt + go vet + golangci v2
+**0** + sqlc vet + sqlc diff + `go test -race`). Docker-free (contract authoring; no DB/NATS test). Hand-authored
+`services/core-api/openapi.yaml` (**OpenAPI 3.0.3**) = the single wire contract (ADR-031): paths for
+auth(login/logout) · `POST /orders` (oneOf web/inbox + discriminator) · `POST /orders/{id}/transitions` ·
+`GET /admin/dashboard` · `GET /admin/settings` · owner-only `PATCH /admin/settings/bank-account` ·
+`GET /admin/reply-templates`; schemas = nested `Order` DTO (NOT flat sqlc row) + `OrderItemInput` (omits unitPrice —
+server re-derives, always-must #2) + Customer/Address/Personalization/StatusEvent + `ErrorEnvelope{code,messageKey,
+fields?}` + Settings/BankAccount{bin,accountNumber,accountName}/ReplyTemplate + Dashboard{stats,recentOrders,todos} +
+LoginRequest/AuthUser; cookieAuth securityScheme; money `integer,format:int64`; camelCase. `internal/contract/
+parity_test.go` = **4-way enum parity** (OpenAPI == `internal/order` == `packages/core` Zod == PG `000001`) for
+OrderStatus(7)/Channel(2)/Role(3), + the `system` asymmetry: actor **Role**{owner,staff,system} vs stored
+**UserRole**/PG `user_role`{owner,staff}, asserted explicitly (Role minus system == UserRole). `spec.md §02` Review
+field `text`→`body` (DB/Go already `body`; Personalization.text untouched). guard **145** (+1 contract ARM:
+openapi.yaml present → parity_test must reference all 4 sources — PROVEN binding: removed parity_test → 144/1);
+**parity PROVEN binding** (drift `REFUNDED`→`REFUNDEDX` in openapi → `TestOrderStatusParity` RED → restored). osm 22.
+Only dep change: `gopkg.in/yaml.v3` indirect→direct (parity test parses the YAML). **No new ADR** (implements ADR-031,
+landed `ecd06fa`). **No EARS row** (contract-authoring, no runtime invariant). **4-lens review wf_a95388f8-5d8: 3
+confirmed (1 BLOCKER) / 4 refuted, all fixed** — BLOCKER: inline `oneOf`+discriminator on `POST /orders` made
+oapi-codegen v2.5.1 emit an opaque `union json.RawMessage` (unexported, 0 methods) that strict-server can't read →
+extracted a NAMED `CreateOrderInput` schema → **re-ran oapi-codegen: 10 union methods, exit 0**; +optionIds `format:uuid`;
++tightened contract ARM (≥4 Test*Parity + assertSame, proven binding). (colima NOT needed — Docker-free PR.)
 **Core slice 3 · PR-3b — relay drain loop (2026-06-27):** `make verify-go` ✓ (gofmt + go vet + golangci v2 **0** + sqlc
 vet + sqlc diff + `go test -race`). **9 relay tests RAN vs real Postgres + NATS/JetStream** (testcontainers via local
 **colima**, -race, not just CI): `TestRelayDrainsPendingToStream` (pending→published, literal event_type subject +

@@ -92,7 +92,7 @@ Thời gian lưu **ISO-8601 UTC**.
 | Thực thể | Trường chính |
 |---|---|
 | `PrintJob` (hàng đợi in) | `orderItemRef` · `stage` (Cần in · Đang in · Đóng gói · Đã giao) · `printer` · `colorName` · `eta` — **ánh xạ từ order status** |
-| `Review` | `productId` · `customer` · `rating(1–5)` · `text` · `images[]` · `reply?` · `status(published/hidden)` · `createdAt` |
+| `Review` | `productId` · `customer` · `rating(1–5)` · `body` · `images[]` · `reply?` · `status(published/hidden)` · `createdAt` |
 | `Customer` | `id` · `name` · `phone` · `email?` · `socialHandles[]` · `addresses[]` |
 | `User` (nhân viên) | `id` · `name` · `email` · `role(owner/staff)` · `active` |
 | `ReplyTemplate` (extension) | `id` · `title` · `body` · `variables[]` (vd `{tên}`, `{mã đơn}`, `{STK}`) |
