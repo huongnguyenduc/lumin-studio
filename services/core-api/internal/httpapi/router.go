@@ -16,10 +16,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// NATSStatus reports whether the NATS/JetStream broker is currently reachable. The
+// readiness probe uses it; *natsx.Conn satisfies it. Kept as a local interface so httpapi
+// stays decoupled from the NATS client and is unit-testable with a fake.
+type NATSStatus interface {
+	Reachable() bool
+}
+
 // NewRouter builds the chi router with the baseline middleware stack and the platform
-// probes. The pool backs the readiness check; pass nil in unit tests that don't exercise
-// the database (readiness then degrades to a liveness check).
-func NewRouter(logger *slog.Logger, pool *pgxpool.Pool) http.Handler {
+// probes. The pool and nats handle back the readiness check; pass nil for either in unit
+// tests that don't exercise that dependency (readiness then skips that check).
+func NewRouter(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -36,10 +43,10 @@ func NewRouter(logger *slog.Logger, pool *pgxpool.Pool) http.Handler {
 	// socket-level backstop is the http.Server Read/Write timeouts (Phase-1).
 	r.Use(middleware.Timeout(30 * time.Second))
 
-	// Liveness: the process is up. Readiness adds a Postgres reachability check;
-	// NATS/Garage join it once they are wired — see architecture.md §2.
+	// Liveness: the process is up. Readiness adds Postgres + NATS reachability checks;
+	// Garage joins them once it is wired — see architecture.md §2.
 	r.Get("/healthz", health)
-	r.Get("/readyz", readiness(pool))
+	r.Get("/readyz", readiness(pool, nats))
 
 	return r
 }
@@ -67,18 +74,23 @@ func health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// readiness reports 200 only when the Postgres pool is reachable, 503 otherwise — so a
-// load balancer drains this instance while the database is unreachable. A nil pool (unit
-// tests that don't touch the DB) degrades to a liveness check.
-func readiness(pool *pgxpool.Pool) http.HandlerFunc {
+// readiness reports 200 only when every wired dependency is reachable, 503 otherwise — so
+// a load balancer drains this instance while Postgres or NATS is unreachable. A nil
+// dependency (unit tests that don't exercise it) is skipped; the `dep` field on a 503
+// names the failing dependency for ops triage.
+func readiness(pool *pgxpool.Pool, nats NATSStatus) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if pool != nil {
 			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 			defer cancel()
 			if err := pool.Ping(ctx); err != nil {
-				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable", "dep": "postgres"})
 				return
 			}
+		}
+		if nats != nil && !nats.Reachable() {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable", "dep": "nats"})
+			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}

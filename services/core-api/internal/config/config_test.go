@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestLoadDefaults(t *testing.T) {
 	t.Setenv("PORT", "")
@@ -61,5 +64,58 @@ func TestLoadFallsBackOnInvalidMaxConns(t *testing.T) {
 	t.Setenv("DB_MAX_CONNS", "not-a-number")
 	if got := Load().DBMaxConns; got != 8 {
 		t.Fatalf("DBMaxConns with garbage env = %d, want default 8", got)
+	}
+}
+
+func TestLoadNATSDefaults(t *testing.T) {
+	for _, k := range []string{"NATS_URL", "RELAY_POLL_INTERVAL", "RELAY_BATCH_SIZE", "RELAY_MAX_ATTEMPTS", "RELAY_DUP_WINDOW"} {
+		t.Setenv(k, "")
+	}
+	cfg := Load()
+	if cfg.NATSURL != "nats://127.0.0.1:4222" {
+		t.Fatalf("NATSURL default = %q, want nats://127.0.0.1:4222", cfg.NATSURL)
+	}
+	if cfg.RelayPollInterval != time.Second {
+		t.Fatalf("RelayPollInterval default = %v, want 1s", cfg.RelayPollInterval)
+	}
+	if cfg.RelayBatchSize != 100 {
+		t.Fatalf("RelayBatchSize default = %d, want 100", cfg.RelayBatchSize)
+	}
+	if cfg.RelayMaxAttempts != 5 {
+		t.Fatalf("RelayMaxAttempts default = %d, want 5", cfg.RelayMaxAttempts)
+	}
+	if cfg.RelayDupWindow != 2*time.Minute {
+		t.Fatalf("RelayDupWindow default = %v, want 2m", cfg.RelayDupWindow)
+	}
+}
+
+func TestLoadHonoursNATSEnv(t *testing.T) {
+	t.Setenv("NATS_URL", "nats://broker:4222")
+	t.Setenv("RELAY_POLL_INTERVAL", "500ms")
+	t.Setenv("RELAY_BATCH_SIZE", "250")
+	t.Setenv("RELAY_MAX_ATTEMPTS", "9")
+	t.Setenv("RELAY_DUP_WINDOW", "30s")
+	cfg := Load()
+	if cfg.NATSURL != "nats://broker:4222" {
+		t.Fatalf("NATSURL = %q, want the env value", cfg.NATSURL)
+	}
+	if cfg.RelayPollInterval != 500*time.Millisecond {
+		t.Fatalf("RelayPollInterval = %v, want 500ms", cfg.RelayPollInterval)
+	}
+	if cfg.RelayBatchSize != 250 {
+		t.Fatalf("RelayBatchSize = %d, want 250", cfg.RelayBatchSize)
+	}
+	if cfg.RelayMaxAttempts != 9 {
+		t.Fatalf("RelayMaxAttempts = %d, want 9", cfg.RelayMaxAttempts)
+	}
+	if cfg.RelayDupWindow != 30*time.Second {
+		t.Fatalf("RelayDupWindow = %v, want 30s", cfg.RelayDupWindow)
+	}
+}
+
+func TestLoadFallsBackOnInvalidDuration(t *testing.T) {
+	t.Setenv("RELAY_DUP_WINDOW", "not-a-duration")
+	if got := Load().RelayDupWindow; got != 2*time.Minute {
+		t.Fatalf("RelayDupWindow with garbage env = %v, want default 2m", got)
 	}
 }

@@ -15,10 +15,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/config"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/httpapi"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/natsx"
 )
 
 func main() {
@@ -34,9 +36,28 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Connect to NATS after the pool. Like the pool, a momentarily-down broker must not
+	// block start: nats.Connect retries in the background and readiness reports it. Connect
+	// errors only on a malformed URL (a config bug) — fail fast there, mirroring the pool.
+	nc, err := natsx.Connect(cfg)
+	if err != nil {
+		logger.Error("nats connect init failed", "err", err)
+		pool.Close()
+		os.Exit(1)
+	}
+	// Provision the JetStream streams the relay publishes into. Best-effort at boot: a NATS
+	// outage at start is non-fatal (accept-downtime, ADR-009). The streams are re-provisioned
+	// only on the next boot — this substrate provisions at boot, never on reconnect, so PR-3b's
+	// relay MUST re-ensure topology on reconnect / on a no-stream publish error.
+	topoCtx, topoCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := nc.EnsureTopology(topoCtx, cfg.RelayDupWindow); err != nil {
+		logger.Warn("nats topology not ensured at boot (will retry on next boot)", "err", err)
+	}
+	topoCancel()
+
 	srv := &http.Server{
 		Addr:    cfg.Addr,
-		Handler: httpapi.NewRouter(logger, pool),
+		Handler: httpapi.NewRouter(logger, pool, nc),
 		// ReadHeaderTimeout covers the Slowloris header vector. Read/Write/Idle
 		// timeouts are intentionally unset for now — TODO(phase-1): source
 		// IdleTimeout + Read/WriteTimeout from config once real request bodies land
@@ -61,6 +82,7 @@ func main() {
 	select {
 	case err := <-errCh:
 		logger.Error("server failed", "err", err)
+		nc.Close()
 		pool.Close()
 		os.Exit(1)
 	case <-ctx.Done():
@@ -70,8 +92,10 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
 	shutdownErr := srv.Shutdown(shutdownCtx)
-	// Close the pool AFTER the HTTP server drains, so in-flight requests release their
-	// connections first.
+	// Close NATS (flush pending publishes) then the pool, AFTER the HTTP server drains so
+	// in-flight requests release their handles first. NATS before the pool so a future
+	// relay goroutine — which holds both — has released them by pool close.
+	nc.Close()
 	pool.Close()
 	if shutdownErr != nil {
 		logger.Error("graceful shutdown failed", "err", shutdownErr)

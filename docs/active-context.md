@@ -43,8 +43,7 @@ reconstructable (ADR-006); outputs→Product (job input-only). **D6 resolved (us
 drag-drop, finer than order status, Pet-Tag NFC stage later). print_jobs no emit-seam (admin-internal SSE slice 3).
 `make verify-go` green; **9 jobs integration tests RAN vs real Postgres (colima)** + reversibility re-passes; guard
 141 / osm 22; **no new deps**.
-**PR-2g (config/reference) ✅ DONE — branch `feat/core-data-layer-2g` off `b1b28a0`, commit `b637c51`, PR #18 OPEN
-(await owner merge).** `000007_settings` (reply_templates + settings singleton [shop_info/bank_account VietQR/
+**PR-2g (config/reference) ✅ MERGED #18 → `main` `ffab5f8` (2026-06-26, squash; local main ff'd).** `000007_settings` (reply_templates + settings singleton [shop_info/bank_account VietQR/
 shipping_rules/refund_policy] + `setting_bank_audit`) + `db/queries/settings.sql` + `internal/db/settings.go`
 (`Settings` repo + `UpdateBankAccountTx` audit-on-commit seam). **Singleton** = `id boolean PK DEFAULT true CHECK (id)`
 + seed row. **Append-only DB-enforced** = row-level BEFORE UPDATE/DELETE **+** statement-level BEFORE TRUNCATE
@@ -53,8 +52,24 @@ deterministic newest-first. **refund_policy** per ADR-012 (NOT return_policy); N
 vn-compliance loaded. `make verify-go` green; **6 settings integration tests RAN vs real Postgres (colima)** +
 reversibility re-passes; guard 141 / osm 22; **no new deps**. **4-lens adversarial review wf_70129d8e: 7 confirmed /
 5 refuted, all fixed** (2 IMPORTANT money-out: TRUNCATE-bypass + validate() null/`{}`/`[]`; ordering bound by seq).
-**This closes slice 2 (all 7 sub-PRs 2a–2g).** **NEXT = slice 3 (HTTP/relay):** `POST /orders` + transition endpoints
-+ RBAC mw + **outbox relay→NATS publish-on-commit loop** + replace `apps/admin` demo-dashboard placeholder.
+**✅ SLICE 2 COMPLETE — all 7 sub-PRs 2a–2g MERGED → `main` `ffab5f8`.** **ĐANG Ở Slice 3 (HTTP/relay) — PLAN +
+ADRs LOCKED, chưa code.** Plan `docs/plans/core-http-relay.md` (wf_48252601, 18 agents: 9 readers → 3 design angles →
+3-lens judge → synthesis + completeness-critique) reconciled to **13 sub-PRs / 2 tracks**: relay `3a→3b` (NATS
+substrate + drain loop) · contract/HTTP `3c-1→3c-2→3d→3e-1→3e-2→{3g,3h,3i,3k}→3j` (+ `3f` intake helpers independent).
+**5 ADRs LOCKED in `decisions.md` (user-confirmed 2026-06-26): 029 relay (in-process goroutine · scan-pending-SET ORDER
+BY seq, KHÔNG watermark/SKIP-LOCKED/advisory-lock per ADR-009 · publish→PubAck→mark) · 030 auth = SELF-ISSUED JWT
+(user chose NOT Cloudflare-Access — `POST /auth/login`+bcrypt+`go-chi/jwtauth` httpOnly cookie · `users.password_hash`
+migration 000009 · split 3e-1 login / 3e-2 verify+RBAC) · 031 OpenAPI hand-yaml single-source → oapi-codegen
+**strict-server** + openapi-typescript (`packages/api-client`) · 032 error-envelope `{code,messageKey,fields?}` · 033
+idempotency DEFERRED.** Migrations: **000008** order_code_seq (3f) · **000009** user_credentials (3e-1) · **000010**
+dashboard_idx (3i). Adversarial critique earlier caught a money-path BLOCKER (uniformly-public `POST /orders` lets
+`channel=inbox` mint a born-PAID order w/o payment → fixed: inbox **staff-gated**) + added `3k` settings/STK endpoint
+the data layer deferred to slice-3 RBAC. **BUILDING (branch `feat/core-http-relay` off `main` `ffab5f8`):** docs
+baseline committed `ecd06fa`. **PR-3a relay substrate ✅ DONE — `internal/natsx` (Connect/EnsureTopology/Reachable/Close)
++ config NATS/relay knobs + `getenvDuration` + main lifecycle (connect-after-pool, best-effort topology, close-before-pool)
++ `/readyz` NATS check via `NATSStatus` iface; `nats.go` v1.48.0 PINNED (v1.52 forces go 1.25, like pgx). `make verify-go`
+green; 2 natsx integration tests RAN vs real NATS+JetStream (colima); guard 142 (NATS ARM proven binding mutate→RED).**
+Next dependency-free starts = `3c-1` / `3f`; then `3b` drain loop (depends 3a).
 
 > Lịch sử app-shell/backbone Phase-0 (storefront/admin/services scaffold) đã archive — xem `git log` + PR #5–#10.
 
@@ -93,7 +108,9 @@ reversibility re-passes; guard 141 / osm 22; **no new deps**. **4-lens adversari
 | **Core slice 2 · PR-2d — identity (customers/consent_grants/users + reviews FK)** | **merged (PR #15)** | squash → `origin/main` `59d4f98` | `make verify-go` ✓ (sqlc vet 8 queries; consent append-then-mark + no-district + user-role-no-system tests via testcontainers skip-local/run-CI) · guard 141 · osm 22 · consent partial-UNIQUE active; addresses jsonb NO district (ADR-017); ON DELETE SET NULL reviews FK (PDPL erase); thin `Identity` repo; vn-compliance loaded; **no new deps** |
 | **Core slice 2 · PR-2e — order spine (orders/order_items + 3 tx seams)** | **merged (PR #16)** | squash → `origin/main` `cf31cb2` | `make verify-go` ✓ (golangci 0, sqlc vet+diff clean, `go test -race`); **integration tests RAN vs real Postgres (colima)** — 12 order tests incl. `-race` concurrent-reconcile FOR-UPDATE proof, jsonb/enum overrides, outbox atomicity, refund-proof consistency, RBAC, money CHECK · guard 141 · osm 22 · 4-lens review wf_ac186d9c: 14→9 confirmed all fixed (2 IMPORTANT: empty-items guard `ErrNoItems` + concurrent-lock test) · **no new deps** |
 | **Core slice 2 · PR-2f — fulfillment/asset (asset_jobs + print_jobs + 3rd emit-seam)** | **merged (PR #17)** | squash → `origin/main` `b1b28a0` | `make verify-go` ✓ (golangci 0, sqlc vet+diff clean, `go test -race`); **9 jobs integration tests RAN vs real Postgres (colima)** — asset_job.created emit + payload pointer, rollback-atomicity, dup-id reject, both job-types, lifecycle mark, print-queue round-trip + stage advance, ON DELETE CASCADE; reversibility re-passes (000006 down drops 2 new enums) · guard 141 · osm 22 · D3 split asset_job_type{model_ingest,sprite_render}/outputs→Product · D6 print stage STORED · **no new deps** |
-| **Core slice 2 · PR-2g — config/reference (settings singleton + reply_templates + append-only bank audit)** | **done (PR #18 open)** | `feat/core-data-layer-2g` off `b1b28a0` `b637c51` | `make verify-go` ✓ (golangci 0, sqlc vet+diff clean, `go test -race`); **6 settings integration tests RAN vs real Postgres (colima)** — singleton guard, audit seam atomic+rollback+accumulate, **append-only UPDATE+DELETE+TRUNCATE blocked**, validate() rejects null/`{}`/`[]`, seq newest-first + nil-reason→NULL, reply-template round-trip; reversibility re-passes (000007 down drops 2 tables + trigger fn, no new enums) · guard 141 · osm 22 · **closes slice 2** · 5-lens review wf_70129d8e 7 confirmed/5 refuted all fixed (TRUNCATE-bypass + validate hole) · **no new deps** |
+| **Core slice 2 · PR-2g — config/reference (settings singleton + reply_templates + append-only bank audit)** | **merged (PR #18)** | squash → `origin/main` `ffab5f8` | `make verify-go` ✓ (golangci 0, sqlc vet+diff clean, `go test -race`); **6 settings integration tests RAN vs real Postgres (colima)** — singleton guard, audit seam atomic+rollback+accumulate, **append-only UPDATE+DELETE+TRUNCATE blocked**, validate() rejects null/`{}`/`[]`, seq newest-first + nil-reason→NULL, reply-template round-trip; reversibility re-passes (000007 down drops 2 tables + trigger fn, no new enums) · guard 141 · osm 22 · **closes slice 2** · 5-lens review wf_70129d8e 7 confirmed/5 refuted all fixed (TRUNCATE-bypass + validate hole) · **no new deps** |
+| **Core slice 3 — HTTP + relay (plan + ADR-029..033 locked)** | done (plan) | `feat/core-http-relay` `ecd06fa` | 13 sub-PRs / 2 tracks; planning wf_48252601 |
+| **Core slice 3 · PR-3a — relay substrate (natsx connect + topology + readyz + lifecycle)** | done | `feat/core-http-relay` (after `ecd06fa`) | `make verify-go` ✓ (golangci 0, sqlc vet+diff, race); **2 natsx integration tests RAN vs real NATS+JetStream (colima)**; guard **142** (NATS ARM proven binding mutate→RED); osm 22; **nats.go v1.48.0 pinned** (v1.52→go1.25); **4-lens review wf_adea04ba 14→5 confirmed / 0 BLOCKER all fixed** (Docker-free non-fail-fast tests + convergence test + main.go comment + config exact-defaults) |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất
@@ -182,13 +199,13 @@ deprecated (SA1019, IP-spoofable) → bỏ, dùng CF-Connecting-IP ở edge-phas
 spec-guardian PASS (0/0/2).
 
 ## Lưu ý git (2026-06-26, cập nhật)
-- `origin/main` = **`b1b28a0`** (PR #17 PR-2f jobs squash-merged 2026-06-26). Local main ĐÃ ff về `b1b28a0`.
-  **Slice 2 = 2a–2f MERGED; 2g (settings) = PR #18 OPEN, branch `feat/core-data-layer-2g` off `b1b28a0` `b637c51`
-  (await owner merge → closes slice 2).** Verify:
-  `git cat-file -t origin/main:services/core-api/db/migrations/000006_jobs.up.sql` = blob; `…/000007_settings.up.sql`
-  = NOT on main yet (still in PR #18). (lịch sử pointer cũ: PR #16 `cf31cb2`; PR #10 `ab99360`; PR #7 `b77acb7`.)
-- **Housekeeping nợ (chờ chủ duyệt xoá):** local `:gone` branches `feat/core-data-layer-2e`/`-2f`, `feat/core-data-model`,
-  + phase-0 nhánh đã merge — prune khi chủ OK. `main` local đã ff `b1b28a0`.
+- `origin/main` = **`ffab5f8`** (PR #18 PR-2g settings squash-merged 2026-06-26 ~11:13Z). Local main ĐÃ ff về `ffab5f8`,
+  working tree clean. **✅ SLICE 2 COMPLETE — 2a–2g ALL MERGED.** Verify:
+  `git cat-file -t origin/main:services/core-api/db/migrations/000007_settings.up.sql` = blob (now on main);
+  `…/internal/db/settings.go` = blob. (lịch sử pointer cũ: PR #17 `b1b28a0`; PR #16 `cf31cb2`; PR #10 `ab99360`.)
+- **Housekeeping nợ (chờ chủ duyệt xoá):** 9 local `:gone` branches (`feat/core-data-layer-2e`, `feat/core-data-model`,
+  `feat/phase-0-*` x7, `fix/dev-handoff-refunded`) + the now-merged `feat/core-data-layer-2g` (squashed into `ffab5f8`)
+  — prune khi chủ OK. `main` local đã ff `ffab5f8`.
 - **Services-backbone slice (nhánh `feat/phase-0-services-backbone` off `bf1b7a5`):** thêm `services/core-api`
   (Go+Chi) + `services/asset-worker` (Rust+tokio+async-nats) + root `Makefile` (verify-go/verify-rs) + CI
   `services-gates` + `/services/` vào `.prettierignore`. Go module = `github.com/huongnguyenduc/lumin-studio/

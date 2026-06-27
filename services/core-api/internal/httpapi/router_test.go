@@ -12,11 +12,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// newTestRouter builds a router with a nil pool — readiness degrades to liveness, so the
-// smoke probes return 200 without a database (the dead-DB path is covered separately).
+// newTestRouter builds a router with a nil pool and nil NATS — readiness degrades to
+// liveness, so the smoke probes return 200 without those deps (the dead-dep paths are
+// covered separately).
 func newTestRouter() http.Handler {
-	return NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+	return NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil)
 }
+
+// fakeNATS is a stub NATSStatus for the readiness branch tests (no real broker).
+type fakeNATS struct{ reachable bool }
+
+func (f fakeNATS) Reachable() bool { return f.reachable }
 
 func TestHealthzOK(t *testing.T) {
 	rec := httptest.NewRecorder()
@@ -50,11 +56,35 @@ func TestReadyzUnavailableWhenDBDown(t *testing.T) {
 	}
 	defer pool.Close()
 
-	r := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), pool)
+	r := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("GET /readyz with dead DB = %d, want 503", rec.Code)
+	}
+}
+
+// With a NATS handle that reports unreachable (nil pool so the DB check is skipped),
+// readiness must report 503 and name nats as the failing dep.
+func TestReadyzUnavailableWhenNATSDown(t *testing.T) {
+	r := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, fakeNATS{reachable: false})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("GET /readyz with NATS down = %d, want 503", rec.Code)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, `"dep":"nats"`) {
+		t.Fatalf("body = %q, want it to name nats as the failing dep", body)
+	}
+}
+
+// A reachable NATS handle (nil pool) keeps readiness at 200.
+func TestReadyzOKWhenNATSReachable(t *testing.T) {
+	r := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, fakeNATS{reachable: true})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /readyz with NATS reachable = %d, want 200", rec.Code)
 	}
 }
 

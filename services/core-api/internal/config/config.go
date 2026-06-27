@@ -26,6 +26,23 @@ type Config struct {
 	DBMaxConns int32
 	// DBConnectTimeout bounds a single connection attempt.
 	DBConnectTimeout time.Duration
+
+	// NATSURL is the JetStream broker URL (the compose `nats` service). A connect
+	// failure is NOT fatal — the client reconnects in the background and readiness
+	// reports it (mirrors the lazy pgx pool); the relay drains accumulated rows on
+	// recovery (accept-downtime, ADR-009).
+	NATSURL string
+	// RelayPollInterval is how often the slice-3 outbox relay scans for pending rows.
+	RelayPollInterval time.Duration
+	// RelayBatchSize bounds one relay scan, so polling can't starve HTTP handlers on
+	// the shared DBMaxConns pool (the box also feeds Blender, ADR-014).
+	RelayBatchSize int
+	// RelayMaxAttempts is the per-row publish-attempt budget before an outbox row is
+	// quarantined as 'failed' (a poison row must not re-poison the seq scan, ADR-029).
+	RelayMaxAttempts int
+	// RelayDupWindow is the JetStream stream DuplicateWindow — the Nats-Msg-Id dedup
+	// horizon that collapses an at-least-once republish after a crash-before-mark.
+	RelayDupWindow time.Duration
 }
 
 // Load reads configuration from the environment, applying defaults. PORT matches the
@@ -39,6 +56,11 @@ func Load() Config {
 		DatabaseURL:       getenv("DATABASE_URL", "postgres://lumin:lumin@localhost:5432/lumin_app?sslmode=disable"),
 		DBMaxConns:        int32(getenvInt("DB_MAX_CONNS", 8)),
 		DBConnectTimeout:  5 * time.Second,
+		NATSURL:           getenv("NATS_URL", "nats://127.0.0.1:4222"),
+		RelayPollInterval: getenvDuration("RELAY_POLL_INTERVAL", time.Second),
+		RelayBatchSize:    getenvInt("RELAY_BATCH_SIZE", 100),
+		RelayMaxAttempts:  getenvInt("RELAY_MAX_ATTEMPTS", 5),
+		RelayDupWindow:    getenvDuration("RELAY_DUP_WINDOW", 2*time.Minute),
 	}
 }
 
@@ -56,6 +78,17 @@ func getenvInt(key string, fallback int) int {
 	if v, ok := os.LookupEnv(key); ok && v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			return n
+		}
+	}
+	return fallback
+}
+
+// getenvDuration returns the time.Duration parsed from env key (Go syntax, e.g. "1s",
+// "2m"), or fallback when it is unset, empty, or not a valid duration.
+func getenvDuration(key string, fallback time.Duration) time.Duration {
+	if v, ok := os.LookupEnv(key); ok && v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
 		}
 	}
 	return fallback
