@@ -49,15 +49,17 @@
 
 ## Cụm 4 — Relay outbox→NATS (`ADR-029` · `domain-core.md` §Outbox · `docs/plans/core-http-relay.md`)
 
-> **Go-gated:** các dòng `REL-*` được gác bởi `tests/harness/guard.test.sh §ARM-GUARD` (khoá quy tắc
-> quét-tập-pending + relay-start-in-`main.go`) **+** test Go testcontainers/unit trong `services/core-api/
-> internal/relay`, KHÔNG phải parser `acceptance.ledger.test.ts` (parser chỉ resolve id TS ở Cụm 1–3 — plan §5,
-> cross-language out-of-scope).
+> **Go-gated — CỐ Ý để `[ ]` ở ledger TS.** Parser `packages/core/test/acceptance.ledger.test.ts` chỉ enforce dòng
+> `[x]` và **chỉ resolve test id TS** (`it()/test()` trong `packages/**/*.test.ts`); test của `REL-*` là **Go**
+> (`services/core-api/internal/relay`), parser không thấy được → tick `[x]` sẽ làm parser ĐỎ (plan §5: cross-language
+> id resolution out-of-scope của parser). Vậy `REL-*` GIỮ `[ ]` ở ledger này — **gate thật** là
+> `tests/harness/guard.test.sh §ARM-GUARD` (khoá quét-tập-pending + relay-start-in-`main.go`) **+** chính các test Go
+> đó (đã RAN xanh vs PG+NATS thật). `[ ]` ở đây = "không do parser-TS gác", KHÔNG phải "chưa test".
 
-- [x] `REL-01` — WHEN một dòng outbox đã commit ở `status='pending'` (kể cả tx seq-thấp commit **muộn** sau tx seq-cao đã publish), the system shall publish nó lên NATS JetStream bằng cách **quét cả TẬP pending `ORDER BY seq`**
+- [ ] `REL-01` — WHEN một dòng outbox đã commit ở `status='pending'` (kể cả tx seq-thấp commit **muộn** sau tx seq-cao đã publish), the system shall publish nó lên NATS JetStream bằng cách **quét cả TẬP pending `ORDER BY seq`**
   — KHÔNG watermark `seq>cursor`, KHÔNG `SKIP LOCKED` — theo thứ tự `publish → await PubAck → mark-published`, không
   mất event tiền. *(test: `relay.TestRelayLateLowSeqDrains` + `relay.TestRelayDrainsPendingToStream`)*
-- [x] `REL-02` — WHEN NATS unreachable hoặc stream chưa provision (no-responders), the system shall coi là **transient**:
+- [ ] `REL-02` — WHEN NATS unreachable hoặc stream chưa provision (no-responders), the system shall coi là **transient**:
   để cả batch `pending`, **KHÔNG** tăng `attempts`, re-ensure topology, drain khi NATS hồi (accept-downtime, ADR-009) —
   phân biệt với **poison** (PubAck reject trên broker reachable → `attempts++` → `failed` sau `RelayMaxAttempts`, không
   chặn head-of-line). *(test: `relay.TestRelayNoStreamTransientThenRecovers` + `relay.TestDrainTransientLeavesBatchPendingNoAttempts` + `relay.TestDrainPoisonQuarantinedAfterMaxAttempts`)*
