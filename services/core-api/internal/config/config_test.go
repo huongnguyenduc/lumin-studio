@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestLoadDefaults(t *testing.T) {
 	t.Setenv("PORT", "")
@@ -61,5 +64,50 @@ func TestLoadFallsBackOnInvalidMaxConns(t *testing.T) {
 	t.Setenv("DB_MAX_CONNS", "not-a-number")
 	if got := Load().DBMaxConns; got != 8 {
 		t.Fatalf("DBMaxConns with garbage env = %d, want default 8", got)
+	}
+}
+
+func TestLoadNATSDefaults(t *testing.T) {
+	for _, k := range []string{"NATS_URL", "RELAY_POLL_INTERVAL", "RELAY_BATCH_SIZE", "RELAY_MAX_ATTEMPTS", "RELAY_DUP_WINDOW"} {
+		t.Setenv(k, "")
+	}
+	cfg := Load()
+	if cfg.NATSURL == "" {
+		t.Fatal("NATSURL must have a local-dev default")
+	}
+	if cfg.RelayPollInterval <= 0 {
+		t.Fatalf("RelayPollInterval must be positive, got %v", cfg.RelayPollInterval)
+	}
+	if cfg.RelayBatchSize <= 0 {
+		t.Fatalf("RelayBatchSize must be positive, got %d", cfg.RelayBatchSize)
+	}
+	if cfg.RelayMaxAttempts <= 0 {
+		t.Fatalf("RelayMaxAttempts must be positive, got %d", cfg.RelayMaxAttempts)
+	}
+	if cfg.RelayDupWindow <= 0 {
+		t.Fatalf("RelayDupWindow must be positive, got %v", cfg.RelayDupWindow)
+	}
+}
+
+func TestLoadHonoursNATSEnv(t *testing.T) {
+	t.Setenv("NATS_URL", "nats://broker:4222")
+	t.Setenv("RELAY_POLL_INTERVAL", "500ms")
+	t.Setenv("RELAY_BATCH_SIZE", "250")
+	cfg := Load()
+	if cfg.NATSURL != "nats://broker:4222" {
+		t.Fatalf("NATSURL = %q, want the env value", cfg.NATSURL)
+	}
+	if cfg.RelayPollInterval != 500*time.Millisecond {
+		t.Fatalf("RelayPollInterval = %v, want 500ms", cfg.RelayPollInterval)
+	}
+	if cfg.RelayBatchSize != 250 {
+		t.Fatalf("RelayBatchSize = %d, want 250", cfg.RelayBatchSize)
+	}
+}
+
+func TestLoadFallsBackOnInvalidDuration(t *testing.T) {
+	t.Setenv("RELAY_DUP_WINDOW", "not-a-duration")
+	if got := Load().RelayDupWindow; got != 2*time.Minute {
+		t.Fatalf("RelayDupWindow with garbage env = %v, want default 2m", got)
 	}
 }

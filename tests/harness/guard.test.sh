@@ -385,6 +385,17 @@ if [ -n "$TCFILES" ]; then
     bad "ARM: testcontainers test KHÔNG boot container (skip-always stub — data gate no-op!)"
   fi
 else ok "ARM: chưa có testcontainers test (real-check arm khi land — PR-2b)"; fi
+# NATS relay substrate (PR-3a): khi internal/natsx land, /readyz PHẢI gác NATS (Reachable) + topology
+# PHẢI tồn tại — chặn một edit tương lai âm thầm gỡ NATS khỏi readiness hoặc bỏ EnsureTopology.
+NATSDIR="$ROOT/services/core-api/internal/natsx"
+if [ -d "$NATSDIR" ]; then
+  ROUTERGO="$ROOT/services/core-api/internal/httpapi/router.go"
+  if grep -q 'nats\.Reachable' "$ROUTERGO" 2>/dev/null && grep -rq 'func.*EnsureTopology' "$NATSDIR" 2>/dev/null; then
+    ok "ARM: có internal/natsx -> /readyz gác NATS (nats.Reachable) + EnsureTopology tồn tại"
+  else
+    bad "ARM: internal/natsx LAND nhưng /readyz KHÔNG gác NATS hoặc thiếu EnsureTopology (NATS readiness/topology no-op!)"
+  fi
+else ok "ARM: chưa có internal/natsx (NATS readiness/topology arm khi land — PR-3a)"; fi
 if find "$ROOT/services" -name '*.rs' 2>/dev/null | grep -q .; then
   { [ -f "$ROOT/Makefile" ] && grep -Eq '^verify-rs:' "$ROOT/Makefile"; } \
     && ok "ARM: có .rs -> Makefile verify-rs" || bad "ARM: .rs LAND nhưng thiếu Makefile verify-rs"

@@ -151,6 +151,26 @@ data-layer's gen-exclude, `core-data-layer.md §3`); note both in every PR body 
    error, streams converge), `/readyz` flips on NATS down. **ARM** the NATS-readiness + topology checks into
    `guard.test.sh` the moment they land. **Invoke the `event-outbox` skill before writing any publish code.**
 
+> **As-built (PR-3a, 2026-06-27 — committed):** `internal/natsx` (package `natsx`, NOT `nats` — avoids colliding
+> with the upstream `nats.go` import it wraps) = `Connect` (non-fail-fast: `RetryOnFailedConnect` + `MaxReconnects(-1)`,
+> errors only on a malformed URL) + `EnsureTopology` (idempotent `CreateOrUpdateStream`: `ORDERS`/`order.>`/Limits +
+> `ASSET_JOBS`/`asset_job.>`/WorkQueue, `DuplicateWindow` from cfg) + `Reachable()` + `Close()` (FlushTimeout→Close,
+> synchronous for shutdown ordering). `config.go` gains `NATSURL` + `RelayPollInterval`/`RelayBatchSize`/
+> `RelayMaxAttempts`/`RelayDupWindow` (+ a `getenvDuration` helper). `main.go` connects NATS after the pool,
+> best-effort `EnsureTopology` at boot (NATS-down → log + continue, non-fatal, ADR-009), `nc.Close()` before
+> `pool.Close()` on every exit path. `/readyz` gains a NATS `Reachable()` check via a router-local `NATSStatus`
+> interface (httpapi stays decoupled from the nats client + unit-testable with a fake; a 503 names the failing `dep`).
+> **Dep pin: `nats.go` v1.48.0** (v1.52 forces go 1.25 — pinned down like pgx v5.7.5/ADR-028 to keep `go 1.23`;
+> +nkeys/nuid indirect). **No drain loop** (PR-3b). **Verified:** `make verify-go` green (golangci 0, sqlc vet+diff
+> clean, `go test -race`); **2 natsx integration tests RAN vs real NATS+JetStream (colima, not just CI)** —
+> EnsureTopology idempotency (2× run, streams converge; subjects/retention/dup asserted) + publish-lands-in-stream
+> (order.created→ORDERS, asset_job.created→ASSET_JOBS); `/readyz` flips 503 on NATS-down (fake). **ARM:** `guard.test.sh`
+> greps `nats.Reachable` in router + `EnsureTopology` in natsx — **proven binding** (dropped the readiness check →
+> guard RED 141/1 → restored). guard.test.sh **142** (+1), osm 22. **CI NATS lane = self-contained** — the natsx test
+> brings its own NATS via testcontainers `GenericContainer`, so it runs on the existing Docker-enabled `services-gates`
+> lane with **no compose service / no `harness.yml` change** (cleaner than the §6-D7 "add a NATS service" sketch).
+> **Deviation:** package named `natsx` not the plan's `nats` (upstream import collision) — documented.
+
 ### PR-3b — relay drain loop (publish-on-commit, the correctness PR)
 1. `db/queries/outbox.sql` gains 4 queries (regenerate via `sqlc generate`, commit the `*.sql.go`):
    `SelectPendingOutbox` (`SELECT id, event_type, payload FROM outbox WHERE status='pending' ORDER BY seq LIMIT $1` —

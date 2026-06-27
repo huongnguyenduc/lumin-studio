@@ -64,8 +64,12 @@ migration 000009 · split 3e-1 login / 3e-2 verify+RBAC) · 031 OpenAPI hand-yam
 idempotency DEFERRED.** Migrations: **000008** order_code_seq (3f) · **000009** user_credentials (3e-1) · **000010**
 dashboard_idx (3i). Adversarial critique earlier caught a money-path BLOCKER (uniformly-public `POST /orders` lets
 `channel=inbox` mint a born-PAID order w/o payment → fixed: inbox **staff-gated**) + added `3k` settings/STK endpoint
-the data layer deferred to slice-3 RBAC. **NEXT = build; dependency-free starts = `3a` / `3c-1` / `3f`.** Docs
-(plan + ADRs + this file) UNCOMMITTED on branch **`feat/core-http-relay`** (off `main` `ffab5f8`).
+the data layer deferred to slice-3 RBAC. **BUILDING (branch `feat/core-http-relay` off `main` `ffab5f8`):** docs
+baseline committed `ecd06fa`. **PR-3a relay substrate ✅ DONE — `internal/natsx` (Connect/EnsureTopology/Reachable/Close)
++ config NATS/relay knobs + `getenvDuration` + main lifecycle (connect-after-pool, best-effort topology, close-before-pool)
++ `/readyz` NATS check via `NATSStatus` iface; `nats.go` v1.48.0 PINNED (v1.52 forces go 1.25, like pgx). `make verify-go`
+green; 2 natsx integration tests RAN vs real NATS+JetStream (colima); guard 142 (NATS ARM proven binding mutate→RED).**
+Next dependency-free starts = `3c-1` / `3f`; then `3b` drain loop (depends 3a).
 
 > Lịch sử app-shell/backbone Phase-0 (storefront/admin/services scaffold) đã archive — xem `git log` + PR #5–#10.
 
@@ -105,6 +109,8 @@ the data layer deferred to slice-3 RBAC. **NEXT = build; dependency-free starts 
 | **Core slice 2 · PR-2e — order spine (orders/order_items + 3 tx seams)** | **merged (PR #16)** | squash → `origin/main` `cf31cb2` | `make verify-go` ✓ (golangci 0, sqlc vet+diff clean, `go test -race`); **integration tests RAN vs real Postgres (colima)** — 12 order tests incl. `-race` concurrent-reconcile FOR-UPDATE proof, jsonb/enum overrides, outbox atomicity, refund-proof consistency, RBAC, money CHECK · guard 141 · osm 22 · 4-lens review wf_ac186d9c: 14→9 confirmed all fixed (2 IMPORTANT: empty-items guard `ErrNoItems` + concurrent-lock test) · **no new deps** |
 | **Core slice 2 · PR-2f — fulfillment/asset (asset_jobs + print_jobs + 3rd emit-seam)** | **merged (PR #17)** | squash → `origin/main` `b1b28a0` | `make verify-go` ✓ (golangci 0, sqlc vet+diff clean, `go test -race`); **9 jobs integration tests RAN vs real Postgres (colima)** — asset_job.created emit + payload pointer, rollback-atomicity, dup-id reject, both job-types, lifecycle mark, print-queue round-trip + stage advance, ON DELETE CASCADE; reversibility re-passes (000006 down drops 2 new enums) · guard 141 · osm 22 · D3 split asset_job_type{model_ingest,sprite_render}/outputs→Product · D6 print stage STORED · **no new deps** |
 | **Core slice 2 · PR-2g — config/reference (settings singleton + reply_templates + append-only bank audit)** | **merged (PR #18)** | squash → `origin/main` `ffab5f8` | `make verify-go` ✓ (golangci 0, sqlc vet+diff clean, `go test -race`); **6 settings integration tests RAN vs real Postgres (colima)** — singleton guard, audit seam atomic+rollback+accumulate, **append-only UPDATE+DELETE+TRUNCATE blocked**, validate() rejects null/`{}`/`[]`, seq newest-first + nil-reason→NULL, reply-template round-trip; reversibility re-passes (000007 down drops 2 tables + trigger fn, no new enums) · guard 141 · osm 22 · **closes slice 2** · 5-lens review wf_70129d8e 7 confirmed/5 refuted all fixed (TRUNCATE-bypass + validate hole) · **no new deps** |
+| **Core slice 3 — HTTP + relay (plan + ADR-029..033 locked)** | done (plan) | `feat/core-http-relay` `ecd06fa` | 13 sub-PRs / 2 tracks; planning wf_48252601 |
+| **Core slice 3 · PR-3a — relay substrate (natsx connect + topology + readyz + lifecycle)** | done | `feat/core-http-relay` (after `ecd06fa`) | `make verify-go` ✓ (golangci 0, sqlc vet+diff, race); **2 natsx integration tests RAN vs real NATS+JetStream (colima)**; guard **142** (NATS ARM proven binding mutate→RED); osm 22; **nats.go v1.48.0 pinned** (v1.52→go1.25) |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất
