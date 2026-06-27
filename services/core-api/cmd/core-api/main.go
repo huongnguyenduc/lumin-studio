@@ -46,8 +46,9 @@ func main() {
 		os.Exit(1)
 	}
 	// Provision the JetStream streams the relay publishes into. Best-effort at boot: a NATS
-	// outage at start is non-fatal (accept-downtime, ADR-009) — the streams are re-provisioned
-	// on the next boot (and, once the relay lands in PR-3b, when it reconnects).
+	// outage at start is non-fatal (accept-downtime, ADR-009). The streams are re-provisioned
+	// only on the next boot — this substrate provisions at boot, never on reconnect, so PR-3b's
+	// relay MUST re-ensure topology on reconnect / on a no-stream publish error.
 	topoCtx, topoCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	if err := nc.EnsureTopology(topoCtx, cfg.RelayDupWindow); err != nil {
 		logger.Warn("nats topology not ensured at boot (will retry on next boot)", "err", err)

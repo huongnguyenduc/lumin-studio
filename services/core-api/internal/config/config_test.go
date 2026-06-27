@@ -72,20 +72,20 @@ func TestLoadNATSDefaults(t *testing.T) {
 		t.Setenv(k, "")
 	}
 	cfg := Load()
-	if cfg.NATSURL == "" {
-		t.Fatal("NATSURL must have a local-dev default")
+	if cfg.NATSURL != "nats://127.0.0.1:4222" {
+		t.Fatalf("NATSURL default = %q, want nats://127.0.0.1:4222", cfg.NATSURL)
 	}
-	if cfg.RelayPollInterval <= 0 {
-		t.Fatalf("RelayPollInterval must be positive, got %v", cfg.RelayPollInterval)
+	if cfg.RelayPollInterval != time.Second {
+		t.Fatalf("RelayPollInterval default = %v, want 1s", cfg.RelayPollInterval)
 	}
-	if cfg.RelayBatchSize <= 0 {
-		t.Fatalf("RelayBatchSize must be positive, got %d", cfg.RelayBatchSize)
+	if cfg.RelayBatchSize != 100 {
+		t.Fatalf("RelayBatchSize default = %d, want 100", cfg.RelayBatchSize)
 	}
-	if cfg.RelayMaxAttempts <= 0 {
-		t.Fatalf("RelayMaxAttempts must be positive, got %d", cfg.RelayMaxAttempts)
+	if cfg.RelayMaxAttempts != 5 {
+		t.Fatalf("RelayMaxAttempts default = %d, want 5", cfg.RelayMaxAttempts)
 	}
-	if cfg.RelayDupWindow <= 0 {
-		t.Fatalf("RelayDupWindow must be positive, got %v", cfg.RelayDupWindow)
+	if cfg.RelayDupWindow != 2*time.Minute {
+		t.Fatalf("RelayDupWindow default = %v, want 2m", cfg.RelayDupWindow)
 	}
 }
 
@@ -93,6 +93,8 @@ func TestLoadHonoursNATSEnv(t *testing.T) {
 	t.Setenv("NATS_URL", "nats://broker:4222")
 	t.Setenv("RELAY_POLL_INTERVAL", "500ms")
 	t.Setenv("RELAY_BATCH_SIZE", "250")
+	t.Setenv("RELAY_MAX_ATTEMPTS", "9")
+	t.Setenv("RELAY_DUP_WINDOW", "30s")
 	cfg := Load()
 	if cfg.NATSURL != "nats://broker:4222" {
 		t.Fatalf("NATSURL = %q, want the env value", cfg.NATSURL)
@@ -102,6 +104,12 @@ func TestLoadHonoursNATSEnv(t *testing.T) {
 	}
 	if cfg.RelayBatchSize != 250 {
 		t.Fatalf("RelayBatchSize = %d, want 250", cfg.RelayBatchSize)
+	}
+	if cfg.RelayMaxAttempts != 9 {
+		t.Fatalf("RelayMaxAttempts = %d, want 9", cfg.RelayMaxAttempts)
+	}
+	if cfg.RelayDupWindow != 30*time.Second {
+		t.Fatalf("RelayDupWindow = %v, want 30s", cfg.RelayDupWindow)
 	}
 }
 

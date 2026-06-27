@@ -82,13 +82,18 @@ func startNATS(t *testing.T) *Conn {
 func TestEnsureTopologyIdempotent(t *testing.T) {
 	nc := startNATS(t)
 	ctx := context.Background()
-	const dup = 2 * time.Minute
+	const dup1 = 1 * time.Minute
+	const dup2 = 2 * time.Minute
 
-	if err := nc.EnsureTopology(ctx, dup); err != nil {
-		t.Fatalf("EnsureTopology (1st run): %v", err)
+	// The first run provisions the streams; the second run with a DIFFERENT dup window must
+	// CONVERGE the existing streams (CreateOrUpdateStream updating a mutable field), not just
+	// no-op — that convergence is the contract the boot path relies on when a deploy changes
+	// RELAY_DUP_WINDOW.
+	if err := nc.EnsureTopology(ctx, dup1); err != nil {
+		t.Fatalf("EnsureTopology (provision): %v", err)
 	}
-	if err := nc.EnsureTopology(ctx, dup); err != nil {
-		t.Fatalf("EnsureTopology (2nd run, idempotency): %v", err)
+	if err := nc.EnsureTopology(ctx, dup2); err != nil {
+		t.Fatalf("EnsureTopology (converge): %v", err)
 	}
 
 	cases := []struct {
@@ -114,8 +119,8 @@ func TestEnsureTopologyIdempotent(t *testing.T) {
 		if info.Config.Retention != c.retention {
 			t.Fatalf("stream %s retention = %v, want %v", c.stream, info.Config.Retention, c.retention)
 		}
-		if info.Config.Duplicates != dup {
-			t.Fatalf("stream %s dup window = %v, want %v", c.stream, info.Config.Duplicates, dup)
+		if info.Config.Duplicates != dup2 {
+			t.Fatalf("stream %s dup window = %v, want %v (converged from %v)", c.stream, info.Config.Duplicates, dup2, dup1)
 		}
 	}
 }

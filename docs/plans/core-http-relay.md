@@ -170,6 +170,17 @@ data-layer's gen-exclude, `core-data-layer.md §3`); note both in every PR body 
 > brings its own NATS via testcontainers `GenericContainer`, so it runs on the existing Docker-enabled `services-gates`
 > lane with **no compose service / no `harness.yml` change** (cleaner than the §6-D7 "add a NATS service" sketch).
 > **Deviation:** package named `natsx` not the plan's `nats` (upstream import collision) — documented.
+>
+> **Adversarial review (wf_adea04ba, 4 lenses → per-finding refute-verify): 14 raw → 5 confirmed (0 BLOCKER), all fixed.**
+> (1 IMPORTANT) the keystone non-fail-fast boot contract was asserted only in prose — every natsx test routed through the
+> Docker-only `startNATS`, so it never ran on the home box → added **Docker-free** unit tests (Connect-down → nil err +
+> `Reachable()==false` · EnsureTopology-down → error · malformed-URL → error · nil/zero-`Conn` safety) that now execute
+> everywhere. (4 NOTE) idempotency test now proves **convergence** (provision 1m → re-ensure 2m → assert 2m, not just a
+> no-error re-run); the `main.go` comment was corrected (substrate provisions at boot **only** — reconnect re-ensure
+> handed to PR-3b §1 with a no-stream-publish = *transient* rule); config tests assert exact defaults + the 2 missing env
+> knobs. Refuted (kept as-is, sound): ORDERS-stream-unbounded (one-shop low-volume, an ops-tuning concern not a 3a defect)
+> · `IsConnected`-not-JetStream-aware readiness (substrate-appropriate) · ARM brittle-to-the-PR-3d-`Server`-refactor
+> (expected to update in 3d) · relay-knobs-accept-zero (no clamp, defaults safe).
 
 ### PR-3b — relay drain loop (publish-on-commit, the correctness PR)
 1. `db/queries/outbox.sql` gains 4 queries (regenerate via `sqlc generate`, commit the `*.sql.go`):
@@ -192,6 +203,12 @@ data-layer's gen-exclude, `core-data-layer.md §3`); note both in every PR body 
    one-shot deploy, accept-downtime) makes multi-instance coordination over-engineering, and an overlapping-deploy
    double-publish is already collapsed by `Nats-Msg-Id` dedup.
 5. `main.go` launches the relay goroutine (between connect and serve) and joins it on shutdown before `pool.Close()`.
+   **Topology re-ensure (carried from the PR-3a review — the substrate provisions streams at boot ONLY, never on
+   reconnect):** the relay MUST re-ensure topology on a NATS reconnect (register a `nats.ConnectHandler` +
+   `ReconnectHandler` re-running `EnsureTopology`) AND treat a no-stream publish error (`ErrNoResponders` /
+   stream-not-found) as **transient** (leave the row `pending`, re-ensure, retry) — NOT poison — so the
+   NATS-down-at-boot-then-recovers case (the exact accept-downtime scenario, ADR-009) drains on recovery instead of
+   quarantining good money events as `failed`.
 6. **Tests (testcontainers Postgres + NATS):** `pending→published`; `Nats-Msg-Id` is set; **the late-committing-low-seq
    regression** (a tx with a *lower* `seq` that commits *after* a higher-`seq` row is still drained — the #1 silent-loss
    hazard, see §4); crash-after-PubAck-before-mark → republish deduped within the window; NATS-down → rows stay
