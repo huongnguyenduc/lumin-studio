@@ -1,0 +1,756 @@
+# Lumin Studio — core-api wire contract (single hand-authored source of truth, ADR-031).
+#
+# This file is THE contract: oapi-codegen (Go, strict-server) + openapi-typescript/openapi-fetch
+# (TS, packages/api-client) are both generated FROM it (wiring lands in PR-3c-2). Hand-edit here;
+# never hand-edit generated code. The enum sets below are kept byte-identical to four other sources
+# — internal/order constants, packages/core Zod, and the Postgres native enums — by the 4-way parity
+# test (internal/contract/parity_test.go); change an enum here and that test (in `make verify-go`)
+# fails until all four agree.
+#
+# Scope = slice-3 surfaces only (ADR-003/031, plan core-http-relay.md §3c-1). Catalog read DTOs /
+# storefront GETs are OUT (Phase-1). Money crosses the wire as int VND (`integer, format: int64`) —
+# the single display formatter stays in packages/core (no Go formatVnd this slice, ADR-031/§6 D6).
+# Property names are camelCase (matches sqlc json_tags_case_style:camel + the as-built hand DTOs).
+openapi: 3.0.3
+
+info:
+  title: Lumin Studio Core API
+  version: 0.3.0
+  description: >
+    Made-to-order 3D-print lighting/decor shop. One order state machine behind four surfaces
+    (storefront · admin · admin-mobile · extension). This contract covers the slice-3 HTTP surface:
+    self-issued auth, order intake + transitions, the admin dashboard aggregate, and the owner-only
+    settings/STK + reply-template reads. The SERVER is authoritative for money and state — clients
+    never send `total`/`subtotal`/`unitPrice` and never self-transition.
+
+servers:
+  - url: /
+    description: core-api is mounted at the root (behind the Cloudflare Tunnel edge).
+
+tags:
+  - name: auth
+    description: Self-issued email+password login → JWT in an httpOnly cookie (ADR-030).
+  - name: orders
+    description: Order intake (web public · inbox staff-gated) and RBAC-gated transitions.
+  - name: admin
+    description: Admin-gated reads + owner-only money-out config (RBAC, ADR-010/012).
+
+paths:
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: loginUser
+      summary: Email + password login; sets the session cookie on success.
+      description: >
+        Verifies the credential (bcrypt, constant-time) and, on success, mints a signed JWT set as an
+        httpOnly+Secure+SameSite cookie. A uniform error is returned for both unknown email and bad
+        password (no user enumeration). The cookie — not the body — carries the token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authenticated. The session cookie is set via Set-Cookie.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUser'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logoutUser
+      summary: Clear the session cookie.
+      security:
+        - cookieAuth: []
+      responses:
+        '204':
+          description: Session cookie cleared.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /orders:
+    post:
+      tags: [orders]
+      operationId: createOrder
+      summary: Create an order (web → PENDING_CONFIRM, public; inbox → PAID, staff/owner only).
+      description: >
+        Runs behind optional-auth: `channel=web` is public and creates a PENDING_CONFIRM order from a
+        validated `paymentProofUrl`; `channel=inbox` mints a born-PAID order with no payment record and
+        therefore REQUIRES a resolved staff/owner actor (rejected 403 otherwise — conventions §17,
+        ADR-012). Totals are computed server-side; any client `total`/`subtotal`/`unitPrice` is rejected.
+      security:
+        - {}
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderInput'
+      responses:
+        '201':
+          description: Order created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /orders/{id}/transitions:
+    post:
+      tags: [orders]
+      operationId: transitionOrder
+      summary: Advance an order's status (RBAC-gated; reconcile→PAID and →REFUNDED are owner-only).
+      description: >
+        Applies one OrderStatus transition through the domain guard. The reconcile edge
+        PENDING_CONFIRM→PAID is dispatched to ConfirmPaymentTx (the only `order.paid` emitter); every
+        other edge goes through AdvanceStatusTx. `reason` is required for CANCELLED/REFUNDED;
+        `refundProofUrl` for REFUNDED; `trackingCode` for →SHIPPING. Actor/role/timestamp come from the
+        auth context + server clock, never the body.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransitionRequest'
+      responses:
+        '200':
+          description: Transition applied; the updated order is returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /admin/dashboard:
+    get:
+      tags: [admin]
+      operationId: getDashboard
+      summary: Admin dashboard aggregates (counts + net revenue + recent orders + todos).
+      description: >
+        Returns raw int-VND amounts, counts, and OrderStatus enums — no server-formatted money, no
+        translated labels (label keys stay i18n, resolved client-side). Net revenue follows spec §04
+        (PAID/PRINTING/SHIPPING/COMPLETED minus REFUNDED, scoped to the Asia/Ho_Chi_Minh day).
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Dashboard snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardSnapshot'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /admin/settings:
+    get:
+      tags: [admin]
+      operationId: getSettings
+      summary: Read the settings singleton (admin-gated).
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Current settings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /admin/settings/bank-account:
+    patch:
+      tags: [admin]
+      operationId: updateBankAccount
+      summary: Change the VietQR STK (owner-only; persisted with an append-only audit row).
+      description: >
+        Owner-only (requireOwner). Updates `settings.bank_account` AND appends a setting_bank_audit row
+        in one transaction (UpdateBankAccountTx) — an STK change can never land without its audit trail
+        (conventions §57).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BankAccountUpdate'
+      responses:
+        '200':
+          description: Updated settings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/reply-templates:
+    get:
+      tags: [admin]
+      operationId: listReplyTemplates
+      summary: List the extension reply templates (admin-gated read).
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Reply templates, ordered by title.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReplyTemplate'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: lumin_session
+      description: Signed JWT in an httpOnly+Secure cookie (ADR-030; cookie name finalized in PR-3e-1).
+
+  responses:
+    BadRequest:
+      description: Malformed request (bad JSON, missing/invalid field).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Unauthorized:
+      description: Missing or invalid session.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Forbidden:
+      description: Authenticated but not allowed (RBAC).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Conflict:
+      description: Invalid state transition (edge not allowed from the current status).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Unprocessable:
+      description: Semantically invalid (e.g. missing reason/refund-proof/tracking-code, empty cart).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+  schemas:
+    # --- Enums (byte-identical across OpenAPI · internal/order · packages/core Zod · Postgres) -----
+    OrderStatus:
+      type: string
+      description: Order lifecycle status (spec §04). 5 progress milestones + 2 close states.
+      enum:
+        - PENDING_CONFIRM
+        - PAID
+        - PRINTING
+        - SHIPPING
+        - COMPLETED
+        - CANCELLED
+        - REFUNDED
+
+    Channel:
+      type: string
+      description: Order origin (spec §04).
+      enum:
+        - web
+        - inbox
+
+    Role:
+      type: string
+      description: >
+        Actor role for a transition (spec §08). `system` is a runtime-only actor (e.g. delivery
+        auto-complete) — it is NEVER a stored user role; see UserRole.
+      enum:
+        - owner
+        - staff
+        - system
+
+    UserRole:
+      type: string
+      description: >
+        Stored user role (Postgres `user_role`). The subset of Role that a logged-in user can hold —
+        `system` is excluded (a runtime actor, never persisted).
+      enum:
+        - owner
+        - staff
+
+    # --- Value objects ----------------------------------------------------------------------------
+    StatusEvent:
+      type: object
+      description: One appended statusHistory record (spec §02/§04). `from` is null only at creation.
+      required: [from, to, at, byUser]
+      properties:
+        from:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/OrderStatus'
+        to:
+          $ref: '#/components/schemas/OrderStatus'
+        at:
+          type: string
+          format: date-time
+          description: ISO-8601 UTC, trailing Z (e.g. 2026-06-25T00:00:00.000Z).
+        byUser:
+          type: string
+          description: Actor — a `users.id` for staff/owner, the sentinel "customer" for guest web-create.
+          minLength: 1
+        reason:
+          type: string
+          description: Required when `to` is CANCELLED or REFUNDED.
+        refundProofUrl:
+          type: string
+          format: uri
+          description: Required when `to` is REFUNDED (transfer-back proof image).
+
+    Address:
+      type: object
+      description: Vietnamese shipping address — no district level (ADR-017).
+      required: [province, ward, street]
+      properties:
+        province: { type: string }
+        ward: { type: string }
+        street: { type: string }
+
+    Personalization:
+      type: object
+      description: Per-item engraving (distinct from a Review's text — that field is `body`).
+      required: [text, zoneId]
+      properties:
+        text:
+          type: string
+          minLength: 1
+        zoneId:
+          type: string
+          minLength: 1
+
+    Customer:
+      type: object
+      required: [name, phone]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 60
+        phone:
+          type: string
+          description: Vietnamese mobile — `0` or `+84` prefix + 9 digits.
+          pattern: '^(0|\+84)\d{9}$'
+        email:
+          type: string
+          format: email
+        socialHandle:
+          type: string
+
+    OrderItem:
+      type: object
+      description: A priced line item as returned in an Order (unitPrice is server-derived).
+      required: [productId, optionIds, quantity, unitPrice]
+      properties:
+        productId:
+          type: string
+          format: uuid
+        colorId:
+          type: string
+          format: uuid
+        optionIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        personalization:
+          $ref: '#/components/schemas/Personalization'
+        quantity:
+          type: integer
+          minimum: 1
+        unitPrice:
+          type: integer
+          format: int64
+          description: Server-derived int VND (base + color/option deltas). Never accepted from the client.
+
+    OrderItemInput:
+      type: object
+      description: >
+        A requested line item. Deliberately has NO unitPrice — the server re-derives every price from
+        the catalog (always-must #2); a client price is never trusted.
+      required: [productId, quantity]
+      properties:
+        productId:
+          type: string
+          format: uuid
+        colorId:
+          type: string
+          format: uuid
+        optionIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          default: []
+        personalization:
+          $ref: '#/components/schemas/Personalization'
+        quantity:
+          type: integer
+          minimum: 1
+
+    # --- Order DTO (nested; assembled by handlers — NOT the flat sqlc row) ------------------------
+    Order:
+      type: object
+      required:
+        - id
+        - code
+        - channel
+        - status
+        - customer
+        - shippingAddress
+        - items
+        - subtotal
+        - shippingFee
+        - total
+        - statusHistory
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          description: Human order code, e.g. #LMN-0042.
+        channel:
+          $ref: '#/components/schemas/Channel'
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        customer:
+          $ref: '#/components/schemas/Customer'
+        shippingAddress:
+          $ref: '#/components/schemas/Address'
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        subtotal:
+          type: integer
+          format: int64
+        shippingFee:
+          type: integer
+          format: int64
+        total:
+          type: integer
+          format: int64
+        paymentProofUrl:
+          type: string
+          format: uri
+        paymentConfirmedAt:
+          type: string
+          format: date-time
+        refundProofUrl:
+          type: string
+          format: uri
+        trackingCode:
+          type: string
+        note:
+          type: string
+        statusHistory:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatusEvent'
+        createdAt:
+          type: string
+          format: date-time
+
+    # --- Inputs -----------------------------------------------------------------------------------
+    CreateOrderInput:
+      description: >
+        Order intake, discriminated on `channel`: `web` (public → PENDING_CONFIRM) vs `inbox`
+        (staff/owner-only → PAID). This is a NAMED schema, not an inline oneOf, so oapi-codegen
+        (strict-server) emits a usable discriminated union (AsCreateWebOrderInput /
+        ValueByDiscriminator) instead of an opaque raw-message body the handler cannot read.
+      oneOf:
+        - $ref: '#/components/schemas/CreateWebOrderInput'
+        - $ref: '#/components/schemas/CreateInboxOrderInput'
+      discriminator:
+        propertyName: channel
+        mapping:
+          web: '#/components/schemas/CreateWebOrderInput'
+          inbox: '#/components/schemas/CreateInboxOrderInput'
+
+    CreateWebOrderInput:
+      type: object
+      description: >
+        Public web order → PENDING_CONFIRM. `paymentProofUrl` (the CK receipt image) is required.
+        If any item carries `personalization`, both `personalizationAck` and `engraveEchoConfirmed`
+        MUST be true (the no-return acknowledgement + engrave-echo step, ADR-012) — enforced server-side.
+      required: [channel, customer, shippingAddress, items, paymentProofUrl]
+      properties:
+        channel:
+          type: string
+          enum: [web]
+        customer:
+          $ref: '#/components/schemas/Customer'
+        shippingAddress:
+          $ref: '#/components/schemas/Address'
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/OrderItemInput'
+        paymentProofUrl:
+          type: string
+          format: uri
+        personalizationAck:
+          type: boolean
+        engraveEchoConfirmed:
+          type: boolean
+
+    CreateInboxOrderInput:
+      type: object
+      description: >
+        Staff/owner-created inbox order → born PAID with no payment record (the staff already verified
+        money landed, conventions §17). Requires a resolved staff/owner actor; no `paymentProofUrl`.
+      required: [channel, customer, shippingAddress, items]
+      properties:
+        channel:
+          type: string
+          enum: [inbox]
+        customer:
+          $ref: '#/components/schemas/Customer'
+        shippingAddress:
+          $ref: '#/components/schemas/Address'
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/OrderItemInput'
+        note:
+          type: string
+
+    TransitionRequest:
+      type: object
+      description: >
+        One requested status change. `reason` required for CANCELLED/REFUNDED; `refundProofUrl` for
+        REFUNDED; `trackingCode` for →SHIPPING. Actor/role/time are NOT in the body (server-sourced).
+      required: [to]
+      properties:
+        to:
+          $ref: '#/components/schemas/OrderStatus'
+        reason:
+          type: string
+        refundProofUrl:
+          type: string
+          format: uri
+        trackingCode:
+          type: string
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 1
+
+    AuthUser:
+      type: object
+      description: The authenticated user (no credential material).
+      required: [id, name, email, role]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/UserRole'
+
+    # --- Settings / STK (PR-3k) -------------------------------------------------------------------
+    BankAccount:
+      type: object
+      description: VietQR STK the server renders the static QR from (conventions §57). May be unset.
+      properties:
+        bin:
+          type: string
+          description: Bank BIN (VietQR napas bank id).
+        accountNumber:
+          type: string
+        accountName:
+          type: string
+
+    BankAccountUpdate:
+      type: object
+      description: Owner-only STK change (PATCH). `reason` is the optional audit note.
+      required: [bin, accountNumber, accountName]
+      properties:
+        bin:
+          type: string
+        accountNumber:
+          type: string
+        accountName:
+          type: string
+        reason:
+          type: string
+
+    Settings:
+      type: object
+      description: >
+        The settings singleton. `shopInfo` and `shippingRules` are free-form jsonb whose precise
+        shapes are pinned in the Phase-1 storefront slice; typed loosely here on purpose.
+      required: [bankAccount, refundPolicy, updatedAt]
+      properties:
+        shopInfo:
+          type: object
+          additionalProperties: true
+        bankAccount:
+          $ref: '#/components/schemas/BankAccount'
+        shippingRules:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        refundPolicy:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+
+    ReplyTemplate:
+      type: object
+      description: An extension reply template (spec §02).
+      required: [id, title, body, variables, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        body:
+          type: string
+        variables:
+          type: array
+          items: { type: string }
+          description: Placeholder tokens, e.g. ["{tên}", "{mã đơn}", "{STK}"].
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # --- Dashboard (PR-3i) ------------------------------------------------------------------------
+    DashboardSnapshot:
+      type: object
+      required: [stats, recentOrders, todos]
+      properties:
+        stats:
+          $ref: '#/components/schemas/DashboardStats'
+        recentOrders:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecentOrder'
+        todos:
+          $ref: '#/components/schemas/DashboardTodos'
+
+    DashboardStats:
+      type: object
+      required: [newOrdersToday, revenueToday, printing, reviewsWaiting]
+      properties:
+        newOrdersToday:
+          type: integer
+        revenueToday:
+          type: integer
+          format: int64
+          description: Net revenue (int VND) for the Asia/Ho_Chi_Minh day (spec §04).
+        printing:
+          type: integer
+        reviewsWaiting:
+          type: integer
+
+    RecentOrder:
+      type: object
+      required: [id, code, customerName, status, total, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        customerName:
+          type: string
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        total:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+
+    DashboardTodos:
+      type: object
+      required: [pendingConfirm, paidWaitingPrint]
+      properties:
+        pendingConfirm:
+          type: integer
+        paidWaitingPrint:
+          type: integer
+
+    # --- Errors -----------------------------------------------------------------------------------
+    ErrorEnvelope:
+      type: object
+      description: >
+        The one error shape every endpoint returns (ADR-032). `code` is a stable machine code
+        (e.g. NOT_FOUND, INVALID_EDGE, RBAC, REASON_REQUIRED, VALIDATION); `messageKey` is a next-intl
+        key (the domain's Vietnamese prose is NEVER forwarded). `fields` maps a field path → messageKey
+        for per-field validation errors.
+      required: [code, messageKey]
+      properties:
+        code:
+          type: string
+        messageKey:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string

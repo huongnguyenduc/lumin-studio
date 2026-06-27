@@ -425,6 +425,30 @@ if [ -d "$RELAYDIR" ]; then
     bad "ARM: internal/relay LAND nhưng main.go KHÔNG start relay (relay.New + .Run trong code thực thi) — event không bao giờ publish!"
   fi
 else ok "ARM: chưa có internal/relay (relay scan-rule/start arm khi land — PR-3b)"; fi
+# OpenAPI contract (PR-3c-1): khi openapi.yaml land, test parity 4-CHIỀU phải tồn tại VÀ thực sự soi
+# cả 4 nguồn enum (openapi + internal/order + packages/core Zod + PG enum 000001) — chặn một edit
+# tương lai âm thầm rút parity xuống <4 nguồn (cho phép contract trôi khỏi Go/TS/PG mà gate vẫn xanh,
+# ADR-031). Bỏ dòng comment Go ('// ...') trước khi soi để một tham chiếu bị COMMENT-OUT không false-PASS.
+OPENAPI="$ROOT/services/core-api/openapi.yaml"
+PARITY="$ROOT/services/core-api/internal/contract/parity_test.go"
+if [ -f "$OPENAPI" ]; then
+  # Soi BODY thực thi (bỏ comment), KHÔNG chỉ token-presence: cần (a) cả 4 nguồn enum, (b) >=4 hàm
+  # Test*Parity, (c) comparator assertSame chạy thật, (d) Go bind vào `order.Statuses` (slice canonical,
+  # không phải chỉ import) — chặn một parity_test bị rút ruột thành const chết / Fatalf prose mà vẫn PASS.
+  PARITYBODY="$(grep -vE '^[[:space:]]*//' "$PARITY" 2>/dev/null)"
+  nparity="$(printf '%s' "$PARITYBODY" | grep -cE 'func Test[A-Za-z]*Parity')"
+  if [ -f "$PARITY" ] \
+     && printf '%s' "$PARITYBODY" | grep -q 'openapi.yaml' \
+     && printf '%s' "$PARITYBODY" | grep -q 'order\.Statuses' \
+     && printf '%s' "$PARITYBODY" | grep -q 'packages/core' \
+     && printf '%s' "$PARITYBODY" | grep -q '000001_enums' \
+     && printf '%s' "$PARITYBODY" | grep -q 'assertSame' \
+     && [ "$nparity" -ge 4 ]; then
+    ok "ARM: có openapi.yaml -> parity_test soi 4 nguồn enum + chạy thật (>=4 Test*Parity + assertSame + order.Statuses — ADR-031 chống contract trôi câm)"
+  else
+    bad "ARM: openapi.yaml LAND nhưng parity_test thiếu/yếu (cần 4 nguồn enum + >=4 Test*Parity + assertSame thực thi — contract có thể trôi khỏi Go/TS/PG mà gate vẫn xanh!)"
+  fi
+else ok "ARM: chưa có openapi.yaml (parity 4-chiều arm khi contract land — PR-3c-1)"; fi
 if find "$ROOT/services" -name '*.rs' 2>/dev/null | grep -q .; then
   { [ -f "$ROOT/Makefile" ] && grep -Eq '^verify-rs:' "$ROOT/Makefile"; } \
     && ok "ARM: có .rs -> Makefile verify-rs" || bad "ARM: .rs LAND nhưng thiếu Makefile verify-rs"
