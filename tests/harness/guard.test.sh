@@ -396,6 +396,35 @@ if [ -d "$NATSDIR" ]; then
     bad "ARM: internal/natsx LAND nhưng /readyz KHÔNG gác NATS hoặc thiếu EnsureTopology (NATS readiness/topology no-op!)"
   fi
 else ok "ARM: chưa có internal/natsx (NATS readiness/topology arm khi land — PR-3a)"; fi
+# Relay drain loop (PR-3b): khi internal/relay land, BẤT BIẾN ADR-029 phải được KHOÁ —
+# (1) SelectPendingOutbox quét TẬP pending 'ORDER BY seq', KHÔNG watermark 'seq>cursor', KHÔNG
+# 'SKIP LOCKED' (bigserial seq gán lúc INSERT → tx seq-thấp có thể commit-muộn → watermark bỏ
+# sót vĩnh viễn = mất event tiền câm, hazard lớn nhất); (2) main.go THỰC SỰ start relay
+# (relay.New + .Run) — relay bị gỡ khỏi lifecycle = event không bao giờ publish (no-op câm).
+RELAYDIR="$ROOT/services/core-api/internal/relay"
+if [ -d "$RELAYDIR" ]; then
+  OUTBOXSQL="$ROOT/services/core-api/db/queries/outbox.sql"
+  MAINGO="$ROOT/services/core-api/cmd/core-api/main.go"
+  # Bỏ dòng comment SQL ('-- ...') trước khi soi: prose trong outbox.sql CỐ Ý nhắc 'seq >' /
+  # 'SKIP LOCKED' để giải thích vì sao chúng bị cấm — chỉ check SQL thực thi, không check prose.
+  SQLBODY="$(grep -vE '^[[:space:]]*--' "$OUTBOXSQL" 2>/dev/null)"
+  if printf '%s' "$SQLBODY" | grep -q 'ORDER BY seq' \
+     && ! printf '%s' "$SQLBODY" | grep -qiE 'SKIP[[:space:]]+LOCKED' \
+     && ! printf '%s' "$SQLBODY" | grep -qE 'seq[[:space:]]*>'; then
+    ok "ARM: relay -> outbox quét pending-SET 'ORDER BY seq' (không watermark seq>/SKIP LOCKED — ADR-029 chống mất event tiền câm)"
+  else
+    bad "ARM: relay LAND nhưng outbox.sql vi phạm scan-pending-SET (watermark seq> hoặc SKIP LOCKED -> mất event tiền câm!)"
+  fi
+  # Bỏ dòng comment Go ('// ...') trước khi soi — một relay.New(...).Run(...) bị COMMENT-OUT
+  # (cách "gỡ" relay phổ biến nhất lúc sự cố) KHÔNG được lọt gate (đối xứng với SQL-check ở trên).
+  # Match '.Run(' BẤT KỲ ctx nào (không khoá tên biến 'relayCtx' → rename lành tính không false-RED).
+  MAINBODY="$(grep -vE '^[[:space:]]*//' "$MAINGO" 2>/dev/null)"
+  if printf '%s' "$MAINBODY" | grep -q 'relay\.New' && printf '%s' "$MAINBODY" | grep -qE '\.Run\('; then
+    ok "ARM: relay -> main.go start relay.New(...).Run( (publish-on-commit sống trong lifecycle, code thực thi)"
+  else
+    bad "ARM: internal/relay LAND nhưng main.go KHÔNG start relay (relay.New + .Run trong code thực thi) — event không bao giờ publish!"
+  fi
+else ok "ARM: chưa có internal/relay (relay scan-rule/start arm khi land — PR-3b)"; fi
 if find "$ROOT/services" -name '*.rs' 2>/dev/null | grep -q .; then
   { [ -f "$ROOT/Makefile" ] && grep -Eq '^verify-rs:' "$ROOT/Makefile"; } \
     && ok "ARM: có .rs -> Makefile verify-rs" || bad "ARM: .rs LAND nhưng thiếu Makefile verify-rs"

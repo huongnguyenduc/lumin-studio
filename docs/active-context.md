@@ -64,24 +64,37 @@ migration 000009 · split 3e-1 login / 3e-2 verify+RBAC) · 031 OpenAPI hand-yam
 idempotency DEFERRED.** Migrations: **000008** order_code_seq (3f) · **000009** user_credentials (3e-1) · **000010**
 dashboard_idx (3i). Adversarial critique earlier caught a money-path BLOCKER (uniformly-public `POST /orders` lets
 `channel=inbox` mint a born-PAID order w/o payment → fixed: inbox **staff-gated**) + added `3k` settings/STK endpoint
-the data layer deferred to slice-3 RBAC. **BUILDING (branch `feat/core-http-relay` off `main` `ffab5f8`):** docs
-baseline committed `ecd06fa`. **PR-3a relay substrate ✅ DONE — `internal/natsx` (Connect/EnsureTopology/Reachable/Close)
-+ config NATS/relay knobs + `getenvDuration` + main lifecycle (connect-after-pool, best-effort topology, close-before-pool)
-+ `/readyz` NATS check via `NATSStatus` iface; `nats.go` v1.48.0 PINNED (v1.52 forces go 1.25, like pgx). `make verify-go`
-green; 2 natsx integration tests RAN vs real NATS+JetStream (colima); guard 142 (NATS ARM proven binding mutate→RED).**
-Next dependency-free starts = `3c-1` / `3f`; then `3b` drain loop (depends 3a).
+the data layer deferred to slice-3 RBAC. docs baseline committed `ecd06fa`.
+**PR-3a relay substrate ✅ MERGED → PR #19 → `origin/main` `280e94b` (2026-06-27 11:30Z, squash; local `main` ff'd).**
+`internal/natsx` (Connect/EnsureTopology/Reachable/Close) + config NATS/relay knobs + `getenvDuration` + main lifecycle
++ `/readyz` NATS check via `NATSStatus` iface; `nats.go` v1.48.0 PINNED (v1.52 forces go 1.25, like pgx). 4-lens review
+wf_adea04ba (14→5 confirmed / 0 BLOCKER, all fixed: Docker-free non-fail-fast tests + convergence). guard 142.
+**`3b` relay drain loop ✅ PUSHED → PR #20 OPEN · CLEAN · MERGEABLE · CI GREEN (app-gates + selftest + services-gates incl relay-vs-NATS-in-CI ~2m) · chờ owner merge. (branch `feat/core-http-relay-3b` off `main` `280e94b`.)**
+`internal/relay` (drain loop: `SelectPendingOutbox`→publishOne→await PubAck→markPublished; transient-vs-poison split;
+panic-recovery; `isTransient` on real nats/jetstream v1.48 sentinels) + 4 outbox sqlc queries (scan pending-SET `ORDER BY
+seq`, NO watermark/SKIP-LOCKED) + natsx `+PublishMsg`/`+ReEnsureOnReconnect` (topology-on-reconnect carry-over from the 3a
+review) + main.go lifecycle (start relay goroutine, stopRelay cancel+join BEFORE nc.Close/pool.Close on both exit paths).
+`make verify-go` green; **9 relay tests RAN vs real PG+NATS (colima, -race)** incl. the **late-low-seq watermark-loss
+regression** + dedup-on-republish + no-stream→transient→recover + poison-quarantine; natsx+db no regression. **guard 144
+(+2 relay ARM: scan-pending-SET rule lock + relay-start-in-main, both PROVEN binding mutate→RED→restore); osm 22.** REL-01/
+REL-02 → `docs/acceptance.md` (EARS-lint pass). **No new deps** (reuse nats.go/pgx/uuid/testcontainers). Adversarial 5-lens
+review wf_81c76244 (5 lenses → per-finding refute): **12 raw → 4 confirmed (0 BLOCKER) / 8 refuted, ALL 4 FIXED** — (IMPORTANT)
+relay-start ARM grep didn't strip `//` comments → commented-out relay false-PASSED (now strips `//` + loosened `.Run(` so
+ctx-rename không false-RED; re-proven: comment-out→RED, rename→GREEN, delete→RED); (NOTE) `time.NewTicker(poll)` panic ngoài
+drainOnce recover → non-positive RELAY_POLL_INTERVAL crash cả process → `newRelay` clamp poll/batch/maxAtt≤0→default + test;
+(NOTE) panic-recovery 0 coverage → `TestDrainPanicRecovered`; (NOTE) clamp test. guard giữ 144, relay test 9→11.
+Next after `3b`: dependency-free `3c-1` (OpenAPI contract) / `3f` (order-intake prereqs).
 
 > Lịch sử app-shell/backbone Phase-0 (storefront/admin/services scaffold) đã archive — xem `git log` + PR #5–#10.
 
 ## Next steps (1–3)
-1. **Slice 2 — data layer** (off `main` `10b31f6`, nhánh mới `feat/core-data-layer`): sqlc models `spec.md §02`
-   (Product/Color/Option/Order/OrderItem/PrintJob/AssetJob/Review/Customer/User/ReplyTemplate/Setting) + **outbox**
-   + migration + pgx pool; arm `sqlc vet`+testcontainers (ADR-020). Address province→ward→street (ADR-017);
-   `channel` enum + zalo; consent record trên Customer.
-2. **Slice 3 — HTTP:** `POST /orders` (web→PENDING_CONFIRM+ảnh CK, inbox→PAID) + transition endpoints + RBAC mw +
-   outbox publish-on-commit; thay `apps/admin/src/lib/demo-dashboard.ts` placeholder bằng aggregate thật.
-3. **Housekeeping:** xoá nhánh đã merge (`feat/core-data-model` local+remote; prune `:gone` local branches) khi
-   chủ duyệt. Sau Core phase: ADR-026 lane B/C/D · REC-20/28/39.
+1. **Slice 3 · PR-3b — relay drain loop:** awaiting 5-lens review (wf_81c76244); apply confirmed fixes → commit → push →
+   PR (base `main` `280e94b`). Owner merges. **Review FROM-EACH-LINE** the outbox money-path diff (Stop-hook risk banner).
+2. **Slice 3 next sub-PRs** (after 3b): `3c-1` OpenAPI contract authoring (keystone, unblocks 3c-2→3d→3e→3g/3h/3i/3k→3j)
+   + `3f` order-intake prereqs (pricing/shipping/code/customer + migration 000008) — both dependency-free. Then `3d`
+   HTTP foundation. Full sub-PR DAG: `docs/plans/core-http-relay.md §1`.
+3. **Housekeeping:** prune `:gone` local branches + the now-merged `feat/core-http-relay` (3a) when chủ duyệt. Sau Core
+   phase: ADR-026 lane B/C/D · REC-20/28/39.
 
 ## Open questions
 - *(không có cho slice backbone — scope đã chốt "backbone only" với user; ADR đã khoá quyết định.)*
@@ -110,10 +123,27 @@ Next dependency-free starts = `3c-1` / `3f`; then `3b` drain loop (depends 3a).
 | **Core slice 2 · PR-2f — fulfillment/asset (asset_jobs + print_jobs + 3rd emit-seam)** | **merged (PR #17)** | squash → `origin/main` `b1b28a0` | `make verify-go` ✓ (golangci 0, sqlc vet+diff clean, `go test -race`); **9 jobs integration tests RAN vs real Postgres (colima)** — asset_job.created emit + payload pointer, rollback-atomicity, dup-id reject, both job-types, lifecycle mark, print-queue round-trip + stage advance, ON DELETE CASCADE; reversibility re-passes (000006 down drops 2 new enums) · guard 141 · osm 22 · D3 split asset_job_type{model_ingest,sprite_render}/outputs→Product · D6 print stage STORED · **no new deps** |
 | **Core slice 2 · PR-2g — config/reference (settings singleton + reply_templates + append-only bank audit)** | **merged (PR #18)** | squash → `origin/main` `ffab5f8` | `make verify-go` ✓ (golangci 0, sqlc vet+diff clean, `go test -race`); **6 settings integration tests RAN vs real Postgres (colima)** — singleton guard, audit seam atomic+rollback+accumulate, **append-only UPDATE+DELETE+TRUNCATE blocked**, validate() rejects null/`{}`/`[]`, seq newest-first + nil-reason→NULL, reply-template round-trip; reversibility re-passes (000007 down drops 2 tables + trigger fn, no new enums) · guard 141 · osm 22 · **closes slice 2** · 5-lens review wf_70129d8e 7 confirmed/5 refuted all fixed (TRUNCATE-bypass + validate hole) · **no new deps** |
 | **Core slice 3 — HTTP + relay (plan + ADR-029..033 locked)** | done (plan) | `feat/core-http-relay` `ecd06fa` | 13 sub-PRs / 2 tracks; planning wf_48252601 |
-| **Core slice 3 · PR-3a — relay substrate (natsx connect + topology + readyz + lifecycle)** | done | `feat/core-http-relay` (after `ecd06fa`) | `make verify-go` ✓ (golangci 0, sqlc vet+diff, race); **2 natsx integration tests RAN vs real NATS+JetStream (colima)**; guard **142** (NATS ARM proven binding mutate→RED); osm 22; **nats.go v1.48.0 pinned** (v1.52→go1.25); **4-lens review wf_adea04ba 14→5 confirmed / 0 BLOCKER all fixed** (Docker-free non-fail-fast tests + convergence test + main.go comment + config exact-defaults) |
+| **Core slice 3 · PR-3a — relay substrate (natsx connect + topology + readyz + lifecycle)** | **merged (PR #19)** | squash → `origin/main` `280e94b` (2026-06-27 11:30Z) | `make verify-go` ✓ (golangci 0, sqlc vet+diff, race); **2 natsx integration tests RAN vs real NATS+JetStream (colima)**; guard **142** (NATS ARM proven binding mutate→RED); osm 22; **nats.go v1.48.0 pinned** (v1.52→go1.25); **4-lens review wf_adea04ba 14→5 confirmed / 0 BLOCKER all fixed** (Docker-free non-fail-fast tests + convergence test + main.go comment + config exact-defaults); CI green (app-gates+selftest+services-gates incl first NATS-in-CI testcontainers) |
+| **Core slice 3 · PR-3b — relay drain loop (outbox→NATS publish-on-commit)** | **PR #20 OPEN · CLEAN · CI green · chờ merge** | `feat/core-http-relay-3b` off `280e94b` | `make verify-go` ✓ (golangci 0, sqlc vet+diff, `go test -race`); **9 relay integration tests RAN vs real PG+NATS (colima, -race)** — pending→published+Nats-Msg-Id, **late-low-seq watermark-loss regression**, no-stream→transient→recover (0 attempts burn), dedup-on-republish, poison→failed head-of-line, + **7 Docker-free unit** (isTransient/happy/broker-down/transient/poison/**panic-recovered/clamp**); natsx+db no regression; guard **144** (+2 relay ARM PROVEN binding: scan-pending-SET lock + relay-start-in-main, mutate→RED→restore — relay-start check re-proven comment-out→RED/rename→GREEN/delete→RED after review fix); osm 22; REL-01/02 → acceptance.md Cụm 4 (left `[ ]`: Go-gated by guard ARM + Go tests — the EXISTING TS ledger parser `acceptance.ledger.test.ts` only resolves TS ids; CI caught an initial `[x]`→fixed); **no new deps**; **5-lens review wf_81c76244: 12 raw→4 confirmed (0 BLOCKER)/8 refuted, ALL FIXED** (//-strip+loosen ARM grep · newRelay clamp non-positive knobs · panic-recovery+clamp tests) |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất
+**Core slice 3 · PR-3b — relay drain loop (2026-06-27):** `make verify-go` ✓ (gofmt + go vet + golangci v2 **0** + sqlc
+vet + sqlc diff + `go test -race`). **9 relay tests RAN vs real Postgres + NATS/JetStream** (testcontainers via local
+**colima**, -race, not just CI): `TestRelayDrainsPendingToStream` (pending→published, literal event_type subject +
+`Nats-Msg-Id`=outbox.id in ORDERS), `TestRelayLateLowSeqDrains` (**the watermark-loss regression** — a lower-seq tx that
+commits AFTER a higher-seq tx already published still drains; a `seq>cursor` would lose it = silent money-event loss),
+`TestRelayNoStreamTransientThenRecovers` (no-stream → transient: row stays pending + attempts 0 + inline topology
+re-ensure → drains next tick), `TestRelayDedupCollapsesRepublish` (crash-after-PubAck → same `Nats-Msg-Id` republish →
+stream stays 1 msg) + **7 Docker-free unit** (`isTransient` set, happy, broker-down-skips-publish, transient-no-attempts-burn,
+poison-quarantined-head-of-line, **panic-recovered-loop-continues, newRelay-clamps-non-positive-knobs** — 2 latter from review).
+`internal/relay/relay.go` (drain loop) + 4 `db/queries/outbox.sql`
+queries (`SelectPendingOutbox` scans pending-SET `ORDER BY seq`, **no watermark/SKIP-LOCKED**) + natsx `PublishMsg`/
+`ReEnsureOnReconnect` + main.go lifecycle (relay goroutine, stopRelay cancel+join before nc.Close/pool.Close). **publish →
+await PubAck → mark** order; transient (conn down / no-stream) leaves batch pending + no attempts burn + re-ensures;
+poison (PubAck reject on reachable broker) → `attempts++` → `failed` after `RelayMaxAttempts`, head-of-line preserved;
+panic-recovery wraps each tick. guard **144** (+2 relay ARM proven binding mutate→RED→restore), osm 22, **no new deps**.
+5-lens adversarial review wf_81c76244 running. NOTE: colima started locally to run integration tests — stopped after.
 **Core slice 2 · PR-2g — config/reference (2026-06-26):** `make verify-go` ✓ (gofmt + go vet + golangci v2 **0** +
 sqlc vet + sqlc diff + `go test -race`). **6 settings integration tests RAN vs real Postgres** (testcontainers via
 local **colima**, not just CI): singleton guard (2nd `id=true`→PK reject / `id=false`→CHECK reject), the
