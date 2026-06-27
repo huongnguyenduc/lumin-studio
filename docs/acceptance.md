@@ -46,3 +46,18 @@
   kèm ảnh CK. *(test: `checkout.creates_order_on_proof`)*
 - [x] `CHK-03` — WHEN tạo đơn hàng cá nhân hoá, the system shall yêu cầu tickbox "không đổi trả" + bước echo nội dung khắc
   **trước** thanh toán (ADR-012). *(test: `checkout.personalized_requires_ack`)*
+
+## Cụm 4 — Relay outbox→NATS (`ADR-029` · `domain-core.md` §Outbox · `docs/plans/core-http-relay.md`)
+
+> **Go-gated:** các dòng `REL-*` được gác bởi `tests/harness/guard.test.sh §ARM-GUARD` (khoá quy tắc
+> quét-tập-pending + relay-start-in-`main.go`) **+** test Go testcontainers/unit trong `services/core-api/
+> internal/relay`, KHÔNG phải parser `acceptance.ledger.test.ts` (parser chỉ resolve id TS ở Cụm 1–3 — plan §5,
+> cross-language out-of-scope).
+
+- [x] `REL-01` — WHEN một dòng outbox đã commit ở `status='pending'` (kể cả tx seq-thấp commit **muộn** sau tx seq-cao đã publish), the system shall publish nó lên NATS JetStream bằng cách **quét cả TẬP pending `ORDER BY seq`**
+  — KHÔNG watermark `seq>cursor`, KHÔNG `SKIP LOCKED` — theo thứ tự `publish → await PubAck → mark-published`, không
+  mất event tiền. *(test: `relay.TestRelayLateLowSeqDrains` + `relay.TestRelayDrainsPendingToStream`)*
+- [x] `REL-02` — WHEN NATS unreachable hoặc stream chưa provision (no-responders), the system shall coi là **transient**:
+  để cả batch `pending`, **KHÔNG** tăng `attempts`, re-ensure topology, drain khi NATS hồi (accept-downtime, ADR-009) —
+  phân biệt với **poison** (PubAck reject trên broker reachable → `attempts++` → `failed` sau `RelayMaxAttempts`, không
+  chặn head-of-line). *(test: `relay.TestRelayNoStreamTransientThenRecovers` + `relay.TestDrainTransientLeavesBatchPendingNoAttempts` + `relay.TestDrainPoisonQuarantinedAfterMaxAttempts`)*

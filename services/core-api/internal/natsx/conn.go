@@ -14,6 +14,7 @@ package natsx
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -94,6 +95,37 @@ func (c *Conn) EnsureTopology(ctx context.Context, dupWindow time.Duration) erro
 // when the broker returns.
 func (c *Conn) Reachable() bool {
 	return c != nil && c.nc != nil && c.nc.IsConnected()
+}
+
+// PublishMsg publishes msg through JetStream and awaits the PubAck. The relay (PR-3b) calls
+// it per pending outbox row; it lives here so the relay depends only on natsx (not on the
+// upstream jetstream package directly) and so a fake can satisfy the relay's broker interface
+// in Docker-free unit tests. Subject + Nats-Msg-Id are set by the caller via msg + opts.
+func (c *Conn) PublishMsg(ctx context.Context, msg *nats.Msg, opts ...jetstream.PublishOpt) (*jetstream.PubAck, error) {
+	return c.JS.PublishMsg(ctx, msg, opts...)
+}
+
+// ReEnsureOnReconnect registers a reconnect handler that re-provisions the streams whenever
+// the broker reconnects, so a topology lost across a NATS restart converges WITHOUT a
+// core-api restart. The substrate (Connect/EnsureTopology) provisions at boot only — this is
+// the slice-3 (PR-3b) carry-over that keeps the relay's accept-downtime story whole (ADR-009).
+// CreateOrUpdateStream is idempotent, so a redundant re-ensure when the streams already exist
+// is a cheap no-op. The relay's drain loop ALSO treats a no-stream publish as transient and
+// re-ensures inline, covering the down-at-boot-then-up case (which fires no reconnect). Call
+// once at startup, before the first reconnect.
+func (c *Conn) ReEnsureOnReconnect(dupWindow time.Duration, log *slog.Logger) {
+	if c == nil || c.nc == nil {
+		return
+	}
+	c.nc.SetReconnectHandler(func(*nats.Conn) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := c.EnsureTopology(ctx, dupWindow); err != nil {
+			log.Warn("nats: topology re-ensure on reconnect failed", "err", err)
+			return
+		}
+		log.Info("nats: topology re-ensured on reconnect")
+	})
 }
 
 // Close flushes any pending publishes then closes the connection synchronously. Called in

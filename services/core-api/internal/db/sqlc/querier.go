@@ -46,6 +46,9 @@ type Querier interface {
 	// INSERT + SELECT only — no UPDATE/DELETE query exists, and a DB trigger blocks them anyway.
 	GetSettings(ctx context.Context) (Setting, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
+	// IncrementOutboxAttempts bumps the per-row publish-attempt counter on a poison (per-message
+	// PubAck rejection). A transient connection/no-stream failure must NOT call this.
+	IncrementOutboxAttempts(ctx context.Context, id uuid.UUID) error
 	InsertBankAudit(ctx context.Context, arg InsertBankAuditParams) (SettingBankAudit, error)
 	// catalog.sql — catalog read/write queries (PR-2c). spec.md §02. Inserts return the row so
 	// callers (slice-3 admin handlers, tests) get the persisted record back.
@@ -57,10 +60,10 @@ type Querier interface {
 	InsertCustomer(ctx context.Context, arg InsertCustomerParams) (Customer, error)
 	InsertOption(ctx context.Context, arg InsertOptionParams) (Option, error)
 	InsertOrderItem(ctx context.Context, arg InsertOrderItemParams) (OrderItem, error)
-	// outbox.sql — the transactional outbox write path (PR-2b). InsertOutbox is the only
-	// mutation slice 2 performs on this table; the relay's SELECT/mark-published queries land
-	// in slice 3. seq/status/attempts/created_at use column defaults; published_at stays NULL
-	// until the relay publishes.
+	// outbox.sql — the transactional outbox write path (PR-2b) + the slice-3 relay drain path
+	// (PR-3b). InsertOutbox is the only mutation a domain tx performs; the four relay queries
+	// below run OUTSIDE any domain tx (the relay reads committed rows only). seq/status/attempts/
+	// created_at use column defaults; published_at stays NULL until the relay publishes.
 	InsertOutbox(ctx context.Context, arg InsertOutboxParams) error
 	InsertPrintJob(ctx context.Context, arg InsertPrintJobParams) (PrintJob, error)
 	InsertProduct(ctx context.Context, arg InsertProductParams) (Product, error)
@@ -81,11 +84,24 @@ type Querier interface {
 	ListPrintJobsByStage(ctx context.Context, stage PrintStage) ([]PrintJob, error)
 	ListProductsByStatus(ctx context.Context, status ProductStatus) ([]Product, error)
 	ListReplyTemplates(ctx context.Context) ([]ReplyTemplate, error)
+	// MarkOutboxFailed quarantines a poison row after RelayMaxAttempts so it stops re-poisoning
+	// the seq scan and blocking later rows (head-of-line). Surfaced in a future Admin view.
+	MarkOutboxFailed(ctx context.Context, id uuid.UUID) error
+	// MarkOutboxPublished flips a row to published ONLY after its JetStream PubAck (ADR-029:
+	// publish → await PubAck → mark, never mark-then-publish).
+	MarkOutboxPublished(ctx context.Context, id uuid.UUID) error
 	// ping.sql — the sqlc pipeline smoke query. It gives `sqlc vet`/`sqlc diff`
 	// substantive content before the first domain query lands (InsertOutbox, PR-2b) and
 	// proves codegen end-to-end. Readiness uses pgxpool.Ping directly, not this query.
 	// (No leading underscore in the filename — Go ignores `_`-prefixed source files.)
 	Ping(ctx context.Context) (int32, error)
+	// SelectPendingOutbox scans the WHOLE pending SET in commit order each tick (ADR-029). It
+	// deliberately scans `status='pending' ORDER BY seq` — NOT a `seq > watermark` cursor and NOT
+	// `FOR UPDATE SKIP LOCKED`: bigserial `seq` is assigned at INSERT, not COMMIT, so a lower-seq
+	// tx can become visible AFTER a higher-seq one already published. A watermark would skip that
+	// late-committing lower-seq row forever = silent money-event loss. Single instance (ADR-009)
+	// ⇒ no SKIP LOCKED / advisory lock. Uses the partial index outbox_unpublished_idx.
+	SelectPendingOutbox(ctx context.Context, limit int32) ([]SelectPendingOutboxRow, error)
 	// UpdateAssetJobStatus records a worker lifecycle transition (slice-3 callback): the new status,
 	// the attempt count, last_error (set on 'failed', NULL clears it on 'ready'), and completed_at when
 	// supplied (COALESCE keeps the prior value when the narg is NULL).

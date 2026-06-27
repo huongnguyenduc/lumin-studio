@@ -1,10 +1,11 @@
 // Command core-api is the Lumin Studio BFF (Go + Chi v5).
 //
-// Boot skeleton: load config → open the Postgres pool → build the router → serve with
-// graceful shutdown. The OrderStatus state machine and server-side money already live
-// in internal/order + internal/money; the data layer (sqlc/migrations/outbox) is landing
-// in the Core data-layer slice. Auth + RBAC, the outbox→NATS publisher and SSE come in
-// later slices. See docs/architecture.md §3 and spec.md §04.
+// Boot: load config → open the Postgres pool → connect NATS + provision streams → start the
+// outbox→NATS relay goroutine → build the router → serve with graceful shutdown. The
+// OrderStatus state machine and server-side money live in internal/order + internal/money; the
+// data layer (sqlc/migrations/outbox) in internal/db; the publish-on-commit relay in
+// internal/relay (ADR-006/029). Auth + RBAC, HTTP domain routes and SSE come in later slices.
+// See docs/architecture.md §3 and spec.md §04.
 package main
 
 import (
@@ -21,6 +22,7 @@ import (
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/httpapi"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/natsx"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/relay"
 )
 
 func main() {
@@ -46,14 +48,32 @@ func main() {
 		os.Exit(1)
 	}
 	// Provision the JetStream streams the relay publishes into. Best-effort at boot: a NATS
-	// outage at start is non-fatal (accept-downtime, ADR-009). The streams are re-provisioned
-	// only on the next boot — this substrate provisions at boot, never on reconnect, so PR-3b's
-	// relay MUST re-ensure topology on reconnect / on a no-stream publish error.
+	// outage at start is non-fatal (accept-downtime, ADR-009). If it fails here, two paths
+	// recover it without a restart: the reconnect handler below, and the relay's inline
+	// re-ensure on a no-stream publish (the down-at-boot-then-up case fires no reconnect).
 	topoCtx, topoCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	if err := nc.EnsureTopology(topoCtx, cfg.RelayDupWindow); err != nil {
-		logger.Warn("nats topology not ensured at boot (will retry on next boot)", "err", err)
+		logger.Warn("nats topology not ensured at boot (relay will re-ensure on reconnect / no-stream)", "err", err)
 	}
 	topoCancel()
+	// Re-ensure the streams whenever NATS reconnects, so a topology lost across a broker
+	// restart converges without a core-api restart (idempotent; ADR-029 carry-over).
+	nc.ReEnsureOnReconnect(cfg.RelayDupWindow, logger)
+
+	// Start the outbox→NATS relay: one in-process goroutine draining committed `pending` rows
+	// publish-on-commit (ADR-006/029). Cancel + join it on shutdown BEFORE nc.Close()/pool.Close()
+	// so it releases its NATS + DB handles first. A panic inside is recovered (relay.drainOnce).
+	relayCtx, relayStop := context.WithCancel(context.Background())
+	relayDone := make(chan struct{})
+	go func() {
+		defer close(relayDone)
+		relay.New(pool, nc, cfg, logger).Run(relayCtx)
+	}()
+	// stopRelay cancels the loop and waits for the goroutine to exit (idempotent join).
+	stopRelay := func() {
+		relayStop()
+		<-relayDone
+	}
 
 	srv := &http.Server{
 		Addr:    cfg.Addr,
@@ -82,6 +102,7 @@ func main() {
 	select {
 	case err := <-errCh:
 		logger.Error("server failed", "err", err)
+		stopRelay()
 		nc.Close()
 		pool.Close()
 		os.Exit(1)
@@ -92,9 +113,10 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
 	shutdownErr := srv.Shutdown(shutdownCtx)
-	// Close NATS (flush pending publishes) then the pool, AFTER the HTTP server drains so
-	// in-flight requests release their handles first. NATS before the pool so a future
-	// relay goroutine — which holds both — has released them by pool close.
+	// Stop the relay (cancel + join) so it stops publishing, THEN close NATS (flush pending
+	// publishes) and the pool — AFTER the HTTP server drains so in-flight requests release
+	// their handles first. The relay holds both DB + NATS, so it must exit before either closes.
+	stopRelay()
 	nc.Close()
 	pool.Close()
 	if shutdownErr != nil {
