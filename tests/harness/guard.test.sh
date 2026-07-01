@@ -405,8 +405,14 @@ else ok "ARM: chưa có testcontainers test (real-check arm khi land — PR-2b)"
 # PHẢI tồn tại — chặn một edit tương lai âm thầm gỡ NATS khỏi readiness hoặc bỏ EnsureTopology.
 NATSDIR="$ROOT/services/core-api/internal/natsx"
 if [ -d "$NATSDIR" ]; then
-  ROUTERGO="$ROOT/services/core-api/internal/httpapi/router.go"
-  if grep -q 'nats\.Reachable' "$ROUTERGO" 2>/dev/null && grep -rq 'func.*EnsureTopology' "$NATSDIR" 2>/dev/null; then
+  # Soi CẢ package httpapi (không pin 1 file): readiness đã chuyển từ router.go sang method
+  # (*Server).readiness ở server.go khi HTTP foundation land (PR-3d) — bất biến là "readiness gác
+  # NATS reachability", bất kể nằm ở file nào trong package. CHỈ soi file PRODUCTION (loại *_test.go,
+  # để một test nhắc `nats.Reachable` không false-PASS khi readiness thật bị gỡ) VÀ bỏ dòng comment
+  # ('// ...') — đồng bộ độ chặt với sibling ARM error-envelope ngay dưới (class lỗ '//' của 3b).
+  HTTPAPIDIR="$ROOT/services/core-api/internal/httpapi"
+  HTTPAPIPROD="$(find "$HTTPAPIDIR" -name '*.go' ! -name '*_test.go' -exec grep -vE '^[[:space:]]*//' {} + 2>/dev/null)"
+  if printf '%s' "$HTTPAPIPROD" | grep -q 'nats\.Reachable' && grep -rq 'func.*EnsureTopology' "$NATSDIR" 2>/dev/null; then
     ok "ARM: có internal/natsx -> /readyz gác NATS (nats.Reachable) + EnsureTopology tồn tại"
   else
     bad "ARM: internal/natsx LAND nhưng /readyz KHÔNG gác NATS hoặc thiếu EnsureTopology (NATS readiness/topology no-op!)"
@@ -465,6 +471,32 @@ if [ -f "$OPENAPI" ]; then
     bad "ARM: openapi.yaml LAND nhưng parity_test thiếu/yếu (cần 4 nguồn enum + >=4 Test*Parity + assertSame thực thi — contract có thể trôi khỏi Go/TS/PG mà gate vẫn xanh!)"
   fi
 else ok "ARM: chưa có openapi.yaml (parity 4-chiều arm khi contract land — PR-3c-1)"; fi
+# HTTP error envelope (PR-3d): khi mapper landed (internal/httpapi/errors.go), router PHẢI wire
+# custom strict-server error hook (NewStrictHandlerWithOptions + ResponseErrorHandlerFunc) — KHÔNG
+# để nguyên default plaintext (http.Error(w, err.Error())) của oapi-codegen: default sẽ đẩy nguyên
+# TransitionError.Message tiếng Việt ra wire (rò message miền + vi phạm always-must #3 i18n / ADR-032).
+# Và errors.go PHẢI map *order.TransitionError (bảng thật, không phải stub). Bỏ dòng comment ('// ...')
+# trước khi soi để một wiring bị COMMENT-OUT không false-PASS (cùng class lỗ '//' của relay-ARM 3b).
+ERRGO="$ROOT/services/core-api/internal/httpapi/errors.go"
+if [ -f "$ERRGO" ]; then
+  ROUTERGO="$ROOT/services/core-api/internal/httpapi/router.go"
+  ROUTERBODY="$(grep -vE '^[[:space:]]*//' "$ROUTERGO" 2>/dev/null)"
+  ERRBODY="$(grep -vE '^[[:space:]]*//' "$ERRGO" 2>/dev/null)"
+  # Cần CẢ 2 seam lỗi của oapi-codegen bị override, không chỉ strict-layer: (a) strict
+  # ResponseErrorHandlerFunc (body-decode + handler-return) VÀ (b) chi-wrapper qua
+  # `ChiServerOptions` (param-binding chạy TRƯỚC strict — non-UUID {id} → nếu để `HandlerFromMux`
+  # trần thì rơi về plaintext default rò input; review wf_f3cb8fbd finding 1/2). `ChiServerOptions`
+  # trong router.go = bằng chứng dùng HandlerWithOptions-với-ErrorHandlerFunc, không phải HandlerFromMux trần.
+  if printf '%s' "$ROUTERBODY" | grep -q 'NewStrictHandlerWithOptions' \
+     && printf '%s' "$ROUTERBODY" | grep -q 'ResponseErrorHandlerFunc' \
+     && printf '%s' "$ROUTERBODY" | grep -q 'ChiServerOptions' \
+     && printf '%s' "$ERRBODY" | grep -q 'func mapError' \
+     && printf '%s' "$ERRBODY" | grep -q 'TransitionError'; then
+    ok "ARM: có httpapi/errors.go -> router wire CẢ 2 seam (strict ResponseErrorHandlerFunc + chi ChiServerOptions.ErrorHandlerFunc) + mapError map TransitionError (ErrorEnvelope, không rò message miền/param — ADR-032/always-must #3)"
+  else
+    bad "ARM: httpapi/errors.go LAND nhưng router KHÔNG wire đủ 2 seam lỗi (cần NewStrictHandlerWithOptions+ResponseErrorHandlerFunc + ChiServerOptions cho param-binding) hoặc mapError thiếu bảng TransitionError -> plaintext default rò TransitionError.Message/param ra wire!"
+  fi
+else ok "ARM: chưa có httpapi/errors.go (error-envelope arm khi HTTP foundation land — PR-3d)"; fi
 if find "$ROOT/services" -name '*.rs' 2>/dev/null | grep -q .; then
   { [ -f "$ROOT/Makefile" ] && grep -Eq '^verify-rs:' "$ROOT/Makefile"; } \
     && ok "ARM: có .rs -> Makefile verify-rs" || bad "ARM: .rs LAND nhưng thiếu Makefile verify-rs"

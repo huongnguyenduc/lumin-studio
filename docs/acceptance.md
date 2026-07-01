@@ -63,3 +63,15 @@
   để cả batch `pending`, **KHÔNG** tăng `attempts`, re-ensure topology, drain khi NATS hồi (accept-downtime, ADR-009) —
   phân biệt với **poison** (PubAck reject trên broker reachable → `attempts++` → `failed` sau `RelayMaxAttempts`, không
   chặn head-of-line). *(test: `relay.TestRelayNoStreamTransientThenRecovers` + `relay.TestDrainTransientLeavesBatchPendingNoAttempts` + `relay.TestDrainPoisonQuarantinedAfterMaxAttempts`)*
+
+## Cụm 5 — HTTP error envelope (`ADR-032` · `docs/plans/core-http-relay.md` §3d)
+
+> **Go-gated — CỐ Ý để `[ ]`** (cùng lý do Cụm 4): test của `ERR-*` là **Go** (`services/core-api/internal/httpapi`),
+> parser TS không resolve được → tick `[x]` sẽ làm parser ĐỎ. **Gate thật** = `guard.test.sh §ARM` (khoá router wire
+> custom error hook + `mapError` map `TransitionError`) **+** chính các test Go đó. `[ ]` = "không do parser-TS gác".
+
+- [ ] `ERR-01` — WHEN một domain error nổi lên biên HTTP (`*order.TransitionError` / `db.Err*` / `money.ErrInvalidAmount`), the system shall trả về **một `ErrorEnvelope {code, messageKey, fields?}`** (ADR-032) ở đúng status ánh xạ
+  (`INVALID_EDGE`→409 · `RBAC`→403 · `REASON/REFUND/PROOF_REQUIRED`+`NO_ITEMS`+`INVALID_*`→422 · `NOT_FOUND`→404 ·
+  `INVALID_ACTOR/TIMESTAMP`→400 · unmapped→500) và **KHÔNG BAO GIỜ** forward `TransitionError.Message` tiếng Việt ra wire
+  (always-must #3 i18n; client map `messageKey`→next-intl). *(test: `httpapi.TestMapErrorTable` +
+  `httpapi.TestMapErrorNeverLeaksDomainMessage` + `httpapi.TestDomainRouteReturns501Envelope`)*
