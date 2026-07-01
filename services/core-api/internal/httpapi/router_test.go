@@ -12,11 +12,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// newTestRouter builds a router with a nil pool and nil NATS — readiness degrades to
-// liveness, so the smoke probes return 200 without those deps (the dead-dep paths are
-// covered separately).
+// newTestRouter builds a router with a nil pool, nil NATS, and nil auth issuer — readiness
+// degrades to liveness, so the smoke probes return 200 without those deps (the dead-dep and
+// login paths are covered separately; auth is not exercised here).
 func newTestRouter() http.Handler {
-	return NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil)
+	return NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
 }
 
 // fakeNATS is a stub NATSStatus for the readiness branch tests (no real broker).
@@ -56,7 +56,7 @@ func TestReadyzUnavailableWhenDBDown(t *testing.T) {
 	}
 	defer pool.Close()
 
-	r := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil)
+	r := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 	if rec.Code != http.StatusServiceUnavailable {
@@ -67,7 +67,7 @@ func TestReadyzUnavailableWhenDBDown(t *testing.T) {
 // With a NATS handle that reports unreachable (nil pool so the DB check is skipped),
 // readiness must report 503 and name nats as the failing dep.
 func TestReadyzUnavailableWhenNATSDown(t *testing.T) {
-	r := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, fakeNATS{reachable: false})
+	r := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, fakeNATS{reachable: false}, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 	if rec.Code != http.StatusServiceUnavailable {
@@ -80,7 +80,7 @@ func TestReadyzUnavailableWhenNATSDown(t *testing.T) {
 
 // A reachable NATS handle (nil pool) keeps readiness at 200.
 func TestReadyzOKWhenNATSReachable(t *testing.T) {
-	r := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, fakeNATS{reachable: true})
+	r := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, fakeNATS{reachable: true}, nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 	if rec.Code != http.StatusOK {

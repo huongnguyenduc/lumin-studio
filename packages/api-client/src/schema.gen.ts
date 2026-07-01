@@ -479,6 +479,8 @@ export interface operations {
             /** @description Authenticated. The session cookie is set via Set-Cookie. */
             200: {
                 headers: {
+                    /** @description Signed JWT in an httpOnly + Secure + SameSite=Strict session cookie (the token is not in the body). */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -501,6 +503,8 @@ export interface operations {
             /** @description Session cookie cleared. */
             204: {
                 headers: {
+                    /** @description Expires the session cookie immediately (logout). */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content?: never;

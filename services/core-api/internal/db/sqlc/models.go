@@ -704,9 +704,10 @@ type SettingBankAudit struct {
 }
 
 type User struct {
-	ID     uuid.UUID `json:"id"`
-	Name   string    `json:"name"`
-	Email  string    `json:"email"`
-	Role   UserRole  `json:"role"`
-	Active bool      `json:"active"`
+	ID           uuid.UUID `json:"id"`
+	Name         string    `json:"name"`
+	Email        string    `json:"email"`
+	Role         UserRole  `json:"role"`
+	Active       bool      `json:"active"`
+	PasswordHash *string   `json:"passwordHash"`
 }

@@ -10,8 +10,9 @@ import (
 // api.StrictServerInterface so the contract compiles and every route is mounted; each
 // stub returns errNotImplemented (rendered as 501 NOT_IMPLEMENTED, ErrorEnvelope) until
 // its domain PR lands. Replace — do not add to — each stub as the real handler arrives:
-//   LoginUser/LogoutUser → PR-3e-1 · CreateOrder → PR-3g · TransitionOrder → PR-3h ·
-//   GetDashboard → PR-3i · GetSettings/UpdateBankAccount/ListReplyTemplates → PR-3k.
+//   LoginUser/LogoutUser → PR-3e-1 (done, see auth.go) · CreateOrder → PR-3g ·
+//   TransitionOrder → PR-3h · GetDashboard → PR-3i ·
+//   GetSettings/UpdateBankAccount/ListReplyTemplates → PR-3k.
 
 // GetDashboard is not implemented yet (PR-3i).
 func (s *Server) GetDashboard(_ context.Context, _ api.GetDashboardRequestObject) (api.GetDashboardResponseObject, error) {
@@ -30,16 +31,6 @@ func (s *Server) GetSettings(_ context.Context, _ api.GetSettingsRequestObject) 
 
 // UpdateBankAccount is not implemented yet (PR-3k, owner-only).
 func (s *Server) UpdateBankAccount(_ context.Context, _ api.UpdateBankAccountRequestObject) (api.UpdateBankAccountResponseObject, error) {
-	return nil, errNotImplemented
-}
-
-// LoginUser is not implemented yet (PR-3e-1).
-func (s *Server) LoginUser(_ context.Context, _ api.LoginUserRequestObject) (api.LoginUserResponseObject, error) {
-	return nil, errNotImplemented
-}
-
-// LogoutUser is not implemented yet (PR-3e-1).
-func (s *Server) LogoutUser(_ context.Context, _ api.LogoutUserRequestObject) (api.LogoutUserResponseObject, error) {
 	return nil, errNotImplemented
 }
 

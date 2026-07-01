@@ -76,3 +76,9 @@ func (i *Identity) UserByEmail(ctx context.Context, email string) (sqlc.User, er
 	}
 	return u, err
 }
+
+// UpsertOwnerCredential seeds or rotates the first owner's login credential (PR-3e-1,
+// `make seed-owner`). Idempotent on the UNIQUE email: re-running rotates the password hash.
+func (i *Identity) UpsertOwnerCredential(ctx context.Context, arg sqlc.UpsertOwnerCredentialParams) (sqlc.User, error) {
+	return i.q.UpsertOwnerCredential(ctx, arg)
+}

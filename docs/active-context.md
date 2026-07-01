@@ -128,8 +128,8 @@ binding** (mutate→RED→restore). **Deps:** +oapi-codegen/runtime v1.1.2 +apap
 `skip-prune` → moved rationale into `generate:` block + dropped the line. (1 review lens stalled/no-report — its
 territory self-verified: go 1.23 preserved, golangci 0, CI go-1.23+network compatible.)
 
-**`3d` HTTP foundation ✅ BUILT · verify green · 5-lens review DONE (10→5 confirmed/5 refuted, ALL FIXED) · chờ push→PR.
-(branch `feat/core-http-relay-3d` off `main` `d10d30e`.)** The keystone the whole HTTP track funnels through (unblocks 3e→{3g,3h,3i,3k}→3j). Chose
+**`3d` HTTP foundation ✅ MERGED (PR #23) → `origin/main` `eac9b0f` (2026-07-01 09:29Z, squash; local `main` ff'd).
+CONTRACT/HTTP TRACK 3c-1→3c-2→3d COMPLETE (keystone landed).** (branch `feat/core-http-relay-3d` off `main` `d10d30e`, now merged/stale.) The keystone the whole HTTP track funnels through (unblocks 3e→{3g,3h,3i,3k}→3j). Chose
 **strict-server** wiring (ADR-031 D8): `internal/httpapi/{errors.go,server.go,stubs.go}` + rewired `router.go`. **errors.go**
 = the ONE domain-error→(status,`api.ErrorEnvelope{code,messageKey,fields?}`) table (ADR-032): `*order.TransitionError`
 reuses its code verbatim (INVALID_EDGE→409·RBAC→403·REASON/REFUND/PROOF_REQUIRED→422·INVALID_ACTOR/TIMESTAMP→400·unknown→422)
@@ -160,22 +160,46 @@ onto one physical line. (NOTE) NATS ARM dir-grep could match tests/comments → 
 carries the Vietnamese message), 501-not-in-contract (deliberate stubs), route-group-not-established (plan-sanctioned strict-server + auth
 seam to 3e-2), 2× ARM-presence-only (backstopped by the real Go tests).
 
+**`3e-1` auth self-issued login ✅ BUILT · verify green · 5-lens review DONE (4→3 confirmed/1 refuted, ALL FIXED) · chờ push→PR.
+(branch `feat/core-http-relay-3e-1` off `main` `eac9b0f`.)** The critical-path head after 3d; unblocks 3e-2 (verify+RBAC) → the
+whole handler fan-out. ADR-030 self-issued JWT. **User sub-decisions (AskUserQuestion): owner-seed = `make seed-owner` CLI
+(pure-DDL migration, NO committed secret); token = 12h JWT, NO refresh.** Landed: migration **`000009_user_credentials`**
+(`ALTER TABLE users ADD COLUMN password_hash text` NULLABLE — a credential-less user can't log in) + `UpsertOwnerCredential`
+upsert-on-email (idempotent rotate) · **`internal/auth`** (`Issuer` HS256 via `go-chi/jwtauth/v5`; `Issue`→httpOnly+Secure+
+SameSite=**Strict** cookie, token-in-cookie-only; `Clear`; `VerifyPassword` bcrypt **timing-equalized** w/ a dummy-hash compare
+on the nil/unknown path → no user-enumeration; `HashPassword`) · **`internal/httpapi/auth.go`** `LoginUser`/`LogoutUser`
+(lookup→bcrypt→mint; uniform 401 for unknown-email==wrong-password; 500-on-DB-fault no-leak) using the generated
+`LoginUser200JSONResponse{Body,Headers.SetCookie}` (openapi Set-Cookie header now formal) · `cmd/seed-owner` + Makefile target ·
+config `JWT_SECRET`/`JWT_TTL`(12h)/`COOKIE_SECURE`(true)/`ALLOW_DEV_JWT_SECRET` + **`UsesForgeableJWTSecret()` → main.go
+FAIL-FAST** when the public dev secret would sign tokens without opt-in (money-out: forgeable owner → reconcile→PAID/STK). `users`
+`SELECT *` auto-picks `password_hash` (sqlc `*string`). **Server** gained `auth *auth.Issuer` + `users userReader` seam
+(Docker-free login unit tests via injected fake); `NewServer`/`NewRouter` +1 param (readyz tests pass nil). `make verify-go` rc=0
+(golangci 0, sqlc vet+diff, oapi+sqlc regen committed, `go test -race`) · **guard 148** (+1 auth ARM PROVEN binding ×3: HttpOnly ·
+bcrypt.CompareHashAndPassword · login VerifyPassword(nil) — each mutate→RED→restore) · TS api-client typecheck+stale-gate+lint green
+(schema.gen.ts regen for Set-Cookie) · acceptance **Cụm 6 AUTH-01/02** (Go-gated `[ ]`) · docs/operations.md §4b (seed + env). **Deps:
++go-chi/jwtauth/v5 v5.4.0 (+lestrrat jwx/v3 tree), x/crypto v0.37→v0.38 indirect→DIRECT; go directive HELD 1.23.6.** **No new ADR**
+(implements ADR-030). **5-lens adversarial review wf_eab30b50: 4 raw → 3 confirmed (0 BLOCKER, all IMPORTANT) / 1 refuted (README
+out-of-scope), ALL FIXED** — (security) dev-secret Warn insufficient → FAIL-FAST + `ALLOW_DEV_JWT_SECRET` opt-in + `UsesForgeableJWTSecret`
+predicate + config tests; (contract) openapi didn't formally declare Set-Cookie header → added `headers:` (regen'd api.gen.go typed
+`Headers.SetCookie`, handler now consumes it, custom cookie-response types deleted) + TS schema regen; (spec-adr) operations.md
+missing seed-owner docs → §4b. ~430 lines non-test src (auth is invariant-dense; plan budgeted 320, soft ≤400 — cohesive 1-axis).
+
 > Lịch sử app-shell/backbone Phase-0 (storefront/admin/services scaffold) đã archive — xem `git log` + PR #5–#10.
 
 ## Next steps (1–3)
-1. **Slice 3 · PR-3d — HTTP foundation:** after the adversarial review lands + any fixes, push `feat/core-http-relay-3d`
-   → PR (base `main` `d10d30e`). Owner merges. PR body: ~291 lines non-test src (< 400 budget); ADR-032 error envelope
-   (no new ADR); strict-server 501 stubs replaced per-endpoint by 3e–3k; guard 147 (+1 error-envelope ARM proven binding,
-   + fixed NATS ARM file-pin); ERR-01 acceptance row (Go-gated `[ ]`); **no new deps**; Docker-free.
-2. **Slice 3 next sub-PRs** (after 3d merges): `3e-1` auth self-issued login (ADR-030: `POST /auth/login` + bcrypt + JWT
-   cookie + migration `000009_user_credentials`) → `3e-2` JWT-verify + RBAC (fills the StrictMiddlewareFunc auth seam 3d
-   left) → handler fan-out `{3g checkout · 3h transitions · 3i dashboard · 3k settings/STK}` → `3j` admin frontend. In
-   parallel (independent node): `3f` order-intake prereqs (by-id catalog sqlc + pricing/shipping/code/customer helpers +
-   migration `000008_order_code_seq`). Full DAG: `docs/plans/core-http-relay.md §1`.
-3. **Housekeeping:** prune `:gone` local branches + now-merged `feat/core-http-relay`(3a)/`-3b`/`-3c-1`/`-3c-2` when chủ
-   duyệt. Harness follow-up (out of 3d scope): the **testcontainers ARM** greps Go `_test.go` for `postgres.Run` unanchored
-   → a `//`-commented boot call could false-pass (same comment-out class fixed for the recipe ARMs); harden in a
-   harness-audit round. Sau Core phase: ADR-026 lane B/C/D · REC-20/28/39.
+1. **Slice 3 · PR-3e-1 — auth login:** BUILT + all gates green + review-fixed on `feat/core-http-relay-3e-1` (off `main`
+   `eac9b0f`). Push → PR (owner merges). PR body: migration 000009 (pure DDL) + `make seed-owner` CLI (no committed secret) +
+   `internal/auth` + login/logout handlers + fail-fast on forgeable dev-secret; deps +jwtauth/v5 +x/crypto-direct (go 1.23.6
+   held); guard 148 (+1 auth ARM proven ×3); ADR-030 (no new ADR); AUTH-01/02 acceptance `[ ]`; ~430 non-test src (1-axis).
+2. **After 3e-1 merges:** critical path continues **`3e-2` JWT-verify middleware + RBAC** (fills the StrictMiddlewareFunc auth
+   seam 3d left; reuse `authIssuer.Verifier()`; map `sub`→`Identity.UserByID`→`order.Role`; `requireOwner`; optional-auth mw;
+   EARS `RBA-01`) → then handler fan-out `{3g checkout (needs 3f) · 3h transitions · 3i dashboard · 3k settings/STK}` → `3j`
+   admin frontend (needs 3i). **Independent parallel node still open: `3f`** order-intake prereqs (by-id catalog sqlc +
+   pricing/shipping/code/customer helpers + migration `000008_order_code_seq`; feeds only 3g). Full DAG: `core-http-relay.md §1`.
+3. **Housekeeping:** prune now-merged local branches `feat/core-http-relay`(3a)/`-3b`/`-3c-1`/`-3c-2`/`-3d` when chủ duyệt (all
+   squash-merged → won't show under `git branch --merged`; verify by PR#, not sha). Harness follow-up: the **testcontainers ARM**
+   greps Go `_test.go` for `postgres.Run` unanchored → a `//`-commented boot call could false-pass (same comment-out class fixed
+   for the recipe ARMs); harden in a harness-audit round. Sau Core phase: ADR-026 lane B/C/D · REC-20/28/39.
 
 ## Open questions
 - *(không có cho slice backbone — scope đã chốt "backbone only" với user; ADR đã khoá quyết định.)*
@@ -208,10 +232,26 @@ seam to 3e-2), 2× ARM-presence-only (backstopped by the real Go tests).
 | **Core slice 3 · PR-3b — relay drain loop (outbox→NATS publish-on-commit)** | **merged (PR #20)** | merge → `origin/main` `c3b2004` (2026-06-27) | `make verify-go` ✓; **9 relay integration tests RAN vs real PG+NATS (colima, -race)** — pending→published+Nats-Msg-Id, **late-low-seq watermark-loss regression**, no-stream→transient→recover (0 attempts burn), dedup-on-republish, poison→failed head-of-line, + **7 Docker-free unit**; guard **144** (+2 relay ARM PROVEN binding: scan-pending-SET lock + relay-start-in-main); osm 22; REL-01/02 → acceptance.md `[ ]` (Go-gated by guard ARM + Go tests); **no new deps**; **5-lens review wf_81c76244: 12 raw→4 confirmed (0 BLOCKER) ALL FIXED**; CI green (incl relay-vs-NATS-in-CI) |
 | **Core slice 3 · PR-3c-1 — OpenAPI contract authoring + 4-way enum parity + spec-sync** | **merged (PR #21)** | squash → `origin/main` `f1b35d2` (2026-06-27 23:45Z) | hand-authored `openapi.yaml` (3.0.3, slice-3 surfaces only, nested Order DTO, **named `CreateOrderInput` oneOf** web/inbox, inputs omit unitPrice/total → server-authoritative, ErrorEnvelope, Settings/STK/ReplyTemplate/Dashboard, cookieAuth) + `internal/contract/{parity_test,structure_test}.go` (**4-way enum parity** OpenAPI==order==packages/core==PG; Role{owner,staff,system} vs UserRole/PG user_role{owner,staff}; + refs-resolve/opId-unique) + `spec.md §02` Review text→body + guard contract ARM; `make verify-go` ✓ (golangci 0, sqlc vet+diff, race incl parity) · **guard 145** (+1 contract ARM, tightened ≥4 Test*Parity+assertSame, PROVEN binding) · osm 22 · **parity PROVEN binding** REFUNDED-drift→RED · yaml.v3 indirect→direct (only dep change) · ADR-031 (no new ADR) · no EARS · **4-lens review wf_a95388f8-5d8: 3 confirmed (1 BLOCKER oapi-codegen opaque-union → named schema, RE-RAN codegen → 10 union methods) / 4 refuted, all fixed** |
 | **Core slice 3 · PR-3c-2 — codegen (oapi-codegen strict-server) + `@lumin/api-client` + guard oapi ARM + D13** | **merged (PR #22)** | squash → `origin/main` `d10d30e` (2026-07-01 07:16Z) | `make verify-go` ✓ (golangci 0, sqlc vet+diff, **oapi generate+git-diff stale-check**, race) · `pnpm verify` ✓ (lint+typecheck+test incl new stale-gate + format:check; prettier/eslint ignore `*.gen.ts`) · guard **146** (+1 oapi ARM PROVEN binding: recipe must have `go generate`+`git diff --exit-code`, comment-strip vs `#`-false-pass) · osm 22 · committed `api.gen.go` (strict-server + chi-server, named `CreateOrderInput` union) + `schema.gen.ts` (openapi-typescript 7.13.0) · **go directive 1.23.6 preserved** (runtime v1.1.2 pinned) · D13 `plan.md` ledger checkbox ticked (Go REL-* stay `[ ]`) · **4-lens review wf_58d3da06: 2 confirmed (0 BLOCKER, both NOTE) / 0 refuted, both FIXED** (guard comment-strip + oapi-yaml comment) · deps +oapi-codegen/runtime v1.1.2 +openapi-typescript/openapi-fetch |
-| **Core slice 3 · PR-3d — HTTP foundation (ErrorEnvelope + domain-error→status mapper + Server struct + withTx + strict-server stubs)** | **BUILT · verify green · review DONE (all fixed) · chờ push→PR** | `feat/core-http-relay-3d` off `main` `d10d30e` | `make verify-go` ✓ (golangci 0, sqlc vet+diff, oapi stale-check, `go test -race` incl httpapi mapError/withTx/501-envelope/400-body-bind/400-param-bind tests) · guard **147** (+1 error-envelope ARM PROVEN binding [needs BOTH strict+chi seams] · + hardened NATS ARM [exclude tests+strip comments]; mutate→RED→restore) · osm 22 · TS ledger 17/17 · strict-server (ADR-031 D8); ADR-032 one-envelope + no-leak of Vietnamese `TransitionError.Message` NOR raw param/parser strings (BOTH oapi seams overridden) ; 8 endpoints = 501 stubs (3e–3k) · ERR-01 acceptance `[ ]` (Go-gated) · **no new deps · no new ADR** · Docker-free · ~300 lines non-test src · **5-lens review wf_f3cb8fbd: 10→5 confirmed/5 refuted, ALL FIXED** (2×IMPORTANT chi-wrapper plaintext leak on bad path-param → HandlerWithOptions+ChiServerOptions.ErrorHandlerFunc + regression test; 2×BLOCKER self-inflicted ERR-01 EARS line-wrap → reflowed; 1×NOTE NATS ARM widen) |
+| **Core slice 3 · PR-3e-1 — auth self-issued login (migration 000009 + `internal/auth` + login/logout + seed-owner CLI)** | **BUILT · verify green · review DONE (all fixed) · chờ push→PR** | `feat/core-http-relay-3e-1` off `main` `eac9b0f` | `make verify-go` ✓ (golangci 0, sqlc vet+diff, oapi+sqlc regen committed, `go test -race`) · guard **148** (+1 auth ARM PROVEN binding ×3: HttpOnly · bcrypt.CompareHashAndPassword · login VerifyPassword(nil); each mutate→RED→restore) · TS api-client typecheck+stale-gate+lint ✓ (schema.gen.ts regen for Set-Cookie) · ADR-030 self-issued JWT (no new ADR); user sub-decisions = seed-owner CLI (no committed secret) + 12h/no-refresh · **FAIL-FAST on forgeable dev-secret** (`UsesForgeableJWTSecret`+`ALLOW_DEV_JWT_SECRET`) · httpOnly+Secure+SameSite=Strict cookie, token-cookie-only, uniform-401 no-enumeration (bcrypt timing-equalized) · AUTH-01/02 acceptance `[ ]` (Go-gated) · **deps +go-chi/jwtauth/v5 v5.4.0 +x/crypto direct; go 1.23.6 HELD** · ~430 non-test src (1-axis) · **5-lens review wf_eab30b50: 4→3 confirmed (0 BLOCKER) / 1 refuted, ALL FIXED** (dev-secret fail-fast + openapi Set-Cookie header + operations.md §4b) |
+| **Core slice 3 · PR-3d — HTTP foundation (ErrorEnvelope + domain-error→status mapper + Server struct + withTx + strict-server stubs)** | **merged (PR #23)** | squash → `origin/main` `eac9b0f` (2026-07-01 09:29Z) | `make verify-go` ✓ (golangci 0, sqlc vet+diff, oapi stale-check, `go test -race` incl httpapi mapError/withTx/501-envelope/400-body-bind/400-param-bind tests) · guard **147** (+1 error-envelope ARM PROVEN binding [needs BOTH strict+chi seams] · + hardened NATS ARM [exclude tests+strip comments]; mutate→RED→restore) · osm 22 · TS ledger 17/17 · strict-server (ADR-031 D8); ADR-032 one-envelope + no-leak of Vietnamese `TransitionError.Message` NOR raw param/parser strings (BOTH oapi seams overridden) ; 8 endpoints = 501 stubs (3e–3k) · ERR-01 acceptance `[ ]` (Go-gated) · **no new deps · no new ADR** · Docker-free · ~300 lines non-test src · **5-lens review wf_f3cb8fbd: 10→5 confirmed/5 refuted, ALL FIXED** (2×IMPORTANT chi-wrapper plaintext leak on bad path-param → HandlerWithOptions+ChiServerOptions.ErrorHandlerFunc + regression test; 2×BLOCKER self-inflicted ERR-01 EARS line-wrap → reflowed; 1×NOTE NATS ARM widen) |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất
+**Core slice 3 · PR-3e-1 — auth self-issued login (2026-07-01):** `make verify-go` rc=0 (gofmt + vet + golangci v2 **0** +
+sqlc vet + sqlc diff + oapi generate+git-diff stale-check + `go test -race`) · guard.test.sh **148 / 0** · osm 22 · TS
+api-client (typecheck + `schema.stale.test.ts` + eslint) ✓ · packages/core 42/42 (acceptance ledger 19, AUTH-01/02 consumed).
+**New:** migration `000009_user_credentials` (nullable `password_hash`, pure DDL) + `db/queries/users.sql` `UpsertOwnerCredential`
++ sqlc regen; `internal/auth/auth.go` (`Issuer` jwtauth/v5 HS256 · `Issue`/`Clear` httpOnly+Secure+SameSite=Strict cookie ·
+`VerifyPassword` bcrypt timing-equalized · `HashPassword`); `internal/httpapi/auth.go` (`LoginUser`/`LogoutUser`, uniform-401
+no-enumeration, 500-no-leak, generated `Headers.SetCookie`); `internal/httpapi/server.go` (`auth`+`users userReader` seam);
+`cmd/seed-owner`; config JWT/cookie knobs + `UsesForgeableJWTSecret` fail-fast; `main.go` wiring; `openapi.yaml` Set-Cookie
+headers (+api.gen.go/schema.gen.ts regen); guard auth ARM; acceptance Cụm 6; operations.md §4b. **Tests:** auth unit (cookie
+flags/claims/foreign-secret-reject/clear/VerifyPassword), httpapi login E2E (success-cookie-not-in-body · wrong-pw/unknown-email
+uniform-401 · inactive · DB-fault-500-no-leak · logout-clears), config auth-defaults + `TestUsesForgeableJWTSecret` table, db
+`TestUpsertOwnerCredentialRoundTrip` (integration, skip-local/run-CI) + NULL-hash assertion. Guard: +1 auth ARM PROVEN binding ×3
+(HttpOnly · bcrypt-compare · VerifyPassword(nil); mutate→RED→restore). **Deps:** +go-chi/jwtauth/v5 v5.4.0 (+lestrrat jwx/v3),
+x/crypto→direct; **go directive HELD 1.23.6**. **No new ADR** (ADR-030). **5-lens review wf_eab30b50: 4→3 confirmed / 1 refuted,
+ALL FIXED** (dev-secret fail-fast + openapi Set-Cookie header + operations.md docs). colima NOT needed (DB integration skips local).
 **Core slice 3 · PR-3d — HTTP foundation (2026-07-01):** `make verify-go` rc=0 (gofmt + vet + golangci v2 **0** + sqlc
 vet + sqlc diff + oapi generate+git-diff stale-check + `go test -race`) · guard.test.sh **147 / 0** · osm 22. **New:**
 `internal/httpapi/errors.go` (mapError ADR-032 table + `writeError` + strict hooks `handleResponseError`/`handleRequestError`),

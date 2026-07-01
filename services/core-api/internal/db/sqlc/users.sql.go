@@ -12,7 +12,7 @@ import (
 )
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, name, email, role, active FROM users WHERE email = $1
+SELECT id, name, email, role, active, password_hash FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -24,6 +24,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Email,
 		&i.Role,
 		&i.Active,
+		&i.PasswordHash,
 	)
 	return i, err
 }
@@ -32,7 +33,7 @@ const insertUser = `-- name: InsertUser :one
 
 INSERT INTO users (id, name, email, role, active)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, name, email, role, active
+RETURNING id, name, email, role, active, password_hash
 `
 
 type InsertUserParams struct {
@@ -59,6 +60,48 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) (User, e
 		&i.Email,
 		&i.Role,
 		&i.Active,
+		&i.PasswordHash,
+	)
+	return i, err
+}
+
+const upsertOwnerCredential = `-- name: UpsertOwnerCredential :one
+INSERT INTO users (id, name, email, role, active, password_hash)
+VALUES ($1, $2, $3, 'owner', true, $4)
+ON CONFLICT (email) DO UPDATE
+  SET password_hash = EXCLUDED.password_hash,
+      role          = 'owner',
+      active        = true,
+      name          = EXCLUDED.name
+RETURNING id, name, email, role, active, password_hash
+`
+
+type UpsertOwnerCredentialParams struct {
+	ID           uuid.UUID `json:"id"`
+	Name         string    `json:"name"`
+	Email        string    `json:"email"`
+	PasswordHash *string   `json:"passwordHash"`
+}
+
+// Seed or rotate the first owner's login credential (PR-3e-1, `make seed-owner`). Forces
+// role=owner + active=true and is idempotent on the UNIQUE email, so re-running it rotates the
+// password hash rather than failing. This is the ONLY writer of password_hash this slice; there
+// is no self-service change-password endpoint yet (deferred).
+func (q *Queries) UpsertOwnerCredential(ctx context.Context, arg UpsertOwnerCredentialParams) (User, error) {
+	row := q.db.QueryRow(ctx, upsertOwnerCredential,
+		arg.ID,
+		arg.Name,
+		arg.Email,
+		arg.PasswordHash,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.Role,
+		&i.Active,
+		&i.PasswordHash,
 	)
 	return i, err
 }

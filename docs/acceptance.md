@@ -75,3 +75,13 @@
   `INVALID_ACTOR/TIMESTAMP`→400 · unmapped→500) và **KHÔNG BAO GIỜ** forward `TransitionError.Message` tiếng Việt ra wire
   (always-must #3 i18n; client map `messageKey`→next-intl). *(test: `httpapi.TestMapErrorTable` +
   `httpapi.TestMapErrorNeverLeaksDomainMessage` + `httpapi.TestDomainRouteReturns501Envelope`)*
+
+## Cụm 6 — Auth self-issued login (`ADR-030` · `docs/plans/core-http-relay.md` §3e-1)
+
+> **Go-gated — CỐ Ý để `[ ]`** (cùng lý do Cụm 4/5): test của `AUTH-*` là **Go**
+> (`services/core-api/internal/{auth,httpapi,db}`), parser TS không resolve được → tick `[x]` sẽ làm parser ĐỎ. **Gate
+> thật** = `guard.test.sh §ARM` (cookie HttpOnly + bcrypt-compare + `VerifyPassword(nil)` nhánh unknown-email) **+**
+> chính các test Go đó (RAN Docker-free + vs PG thật). `[ ]` = "không do parser-TS gác", KHÔNG phải "chưa test".
+
+- [ ] `AUTH-01` — WHEN một email không tồn tại **hoặc** mật khẩu sai gửi tới `POST /auth/login`, the system shall trả về **cùng một 401 đồng nhất** (unknown-email không phân biệt được với wrong-password — chống user-enumeration), luôn chạy đúng một lần bcrypt-compare để equalize timing, và **KHÔNG** set session cookie. *(test: `httpapi.TestLoginWrongPasswordUniform401` + `httpapi.TestLoginUnknownEmailUniform401` + `auth.TestVerifyPassword`)*
+- [ ] `AUTH-02` — WHEN đăng nhập thành công, the system shall phát JWT ký (`sub`=users.id, `role`, `exp`=now+TTL) đặt trong cookie **httpOnly+Secure+SameSite** (token ngoài tầm JS — chống XSS-theft) và **KHÔNG** đưa token vào response body. *(test: `auth.TestIssueSetsSecureHttpOnlyCookie` + `auth.TestIssuedTokenCarriesClaims` + `httpapi.TestLoginSuccessSetsHttpOnlyCookieTokenNotInBody`)*

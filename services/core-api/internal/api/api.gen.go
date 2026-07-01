@@ -953,13 +953,21 @@ type LoginUserResponseObject interface {
 	VisitLoginUserResponse(w http.ResponseWriter) error
 }
 
-type LoginUser200JSONResponse AuthUser
+type LoginUser200ResponseHeaders struct {
+	SetCookie string
+}
+
+type LoginUser200JSONResponse struct {
+	Body    AuthUser
+	Headers LoginUser200ResponseHeaders
+}
 
 func (response LoginUser200JSONResponse) VisitLoginUserResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Set-Cookie", fmt.Sprint(response.Headers.SetCookie))
 	w.WriteHeader(200)
 
-	return json.NewEncoder(w).Encode(response)
+	return json.NewEncoder(w).Encode(response.Body)
 }
 
 type LoginUser400JSONResponse struct{ BadRequestJSONResponse }
@@ -987,10 +995,16 @@ type LogoutUserResponseObject interface {
 	VisitLogoutUserResponse(w http.ResponseWriter) error
 }
 
+type LogoutUser204ResponseHeaders struct {
+	SetCookie string
+}
+
 type LogoutUser204Response struct {
+	Headers LogoutUser204ResponseHeaders
 }
 
 func (response LogoutUser204Response) VisitLogoutUserResponse(w http.ResponseWriter) error {
+	w.Header().Set("Set-Cookie", fmt.Sprint(response.Headers.SetCookie))
 	w.WriteHeader(204)
 	return nil
 }
