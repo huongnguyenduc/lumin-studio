@@ -94,3 +94,13 @@
 > **+** chính các test Go đó. `[ ]` = "không do parser-TS gác", KHÔNG phải "chưa test".
 
 - [ ] `RBA-01` — WHEN một request tới một admin endpoint mà thiếu/hỏng session cookie **hoặc** mang vai trò không đủ (staff chạm owner-only `PATCH /admin/settings/bank-account`), the system shall **từ chối ở biên HTTP** trước khi vào handler — 401 `UNAUTHORIZED` khi thiếu/hỏng credential (token verify chữ ký+expiry, role đọc từ `users` row không tin claim), 403 `FORBIDDEN` khi credential hợp lệ nhưng role không đủ — và op chưa phân loại **fail-closed** (mặc định require actor). *(test: `httpapi.TestAuthMiddlewareRequiredRejectsMissingCookie` + `httpapi.TestAuthMiddlewareOwnerOnlyRejectsStaff` + `httpapi.TestClassifyFailsClosed` + `httpapi.TestAdminRouteUnauthenticatedReturns401Envelope`)*
+
+## Cụm 8 — Order-intake pricing (`ADR-019` · `docs/plans/core-http-relay.md` §3f)
+
+> **Go-gated — CỐ Ý để `[ ]`** (cùng lý do Cụm 4/5/6/7): test của `PRC-*` là **Go**
+> (`services/core-api/internal/pricing`), parser TS không resolve được → tick `[x]` sẽ làm parser ĐỎ. **Gate thật** =
+> `guard.test.sh §ARM` (pricing derive `BasePrice`+`PriceDelta`, `Selection` không mang giá client, mã đơn qua
+> `nextval('order_code_seq')`) **+** chính các test Go đó (unit + property, RAN Docker-free). `[ ]` = "không do parser-TS gác".
+
+- [ ] `PRC-01` — WHEN một dòng đơn được định giá lúc checkout, the system shall **tính `unitPrice` phía server** từ catalog (`base_price` + delta màu + Σ delta option) và **KHÔNG BAO GIỜ** tin giá client gửi (`Selection` không có trường giá), đồng thời từ chối lựa chọn không hợp lệ — màu/option không thuộc sản phẩm, màu `available:false`, option trùng, hoặc text khắc vượt `maxChars` (đếm theo rune) — trước khi đơn được tạo (ADR-019). *(test: `pricing.TestPriceItemIsSumOfCatalogParts` + `pricing.TestPriceItemRejectsInvalidSelection` + `pricing.TestPriceItemEngraveBoundary`)*
+- [ ] `PRC-02` — WHEN phí vận chuyển được tính cho một địa chỉ, the system shall **tra `shippingFee` phía server** từ `settings.shipping_rules` theo `province` (khớp chính xác, hoặc rule `"*"` mặc định — KHÔNG có cấp quận/huyện, ADR-017) và trả lỗi (→422) khi không rule nào khớp thay vì âm thầm tính phí 0. *(test: `pricing.TestShippingFee` + `pricing.TestShippingFeeNoMatch` + `pricing.TestShippingFeeRejectsMalformed`)*

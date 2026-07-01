@@ -540,6 +540,28 @@ if [ -f "$MWGO" ]; then
     bad "ARM: httpapi/middleware_auth.go LAND nhưng thiếu 1 trong {router wire StrictMiddlewareFunc{srv.authMiddleware}, resolveActor auth.Verify, UserByID role-từ-DB} -> admin surface chạy KHÔNG auth / cookie giả qua cửa / token cũ leo thang role (ADR-030!)"
   fi
 else ok "ARM: chưa có httpapi/middleware_auth.go (auth boundary/RBAC arm khi land — PR-3e-2)"; fi
+# Order-intake pricing (PR-3f, ADR-019/§6 D9): khi internal/pricing land, 2 bất biến money-out PHẢI đứng:
+#  (a) PriceItem DERIVE unit price từ catalog (product.BasePrice + *.PriceDelta) — KHÔNG nhận/không tin
+#      giá client: input `Selection` không được mang trường giá (UnitPrice/unitPrice); một edit thêm
+#      trường giá vào Selection (rồi snapshot thẳng) là lỗ "trust client total" (conventions §Tiền);
+#  (b) mã đơn mint bằng nextval('order_code_seq') (migration 000010) — collision-free; một edit đổi sang
+#      MAX(code)+1 (đua) / random (đụng) làm mất nextval → RED. Bỏ comment ('//' Go, '--' SQL) trước khi soi
+#      để một tham chiếu bị COMMENT-OUT không false-PASS (cùng class lỗ '//' của relay-ARM 3b).
+PRICING="$ROOT/services/core-api/internal/pricing/pricing.go"
+if [ -f "$PRICING" ]; then
+  PRICINGBODY="$(grep -vE '^[[:space:]]*//' "$PRICING" 2>/dev/null)"
+  ORDERSQL="$ROOT/services/core-api/db/queries/orders.sql"
+  ORDERSQLBODY="$(grep -vE '^[[:space:]]*--' "$ORDERSQL" 2>/dev/null)"
+  if printf '%s' "$PRICINGBODY" | grep -q 'func PriceItem' \
+     && printf '%s' "$PRICINGBODY" | grep -q 'BasePrice' \
+     && printf '%s' "$PRICINGBODY" | grep -q 'PriceDelta' \
+     && ! printf '%s' "$PRICINGBODY" | grep -qiE 'unitprice' \
+     && printf '%s' "$ORDERSQLBODY" | grep -q "nextval('order_code_seq')"; then
+    ok "ARM: có internal/pricing -> PriceItem derive giá từ catalog (BasePrice+PriceDelta, Selection KHÔNG mang giá client) + mã đơn qua nextval('order_code_seq') (server-authoritative money + collision-free — ADR-019/§6 D9)"
+  else
+    bad "ARM: internal/pricing LAND nhưng thiếu 1 trong {PriceItem derive BasePrice+PriceDelta, Selection không có trường giá client, NextOrderCode dùng nextval('order_code_seq')} -> giá client bị tin / mã đơn đua-đụng (money-out!)"
+  fi
+else ok "ARM: chưa có internal/pricing (order-intake pricing arm khi land — PR-3f)"; fi
 if find "$ROOT/services" -name '*.rs' 2>/dev/null | grep -q .; then
   { [ -f "$ROOT/Makefile" ] && grep -Eq '^verify-rs:' "$ROOT/Makefile"; } \
     && ok "ARM: có .rs -> Makefile verify-rs" || bad "ARM: .rs LAND nhưng thiếu Makefile verify-rs"

@@ -85,6 +85,37 @@ func (q *Queries) InsertConsentGrant(ctx context.Context, arg InsertConsentGrant
 	return i, err
 }
 
+const insertConsentGrantIfAbsent = `-- name: InsertConsentGrantIfAbsent :exec
+INSERT INTO consent_grants (id, customer_id, scope, channel, policy_version)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (customer_id, scope, channel) WHERE withdrawn_at IS NULL DO NOTHING
+`
+
+type InsertConsentGrantIfAbsentParams struct {
+	ID            uuid.UUID      `json:"id"`
+	CustomerID    uuid.UUID      `json:"customerId"`
+	Scope         ConsentScope   `json:"scope"`
+	Channel       ConsentChannel `json:"channel"`
+	PolicyVersion string         `json:"policyVersion"`
+}
+
+// InsertConsentGrantIfAbsent appends a grant idempotently: if an ACTIVE grant already exists for
+// (customer, scope, channel) it does nothing, so a returning customer re-checking-out never trips
+// the consent_grants_active_uq partial unique and rolls back their order tx. The ON CONFLICT target
+// mirrors that partial index exactly (predicate included) so Postgres can infer it. PDPL: still one
+// explicit row per active purpose, never a pre-defaulted boolean; re-grant-after-withdrawal is a new
+// row (a withdrawn grant is not "active", so it does not conflict).
+func (q *Queries) InsertConsentGrantIfAbsent(ctx context.Context, arg InsertConsentGrantIfAbsentParams) error {
+	_, err := q.db.Exec(ctx, insertConsentGrantIfAbsent,
+		arg.ID,
+		arg.CustomerID,
+		arg.Scope,
+		arg.Channel,
+		arg.PolicyVersion,
+	)
+	return err
+}
+
 const insertCustomer = `-- name: InsertCustomer :one
 
 INSERT INTO customers (id, name, phone, email, social_handle, addresses)

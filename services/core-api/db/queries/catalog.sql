@@ -15,6 +15,13 @@ RETURNING *;
 -- name: GetProductBySlug :one
 SELECT * FROM products WHERE slug = $1;
 
+-- GetProductByID is the by-id read the checkout handler (PR-3g) needs to derive a
+-- server-authoritative UnitPrice from base_price (never a client price). ProductBySlug is the
+-- storefront read; this is the intake read. Colors/options are validated via the existing
+-- ListColorsByProduct / ListOptionsByProduct (membership + availability checked in-process).
+-- name: GetProductByID :one
+SELECT * FROM products WHERE id = $1;
+
 -- name: ListProductsByStatus :many
 SELECT * FROM products WHERE status = $1 ORDER BY created_at DESC;
 
