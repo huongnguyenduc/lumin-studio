@@ -26,9 +26,24 @@ import (
 type fakeUsers struct {
 	user sqlc.User
 	err  error
+	// byID, when set, backs UserByID for the auth-boundary tests (PR-3e-2): a hit returns the
+	// row, a miss returns db.ErrNotFound. When nil, UserByID falls back to user/err like
+	// UserByEmail so the login tests need no change.
+	byID map[uuid.UUID]sqlc.User
 }
 
 func (f fakeUsers) UserByEmail(_ context.Context, _ string) (sqlc.User, error) {
+	return f.user, f.err
+}
+
+func (f fakeUsers) UserByID(_ context.Context, id uuid.UUID) (sqlc.User, error) {
+	if f.byID != nil {
+		u, ok := f.byID[id]
+		if !ok {
+			return sqlc.User{}, db.ErrNotFound
+		}
+		return u, nil
+	}
 	return f.user, f.err
 }
 

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -14,11 +15,14 @@ import (
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
 )
 
-// userReader is the slice of the identity repository the login handler needs: a single
-// by-email lookup. Kept as an interface so LoginUser is unit-testable with a fake, no live
-// Postgres required (mirrors txBeginner below); *db.Identity satisfies it.
+// userReader is the slice of the identity repository the auth layer needs: a by-email lookup
+// for the login handler (PR-3e-1) and a by-id lookup for the verify middleware (PR-3e-2, which
+// resolves a token's `sub` to the authoritative user row). Kept as an interface so both are
+// unit-testable with a fake, no live Postgres required (mirrors txBeginner below); *db.Identity
+// satisfies it.
 type userReader interface {
 	UserByEmail(ctx context.Context, email string) (sqlc.User, error)
+	UserByID(ctx context.Context, id uuid.UUID) (sqlc.User, error)
 }
 
 // Server carries the dependencies every domain handler needs and implements the

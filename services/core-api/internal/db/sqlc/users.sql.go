@@ -29,6 +29,27 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 	return i, err
 }
 
+const getUserByID = `-- name: GetUserByID :one
+SELECT id, name, email, role, active, password_hash FROM users WHERE id = $1
+`
+
+// Resolve a verified JWT's `sub` back to the authoritative user row (PR-3e-2 auth boundary).
+// The DB row — not the token claim — is the source of truth for role + active: a token minted
+// before a role change or deactivation must not outrank the current record.
+func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByID, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.Role,
+		&i.Active,
+		&i.PasswordHash,
+	)
+	return i, err
+}
+
 const insertUser = `-- name: InsertUser :one
 
 INSERT INTO users (id, name, email, role, active)

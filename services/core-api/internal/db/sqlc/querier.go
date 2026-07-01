@@ -46,6 +46,10 @@ type Querier interface {
 	// INSERT + SELECT only — no UPDATE/DELETE query exists, and a DB trigger blocks them anyway.
 	GetSettings(ctx context.Context) (Setting, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
+	// Resolve a verified JWT's `sub` back to the authoritative user row (PR-3e-2 auth boundary).
+	// The DB row — not the token claim — is the source of truth for role + active: a token minted
+	// before a role change or deactivation must not outrank the current record.
+	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	// IncrementOutboxAttempts bumps the per-row publish-attempt counter on a poison (per-message
 	// PubAck rejection). A transient connection/no-stream failure must NOT call this.
 	IncrementOutboxAttempts(ctx context.Context, id uuid.UUID) error

@@ -63,10 +63,11 @@ func NewRouter(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus, authIss
 	//   2. the CHI wrapper (ChiServerOptions.ErrorHandlerFunc) — path/query param binding,
 	//      which fires BEFORE the strict layer (e.g. a non-UUID {id} on the transition route).
 	// Both route through handleRequestError/handleResponseError → the JSON ErrorEnvelope. The
-	// auth boundary (JWT-verify on the admin group, optional-auth on POST /orders) plugs into
-	// the StrictMiddlewareFunc seam (the nil slice below) in PR-3e-2. Handlers are 501 stubs
-	// until their domain PRs (3e–3k) land.
-	strict := api.NewStrictHandlerWithOptions(srv, nil, api.StrictHTTPServerOptions{
+	// auth boundary (PR-3e-2) is the StrictMiddlewareFunc slice below: srv.authMiddleware runs
+	// per-operation, branches on the operationID (fail-closed: unlisted ops require a valid
+	// actor), verifies the session cookie, and injects the resolved Actor into the handler's
+	// context. Handlers are 501 stubs until their domain PRs (3g–3k) land.
+	strict := api.NewStrictHandlerWithOptions(srv, []api.StrictMiddlewareFunc{srv.authMiddleware}, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  srv.handleRequestError,
 		ResponseErrorHandlerFunc: srv.handleResponseError,
 	})

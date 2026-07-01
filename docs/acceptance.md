@@ -85,3 +85,12 @@
 
 - [ ] `AUTH-01` — WHEN một email không tồn tại **hoặc** mật khẩu sai gửi tới `POST /auth/login`, the system shall trả về **cùng một 401 đồng nhất** (unknown-email không phân biệt được với wrong-password — chống user-enumeration), luôn chạy đúng một lần bcrypt-compare để equalize timing, và **KHÔNG** set session cookie. *(test: `httpapi.TestLoginWrongPasswordUniform401` + `httpapi.TestLoginUnknownEmailUniform401` + `auth.TestVerifyPassword`)*
 - [ ] `AUTH-02` — WHEN đăng nhập thành công, the system shall phát JWT ký (`sub`=users.id, `role`, `exp`=now+TTL) đặt trong cookie **httpOnly+Secure+SameSite** (token ngoài tầm JS — chống XSS-theft) và **KHÔNG** đưa token vào response body. *(test: `auth.TestIssueSetsSecureHttpOnlyCookie` + `auth.TestIssuedTokenCarriesClaims` + `httpapi.TestLoginSuccessSetsHttpOnlyCookieTokenNotInBody`)*
+
+## Cụm 7 — Auth boundary + RBAC (`ADR-030` · `docs/plans/core-http-relay.md` §3e-2)
+
+> **Go-gated — CỐ Ý để `[ ]`** (cùng lý do Cụm 4/5/6): test của `RBA-*` là **Go**
+> (`services/core-api/internal/httpapi`), parser TS không resolve được → tick `[x]` sẽ làm parser ĐỎ. **Gate thật** =
+> `guard.test.sh §ARM` (router wire `authMiddleware` không-nil + `resolveActor` `auth.Verify` + role đọc từ `UserByID`)
+> **+** chính các test Go đó. `[ ]` = "không do parser-TS gác", KHÔNG phải "chưa test".
+
+- [ ] `RBA-01` — WHEN một request tới một admin endpoint mà thiếu/hỏng session cookie **hoặc** mang vai trò không đủ (staff chạm owner-only `PATCH /admin/settings/bank-account`), the system shall **từ chối ở biên HTTP** trước khi vào handler — 401 `UNAUTHORIZED` khi thiếu/hỏng credential (token verify chữ ký+expiry, role đọc từ `users` row không tin claim), 403 `FORBIDDEN` khi credential hợp lệ nhưng role không đủ — và op chưa phân loại **fail-closed** (mặc định require actor). *(test: `httpapi.TestAuthMiddlewareRequiredRejectsMissingCookie` + `httpapi.TestAuthMiddlewareOwnerOnlyRejectsStaff` + `httpapi.TestClassifyFailsClosed` + `httpapi.TestAdminRouteUnauthenticatedReturns401Envelope`)*

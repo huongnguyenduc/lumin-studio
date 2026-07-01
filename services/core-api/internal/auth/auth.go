@@ -9,6 +9,7 @@
 package auth
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -42,9 +43,43 @@ func NewIssuer(secret string, ttl time.Duration, secure bool) *Issuer {
 	}
 }
 
-// Verifier exposes the underlying JWTAuth so the PR-3e-2 verify middleware validates cookies
-// with the same key/alg this Issuer signs with — the secret is configured in exactly one place.
+// Verifier exposes the underlying JWTAuth so callers can validate cookies with the same
+// key/alg this Issuer signs with — the secret is configured in exactly one place.
 func (is *Issuer) Verifier() *jwtauth.JWTAuth { return is.ja }
+
+// Claims is the subset of a verified session token the auth boundary consumes: the subject
+// (users.id) and the role claim. The role here is only what the token asserts — the request
+// pipeline re-reads the authoritative role from the users row, so a stale token can't outrank
+// the current record (PR-3e-2).
+type Claims struct {
+	Subject string
+	Role    string
+}
+
+// ErrInvalidToken is returned by Verify for any unusable token: bad signature, expired,
+// wrong alg, or missing/empty required claims. It is deliberately opaque — the HTTP boundary
+// maps it to a uniform 401 and never tells the caller which check failed.
+var ErrInvalidToken = errors.New("auth: invalid session token")
+
+// Verify validates a session-cookie token string and returns its claims. It checks the HS256
+// signature AND the standard time claims (exp/nbf/iat) via jwtauth.VerifyToken, then requires a
+// non-empty sub and role. Any failure collapses to ErrInvalidToken (no signal about which check
+// tripped). The signing key is the Issuer's own, so verify and issue can never drift apart.
+func (is *Issuer) Verify(tokenString string) (Claims, error) {
+	token, err := jwtauth.VerifyToken(is.ja, tokenString)
+	if err != nil {
+		return Claims{}, ErrInvalidToken
+	}
+	sub, ok := token.Subject()
+	if !ok || sub == "" {
+		return Claims{}, ErrInvalidToken
+	}
+	var role string
+	if err := token.Get("role", &role); err != nil || role == "" {
+		return Claims{}, ErrInvalidToken
+	}
+	return Claims{Subject: sub, Role: role}, nil
+}
 
 // Issue mints a signed JWT for the authenticated user and returns the Set-Cookie to write.
 // Claims: sub=users.id, role (owner|staff), iat, exp. `now` is the server clock (injected so

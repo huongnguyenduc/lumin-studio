@@ -77,6 +77,17 @@ func (i *Identity) UserByEmail(ctx context.Context, email string) (sqlc.User, er
 	return u, err
 }
 
+// UserByID returns the user with the given id, or ErrNotFound. The PR-3e-2 auth boundary
+// resolves a verified JWT's `sub` through here to read the authoritative role + active flag
+// from the row (never trusting the token's own role claim).
+func (i *Identity) UserByID(ctx context.Context, id uuid.UUID) (sqlc.User, error) {
+	u, err := i.q.GetUserByID(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.User{}, ErrNotFound
+	}
+	return u, err
+}
+
 // UpsertOwnerCredential seeds or rotates the first owner's login credential (PR-3e-1,
 // `make seed-owner`). Idempotent on the UNIQUE email: re-running rotates the password hash.
 func (i *Identity) UpsertOwnerCredential(ctx context.Context, arg sqlc.UpsertOwnerCredentialParams) (sqlc.User, error) {

@@ -186,20 +186,48 @@ missing seed-owner docs → §4b. ~430 lines non-test src (auth is invariant-den
 
 > Lịch sử app-shell/backbone Phase-0 (storefront/admin/services scaffold) đã archive — xem `git log` + PR #5–#10.
 
+**`3e-1` auth self-issued login ✅ MERGED (PR #24) → `origin/main` `0f665c4` (2026-07-01 15:33Z, squash; local `main` ff'd,
+branch deleted).** Contract/HTTP track head 3c-1→3c-2→3d→3e-1 COMPLETE (auth ISSUE side landed).
+
+**`3e-2` auth: JWT-verify middleware + RBAC + actor injection ✅ BUILT · verify green · spec-guardian PASS · chờ push→PR.
+(branch `feat/core-http-relay-3e-2` off `main` `0f665c4`.)** Fills the `StrictMiddlewareFunc` auth seam 3d left (`nil`
+slice → now `[]api.StrictMiddlewareFunc{srv.authMiddleware}`); unblocks the whole handler fan-out {3g/3h/3i/3k→3j}. **One
+strict-server middleware** branches on the generated operationID (`classify`): **fail-closed default** (unlisted op →
+`authRequired`) · `authPublic` {LoginUser,LogoutUser} · `authOptional` {CreateOrder} (resolve iff cookie present, never
+reject when absent — the web-create path; §3g still gates channel=inbox) · `authOwnerOnly` {UpdateBankAccount} = the
+`requireOwner` STK edge. **`resolveActor`** verifies the cookie via new **`auth.Verify`** (HS256 sig + exp/nbf via
+`jwtauth.VerifyToken`, returns `Claims{sub,role}`) → `uuid.Parse(sub)` → **`Identity.UserByID`** (new `GetUserByID` sqlc +
+method; NO migration — users table exists) → **role from the DB row, NOT the token claim** (stale token can't outrank a
+role change / deactivation; `!Active`→401) → `actorRole` maps user_role→`order.Role` **explicitly so it can NEVER yield
+`system`** (server-internal actor, never a login identity). Injects `Actor{ByUser=users.id string, Role, At=server-clock}`
+into ctx via unexported key (`actor.go`) — standardizes `statusHistory.byUser` on users.id string. **Does NOT re-implement
+RBAC math** — domain guard (`order.RoleAllowed`/`Transition`) stays source of truth; mw only authenticates + gates the
+owner-only settings edge. errors.go +`errUnauthenticated`→401 `UNAUTHORIZED` / +`errForbidden`→403 `FORBIDDEN` (+code
+`FORBIDDEN`); DB-fault on lookup → raw err → 500 no-leak. Fixed pre-existing `TestDomainRouteReturns501Envelope` (dashboard
+now gated → authenticate first via new `testAuthedRouter`). **`make verify-go` rc=0** (golangci 0, sqlc vet+diff, oapi
+stale-check clean [no openapi change], `go test -race`) · **guard 149** (+1 auth-boundary ARM PROVEN binding: router wire
+`StrictMiddlewareFunc{srv.authMiddleware}` non-nil + `auth.Verify` + `UserByID`; nil-wire→148/1→restore→149) · osm 22 ·
+core ledger 43/43 (RBA-01 stays `[ ]` Go-gated). **RBA-01** → acceptance Cụm 7. **No new deps · no new ADR** (implements
+ADR-030/032). ~190 non-test src. Docker-free unit + wire tests (nil pool); UserByID integration folded into
+`TestUserRoundTrip` (skip-local/run-CI). **spec-guardian PASS: 0 BLOCKER/0 WARN/1 NOTE** (optional path 401s on a
+present-but-BROKEN cookie vs treating anonymous — deliberate: `lumin_session` is admin-only SameSite=Strict, web customer
+never carries it; locked by `TestAuthMiddlewareOptionalRejectsInvalidCookie`).
+
 ## Next steps (1–3)
-1. **Slice 3 · PR-3e-1 — auth login:** BUILT + all gates green + review-fixed on `feat/core-http-relay-3e-1` (off `main`
-   `eac9b0f`). Push → PR (owner merges). PR body: migration 000009 (pure DDL) + `make seed-owner` CLI (no committed secret) +
-   `internal/auth` + login/logout handlers + fail-fast on forgeable dev-secret; deps +jwtauth/v5 +x/crypto-direct (go 1.23.6
-   held); guard 148 (+1 auth ARM proven ×3); ADR-030 (no new ADR); AUTH-01/02 acceptance `[ ]`; ~430 non-test src (1-axis).
-2. **After 3e-1 merges:** critical path continues **`3e-2` JWT-verify middleware + RBAC** (fills the StrictMiddlewareFunc auth
-   seam 3d left; reuse `authIssuer.Verifier()`; map `sub`→`Identity.UserByID`→`order.Role`; `requireOwner`; optional-auth mw;
-   EARS `RBA-01`) → then handler fan-out `{3g checkout (needs 3f) · 3h transitions · 3i dashboard · 3k settings/STK}` → `3j`
-   admin frontend (needs 3i). **Independent parallel node still open: `3f`** order-intake prereqs (by-id catalog sqlc +
-   pricing/shipping/code/customer helpers + migration `000008_order_code_seq`; feeds only 3g). Full DAG: `core-http-relay.md §1`.
-3. **Housekeeping:** prune now-merged local branches `feat/core-http-relay`(3a)/`-3b`/`-3c-1`/`-3c-2`/`-3d` when chủ duyệt (all
-   squash-merged → won't show under `git branch --merged`; verify by PR#, not sha). Harness follow-up: the **testcontainers ARM**
-   greps Go `_test.go` for `postgres.Run` unanchored → a `//`-commented boot call could false-pass (same comment-out class fixed
-   for the recipe ARMs); harden in a harness-audit round. Sau Core phase: ADR-026 lane B/C/D · REC-20/28/39.
+1. **Slice 3 · PR-3e-2 — auth boundary + RBAC:** BUILT + all gates green + spec-guardian PASS on `feat/core-http-relay-3e-2`
+   (off `main` `0f665c4`). Push → PR (owner merges). PR body: strict-mw fail-closed classify + `auth.Verify` + `UserByID`
+   role-from-DB (never claim, never `system`) + Actor ctx-inject + owner-only STK edge + 401/403 envelope; guard 149 (+1
+   auth-boundary ARM proven); RBA-01 `[ ]`; no new deps/ADR (impl ADR-030/032); ~190 non-test src.
+2. **After 3e-2 merges:** handler fan-out unblocked — **`3g` checkout** (needs `3f`) · **`3h` transitions** · **`3i`
+   dashboard** · **`3k` settings/STK** → **`3j`** admin frontend (needs 3i). Handlers read the injected `Actor` from ctx
+   (`actorFrom`) to build `order.TransitionContext`. **Independent parallel node still open: `3f`** order-intake prereqs
+   (by-id catalog sqlc + pricing/shipping/code/customer helpers + migration `000008_order_code_seq`; feeds only 3g). Full
+   DAG: `core-http-relay.md §1`.
+3. **Housekeeping:** prune now-merged local branches `feat/core-http-relay`(3a)/`-3b`/`-3c-1`/`-3c-2`/`-3d`/`-3e-1` when chủ
+   duyệt (all squash-merged → won't show under `git branch --merged`; verify by PR#, not sha). Harness follow-up: the
+   **testcontainers ARM** greps Go `_test.go` for `postgres.Run` unanchored → a `//`-commented boot call could false-pass
+   (same comment-out class fixed for recipe ARMs); harden in a harness-audit round. Sau Core phase: ADR-026 lane B/C/D ·
+   REC-20/28/39.
 
 ## Open questions
 - *(không có cho slice backbone — scope đã chốt "backbone only" với user; ADR đã khoá quyết định.)*
@@ -232,11 +260,24 @@ missing seed-owner docs → §4b. ~430 lines non-test src (auth is invariant-den
 | **Core slice 3 · PR-3b — relay drain loop (outbox→NATS publish-on-commit)** | **merged (PR #20)** | merge → `origin/main` `c3b2004` (2026-06-27) | `make verify-go` ✓; **9 relay integration tests RAN vs real PG+NATS (colima, -race)** — pending→published+Nats-Msg-Id, **late-low-seq watermark-loss regression**, no-stream→transient→recover (0 attempts burn), dedup-on-republish, poison→failed head-of-line, + **7 Docker-free unit**; guard **144** (+2 relay ARM PROVEN binding: scan-pending-SET lock + relay-start-in-main); osm 22; REL-01/02 → acceptance.md `[ ]` (Go-gated by guard ARM + Go tests); **no new deps**; **5-lens review wf_81c76244: 12 raw→4 confirmed (0 BLOCKER) ALL FIXED**; CI green (incl relay-vs-NATS-in-CI) |
 | **Core slice 3 · PR-3c-1 — OpenAPI contract authoring + 4-way enum parity + spec-sync** | **merged (PR #21)** | squash → `origin/main` `f1b35d2` (2026-06-27 23:45Z) | hand-authored `openapi.yaml` (3.0.3, slice-3 surfaces only, nested Order DTO, **named `CreateOrderInput` oneOf** web/inbox, inputs omit unitPrice/total → server-authoritative, ErrorEnvelope, Settings/STK/ReplyTemplate/Dashboard, cookieAuth) + `internal/contract/{parity_test,structure_test}.go` (**4-way enum parity** OpenAPI==order==packages/core==PG; Role{owner,staff,system} vs UserRole/PG user_role{owner,staff}; + refs-resolve/opId-unique) + `spec.md §02` Review text→body + guard contract ARM; `make verify-go` ✓ (golangci 0, sqlc vet+diff, race incl parity) · **guard 145** (+1 contract ARM, tightened ≥4 Test*Parity+assertSame, PROVEN binding) · osm 22 · **parity PROVEN binding** REFUNDED-drift→RED · yaml.v3 indirect→direct (only dep change) · ADR-031 (no new ADR) · no EARS · **4-lens review wf_a95388f8-5d8: 3 confirmed (1 BLOCKER oapi-codegen opaque-union → named schema, RE-RAN codegen → 10 union methods) / 4 refuted, all fixed** |
 | **Core slice 3 · PR-3c-2 — codegen (oapi-codegen strict-server) + `@lumin/api-client` + guard oapi ARM + D13** | **merged (PR #22)** | squash → `origin/main` `d10d30e` (2026-07-01 07:16Z) | `make verify-go` ✓ (golangci 0, sqlc vet+diff, **oapi generate+git-diff stale-check**, race) · `pnpm verify` ✓ (lint+typecheck+test incl new stale-gate + format:check; prettier/eslint ignore `*.gen.ts`) · guard **146** (+1 oapi ARM PROVEN binding: recipe must have `go generate`+`git diff --exit-code`, comment-strip vs `#`-false-pass) · osm 22 · committed `api.gen.go` (strict-server + chi-server, named `CreateOrderInput` union) + `schema.gen.ts` (openapi-typescript 7.13.0) · **go directive 1.23.6 preserved** (runtime v1.1.2 pinned) · D13 `plan.md` ledger checkbox ticked (Go REL-* stay `[ ]`) · **4-lens review wf_58d3da06: 2 confirmed (0 BLOCKER, both NOTE) / 0 refuted, both FIXED** (guard comment-strip + oapi-yaml comment) · deps +oapi-codegen/runtime v1.1.2 +openapi-typescript/openapi-fetch |
-| **Core slice 3 · PR-3e-1 — auth self-issued login (migration 000009 + `internal/auth` + login/logout + seed-owner CLI)** | **BUILT · verify green · review DONE (all fixed) · chờ push→PR** | `feat/core-http-relay-3e-1` off `main` `eac9b0f` | `make verify-go` ✓ (golangci 0, sqlc vet+diff, oapi+sqlc regen committed, `go test -race`) · guard **148** (+1 auth ARM PROVEN binding ×3: HttpOnly · bcrypt.CompareHashAndPassword · login VerifyPassword(nil); each mutate→RED→restore) · TS api-client typecheck+stale-gate+lint ✓ (schema.gen.ts regen for Set-Cookie) · ADR-030 self-issued JWT (no new ADR); user sub-decisions = seed-owner CLI (no committed secret) + 12h/no-refresh · **FAIL-FAST on forgeable dev-secret** (`UsesForgeableJWTSecret`+`ALLOW_DEV_JWT_SECRET`) · httpOnly+Secure+SameSite=Strict cookie, token-cookie-only, uniform-401 no-enumeration (bcrypt timing-equalized) · AUTH-01/02 acceptance `[ ]` (Go-gated) · **deps +go-chi/jwtauth/v5 v5.4.0 +x/crypto direct; go 1.23.6 HELD** · ~430 non-test src (1-axis) · **5-lens review wf_eab30b50: 4→3 confirmed (0 BLOCKER) / 1 refuted, ALL FIXED** (dev-secret fail-fast + openapi Set-Cookie header + operations.md §4b) |
+| **Core slice 3 · PR-3e-1 — auth self-issued login (migration 000009 + `internal/auth` + login/logout + seed-owner CLI)** | **merged (PR #24)** | squash → `origin/main` `0f665c4` (2026-07-01 15:33Z) | `make verify-go` ✓ (golangci 0, sqlc vet+diff, oapi+sqlc regen committed, `go test -race`) · guard **148** (+1 auth ARM PROVEN binding ×3: HttpOnly · bcrypt.CompareHashAndPassword · login VerifyPassword(nil); each mutate→RED→restore) · TS api-client typecheck+stale-gate+lint ✓ (schema.gen.ts regen for Set-Cookie) · ADR-030 self-issued JWT (no new ADR); user sub-decisions = seed-owner CLI (no committed secret) + 12h/no-refresh · **FAIL-FAST on forgeable dev-secret** · httpOnly+Secure+SameSite=Strict cookie, uniform-401 no-enumeration · AUTH-01/02 acceptance `[ ]` (Go-gated) · **deps +go-chi/jwtauth/v5 v5.4.0 +x/crypto direct; go 1.23.6 HELD** · **5-lens review wf_eab30b50: 4→3 confirmed (0 BLOCKER) / 1 refuted, ALL FIXED** |
+| **Core slice 3 · PR-3e-2 — auth boundary: JWT-verify strict-mw + RBAC + actor injection** | **BUILT · verify green · spec-guardian PASS · chờ push→PR** | `feat/core-http-relay-3e-2` off `main` `0f665c4` | `make verify-go` ✓ (golangci 0, sqlc vet+diff [+`GetUserByID` regen], oapi stale-check clean [no openapi change], `go test -race`) · guard **149** (+1 auth-boundary ARM PROVEN binding: router wire `StrictMiddlewareFunc{srv.authMiddleware}` non-nil + `resolveActor` `auth.Verify` + role-from-`UserByID`; nil-wire→148/1→restore) · osm 22 · core ledger 43/43 · fills the `nil` StrictMiddlewareFunc seam 3d left → unblocks fan-out {3g/3h/3i/3k→3j} · **fail-closed classify** (unlisted op→require) · public{login,logout} · optional{CreateOrder} · owner-only{UpdateBankAccount}=requireOwner · **role from DB row not token claim, `actorRole` never `system`, `!Active`→401** · Actor{ByUser=users.id,Role,At} ctx-inject · does NOT re-impl RBAC (domain guard source of truth) · errUnauthenticated→401·errForbidden→403·DB-fault→500-no-leak · RBA-01 acceptance `[ ]` (Go-gated) · **no new deps · no new ADR** (impl ADR-030/032) · ~190 non-test src · **spec-guardian PASS: 0 BLOCKER/0 WARN/1 NOTE** (optional path 401s present-but-broken cookie — deliberate, admin-only SameSite=Strict cookie) |
 | **Core slice 3 · PR-3d — HTTP foundation (ErrorEnvelope + domain-error→status mapper + Server struct + withTx + strict-server stubs)** | **merged (PR #23)** | squash → `origin/main` `eac9b0f` (2026-07-01 09:29Z) | `make verify-go` ✓ (golangci 0, sqlc vet+diff, oapi stale-check, `go test -race` incl httpapi mapError/withTx/501-envelope/400-body-bind/400-param-bind tests) · guard **147** (+1 error-envelope ARM PROVEN binding [needs BOTH strict+chi seams] · + hardened NATS ARM [exclude tests+strip comments]; mutate→RED→restore) · osm 22 · TS ledger 17/17 · strict-server (ADR-031 D8); ADR-032 one-envelope + no-leak of Vietnamese `TransitionError.Message` NOR raw param/parser strings (BOTH oapi seams overridden) ; 8 endpoints = 501 stubs (3e–3k) · ERR-01 acceptance `[ ]` (Go-gated) · **no new deps · no new ADR** · Docker-free · ~300 lines non-test src · **5-lens review wf_f3cb8fbd: 10→5 confirmed/5 refuted, ALL FIXED** (2×IMPORTANT chi-wrapper plaintext leak on bad path-param → HandlerWithOptions+ChiServerOptions.ErrorHandlerFunc + regression test; 2×BLOCKER self-inflicted ERR-01 EARS line-wrap → reflowed; 1×NOTE NATS ARM widen) |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất
+**Core slice 3 · PR-3e-2 — auth boundary + RBAC (2026-07-01):** `make verify-go` rc=0 (gofmt + vet + golangci v2 **0** +
+sqlc vet + sqlc diff [+`GetUserByID` regen committed] + oapi generate+git-diff stale-check [clean — no openapi change] +
+`go test -race`) · guard.test.sh **149 / 0** · osm 22 · packages/core 43/43 (ledger 20, RBA-01 stays `[ ]`). **New:**
+`internal/httpapi/middleware_auth.go` (`authMiddleware` StrictMiddlewareFunc · `classify` fail-closed · `resolveActor`
+verify→uuid→UserByID→role-from-DB · `actorRole` never-system) + `actor.go` (Actor + unexported ctx key) + `auth.Verify`/
+`Claims` (jwtauth.VerifyToken sig+exp) + `db.Identity.UserByID` (+`GetUserByID` sqlc) + errors.go 401/403 (+code FORBIDDEN)
++ router wires the mw (non-nil slice). **Tests:** 17 httpapi mw tests (missing/tampered/unknown/inactive cookie · DB-fault→500 ·
+public-skip · optional present/absent/invalid · owner-only allow/reject · classify-fail-closed · actorRole-never-system ·
+3 wire tests through NewRouter) + fixed `TestDomainRouteReturns501Envelope` (authenticate first via `testAuthedRouter`) +
+UserByID folded into `TestUserRoundTrip` (skip-local/run-CI). Guard: +1 auth-boundary ARM PROVEN binding (nil-wire→148/1→restore).
+**No new deps · no new ADR** (ADR-030/032). **spec-guardian PASS 0/0/1** (present-but-broken optional cookie → 401, deliberate).
+colima KHÔNG cần (mw tests Docker-free; UserByID integration skips local).
 **Core slice 3 · PR-3e-1 — auth self-issued login (2026-07-01):** `make verify-go` rc=0 (gofmt + vet + golangci v2 **0** +
 sqlc vet + sqlc diff + oapi generate+git-diff stale-check + `go test -race`) · guard.test.sh **148 / 0** · osm 22 · TS
 api-client (typecheck + `schema.stale.test.ts` + eslint) ✓ · packages/core 42/42 (acceptance ledger 19, AUTH-01/02 consumed).
