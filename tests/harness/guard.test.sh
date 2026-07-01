@@ -516,6 +516,30 @@ if [ -f "$AUTHGO" ]; then
     bad "ARM: internal/auth LAND nhưng thiếu 1 trong {cookie HttpOnly, bcrypt.CompareHashAndPassword, login VerifyPassword(nil) nhánh unknown-email} -> rò token qua JS / plaintext compare / user-enumeration (ADR-030!)"
   fi
 else ok "ARM: chưa có internal/auth (auth self-issued login arm khi land — PR-3e-1)"; fi
+# Auth boundary — JWT-verify middleware + RBAC (PR-3e-2, ADR-030). Khi middleware_auth.go land,
+# 3 bất biến bảo mật PHẢI đứng, nếu không thì cả admin surface hở:
+#   (a) router WIRE middleware vào strict-server (NewStrictHandlerWithOptions với slice
+#       []api.StrictMiddlewareFunc{srv.authMiddleware} — KHÔNG để `nil`): thiếu → mọi endpoint
+#       admin chạy KHÔNG xác thực;
+#   (b) resolveActor VERIFY chữ ký/expiry token (auth.Verify) — KHÔNG chỉ tin cookie hiện diện:
+#       thiếu → cookie giả qua cửa;
+#   (c) role đọc TỪ users row qua UserByID (nguồn chân lý), KHÔNG tin `role` claim trong token:
+#       thiếu → token cũ giữ role đã đổi/đã vô hiệu vẫn leo thang.
+# Bỏ dòng comment ('// …') trước khi soi để wiring bị COMMENT-OUT không false-PASS (cùng class lỗ
+# '//' của relay-ARM 3b / error-envelope-ARM 3d). Chỉ soi file PROD.
+MWGO="$ROOT/services/core-api/internal/httpapi/middleware_auth.go"
+if [ -f "$MWGO" ]; then
+  ROUTERGO="$ROOT/services/core-api/internal/httpapi/router.go"
+  ROUTERBODY="$(grep -vE '^[[:space:]]*//' "$ROUTERGO" 2>/dev/null)"
+  MWBODY="$(grep -vE '^[[:space:]]*//' "$MWGO" 2>/dev/null)"
+  if printf '%s' "$ROUTERBODY" | grep -q 'StrictMiddlewareFunc{srv.authMiddleware}' \
+     && printf '%s' "$MWBODY" | grep -q 'auth.Verify\|s.auth.Verify' \
+     && printf '%s' "$MWBODY" | grep -q 'UserByID'; then
+    ok "ARM: có httpapi/middleware_auth.go -> router wire authMiddleware (không nil) + resolveActor VERIFY token (auth.Verify) + role đọc từ UserByID (không tin claim) (auth boundary/RBAC — ADR-030)"
+  else
+    bad "ARM: httpapi/middleware_auth.go LAND nhưng thiếu 1 trong {router wire StrictMiddlewareFunc{srv.authMiddleware}, resolveActor auth.Verify, UserByID role-từ-DB} -> admin surface chạy KHÔNG auth / cookie giả qua cửa / token cũ leo thang role (ADR-030!)"
+  fi
+else ok "ARM: chưa có httpapi/middleware_auth.go (auth boundary/RBAC arm khi land — PR-3e-2)"; fi
 if find "$ROOT/services" -name '*.rs' 2>/dev/null | grep -q .; then
   { [ -f "$ROOT/Makefile" ] && grep -Eq '^verify-rs:' "$ROOT/Makefile"; } \
     && ok "ARM: có .rs -> Makefile verify-rs" || bad "ARM: .rs LAND nhưng thiếu Makefile verify-rs"

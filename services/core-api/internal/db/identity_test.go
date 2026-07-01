@@ -162,6 +162,18 @@ func TestUserRoundTrip(t *testing.T) {
 	if got.PasswordHash != nil {
 		t.Fatalf("password_hash = %q, want NULL for a credential-less user", *got.PasswordHash)
 	}
+	// UserByID resolves the same row (the PR-3e-2 auth boundary looks users up by the token's
+	// sub) and returns ErrNotFound for an id that isn't there.
+	byID, err := idn.UserByID(ctx, got.ID)
+	if err != nil {
+		t.Fatalf("by id: %v", err)
+	}
+	if byID.Email != "owner@lumin.vn" || byID.Role != sqlc.UserRoleOwner {
+		t.Fatalf("by id = %+v, want owner@lumin.vn/owner", byID)
+	}
+	if _, err := idn.UserByID(ctx, uuid.New()); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown id err = %v, want ErrNotFound", err)
+	}
 	if _, err := idn.UserByEmail(ctx, "ghost@lumin.vn"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unknown email err = %v, want ErrNotFound", err)
 	}

@@ -8,7 +8,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/money"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
 )
@@ -76,8 +79,14 @@ func TestMapErrorNeverLeaksDomainMessage(t *testing.T) {
 // un-built handler yields a 501 ErrorEnvelope (code NOT_IMPLEMENTED), NOT the generated
 // plaintext default — and the raw error string ("endpoint not implemented") never leaks.
 func TestDomainRouteReturns501Envelope(t *testing.T) {
+	// /admin/dashboard is auth-gated (PR-3e-2), so authenticate first to reach the 501 stub —
+	// this test is about the error hooks rendering the stub's envelope, not the auth boundary.
+	u := authTestUser(sqlc.UserRoleOwner, true)
+	srv := serverWithUsers(fakeUsers{byID: map[uuid.UUID]sqlc.User{u.ID: u}})
 	rec := httptest.NewRecorder()
-	newTestRouter().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil))
+	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil)
+	req.AddCookie(issueCookie(t, srv, u))
+	testAuthedRouter(srv).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusNotImplemented {
 		t.Fatalf("GET /admin/dashboard = %d, want 501", rec.Code)

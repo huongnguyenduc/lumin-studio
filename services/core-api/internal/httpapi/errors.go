@@ -22,6 +22,7 @@ import (
 const (
 	codeValidation      = "VALIDATION"
 	codeUnauthorized    = "UNAUTHORIZED"
+	codeForbidden       = "FORBIDDEN"
 	codeNotFound        = "NOT_FOUND"
 	codeNoItems         = "NO_ITEMS"
 	codeInvalidEvent    = "INVALID_EVENT"
@@ -73,6 +74,12 @@ func mapError(err error) (int, api.ErrorEnvelope) {
 	}
 
 	switch {
+	case errors.Is(err, errUnauthenticated):
+		// No/invalid session credential at the auth boundary (PR-3e-2).
+		return http.StatusUnauthorized, envelope(codeUnauthorized)
+	case errors.Is(err, errForbidden):
+		// Valid credential, insufficient role (e.g. staff hitting an owner-only edge).
+		return http.StatusForbidden, envelope(codeForbidden)
 	case errors.Is(err, errNotImplemented):
 		return http.StatusNotImplemented, envelope(codeNotImplemented)
 	case errors.Is(err, db.ErrNotFound):
