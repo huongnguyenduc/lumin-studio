@@ -107,8 +107,8 @@ NOTE contract ARM was presence-only → tightened (≥4 `Test*Parity` + `assertS
 gamed-stub→144/1). Refuted (sound): trackingCode-→SHIPPING contract is intentional (plan §3h/D12) · Order.createdAt
 deliberate superset · regex/literal can't false-pass (fail-safe). guard stays 145.
 
-**`3c-2` codegen + `packages/api-client` scaffolding ✅ BUILT · verify green · review clean · chờ push→PR. (branch
-`feat/core-http-relay-3c-2` off `main` `f1b35d2`.)** Wires the contract → BOTH generated clients (ADR-031/§6 D8
+**`3c-2` codegen + `packages/api-client` scaffolding ✅ MERGED (PR #22) → `origin/main` `d10d30e` (2026-07-01 07:16Z,
+squash; local `main` ff'd). CONTRACT/HTTP TRACK HEAD 3c-1→3c-2 COMPLETE.** Wires the contract → BOTH generated clients (ADR-031/§6 D8
 strict-server), NO domain endpoints (that's 3d). **GO:** `internal/api/{oapi-codegen.yaml,gen.go}` (pin
 `oapi-codegen@v2.5.1` in `//go:generate`) → committed `api.gen.go` (strict-server + chi-server; the named
 `CreateOrderInput` union from the 3c-1 BLOCKER stays intact) + dep `github.com/oapi-codegen/runtime v1.1.2`
@@ -128,18 +128,52 @@ binding** (mutate→RED→restore). **Deps:** +oapi-codegen/runtime v1.1.2 +apap
 `skip-prune` → moved rationale into `generate:` block + dropped the line. (1 review lens stalled/no-report — its
 territory self-verified: go 1.23 preserved, golangci 0, CI go-1.23+network compatible.)
 
+**`3d` HTTP foundation ✅ BUILT · verify green · 5-lens review DONE (10→5 confirmed/5 refuted, ALL FIXED) · chờ push→PR.
+(branch `feat/core-http-relay-3d` off `main` `d10d30e`.)** The keystone the whole HTTP track funnels through (unblocks 3e→{3g,3h,3i,3k}→3j). Chose
+**strict-server** wiring (ADR-031 D8): `internal/httpapi/{errors.go,server.go,stubs.go}` + rewired `router.go`. **errors.go**
+= the ONE domain-error→(status,`api.ErrorEnvelope{code,messageKey,fields?}`) table (ADR-032): `*order.TransitionError`
+reuses its code verbatim (INVALID_EDGE→409·RBAC→403·REASON/REFUND/PROOF_REQUIRED→422·INVALID_ACTOR/TIMESTAMP→400·unknown→422)
++ `db.Err*`/`money.ErrInvalidAmount`→404/422 + unmapped→500; `msgKey(code)="errors."+code` (code↔key can't drift; frontend
+owns `errors` namespace, added 3j+). Two strict hooks REPLACE the oapi-codegen plaintext defaults (`http.Error(w,err.Error())`
+would leak the Vietnamese `TransitionError.Message` — always-must #3): `handleResponseError` (maps domain err → envelope; logs
+only genuine 500s server-side, NEVER forwards err.Error()) + `handleRequestError` (bind/decode fail → 400 VALIDATION, no raw
+parser echo). **server.go** = `Server{logger,pool,nats}` (implements `api.StrictServerInterface`; `queries`/`authVerifier`
+DEFERRED to 3g/3e to keep staticcheck unused-field clean) + `(*Server).readiness` method (moved from router free-func) +
+`withTx(ctx,txBeginner,fn)` (Begin→fn→Commit, rollback on err/panic; `txBeginner` iface = Docker-free unit-testable, `*pgxpool.Pool`
+satisfies). **stubs.go** = 8 not-implemented handlers (→501 NOT_IMPLEMENTED envelope) replaced per-endpoint by 3e–3k. **router.go**:
+`NewStrictHandlerWithOptions(srv,nil,{Request/ResponseErrorHandlerFunc})` + **`HandlerWithOptions` w/ `ChiServerOptions.ErrorHandlerFunc`**
+(nil StrictMiddlewareFunc slice = the auth-boundary seam 3e-2 fills). `NewRouter(logger,pool,nats)` signature UNCHANGED (existing readyz
+tests stay green). **HARNESS:** guard **147** (+1 error-envelope ARM: errors.go landed → router must wire BOTH error seams
+[strict `ResponseErrorHandlerFunc` + chi `ChiServerOptions`] + mapError must map TransitionError; PROVEN binding — rename-token→RED,
+comment-out→RED, restore→green) + **fixed the pre-existing NATS-readiness ARM** (it pinned `router.go` but readiness moved to `server.go`
+→ widened to grep httpapi prod files, `--exclude=*_test.go` + strip comments). **ERR-01** → `docs/acceptance.md` (Go-gated `[ ]`).
+`make verify-go` rc=0 (golangci 0, sqlc vet+diff, oapi stale-check, `go test -race` incl httpapi) · guard **147** · osm 22 · TS
+acceptance-ledger 17/17 (acceptance.md consumed) · Docker-free (no DB/NATS test). **No new deps · no new ADR** (implements ADR-032).
+~300 lines non-test src (< 400 budget).
+**5-lens adversarial review wf_f3cb8fbd: 10 raw → 5 confirmed / 5 refuted, ALL FIXED.** (IMPORTANT ×2, same defect two lenses)
+`api.HandlerFromMux` left the CHI-wrapper `ErrorHandlerFunc` at oapi-codegen's plaintext default → `POST /orders/{non-uuid}/transitions`
+returned `text/plain` `Invalid format for parameter id: …` (echo input + broke the ADR-032 JSON contract; param-binding fires BEFORE the
+strict layer) → switched to `HandlerWithOptions` w/ `ChiServerOptions.ErrorHandlerFunc: srv.handleRequestError` + `TestBadPathParamReturns400Validation`
+(proven backstop: revert→RED) + ARM now requires `ChiServerOptions`. (BLOCKER ×2, same, self-inflicted) the `ERR-01` row wrapped
+`the system shall` onto line 2 → REC-18 EARS-lint is line-oriented → guard went 146/1 RED (I'd run guard BEFORE adding the row) → reflowed
+onto one physical line. (NOTE) NATS ARM dir-grep could match tests/comments → hardened. Refuted (sound): ARM over-claim (param path never
+carries the Vietnamese message), 501-not-in-contract (deliberate stubs), route-group-not-established (plan-sanctioned strict-server + auth
+seam to 3e-2), 2× ARM-presence-only (backstopped by the real Go tests).
+
 > Lịch sử app-shell/backbone Phase-0 (storefront/admin/services scaffold) đã archive — xem `git log` + PR #5–#10.
 
 ## Next steps (1–3)
-1. **Slice 3 · PR-3c-2 — codegen + api-client:** push `feat/core-http-relay-3c-2` → PR (base `main` `f1b35d2`). Owner
-   merges. PR body: `api.gen.go`/`schema.gen.ts` + lockfiles excluded from line budget (hand-written ~190 lines, one
-   axis = codegen wiring); no EARS row (tooling); deps +oapi-codegen/runtime v1.1.2 (go 1.23 preserved) +openapi-typescript/openapi-fetch.
-2. **Slice 3 next sub-PRs** (after 3c-2 merges): `3d` HTTP foundation (error envelope + `Server` struct + `withTx` +
-   route-group skeleton + strict-server not-implemented stubs) — the keystone the whole HTTP track funnels through. In
-   parallel: the independent `3f` order-intake prereqs (by-id catalog sqlc + pricing/shipping/code/customer helpers +
+1. **Slice 3 · PR-3d — HTTP foundation:** after the adversarial review lands + any fixes, push `feat/core-http-relay-3d`
+   → PR (base `main` `d10d30e`). Owner merges. PR body: ~291 lines non-test src (< 400 budget); ADR-032 error envelope
+   (no new ADR); strict-server 501 stubs replaced per-endpoint by 3e–3k; guard 147 (+1 error-envelope ARM proven binding,
+   + fixed NATS ARM file-pin); ERR-01 acceptance row (Go-gated `[ ]`); **no new deps**; Docker-free.
+2. **Slice 3 next sub-PRs** (after 3d merges): `3e-1` auth self-issued login (ADR-030: `POST /auth/login` + bcrypt + JWT
+   cookie + migration `000009_user_credentials`) → `3e-2` JWT-verify + RBAC (fills the StrictMiddlewareFunc auth seam 3d
+   left) → handler fan-out `{3g checkout · 3h transitions · 3i dashboard · 3k settings/STK}` → `3j` admin frontend. In
+   parallel (independent node): `3f` order-intake prereqs (by-id catalog sqlc + pricing/shipping/code/customer helpers +
    migration `000008_order_code_seq`). Full DAG: `docs/plans/core-http-relay.md §1`.
-3. **Housekeeping:** prune `:gone` local branches + now-merged `feat/core-http-relay`(3a)/`-3b`/`-3c-1` when chủ duyệt.
-   Harness follow-up (out of 3c-2 scope): the **testcontainers ARM** greps Go `_test.go` for `postgres.Run` unanchored
+3. **Housekeeping:** prune `:gone` local branches + now-merged `feat/core-http-relay`(3a)/`-3b`/`-3c-1`/`-3c-2` when chủ
+   duyệt. Harness follow-up (out of 3d scope): the **testcontainers ARM** greps Go `_test.go` for `postgres.Run` unanchored
    → a `//`-commented boot call could false-pass (same comment-out class fixed for the recipe ARMs); harden in a
    harness-audit round. Sau Core phase: ADR-026 lane B/C/D · REC-20/28/39.
 
@@ -173,10 +207,26 @@ territory self-verified: go 1.23 preserved, golangci 0, CI go-1.23+network compa
 | **Core slice 3 · PR-3a — relay substrate (natsx connect + topology + readyz + lifecycle)** | **merged (PR #19)** | squash → `origin/main` `280e94b` (2026-06-27 11:30Z) | `make verify-go` ✓ (golangci 0, sqlc vet+diff, race); **2 natsx integration tests RAN vs real NATS+JetStream (colima)**; guard **142** (NATS ARM proven binding mutate→RED); osm 22; **nats.go v1.48.0 pinned** (v1.52→go1.25); **4-lens review wf_adea04ba 14→5 confirmed / 0 BLOCKER all fixed** (Docker-free non-fail-fast tests + convergence test + main.go comment + config exact-defaults); CI green (app-gates+selftest+services-gates incl first NATS-in-CI testcontainers) |
 | **Core slice 3 · PR-3b — relay drain loop (outbox→NATS publish-on-commit)** | **merged (PR #20)** | merge → `origin/main` `c3b2004` (2026-06-27) | `make verify-go` ✓; **9 relay integration tests RAN vs real PG+NATS (colima, -race)** — pending→published+Nats-Msg-Id, **late-low-seq watermark-loss regression**, no-stream→transient→recover (0 attempts burn), dedup-on-republish, poison→failed head-of-line, + **7 Docker-free unit**; guard **144** (+2 relay ARM PROVEN binding: scan-pending-SET lock + relay-start-in-main); osm 22; REL-01/02 → acceptance.md `[ ]` (Go-gated by guard ARM + Go tests); **no new deps**; **5-lens review wf_81c76244: 12 raw→4 confirmed (0 BLOCKER) ALL FIXED**; CI green (incl relay-vs-NATS-in-CI) |
 | **Core slice 3 · PR-3c-1 — OpenAPI contract authoring + 4-way enum parity + spec-sync** | **merged (PR #21)** | squash → `origin/main` `f1b35d2` (2026-06-27 23:45Z) | hand-authored `openapi.yaml` (3.0.3, slice-3 surfaces only, nested Order DTO, **named `CreateOrderInput` oneOf** web/inbox, inputs omit unitPrice/total → server-authoritative, ErrorEnvelope, Settings/STK/ReplyTemplate/Dashboard, cookieAuth) + `internal/contract/{parity_test,structure_test}.go` (**4-way enum parity** OpenAPI==order==packages/core==PG; Role{owner,staff,system} vs UserRole/PG user_role{owner,staff}; + refs-resolve/opId-unique) + `spec.md §02` Review text→body + guard contract ARM; `make verify-go` ✓ (golangci 0, sqlc vet+diff, race incl parity) · **guard 145** (+1 contract ARM, tightened ≥4 Test*Parity+assertSame, PROVEN binding) · osm 22 · **parity PROVEN binding** REFUNDED-drift→RED · yaml.v3 indirect→direct (only dep change) · ADR-031 (no new ADR) · no EARS · **4-lens review wf_a95388f8-5d8: 3 confirmed (1 BLOCKER oapi-codegen opaque-union → named schema, RE-RAN codegen → 10 union methods) / 4 refuted, all fixed** |
-| **Core slice 3 · PR-3c-2 — codegen (oapi-codegen strict-server) + `@lumin/api-client` + guard oapi ARM + D13** | **BUILT · verify green · review clean · chờ push→PR** | `feat/core-http-relay-3c-2` off `main` `f1b35d2` | `make verify-go` ✓ (golangci 0, sqlc vet+diff, **oapi generate+git-diff stale-check**, race) · `pnpm verify` ✓ (lint+typecheck+test incl new stale-gate + format:check; prettier/eslint ignore `*.gen.ts`) · guard **146** (+1 oapi ARM PROVEN binding: recipe must have `go generate`+`git diff --exit-code`, comment-strip vs `#`-false-pass) · osm 22 · committed `api.gen.go` (strict-server + chi-server, named `CreateOrderInput` union) + `schema.gen.ts` (openapi-typescript 7.13.0) · **go directive 1.23.6 preserved** (runtime v1.1.2 pinned) · D13 `plan.md` ledger checkbox ticked (Go REL-* stay `[ ]`) · **4-lens review wf_58d3da06: 2 confirmed (0 BLOCKER, both NOTE) / 0 refuted, both FIXED** (guard comment-strip + oapi-yaml comment) · deps +oapi-codegen/runtime v1.1.2 +openapi-typescript/openapi-fetch |
+| **Core slice 3 · PR-3c-2 — codegen (oapi-codegen strict-server) + `@lumin/api-client` + guard oapi ARM + D13** | **merged (PR #22)** | squash → `origin/main` `d10d30e` (2026-07-01 07:16Z) | `make verify-go` ✓ (golangci 0, sqlc vet+diff, **oapi generate+git-diff stale-check**, race) · `pnpm verify` ✓ (lint+typecheck+test incl new stale-gate + format:check; prettier/eslint ignore `*.gen.ts`) · guard **146** (+1 oapi ARM PROVEN binding: recipe must have `go generate`+`git diff --exit-code`, comment-strip vs `#`-false-pass) · osm 22 · committed `api.gen.go` (strict-server + chi-server, named `CreateOrderInput` union) + `schema.gen.ts` (openapi-typescript 7.13.0) · **go directive 1.23.6 preserved** (runtime v1.1.2 pinned) · D13 `plan.md` ledger checkbox ticked (Go REL-* stay `[ ]`) · **4-lens review wf_58d3da06: 2 confirmed (0 BLOCKER, both NOTE) / 0 refuted, both FIXED** (guard comment-strip + oapi-yaml comment) · deps +oapi-codegen/runtime v1.1.2 +openapi-typescript/openapi-fetch |
+| **Core slice 3 · PR-3d — HTTP foundation (ErrorEnvelope + domain-error→status mapper + Server struct + withTx + strict-server stubs)** | **BUILT · verify green · review DONE (all fixed) · chờ push→PR** | `feat/core-http-relay-3d` off `main` `d10d30e` | `make verify-go` ✓ (golangci 0, sqlc vet+diff, oapi stale-check, `go test -race` incl httpapi mapError/withTx/501-envelope/400-body-bind/400-param-bind tests) · guard **147** (+1 error-envelope ARM PROVEN binding [needs BOTH strict+chi seams] · + hardened NATS ARM [exclude tests+strip comments]; mutate→RED→restore) · osm 22 · TS ledger 17/17 · strict-server (ADR-031 D8); ADR-032 one-envelope + no-leak of Vietnamese `TransitionError.Message` NOR raw param/parser strings (BOTH oapi seams overridden) ; 8 endpoints = 501 stubs (3e–3k) · ERR-01 acceptance `[ ]` (Go-gated) · **no new deps · no new ADR** · Docker-free · ~300 lines non-test src · **5-lens review wf_f3cb8fbd: 10→5 confirmed/5 refuted, ALL FIXED** (2×IMPORTANT chi-wrapper plaintext leak on bad path-param → HandlerWithOptions+ChiServerOptions.ErrorHandlerFunc + regression test; 2×BLOCKER self-inflicted ERR-01 EARS line-wrap → reflowed; 1×NOTE NATS ARM widen) |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất
+**Core slice 3 · PR-3d — HTTP foundation (2026-07-01):** `make verify-go` rc=0 (gofmt + vet + golangci v2 **0** + sqlc
+vet + sqlc diff + oapi generate+git-diff stale-check + `go test -race`) · guard.test.sh **147 / 0** · osm 22. **New:**
+`internal/httpapi/errors.go` (mapError ADR-032 table + `writeError` + strict hooks `handleResponseError`/`handleRequestError`),
+`server.go` (`Server{logger,pool,nats}` impl `api.StrictServerInterface` + `(*Server).readiness` + `withTx`+`txBeginner`),
+`stubs.go` (8×501 NOT_IMPLEMENTED), rewired `router.go` (`NewStrictHandlerWithOptions`+`HandlerFromMux`, sig unchanged).
+Tests: `TestMapErrorTable` (18 cases), `TestMapErrorNeverLeaksDomainMessage`, `TestDomainRouteReturns501Envelope`,
+`TestBadJSONBodyReturns400Validation`, withTx commit/rollback/panic/begin-err/commit-err (fake `pgx.Tx`, Docker-free).
+Guard: +1 error-envelope ARM **PROVEN binding** (rename `ResponseErrorHandlerFunc`/`mapError`/`ChiServerOptions` token→RED ·
+comment-out→RED · restore→147); NATS-readiness ARM widened from pinning `router.go` to grepping httpapi **prod** files (readiness
+moved to a `Server` method; `--exclude=*_test.go` + strip comments so a test/comment can't false-PASS). ERR-01 → acceptance.md `[ ]`.
+**5-lens review wf_f3cb8fbd (10→5 confirmed/5 refuted, ALL FIXED):** the router mounted via `HandlerFromMux`, leaving the CHI-wrapper
+`ErrorHandlerFunc` at oapi-codegen's plaintext default → a non-UUID `{id}` on the transition route leaked `text/plain` + echoed input
+(param-binding fires before the strict layer) → now `HandlerWithOptions` w/ `ChiServerOptions.ErrorHandlerFunc` + `TestBadPathParamReturns400Validation`
+(revert→RED proven); the `ERR-01` row's line-wrap tripped REC-18 EARS-lint (guard 146/1 — I'd verified guard before adding the row) → reflowed.
+**No new deps · no new ADR** (implements ADR-032). colima KHÔNG cần.
 **Core slice 3 · PR-3c-2 — codegen + `@lumin/api-client` (2026-07-01):** `make verify-go` rc=0 (gofmt + vet + golangci
 v2 **0** + sqlc vet + sqlc diff + **`go generate ./internal/api/…` + `git diff --exit-code` oapi stale-check** + `go
 test -race`) · `pnpm verify` rc=0 (turbo lint + typecheck + test incl the NEW `@lumin/api-client` stale-gate +

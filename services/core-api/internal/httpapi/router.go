@@ -1,11 +1,10 @@
-// Package httpapi wires the core-api HTTP router: the baseline middleware stack
-// and the platform endpoints (health/readiness). Domain routes (orders,
-// products, settings, SSE) mount here in later phases — keep handlers thin and
-// push business logic into domain packages.
+// Package httpapi wires the core-api HTTP router: the baseline middleware stack, the
+// platform probes (health/readiness), and the OpenAPI-generated domain routes served by
+// the strict-server handler on *Server. Handlers stay thin — business logic lives in the
+// domain packages (internal/order, internal/money) and SQL in internal/db.
 package httpapi
 
 import (
-	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -14,6 +13,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/api"
 )
 
 // NATSStatus reports whether the NATS/JetStream broker is currently reachable. The
@@ -23,9 +24,10 @@ type NATSStatus interface {
 	Reachable() bool
 }
 
-// NewRouter builds the chi router with the baseline middleware stack and the platform
-// probes. The pool and nats handle back the readiness check; pass nil for either in unit
-// tests that don't exercise that dependency (readiness then skips that check).
+// NewRouter builds the chi router with the baseline middleware stack, the platform probes,
+// and the OpenAPI domain routes. The pool and nats handle back the readiness check; pass
+// nil for either in unit tests that don't exercise that dependency (readiness then skips
+// that check).
 func NewRouter(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus) http.Handler {
 	r := chi.NewRouter()
 
@@ -43,12 +45,34 @@ func NewRouter(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus) http.Ha
 	// socket-level backstop is the http.Server Read/Write timeouts (Phase-1).
 	r.Use(middleware.Timeout(30 * time.Second))
 
+	srv := NewServer(logger, pool, nats)
+
 	// Liveness: the process is up. Readiness adds Postgres + NATS reachability checks;
 	// Garage joins them once it is wired — see architecture.md §2.
 	r.Get("/healthz", health)
-	r.Get("/readyz", readiness(pool, nats))
+	r.Get("/readyz", srv.readiness)
 
-	return r
+	// Mount the OpenAPI-generated domain routes. oapi-codegen has TWO error seams and both
+	// default to a plaintext http.Error(w, err.Error()) that we must override, or a raw Go
+	// error (incl. the domain's Vietnamese TransitionError.Message) leaks onto the wire and
+	// the response breaks the single ErrorEnvelope contract all three TS clients consume
+	// (always-must #3 / ADR-032):
+	//   1. the STRICT layer (Request/ResponseErrorHandlerFunc) — body decode + handler-return
+	//      errors; and
+	//   2. the CHI wrapper (ChiServerOptions.ErrorHandlerFunc) — path/query param binding,
+	//      which fires BEFORE the strict layer (e.g. a non-UUID {id} on the transition route).
+	// Both route through handleRequestError/handleResponseError → the JSON ErrorEnvelope. The
+	// auth boundary (JWT-verify on the admin group, optional-auth on POST /orders) plugs into
+	// the StrictMiddlewareFunc seam (the nil slice below) in PR-3e-2. Handlers are 501 stubs
+	// until their domain PRs (3e–3k) land.
+	strict := api.NewStrictHandlerWithOptions(srv, nil, api.StrictHTTPServerOptions{
+		RequestErrorHandlerFunc:  srv.handleRequestError,
+		ResponseErrorHandlerFunc: srv.handleResponseError,
+	})
+	return api.HandlerWithOptions(strict, api.ChiServerOptions{
+		BaseRouter:       r,
+		ErrorHandlerFunc: srv.handleRequestError,
+	})
 }
 
 // requestLogger emits one structured slog line per request.
@@ -74,31 +98,8 @@ func health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// readiness reports 200 only when every wired dependency is reachable, 503 otherwise — so
-// a load balancer drains this instance while Postgres or NATS is unreachable. A nil
-// dependency (unit tests that don't exercise it) is skipped; the `dep` field on a 503
-// names the failing dependency for ops triage.
-func readiness(pool *pgxpool.Pool, nats NATSStatus) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if pool != nil {
-			ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-			defer cancel()
-			if err := pool.Ping(ctx); err != nil {
-				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable", "dep": "postgres"})
-				return
-			}
-		}
-		if nats != nil && !nats.Reachable() {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable", "dep": "nats"})
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	}
-}
-
-// writeJSON is the shared response helper. It marshals into a buffer first so a
-// (currently impossible, but possible once domain structs adopt it) encode error
-// surfaces as a 500 instead of a committed 200 with a truncated body.
+// writeJSON is the shared response helper. It marshals into a buffer first so an encode
+// error surfaces as a 500 instead of a committed 200 with a truncated body.
 func writeJSON(w http.ResponseWriter, status int, body any) {
 	buf, err := json.Marshal(body)
 	if err != nil {
