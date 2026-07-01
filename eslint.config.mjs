@@ -19,6 +19,9 @@ export default tseslint.config(
       '**/coverage/**',
       '**/.next/**',
       '**/next-env.d.ts',
+      // openapi-typescript output (packages/api-client) — machine-generated, guarded by its
+      // own stale-check test; not ours to lint (ADR-031).
+      '**/*.gen.ts',
     ],
   },
   js.configs.recommended,

@@ -367,14 +367,30 @@ if find "$ROOT/services" -name '*.go' 2>/dev/null | grep -q .; then
 else ok "ARM: chưa có .go (Makefile verify-go arm khi land)"; fi
 # sqlc gate: khi sqlc.yaml land, recipe verify-go PHẢI chạy 'sqlc vet' (gác drift query↔schema).
 # Chỉ grep target '^verify-go:' tồn tại là CHƯA đủ — phải soi THÂN recipe, vì "gate no-op trông y
-# hệt gate pass". Trích đúng block recipe verify-go (single-line backslash-continued) rồi grep.
+# hệt gate pass". Trích block recipe verify-go rồi grep — nhưng STRIP dòng comment ('^[[:space:]]*#')
+# trước, nếu không một verb bị comment-out ('# sqlc vet …') vẫn khớp grep unanchored → false-pass
+# (cùng class lỗ '//' của relay-ARM 3b; review PR-3c-2 wf_58d3da06).
 if [ -f "$ROOT/services/core-api/sqlc.yaml" ]; then
-  if [ -f "$ROOT/Makefile" ] && sed -n '/^verify-go:/,/^$/p' "$ROOT/Makefile" 2>/dev/null | grep -q 'sqlc vet'; then
+  if [ -f "$ROOT/Makefile" ] && sed -n '/^verify-go:/,/^$/p' "$ROOT/Makefile" 2>/dev/null | grep -v '^[[:space:]]*#' | grep -q 'sqlc vet'; then
     ok "ARM: có sqlc.yaml -> recipe verify-go chạy 'sqlc vet'"
   else
     bad "ARM: sqlc.yaml LAND nhưng 'sqlc vet' KHÔNG trong recipe verify-go (drift query↔schema không gác!)"
   fi
 else ok "ARM: chưa có sqlc.yaml (sqlc vet arm khi query land)"; fi
+# oapi-codegen gate (PR-3c-2): khi openapi.yaml + api/*.gen.go land, recipe verify-go PHẢI vừa
+# regenerate (`go generate ./internal/api/...`) VỪA enforce drift (`git diff --exit-code -- …api.gen.go`).
+# Thiếu vế diff → regen câm (false-pass); thiếu vế generate → diff luôn sạch (false-pass). Cùng lý do
+# sqlc: soi THÂN recipe, không chỉ target tồn tại (§6 D8, ADR-031 contract↔gen không được drift).
+# STRIP dòng comment ('^[[:space:]]*#') khỏi recipe trước khi grep → verb bị comment-out không false-pass.
+if [ -f "$ROOT/services/core-api/openapi.yaml" ] && ls "$ROOT"/services/core-api/internal/api/*.gen.go >/dev/null 2>&1; then
+  VGRECIPE="$(sed -n '/^verify-go:/,/^$/p' "$ROOT/Makefile" 2>/dev/null | grep -v '^[[:space:]]*#')"
+  if printf '%s' "$VGRECIPE" | grep -Eq 'go generate .*internal/api' \
+     && printf '%s' "$VGRECIPE" | grep -Eq 'git diff --exit-code.*internal/api'; then
+    ok "ARM: có openapi.yaml + api/*.gen.go -> recipe verify-go regenerate + git-diff stale-check oapi-codegen"
+  else
+    bad "ARM: openapi.yaml + api/*.gen.go LAND nhưng stale-check oapi-codegen KHÔNG đủ trong recipe verify-go (drift contract↔gen không gác!)"
+  fi
+else ok "ARM: chưa có openapi.yaml+api/*.gen.go (oapi stale-check arm khi codegen land)"; fi
 # testcontainers real-check (mirror osm real-check): test integration PHẢI boot container thật,
 # không phải skip-always stub. Pre-PR-2b: chưa có test nào -> ok "arm khi land".
 TCFILES="$(grep -rl 'testcontainers' "$ROOT/services" --include='*_test.go' 2>/dev/null || true)"

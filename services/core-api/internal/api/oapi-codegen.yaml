@@ -1,0 +1,15 @@
+# oapi-codegen config for core-api — ADR-031/§6 D8 (strict-server).
+#
+# Generates internal/api/api.gen.go FROM ../../openapi.yaml (the single hand-authored
+# wire contract). strict-server gives compile-time handler↔contract conformance: the
+# 3d Server implements StrictServerInterface and the compiler rejects a drift.
+# Pinned to oapi-codegen v2.5.1 in the //go:generate directive (gen.go) for byte-stable,
+# CI-reproducible output — the `make verify-go` stale-check regenerates and diffs.
+package: api
+output: api.gen.go
+generate:
+  models: true
+  chi-server: true
+  strict-server: true
+  # embedded-spec intentionally OMITTED: the YAML is the in-repo source of truth (ADR-031) and
+  # core-api does not serve its own spec this slice, so the document is not embedded into the Go.

@@ -5,19 +5,20 @@
 # the moment service code lands — tests/harness/guard.test.sh §ARM-GUARD fails
 # if a *.go exists under services/ without a `verify-go` target (or *.rs without
 # `verify-rs`), and — once sqlc.yaml/generated code lands — if the `verify-go`
-# recipe does not actually run `sqlc vet`, so a silently-skipped gate cannot
-# masquerade as a passing one. The Stop hook (.claude/hooks/verify-before-stop.sh)
-# runs `make verify-go` / `make verify-rs` when the matching files change.
+# recipe does not actually run `sqlc vet` (and, once openapi.yaml + *.gen.go land,
+# the oapi-codegen stale-check), so a silently-skipped gate cannot masquerade as a
+# passing one. The Stop hook (.claude/hooks/verify-before-stop.sh) runs
+# `make verify-go` / `make verify-rs` when the matching files change.
 #
 # Recipes target GNU Make 3.81 (macOS default): no .ONESHELL, so each target is
 # a single backslash-continued shell line.
 
-.PHONY: verify verify-go verify-rs sqlc migrate
+.PHONY: verify verify-go verify-rs sqlc oapi migrate
 
 ## verify: run every native-service gate
 verify: verify-go verify-rs
 
-## verify-go: gofmt-check + go vet + golangci-lint v2 + sqlc vet/diff + go test -race
+## verify-go: gofmt-check + go vet + golangci-lint v2 + sqlc vet/diff + oapi stale-check + go test -race
 verify-go:
 	cd services/core-api && \
 	  { unformatted="$$(gofmt -l .)"; [ -z "$$unformatted" ] || { echo "gofmt needed on:"; echo "$$unformatted"; exit 1; }; } && \
@@ -25,6 +26,8 @@ verify-go:
 	  golangci-lint run && \
 	  sqlc vet && \
 	  sqlc diff && \
+	  go generate ./internal/api/... && \
+	  { git diff --exit-code -- internal/api/api.gen.go || { echo "api.gen.go is stale vs openapi.yaml — run 'make oapi' and commit the regen"; exit 1; }; } && \
 	  go test -race ./...
 
 ## verify-rs: cargo fmt --check + clippy -D warnings + cargo test (services/asset-worker)
@@ -37,6 +40,11 @@ verify-rs:
 ## sqlc: regenerate the typed query layer (needs sqlc v1.30.0 — see core-api/README)
 sqlc:
 	cd services/core-api && sqlc generate
+
+## oapi: regenerate the OpenAPI server contract (internal/api/api.gen.go) from openapi.yaml
+## — oapi-codegen v2.5.1 is pinned in the //go:generate directive (internal/api/gen.go)
+oapi:
+	cd services/core-api && go generate ./internal/api/...
 
 ## migrate: apply pending up migrations (needs DATABASE_URL + golang-migrate, ADR-028)
 migrate:

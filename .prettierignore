@@ -8,6 +8,10 @@ build
 out
 pnpm-lock.yaml
 
+# Generated code — machine output validated by its own stale-check (openapi-typescript,
+# packages/api-client/src/schema.gen.ts). Not prettier-managed (would fight the generator).
+**/*.gen.ts
+
 # Pre-existing handcrafted content — NOT prettier-managed (authored by hand, source of truth).
 # Prettier only formats the code we own (root config + packages/**).
 # NOTE: leading slash anchors to repo root — a bare `tokens/` also matches `packages/tokens/`
