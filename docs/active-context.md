@@ -84,7 +84,7 @@ ctx-rename không false-RED; re-proven: comment-out→RED, rename→GREEN, delet
 drainOnce recover → non-positive RELAY_POLL_INTERVAL crash cả process → `newRelay` clamp poll/batch/maxAtt≤0→default + test;
 (NOTE) panic-recovery 0 coverage → `TestDrainPanicRecovered`; (NOTE) clamp test. guard giữ 144, relay test 9→11.
 
-**`3c-1` OpenAPI contract authoring ✅ PR #21 OPEN · CLEAN · MERGEABLE · CI GREEN (app-gates + selftest + services-gates) · chờ owner merge. (branch `feat/core-http-relay-3c-1` off `c3b2004`.)**
+**`3c-1` OpenAPI contract authoring ✅ MERGED (PR #21) → `origin/main` `f1b35d2` (2026-06-27 23:45Z, squash; local `main` ff'd). (branch `feat/core-http-relay-3c-1` off `c3b2004`.)**
 Head of the contract/HTTP track (unblocks 3c-2→3d→3e→{3g,3h,3i,3k}→3j). Hand-authored
 `services/core-api/openapi.yaml` (OpenAPI **3.0.3**, slice-3 surfaces ONLY — auth/orders/transitions/dashboard/
 settings-STK/reply-templates; NO catalog read DTOs per scope): nested `Order` DTO (not flat sqlc row) +
@@ -107,18 +107,41 @@ NOTE contract ARM was presence-only → tightened (≥4 `Test*Parity` + `assertS
 gamed-stub→144/1). Refuted (sound): trackingCode-→SHIPPING contract is intentional (plan §3h/D12) · Order.createdAt
 deliberate superset · regex/literal can't false-pass (fail-safe). guard stays 145.
 
+**`3c-2` codegen + `packages/api-client` scaffolding ✅ BUILT · verify green · review clean · chờ push→PR. (branch
+`feat/core-http-relay-3c-2` off `main` `f1b35d2`.)** Wires the contract → BOTH generated clients (ADR-031/§6 D8
+strict-server), NO domain endpoints (that's 3d). **GO:** `internal/api/{oapi-codegen.yaml,gen.go}` (pin
+`oapi-codegen@v2.5.1` in `//go:generate`) → committed `api.gen.go` (strict-server + chi-server; the named
+`CreateOrderInput` union from the 3c-1 BLOCKER stays intact) + dep `github.com/oapi-codegen/runtime v1.1.2`
+**PINNED** (v1.4.2 pulls x/crypto→go 1.24; **go directive stays 1.23.6** như pgx/nats) + `.golangci.yml` gen-exclude
+(`generated:lax` + `paths: '.*\.gen\.go$'`) + `make verify-go` gains `oapi` target + `go generate ./internal/api/...`
++ `git diff --exit-code` stale-check. **TS:** NEW `@lumin/api-client` (openapi-typescript **7.13.0** → committed
+`src/schema.gen.ts` + openapi-fetch **0.13.8** `createApiClient`, cookie-cred default per ADR-030) + DRY stale-gate
+`test/schema.stale.test.ts` (regen via the shared `codegen.mjs` render fn → byte-equality) + `**/*.gen.ts`
+eslint+prettier-ignore. **HARNESS:** guard oapi ARM (verify-go recipe PHẢI chứa CẢ `go generate …internal/api` VÀ
+`git diff --exit-code…internal/api`; comment-strip nên verb bị `#`-comment không false-pass) **145→146**; D13
+`docs/plan.md` acceptance-ledger checkbox ✅ ticked (parser pre-existed+passes+armed; Go REL-01/02 GIỮ `[ ]` cố ý —
+parser chỉ resolve id TS). `make verify-go` rc=0 · `pnpm verify` rc=0 · guard **146** · osm 22; **cả 3 gate mới PROVEN
+binding** (mutate→RED→restore). **Deps:** +oapi-codegen/runtime v1.1.2 +apapsch/go-jsonmerge/v2 (Go) +openapi-typescript
++openapi-fetch (TS). **4-lens review wf_58d3da06: 2 confirmed (0 BLOCKER · both NOTE) / 0 refuted, BOTH FIXED** —
+(NOTE) guard ARM grep unanchored → `#`-commented verb false-passed (cùng class lỗ `//` của 3b) → strip comment lines
+(hardened sibling sqlc ARM luôn), re-proven comment-out→RED; (NOTE) oapi-codegen.yaml comment mis-attached to no-op
+`skip-prune` → moved rationale into `generate:` block + dropped the line. (1 review lens stalled/no-report — its
+territory self-verified: go 1.23 preserved, golangci 0, CI go-1.23+network compatible.)
+
 > Lịch sử app-shell/backbone Phase-0 (storefront/admin/services scaffold) đã archive — xem `git log` + PR #5–#10.
 
 ## Next steps (1–3)
-1. **Slice 3 · PR-3c-1 — OpenAPI contract:** apply confirmed review fixes (wf_a95388f8-5d8) → commit → push → PR (base
-   `main` `c3b2004`). Owner merges. PR body: note YAML + `*.gen.go`(later) excluded from line budget; one coherent
-   axis (the contract); no EARS row (contract-authoring).
-2. **Slice 3 next sub-PRs** (after 3c-1 merges): `3c-2` codegen+`packages/api-client` scaffolding (oapi-codegen
-   strict-server + openapi-typescript + the long-open `acceptance.ledger.test` already exists → just gen wiring) — OR
-   the independent `3f` order-intake prereqs (pricing/shipping/code/customer + migration 000008). Then `3d` HTTP
-   foundation. Full DAG: `docs/plans/core-http-relay.md §1`.
-3. **Housekeeping:** prune `:gone` local branches + the now-merged `feat/core-http-relay`(3a)/`feat/core-http-relay-3b`
-   when chủ duyệt. Sau Core phase: ADR-026 lane B/C/D · REC-20/28/39.
+1. **Slice 3 · PR-3c-2 — codegen + api-client:** push `feat/core-http-relay-3c-2` → PR (base `main` `f1b35d2`). Owner
+   merges. PR body: `api.gen.go`/`schema.gen.ts` + lockfiles excluded from line budget (hand-written ~190 lines, one
+   axis = codegen wiring); no EARS row (tooling); deps +oapi-codegen/runtime v1.1.2 (go 1.23 preserved) +openapi-typescript/openapi-fetch.
+2. **Slice 3 next sub-PRs** (after 3c-2 merges): `3d` HTTP foundation (error envelope + `Server` struct + `withTx` +
+   route-group skeleton + strict-server not-implemented stubs) — the keystone the whole HTTP track funnels through. In
+   parallel: the independent `3f` order-intake prereqs (by-id catalog sqlc + pricing/shipping/code/customer helpers +
+   migration `000008_order_code_seq`). Full DAG: `docs/plans/core-http-relay.md §1`.
+3. **Housekeeping:** prune `:gone` local branches + now-merged `feat/core-http-relay`(3a)/`-3b`/`-3c-1` when chủ duyệt.
+   Harness follow-up (out of 3c-2 scope): the **testcontainers ARM** greps Go `_test.go` for `postgres.Run` unanchored
+   → a `//`-commented boot call could false-pass (same comment-out class fixed for the recipe ARMs); harden in a
+   harness-audit round. Sau Core phase: ADR-026 lane B/C/D · REC-20/28/39.
 
 ## Open questions
 - *(không có cho slice backbone — scope đã chốt "backbone only" với user; ADR đã khoá quyết định.)*
@@ -149,10 +172,33 @@ deliberate superset · regex/literal can't false-pass (fail-safe). guard stays 1
 | **Core slice 3 — HTTP + relay (plan + ADR-029..033 locked)** | done (plan) | `feat/core-http-relay` `ecd06fa` | 13 sub-PRs / 2 tracks; planning wf_48252601 |
 | **Core slice 3 · PR-3a — relay substrate (natsx connect + topology + readyz + lifecycle)** | **merged (PR #19)** | squash → `origin/main` `280e94b` (2026-06-27 11:30Z) | `make verify-go` ✓ (golangci 0, sqlc vet+diff, race); **2 natsx integration tests RAN vs real NATS+JetStream (colima)**; guard **142** (NATS ARM proven binding mutate→RED); osm 22; **nats.go v1.48.0 pinned** (v1.52→go1.25); **4-lens review wf_adea04ba 14→5 confirmed / 0 BLOCKER all fixed** (Docker-free non-fail-fast tests + convergence test + main.go comment + config exact-defaults); CI green (app-gates+selftest+services-gates incl first NATS-in-CI testcontainers) |
 | **Core slice 3 · PR-3b — relay drain loop (outbox→NATS publish-on-commit)** | **merged (PR #20)** | merge → `origin/main` `c3b2004` (2026-06-27) | `make verify-go` ✓; **9 relay integration tests RAN vs real PG+NATS (colima, -race)** — pending→published+Nats-Msg-Id, **late-low-seq watermark-loss regression**, no-stream→transient→recover (0 attempts burn), dedup-on-republish, poison→failed head-of-line, + **7 Docker-free unit**; guard **144** (+2 relay ARM PROVEN binding: scan-pending-SET lock + relay-start-in-main); osm 22; REL-01/02 → acceptance.md `[ ]` (Go-gated by guard ARM + Go tests); **no new deps**; **5-lens review wf_81c76244: 12 raw→4 confirmed (0 BLOCKER) ALL FIXED**; CI green (incl relay-vs-NATS-in-CI) |
-| **Core slice 3 · PR-3c-1 — OpenAPI contract authoring + 4-way enum parity + spec-sync** | **PR #21 OPEN · CLEAN · CI green · chờ merge** | `feat/core-http-relay-3c-1` off `c3b2004` | hand-authored `openapi.yaml` (3.0.3, slice-3 surfaces only, nested Order DTO, **named `CreateOrderInput` oneOf** web/inbox, inputs omit unitPrice/total → server-authoritative, ErrorEnvelope, Settings/STK/ReplyTemplate/Dashboard, cookieAuth) + `internal/contract/{parity_test,structure_test}.go` (**4-way enum parity** OpenAPI==order==packages/core==PG; Role{owner,staff,system} vs UserRole/PG user_role{owner,staff}; + refs-resolve/opId-unique) + `spec.md §02` Review text→body + guard contract ARM; `make verify-go` ✓ (golangci 0, sqlc vet+diff, race incl parity) · **guard 145** (+1 contract ARM, tightened ≥4 Test*Parity+assertSame, PROVEN binding) · osm 22 · **parity PROVEN binding** REFUNDED-drift→RED · yaml.v3 indirect→direct (only dep change) · ADR-031 (no new ADR) · no EARS · **4-lens review wf_a95388f8-5d8: 3 confirmed (1 BLOCKER oapi-codegen opaque-union → named schema, RE-RAN codegen → 10 union methods) / 4 refuted, all fixed** |
+| **Core slice 3 · PR-3c-1 — OpenAPI contract authoring + 4-way enum parity + spec-sync** | **merged (PR #21)** | squash → `origin/main` `f1b35d2` (2026-06-27 23:45Z) | hand-authored `openapi.yaml` (3.0.3, slice-3 surfaces only, nested Order DTO, **named `CreateOrderInput` oneOf** web/inbox, inputs omit unitPrice/total → server-authoritative, ErrorEnvelope, Settings/STK/ReplyTemplate/Dashboard, cookieAuth) + `internal/contract/{parity_test,structure_test}.go` (**4-way enum parity** OpenAPI==order==packages/core==PG; Role{owner,staff,system} vs UserRole/PG user_role{owner,staff}; + refs-resolve/opId-unique) + `spec.md §02` Review text→body + guard contract ARM; `make verify-go` ✓ (golangci 0, sqlc vet+diff, race incl parity) · **guard 145** (+1 contract ARM, tightened ≥4 Test*Parity+assertSame, PROVEN binding) · osm 22 · **parity PROVEN binding** REFUNDED-drift→RED · yaml.v3 indirect→direct (only dep change) · ADR-031 (no new ADR) · no EARS · **4-lens review wf_a95388f8-5d8: 3 confirmed (1 BLOCKER oapi-codegen opaque-union → named schema, RE-RAN codegen → 10 union methods) / 4 refuted, all fixed** |
+| **Core slice 3 · PR-3c-2 — codegen (oapi-codegen strict-server) + `@lumin/api-client` + guard oapi ARM + D13** | **BUILT · verify green · review clean · chờ push→PR** | `feat/core-http-relay-3c-2` off `main` `f1b35d2` | `make verify-go` ✓ (golangci 0, sqlc vet+diff, **oapi generate+git-diff stale-check**, race) · `pnpm verify` ✓ (lint+typecheck+test incl new stale-gate + format:check; prettier/eslint ignore `*.gen.ts`) · guard **146** (+1 oapi ARM PROVEN binding: recipe must have `go generate`+`git diff --exit-code`, comment-strip vs `#`-false-pass) · osm 22 · committed `api.gen.go` (strict-server + chi-server, named `CreateOrderInput` union) + `schema.gen.ts` (openapi-typescript 7.13.0) · **go directive 1.23.6 preserved** (runtime v1.1.2 pinned) · D13 `plan.md` ledger checkbox ticked (Go REL-* stay `[ ]`) · **4-lens review wf_58d3da06: 2 confirmed (0 BLOCKER, both NOTE) / 0 refuted, both FIXED** (guard comment-strip + oapi-yaml comment) · deps +oapi-codegen/runtime v1.1.2 +openapi-typescript/openapi-fetch |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất
+**Core slice 3 · PR-3c-2 — codegen + `@lumin/api-client` (2026-07-01):** `make verify-go` rc=0 (gofmt + vet + golangci
+v2 **0** + sqlc vet + sqlc diff + **`go generate ./internal/api/…` + `git diff --exit-code` oapi stale-check** + `go
+test -race`) · `pnpm verify` rc=0 (turbo lint + typecheck + test incl the NEW `@lumin/api-client` stale-gate +
+format:check) · guard **146** · osm 22. **GO codegen:** `oapi-codegen@v2.5.1` (pinned in `//go:generate`; config
+`internal/api/oapi-codegen.yaml` = strict-server + chi-server + models) → committed `internal/api/api.gen.go` (1400
+dòng; `ServerInterface`/`StrictServerInterface` cho cả 8 op; named `CreateOrderInput` discriminated union — giữ đúng
+fix BLOCKER của 3c-1). Dep `github.com/oapi-codegen/runtime v1.1.2` **pinned** (v1.4.2→x/crypto→go 1.24; **go.mod giữ
+1.23.6**). `.golangci.yml` `generated:lax` + `paths:'.*\.gen\.go$'`. **TS:** NEW `packages/api-client` (`@lumin/api-client`):
+openapi-typescript **7.13.0** → committed `src/schema.gen.ts` + openapi-fetch **0.13.8** `createApiClient` (cookie-cred
+default per ADR-030) + `scripts/codegen.mjs` (một render fn) + `test/schema.stale.test.ts` (import chính render fn đó →
+byte-equality gate) + `**/*.gen.ts` eslint+prettier-ignore. **Harness:** guard oapi ARM 145→**146** (recipe PHẢI chạy
+CẢ `go generate` + `git diff --exit-code`; strip dòng comment nên verb bị `#`-comment không false-pass — hardened
+sibling sqlc ARM luôn). **D13:** `docs/plan.md` acceptance-ledger checkbox ✅ (parser `packages/core/test/
+acceptance.ledger.test.ts` pre-existed + passes + armed; Go REL-01/02 GIỮ `[ ]` — parser chỉ resolve id TS). **Cả 3
+gate mới PROVEN binding** (mutate→RED→restore: oapi ARM drop-enforce→145/1; Go stale-check contract-drift→RED; TS
+stale-check schema-drift→RED; comment-out re-proven→RED sau fix). Docker-free (PR này không test DB/NATS). **4-lens
+review wf_58d3da06: 2 confirmed (0 BLOCKER, both NOTE) / 0 refuted, BOTH FIXED** — (NOTE) guard ARM unanchored grep để
+verb `#`-comment false-pass (cùng class lỗ `//` của 3b) → strip comment lines; (NOTE) `oapi-codegen.yaml` comment tả
+embedded-spec nhưng gắn nhầm dòng no-op `skip-prune` → chuyển vào `generate:` + bỏ dòng. (1/4 review lens stalled
+no-report; territory của nó — go-1.23 preserved / golangci 0 / CI compatible — đã tự verify.) **Deps:**
++oapi-codegen/runtime v1.1.2 +apapsch/go-jsonmerge/v2 (Go); +openapi-typescript +openapi-fetch (TS). **No new ADR**
+(implements ADR-031/§6 D8). **No EARS row** (codegen tooling). colima KHÔNG cần (Docker-free PR).
 **Core slice 3 · PR-3c-1 — OpenAPI contract authoring (2026-06-28):** `make verify-go` ✓ (gofmt + go vet + golangci v2
 **0** + sqlc vet + sqlc diff + `go test -race`). Docker-free (contract authoring; no DB/NATS test). Hand-authored
 `services/core-api/openapi.yaml` (**OpenAPI 3.0.3**) = the single wire contract (ADR-031): paths for
@@ -275,10 +321,11 @@ deprecated (SA1019, IP-spoofable) → bỏ, dùng CF-Connecting-IP ở edge-phas
 spec-guardian PASS (0/0/2).
 
 ## Lưu ý git (2026-06-26, cập nhật)
-- `origin/main` = **`ffab5f8`** (PR #18 PR-2g settings squash-merged 2026-06-26 ~11:13Z). Local main ĐÃ ff về `ffab5f8`,
-  working tree clean. **✅ SLICE 2 COMPLETE — 2a–2g ALL MERGED.** Verify:
-  `git cat-file -t origin/main:services/core-api/db/migrations/000007_settings.up.sql` = blob (now on main);
-  `…/internal/db/settings.go` = blob. (lịch sử pointer cũ: PR #17 `b1b28a0`; PR #16 `cf31cb2`; PR #10 `ab99360`.)
+- `origin/main` = **`f1b35d2`** (PR #21 PR-3c-1 OpenAPI contract squash-merged 2026-06-27 23:45Z). Local main ĐÃ ff về
+  `f1b35d2`, working tree clean (đang trên nhánh `feat/core-http-relay-3c-2`). **Relay track 3a→3b + contract 3c-1 ALL
+  MERGED** (slice 2 2a–2g cũng đã merged trước đó). Verify:
+  `git cat-file -t origin/main:services/core-api/openapi.yaml` = blob (contract on main). (lịch sử pointer: PR #20 3b
+  `c3b2004`; PR #19 3a `280e94b`; PR #18 2g `ffab5f8`; PR #10 `ab99360`.)
 - **Housekeeping nợ (chờ chủ duyệt xoá):** 9 local `:gone` branches (`feat/core-data-layer-2e`, `feat/core-data-model`,
   `feat/phase-0-*` x7, `fix/dev-handoff-refunded`) + the now-merged `feat/core-data-layer-2g` (squashed into `ffab5f8`)
   — prune khi chủ OK. `main` local đã ff `ffab5f8`.

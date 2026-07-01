@@ -11,6 +11,13 @@ linters:
   enable:
     - misspell
   exclusions:
+    # Generated code carries the standard "Code generated … DO NOT EDIT" header
+    # (lax already skips it), but path-exclude *.gen.go explicitly too: oapi-codegen
+    # output routinely trips v2's zero-issue gate and is machine output, not ours to
+    # fix (ADR-031/§6 D8, plan core-http-relay.md §3c-2; mirrors sqlc's gen package).
+    generated: lax
+    paths:
+      - '.*\.gen\.go$'
     rules:
       # Tests favour readability over exhaustive error checks on helpers.
       - path: _test\.go
