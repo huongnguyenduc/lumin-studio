@@ -35,6 +35,11 @@ type Querier interface {
 	// and writes the order atomically (no lost-update race between concurrent transitions).
 	GetOrderForUpdate(ctx context.Context, id uuid.UUID) (Order, error)
 	GetPrintJobByID(ctx context.Context, id uuid.UUID) (PrintJob, error)
+	// GetProductByID is the by-id read the checkout handler (PR-3g) needs to derive a
+	// server-authoritative UnitPrice from base_price (never a client price). ProductBySlug is the
+	// storefront read; this is the intake read. Colors/options are validated via the existing
+	// ListColorsByProduct / ListOptionsByProduct (membership + availability checked in-process).
+	GetProductByID(ctx context.Context, id uuid.UUID) (Product, error)
 	GetProductBySlug(ctx context.Context, slug string) (Product, error)
 	GetReplyTemplateByID(ctx context.Context, id uuid.UUID) (ReplyTemplate, error)
 	// settings.sql — config/reference queries (PR-2g): the settings singleton, the append-only
@@ -60,6 +65,13 @@ type Querier interface {
 	InsertColor(ctx context.Context, arg InsertColorParams) (Color, error)
 	// Append a granted purpose. granted_at defaults to now(); withdrawn_at is NULL (active).
 	InsertConsentGrant(ctx context.Context, arg InsertConsentGrantParams) (ConsentGrant, error)
+	// InsertConsentGrantIfAbsent appends a grant idempotently: if an ACTIVE grant already exists for
+	// (customer, scope, channel) it does nothing, so a returning customer re-checking-out never trips
+	// the consent_grants_active_uq partial unique and rolls back their order tx. The ON CONFLICT target
+	// mirrors that partial index exactly (predicate included) so Postgres can infer it. PDPL: still one
+	// explicit row per active purpose, never a pre-defaulted boolean; re-grant-after-withdrawal is a new
+	// row (a withdrawn grant is not "active", so it does not conflict).
+	InsertConsentGrantIfAbsent(ctx context.Context, arg InsertConsentGrantIfAbsentParams) error
 	// customers.sql — customer + PDPL consent queries (PR-2d). spec.md §02 + vn-compliance.
 	InsertCustomer(ctx context.Context, arg InsertCustomerParams) (Customer, error)
 	InsertOption(ctx context.Context, arg InsertOptionParams) (Option, error)
@@ -94,6 +106,12 @@ type Querier interface {
 	// MarkOutboxPublished flips a row to published ONLY after its JetStream PubAck (ADR-029:
 	// publish → await PubAck → mark, never mark-then-publish).
 	MarkOutboxPublished(ctx context.Context, id uuid.UUID) error
+	// NextOrderCode hands the create tx the next display-code number from order_code_seq (000010).
+	// nextval is atomic and collision-free across concurrent callers by construction (§6 D9); the Go
+	// seam formats it as `#LMN-<n>`. Called inside the SAME tx as CreateOrder so a code is minted per
+	// create attempt (a rolled-back attempt simply burns its number — gaps are expected, codes are
+	// display handles, not counts).
+	NextOrderCode(ctx context.Context) (int64, error)
 	// ping.sql — the sqlc pipeline smoke query. It gives `sqlc vet`/`sqlc diff`
 	// substantive content before the first domain query lands (InsertOutbox, PR-2b) and
 	// proves codegen end-to-end. Readiness uses pgxpool.Ping directly, not this query.

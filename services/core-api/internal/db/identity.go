@@ -45,11 +45,45 @@ func (i *Identity) CustomerByPhone(ctx context.Context, phone string) (sqlc.Cust
 	return c, err
 }
 
+// FindOrCreateCustomer returns the existing customer matching arg.Phone, or inserts arg as a new
+// one; the bool reports whether a row was created. Checkout resolves a returning buyer by phone
+// (no storefront Account this slice) without overwriting their stored name/addresses. Run it on an
+// Identity built over the create tx so the customer, consent and order commit atomically.
+//
+// phone is indexed but NOT unique (a person may re-appear; enforcing uniqueness would need a schema
+// change + a merge policy — out of scope). The find-then-insert therefore has a narrow race: two
+// simultaneous first orders from the same phone can both miss and insert two customer rows. That
+// yields a duplicate customer, never a money/consent error, and is acceptable until a checkout
+// surface that produces real concurrency lands (§6 D5, same posture as deferred idempotency).
+func (i *Identity) FindOrCreateCustomer(ctx context.Context, arg sqlc.InsertCustomerParams) (sqlc.Customer, bool, error) {
+	existing, err := i.q.GetCustomerByPhone(ctx, arg.Phone)
+	if err == nil {
+		return existing, false, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Customer{}, false, err
+	}
+	created, err := i.q.InsertCustomer(ctx, arg)
+	if err != nil {
+		return sqlc.Customer{}, false, err
+	}
+	return created, true, nil
+}
+
 // GrantConsent appends a consent grant. PDPL: consent is append-then-mark — every grant is
 // an explicit row (never a pre-defaulted boolean), and the active partial-unique index
 // keeps at most one un-withdrawn grant per (customer, scope, channel).
 func (i *Identity) GrantConsent(ctx context.Context, arg sqlc.InsertConsentGrantParams) (sqlc.ConsentGrant, error) {
 	return i.q.InsertConsentGrant(ctx, arg)
+}
+
+// GrantConsentIfAbsent records a consent grant idempotently: a returning customer who already has
+// an ACTIVE grant for (scope, channel) is a no-op rather than a partial-unique violation that would
+// roll back their order tx. Use this on the checkout path (a buyer consents on every order); use
+// GrantConsent when a fresh row is required. PDPL semantics are unchanged — still one explicit row
+// per active purpose, re-grant-after-withdrawal is a new row.
+func (i *Identity) GrantConsentIfAbsent(ctx context.Context, arg sqlc.InsertConsentGrantIfAbsentParams) error {
+	return i.q.InsertConsentGrantIfAbsent(ctx, arg)
 }
 
 // WithdrawConsent marks the active grant for (customer, scope, channel) as withdrawn. It

@@ -108,10 +108,10 @@ data-layer's gen-exclude, `core-data-layer.md §3`); note both in every PR body 
 | **3d** | HTTP foundation: error envelope + domain-error→status mapping + `Server` struct + `withTx` + JSON decode + route-group skeleton | 340 | 3c-2 |
 | **3e-1** | auth: **self-issued** login — `POST /auth/login` + `bcrypt` + JWT issue (httpOnly cookie) + `go-chi/jwtauth` dep + credential migration `000009_user_credentials` + owner-seed | 320 | 3d |
 | **3e-2** | auth: JWT-verify middleware + RBAC (owner/staff) + `requireOwner` + **optional-auth** middleware + actor injection + EARS `RBA-01` | 360 | 3e-1 |
-| **3f** | order-intake prerequisites: by-id catalog sqlc queries + pricing/shipping/code/customer helpers (+ property tests) + migration `000008_order_code_seq` | 410 | — |
+| **3f** | order-intake prerequisites: by-id catalog sqlc queries + pricing/shipping/code/customer helpers (+ property tests) + migration `000010_order_code_seq` | 410 | — |
 | **3g** | **`POST /orders`** (public web + **staff-gated inbox**) + guest-genesis `ByUser` sentinel (idempotency DEFERRED, §6 D5) + EARS `CHK-04/05` | 340 | 3d, 3e-2, 3f |
 | **3h** | **transition endpoints** (`POST /orders/{id}/transitions`, RBAC-gated, footgun-safe dispatch) + `tracking_code`-on-SHIPPING + EARS `PAY-01/SHP-01` | 390 | 3d, 3e-2 |
-| **3i** | admin dashboard **aggregate** endpoint (Go read) + new aggregate sqlc + migration `000010_dashboard_idx` (2 indexes) | 340 | 3d, 3e-2 |
+| **3i** | admin dashboard **aggregate** endpoint (Go read) + new aggregate sqlc + migration `000011_dashboard_idx` (2 indexes) | 340 | 3d, 3e-2 |
 | **3j** | admin dashboard **frontend** — replace `demo-dashboard.ts` with the generated client | 300 | 3c-2, 3i |
 | **3k** | **admin settings/STK**: `GET /admin/settings` + owner-only `PATCH /admin/settings/bank-account` (`UpdateBankAccountTx`) + reply-template reads + EARS `STK-01` | 320 | 3d, 3e-2 |
 
@@ -308,7 +308,7 @@ data-layer's gen-exclude, `core-data-layer.md §3`); note both in every PR body 
    **authenticity is this helper's responsibility** — never trust a client `UnitPrice`.
 3. A shipping-fee helper over `settings.shipping_rules` (province-keyed jsonb schema, **no district**, ADR-017 — §6 D10).
 4. An order **code generator** (`#LMN-xxxx`) from a dedicated Postgres sequence, minted inside the create tx
-   (collision-free by construction — §6 D9). **Migration `000008_order_code_seq`** (`CREATE SEQUENCE`) + `sqlc
+   (collision-free by construction — §6 D9). **Migration `000010_order_code_seq`** (`CREATE SEQUENCE`) + `sqlc
    generate` regen + committed `*.sql.go` (golang-migrate, ADR-028) — counted in this PR.
 5. Customer **find-or-create-by-phone** (`CustomerByPhone` → `CreateCustomer`) + PDPL consent capture. **Invoke
    `vn-compliance` before finalizing the consent + address path.**
@@ -380,7 +380,7 @@ New aggregate sqlc queries (zero `COUNT`/`SUM`/`GROUP BY` exist today): `newOrde
 formula — `CANCELLED`-after-PAID keeps the money); `printing` count (`status='PRINTING'`); `reviewsWaiting`
 (`reply IS NULL AND status='published'`); `recentOrders` (`orders JOIN customers ORDER BY created_at DESC LIMIT N`);
 `todoPendingConfirm`/`todoPaidWaitingPrint` counts. Add an `orders(created_at)` index + a `reviews(status, reply)`
-partial index via **migration `000010_dashboard_idx`** (golang-migrate, ADR-028) + `sqlc generate` regen for the new
+partial index via **migration `000011_dashboard_idx`** (golang-migrate, ADR-028) + `sqlc generate` regen for the new
 aggregate queries. `GET /admin/dashboard` returns `{stats, recentOrders, todos}` as **raw
 int-VND + counts + OrderStatus enum** — no server-formatted money, no translated labels (labelKeys stay i18n,
 client-side). Admin-gated (owner+staff both view), thin handler, `r.Context()` propagated. **Resolve the
@@ -522,7 +522,7 @@ pool — keep batch small + the poll interval modest so polling can't starve HTT
 
 ## 5. Gates · tests · CI
 
-- **`make verify-go` stays green:** new outbox + by-id + aggregate sqlc queries + the `000008`/`000009`/`000010`
+- **`make verify-go` stays green:** new outbox + by-id + aggregate sqlc queries + the `000009`/`000010`/`000011`
   migrations must pass `sqlc vet` + `sqlc diff` (generated code committed); `gofmt`/`go vet`/`golangci-lint v2 0`/`go
   test -race`. OpenAPI codegen (`oapi-codegen`) + a stale-check wire into the verify lane; the TS client + parity test
   wire into the TS verify lane. **Generated `*.gen.go` is path-excluded in `.golangci.yml exclusions.rules`** (NOT
@@ -579,7 +579,7 @@ Recommendations in **bold**. The first three are the **likely new ADRs** the tas
   path gap. **Decision (user chose to defer):** slice-3 ships **no** `Idempotency-Key`/dedupe table; the dup risk is
   accepted until a later slice (revisit when the storefront-checkout surface that produces real retries lands). **No
   `000009_idempotency_keys` migration** — that number is taken by `3e-1`'s `000009_user_credentials`. **Still in
-  slice-3 (independent of idempotency):** the `#LMN-xxxx` Postgres sequence (3f, migration `000008`) + the payment-proof
+  slice-3 (independent of idempotency):** the `#LMN-xxxx` Postgres sequence (3f, migration `000010`) + the payment-proof
   host-trust boundary (3g). **"end-to-end" caveat (unchanged):** `POST /orders` (web) **accepts** a pre-validated
   `paymentProofUrl` but the presigned-PUT endpoint that **mints** it is deferred with the storefront-checkout surface
   (ADR-005), so the full browser→upload→order flow is not exercised this slice (§0, §7).
@@ -597,7 +597,7 @@ Recommendations in **bold**. The first three are the **likely new ADRs** the tas
   via a generated server interface (folds into ADR-031). Generated code is committed + line-budget-excluded +
   `.golangci.yml`-path-excluded.
 - **D9/D10/D11 — minor, fold into the owning PR.** D9 order code = a dedicated Postgres **sequence** formatted
-  `#LMN-xxxx` (3f), via **migration `000008_order_code_seq`** + regen. D10 `shipping_rules` = a **province-keyed jsonb
+  `#LMN-xxxx` (3f), via **migration `000010_order_code_seq`** + regen. D10 `shipping_rules` = a **province-keyed jsonb
   schema + fee helper**, no district (3f). D11 `print_jobs` fan-out on PAID has no transactional seam today —
   **recommend deferring the fan-out** (admin-internal, SSE deferred) and sourcing the dashboard "printing" KPI from
   `orders.status='PRINTING'`; revisit when SSE lands.

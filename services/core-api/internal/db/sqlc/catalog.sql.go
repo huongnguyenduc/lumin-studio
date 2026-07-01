@@ -12,6 +12,36 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getProductByID = `-- name: GetProductByID :one
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at FROM products WHERE id = $1
+`
+
+// GetProductByID is the by-id read the checkout handler (PR-3g) needs to derive a
+// server-authoritative UnitPrice from base_price (never a client price). ProductBySlug is the
+// storefront read; this is the intake read. Colors/options are validated via the existing
+// ListColorsByProduct / ListOptionsByProduct (membership + availability checked in-process).
+func (q *Queries) GetProductByID(ctx context.Context, id uuid.UUID) (Product, error) {
+	row := q.db.QueryRow(ctx, getProductByID, id)
+	var i Product
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.Description,
+		&i.CategoryID,
+		&i.BasePrice,
+		&i.Dimensions,
+		&i.Material,
+		&i.Model3dUrl,
+		&i.Images,
+		&i.Status,
+		&i.RatingAvg,
+		&i.ReviewCount,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getProductBySlug = `-- name: GetProductBySlug :one
 SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at FROM products WHERE slug = $1
 `

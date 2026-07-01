@@ -295,6 +295,22 @@ func (q *Queries) ListOrdersByStatus(ctx context.Context, status order.Status) (
 	return items, nil
 }
 
+const nextOrderCode = `-- name: NextOrderCode :one
+SELECT nextval('order_code_seq')::bigint AS n
+`
+
+// NextOrderCode hands the create tx the next display-code number from order_code_seq (000010).
+// nextval is atomic and collision-free across concurrent callers by construction (§6 D9); the Go
+// seam formats it as `#LMN-<n>`. Called inside the SAME tx as CreateOrder so a code is minted per
+// create attempt (a rolled-back attempt simply burns its number — gaps are expected, codes are
+// display handles, not counts).
+func (q *Queries) NextOrderCode(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, nextOrderCode)
+	var n int64
+	err := row.Scan(&n)
+	return n, err
+}
+
 const updateOrderStatus = `-- name: UpdateOrderStatus :one
 UPDATE orders
 SET status = $1,

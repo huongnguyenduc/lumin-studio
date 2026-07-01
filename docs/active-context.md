@@ -61,8 +61,10 @@ BY seq, KHÔNG watermark/SKIP-LOCKED/advisory-lock per ADR-009 · publish→PubA
 (user chose NOT Cloudflare-Access — `POST /auth/login`+bcrypt+`go-chi/jwtauth` httpOnly cookie · `users.password_hash`
 migration 000009 · split 3e-1 login / 3e-2 verify+RBAC) · 031 OpenAPI hand-yaml single-source → oapi-codegen
 **strict-server** + openapi-typescript (`packages/api-client`) · 032 error-envelope `{code,messageKey,fields?}` · 033
-idempotency DEFERRED.** Migrations: **000008** order_code_seq (3f) · **000009** user_credentials (3e-1) · **000010**
-dashboard_idx (3i). Adversarial critique earlier caught a money-path BLOCKER (uniformly-public `POST /orders` lets
+idempotency DEFERRED.** Migrations (ACTUAL, post-3e-1-landing-first): **000009** user_credentials (3e-1) · **000010**
+order_code_seq (3f — plan said 000008 but 3e-1 merged out of plan order taking 000009; a 000008 would be silently
+skipped on any DB already migrated to 9, so 3f renumbered to 000010) · **000011** dashboard_idx (3i, shifted).
+Adversarial critique earlier caught a money-path BLOCKER (uniformly-public `POST /orders` lets
 `channel=inbox` mint a born-PAID order w/o payment → fixed: inbox **staff-gated**) + added `3k` settings/STK endpoint
 the data layer deferred to slice-3 RBAC. docs baseline committed `ecd06fa`.
 **PR-3a relay substrate ✅ MERGED → PR #19 → `origin/main` `280e94b` (2026-06-27 11:30Z, squash; local `main` ff'd).**
@@ -189,8 +191,8 @@ missing seed-owner docs → §4b. ~430 lines non-test src (auth is invariant-den
 **`3e-1` auth self-issued login ✅ MERGED (PR #24) → `origin/main` `0f665c4` (2026-07-01 15:33Z, squash; local `main` ff'd,
 branch deleted).** Contract/HTTP track head 3c-1→3c-2→3d→3e-1 COMPLETE (auth ISSUE side landed).
 
-**`3e-2` auth: JWT-verify middleware + RBAC + actor injection ✅ BUILT · verify green · spec-guardian PASS · chờ push→PR.
-(branch `feat/core-http-relay-3e-2` off `main` `0f665c4`.)** Fills the `StrictMiddlewareFunc` auth seam 3d left (`nil`
+**`3e-2` auth: JWT-verify middleware + RBAC + actor injection ✅ MERGED (PR #25) → `origin/main` `a442757` (2026-07-01,
+squash; local `main` ff'd, branch deleted).** Fills the `StrictMiddlewareFunc` auth seam 3d left (`nil`
 slice → now `[]api.StrictMiddlewareFunc{srv.authMiddleware}`); unblocks the whole handler fan-out {3g/3h/3i/3k→3j}. **One
 strict-server middleware** branches on the generated operationID (`classify`): **fail-closed default** (unlisted op →
 `authRequired`) · `authPublic` {LoginUser,LogoutUser} · `authOptional` {CreateOrder} (resolve iff cookie present, never
@@ -213,17 +215,44 @@ ADR-030/032). ~190 non-test src. Docker-free unit + wire tests (nil pool); UserB
 present-but-BROKEN cookie vs treating anonymous — deliberate: `lumin_session` is admin-only SameSite=Strict, web customer
 never carries it; locked by `TestAuthMiddlewareOptionalRejectsInvalidCookie`).
 
+**AUTH BOUNDARY COMPLETE → handler fan-out unblocked {3g/3h/3i/3k→3j}.**
+
+**`3f` order-intake prerequisites ✅ BUILT · verify+integration(colima) green · spec-guardian PASS (renumber WARN fixed) ·
+chờ push→PR. (branch `feat/core-http-relay-3f` off `main` `a442757`.)** Server-authoritative money building blocks feeding
+the 3g checkout handler; NO HTTP layer. **`internal/pricing`** (NEW pkg): `PriceItem` derives per-line UnitPrice from
+catalog (`product.BasePrice` + `color.PriceDelta` + Σ `option.PriceDelta`) — `Selection` input carries NO client price
+(structurally can't trust a client total, ADR-019); validates color membership+`available`, option membership, duplicate
+options, engrave text ≤ `option.MaxChars` (rune-counted, spec §05); overflow-checked. `ShippingFee` resolves fee from
+`settings.shipping_rules` jsonb by province (exact or `"*"` wildcard, NO district ADR-017) → `ErrNoShippingRule`(→422 in 3g)
+when none match, never silently 0. **db:** `GetProductByID`+`Catalog.ProductByID` (by-id intake read) · `NextOrderCode`
+seam (`#LMN-%04d` via **`nextval('order_code_seq')`** minted in-tx, collision-free §6 D9) · `Identity.FindOrCreateCustomer`
+(find-by-phone|insert; documented find-then-insert race = dup-customer not money-error) · `GrantConsentIfAbsent` (idempotent
+PDPL consent via `ON CONFLICT` on the active partial-unique index — append-then-mark preserved). **Migration `000010`**
+`order_code_seq` (`CREATE SEQUENCE START WITH 1000`). **spec-guardian WARN FIXED:** plan said 000008 but 3e-1 merged first
+taking 000009 → a 000008 would be silently skipped by golang-migrate on an already-migrated DB → **renumbered 000008→000010**
+(3i dashboard_idx shifts 000010→000011; plan.md updated). `make verify-go` rc=0 (golangci 0, sqlc vet+diff [+3 new queries
+regen], oapi stale-check clean [no openapi change], `go test -race`) · **guard 150** (+1 order-intake ARM PROVEN binding ×3:
+PriceItem derives BasePrice+PriceDelta · Selection has no client price field · NextOrderCode uses nextval — each
+mutate→149/1→restore) · osm 22 · **integration tests RAN vs real Postgres (colima, -race):** ProductByID · NextOrderCode
+(monotonic+unique+#LMN-1000) · FindOrCreateCustomer (idempotent by phone) · GrantConsentIfAbsent (idempotent) + reversibility
+re-passes with the renamed migration · pricing unit+property Docker-free. **PRC-01/PRC-02** → acceptance Cụm 8 (Go-gated `[ ]`).
+**~290 non-test src (< 450 budget → single PR, no 3f-1/3f-2 split). No new deps · no new ADR** (implements ADR-019/017; §6 D9/D10).
+**spec-guardian PASS: 0 BLOCKER / 1 WARN (renumber, FIXED) / 1 NOTE** (find-or-create race, disclosed+accepted). **Contract-doc
+drift left for user:** `decisions.md` ADR-033 still says "migration 000008" (non-normative aside; hard-blocked file → not
+edited unilaterally; flag in PR).
+
 ## Next steps (1–3)
-1. **Slice 3 · PR-3e-2 — auth boundary + RBAC:** BUILT + all gates green + spec-guardian PASS on `feat/core-http-relay-3e-2`
-   (off `main` `0f665c4`). Push → PR (owner merges). PR body: strict-mw fail-closed classify + `auth.Verify` + `UserByID`
-   role-from-DB (never claim, never `system`) + Actor ctx-inject + owner-only STK edge + 401/403 envelope; guard 149 (+1
-   auth-boundary ARM proven); RBA-01 `[ ]`; no new deps/ADR (impl ADR-030/032); ~190 non-test src.
-2. **After 3e-2 merges:** handler fan-out unblocked — **`3g` checkout** (needs `3f`) · **`3h` transitions** · **`3i`
-   dashboard** · **`3k` settings/STK** → **`3j`** admin frontend (needs 3i). Handlers read the injected `Actor` from ctx
-   (`actorFrom`) to build `order.TransitionContext`. **Independent parallel node still open: `3f`** order-intake prereqs
-   (by-id catalog sqlc + pricing/shipping/code/customer helpers + migration `000008_order_code_seq`; feeds only 3g). Full
-   DAG: `core-http-relay.md §1`.
-3. **Housekeeping:** prune now-merged local branches `feat/core-http-relay`(3a)/`-3b`/`-3c-1`/`-3c-2`/`-3d`/`-3e-1` when chủ
+1. **Slice 3 · PR-3f — order-intake prereqs:** BUILT + all gates green + integration(colima) green + spec-guardian PASS on
+   `feat/core-http-relay-3f` (off `main` `a442757`). Push → PR (owner merges). PR body: `internal/pricing` (PriceItem
+   catalog-derive + ShippingFee-from-settings, never trust client price) + by-id catalog read + `nextval` order-code seam +
+   FindOrCreateCustomer + idempotent consent + migration **000010** (renumbered from plan's 000008 — spec-guardian WARN, 3i→000011);
+   guard 150 (+1 order-intake ARM proven ×3); PRC-01/02 `[ ]`; no new deps/ADR; ~290 non-test src. **Flag decisions.md ADR-033
+   "migration 000008" aside as stale** (hard-blocked file, not edited).
+2. **After 3f merges:** **`3g` checkout** unblocked (needs 3f — the handler wires pricing/shipping/code/customer into `withTx`
+   → `db.CreateOrderTx`; inbox staff-gated per critique BLOCKER). Still-independent, startable NOW in parallel: **`3h`
+   transitions** · **`3i` dashboard** (→000011_dashboard_idx) · **`3k` settings/STK** → **`3j`** admin frontend (needs 3i).
+   Handlers read the injected `Actor` from ctx (`actorFrom`) to build `order.TransitionContext`. Full DAG: `core-http-relay.md §1`.
+3. **Housekeeping:** prune now-merged local branches `feat/core-http-relay`(3a)/`-3b`/`-3c-1`/`-3c-2`/`-3d`/`-3e-1`/`-3e-2` when chủ
    duyệt (all squash-merged → won't show under `git branch --merged`; verify by PR#, not sha). Harness follow-up: the
    **testcontainers ARM** greps Go `_test.go` for `postgres.Run` unanchored → a `//`-commented boot call could false-pass
    (same comment-out class fixed for recipe ARMs); harden in a harness-audit round. Sau Core phase: ADR-026 lane B/C/D ·
@@ -261,11 +290,25 @@ never carries it; locked by `TestAuthMiddlewareOptionalRejectsInvalidCookie`).
 | **Core slice 3 · PR-3c-1 — OpenAPI contract authoring + 4-way enum parity + spec-sync** | **merged (PR #21)** | squash → `origin/main` `f1b35d2` (2026-06-27 23:45Z) | hand-authored `openapi.yaml` (3.0.3, slice-3 surfaces only, nested Order DTO, **named `CreateOrderInput` oneOf** web/inbox, inputs omit unitPrice/total → server-authoritative, ErrorEnvelope, Settings/STK/ReplyTemplate/Dashboard, cookieAuth) + `internal/contract/{parity_test,structure_test}.go` (**4-way enum parity** OpenAPI==order==packages/core==PG; Role{owner,staff,system} vs UserRole/PG user_role{owner,staff}; + refs-resolve/opId-unique) + `spec.md §02` Review text→body + guard contract ARM; `make verify-go` ✓ (golangci 0, sqlc vet+diff, race incl parity) · **guard 145** (+1 contract ARM, tightened ≥4 Test*Parity+assertSame, PROVEN binding) · osm 22 · **parity PROVEN binding** REFUNDED-drift→RED · yaml.v3 indirect→direct (only dep change) · ADR-031 (no new ADR) · no EARS · **4-lens review wf_a95388f8-5d8: 3 confirmed (1 BLOCKER oapi-codegen opaque-union → named schema, RE-RAN codegen → 10 union methods) / 4 refuted, all fixed** |
 | **Core slice 3 · PR-3c-2 — codegen (oapi-codegen strict-server) + `@lumin/api-client` + guard oapi ARM + D13** | **merged (PR #22)** | squash → `origin/main` `d10d30e` (2026-07-01 07:16Z) | `make verify-go` ✓ (golangci 0, sqlc vet+diff, **oapi generate+git-diff stale-check**, race) · `pnpm verify` ✓ (lint+typecheck+test incl new stale-gate + format:check; prettier/eslint ignore `*.gen.ts`) · guard **146** (+1 oapi ARM PROVEN binding: recipe must have `go generate`+`git diff --exit-code`, comment-strip vs `#`-false-pass) · osm 22 · committed `api.gen.go` (strict-server + chi-server, named `CreateOrderInput` union) + `schema.gen.ts` (openapi-typescript 7.13.0) · **go directive 1.23.6 preserved** (runtime v1.1.2 pinned) · D13 `plan.md` ledger checkbox ticked (Go REL-* stay `[ ]`) · **4-lens review wf_58d3da06: 2 confirmed (0 BLOCKER, both NOTE) / 0 refuted, both FIXED** (guard comment-strip + oapi-yaml comment) · deps +oapi-codegen/runtime v1.1.2 +openapi-typescript/openapi-fetch |
 | **Core slice 3 · PR-3e-1 — auth self-issued login (migration 000009 + `internal/auth` + login/logout + seed-owner CLI)** | **merged (PR #24)** | squash → `origin/main` `0f665c4` (2026-07-01 15:33Z) | `make verify-go` ✓ (golangci 0, sqlc vet+diff, oapi+sqlc regen committed, `go test -race`) · guard **148** (+1 auth ARM PROVEN binding ×3: HttpOnly · bcrypt.CompareHashAndPassword · login VerifyPassword(nil); each mutate→RED→restore) · TS api-client typecheck+stale-gate+lint ✓ (schema.gen.ts regen for Set-Cookie) · ADR-030 self-issued JWT (no new ADR); user sub-decisions = seed-owner CLI (no committed secret) + 12h/no-refresh · **FAIL-FAST on forgeable dev-secret** · httpOnly+Secure+SameSite=Strict cookie, uniform-401 no-enumeration · AUTH-01/02 acceptance `[ ]` (Go-gated) · **deps +go-chi/jwtauth/v5 v5.4.0 +x/crypto direct; go 1.23.6 HELD** · **5-lens review wf_eab30b50: 4→3 confirmed (0 BLOCKER) / 1 refuted, ALL FIXED** |
-| **Core slice 3 · PR-3e-2 — auth boundary: JWT-verify strict-mw + RBAC + actor injection** | **BUILT · verify green · spec-guardian PASS · chờ push→PR** | `feat/core-http-relay-3e-2` off `main` `0f665c4` | `make verify-go` ✓ (golangci 0, sqlc vet+diff [+`GetUserByID` regen], oapi stale-check clean [no openapi change], `go test -race`) · guard **149** (+1 auth-boundary ARM PROVEN binding: router wire `StrictMiddlewareFunc{srv.authMiddleware}` non-nil + `resolveActor` `auth.Verify` + role-from-`UserByID`; nil-wire→148/1→restore) · osm 22 · core ledger 43/43 · fills the `nil` StrictMiddlewareFunc seam 3d left → unblocks fan-out {3g/3h/3i/3k→3j} · **fail-closed classify** (unlisted op→require) · public{login,logout} · optional{CreateOrder} · owner-only{UpdateBankAccount}=requireOwner · **role from DB row not token claim, `actorRole` never `system`, `!Active`→401** · Actor{ByUser=users.id,Role,At} ctx-inject · does NOT re-impl RBAC (domain guard source of truth) · errUnauthenticated→401·errForbidden→403·DB-fault→500-no-leak · RBA-01 acceptance `[ ]` (Go-gated) · **no new deps · no new ADR** (impl ADR-030/032) · ~190 non-test src · **spec-guardian PASS: 0 BLOCKER/0 WARN/1 NOTE** (optional path 401s present-but-broken cookie — deliberate, admin-only SameSite=Strict cookie) |
+| **Core slice 3 · PR-3f — order-intake prereqs (pricing + shipping + code-seq + customer/consent)** | **BUILT · verify+integration(colima) green · spec-guardian PASS · chờ push→PR** | `feat/core-http-relay-3f` off `main` `a442757` | `make verify-go` ✓ (golangci 0, sqlc vet+diff [+3 new queries regen], oapi stale-check clean, `go test -race`) · **integration RAN vs real Postgres (colima, -race):** ProductByID · NextOrderCode (monotonic/unique/#LMN-1000) · FindOrCreateCustomer (idempotent-by-phone) · GrantConsentIfAbsent (idempotent) + reversibility re-passes (renamed migration) · pricing unit+property Docker-free · guard **150** (+1 order-intake ARM PROVEN binding ×3: PriceItem derive BasePrice+PriceDelta · Selection no client-price field · NextOrderCode nextval; each mutate→149/1→restore) · osm 22 · **`internal/pricing`** PriceItem (catalog-derive UnitPrice, never client price, ADR-019) + engrave maxChars(rune) + ShippingFee-from-settings (province, no district ADR-017, 422-not-0) · `GetProductByID`+`nextval` order-code(`#LMN-%04d`)+FindOrCreateCustomer+idempotent-consent · **migration 000010** (renumbered from plan 000008 — spec-guardian WARN: 3e-1 took 000009 first; 3i→000011) · PRC-01/02 acceptance Cụm 8 `[ ]` (Go-gated) · **~290 non-test src (single PR, no split)** · **no new deps · no new ADR** (impl ADR-019/017) · **spec-guardian PASS: 0 BLOCKER / 1 WARN (renumber, FIXED) / 1 NOTE** (find-or-create race disclosed) · decisions.md ADR-033 "000008" aside left stale (hard-blocked file, flag in PR) |
+| **Core slice 3 · PR-3e-2 — auth boundary: JWT-verify strict-mw + RBAC + actor injection** | **merged (PR #25)** | squash → `origin/main` `a442757` (2026-07-01) | `make verify-go` ✓ (golangci 0, sqlc vet+diff [+`GetUserByID` regen], oapi stale-check clean [no openapi change], `go test -race`) · guard **149** (+1 auth-boundary ARM PROVEN binding: router wire `StrictMiddlewareFunc{srv.authMiddleware}` non-nil + `resolveActor` `auth.Verify` + role-from-`UserByID`; nil-wire→148/1→restore) · osm 22 · core ledger 43/43 · fills the `nil` StrictMiddlewareFunc seam 3d left → unblocks fan-out {3g/3h/3i/3k→3j} · **fail-closed classify** (unlisted op→require) · public{login,logout} · optional{CreateOrder} · owner-only{UpdateBankAccount}=requireOwner · **role from DB row not token claim, `actorRole` never `system`, `!Active`→401** · Actor{ByUser=users.id,Role,At} ctx-inject · does NOT re-impl RBAC (domain guard source of truth) · errUnauthenticated→401·errForbidden→403·DB-fault→500-no-leak · RBA-01 acceptance `[ ]` (Go-gated) · **no new deps · no new ADR** (impl ADR-030/032) · ~190 non-test src · **spec-guardian PASS: 0 BLOCKER/0 WARN/1 NOTE** (optional path 401s present-but-broken cookie — deliberate, admin-only SameSite=Strict cookie) |
 | **Core slice 3 · PR-3d — HTTP foundation (ErrorEnvelope + domain-error→status mapper + Server struct + withTx + strict-server stubs)** | **merged (PR #23)** | squash → `origin/main` `eac9b0f` (2026-07-01 09:29Z) | `make verify-go` ✓ (golangci 0, sqlc vet+diff, oapi stale-check, `go test -race` incl httpapi mapError/withTx/501-envelope/400-body-bind/400-param-bind tests) · guard **147** (+1 error-envelope ARM PROVEN binding [needs BOTH strict+chi seams] · + hardened NATS ARM [exclude tests+strip comments]; mutate→RED→restore) · osm 22 · TS ledger 17/17 · strict-server (ADR-031 D8); ADR-032 one-envelope + no-leak of Vietnamese `TransitionError.Message` NOR raw param/parser strings (BOTH oapi seams overridden) ; 8 endpoints = 501 stubs (3e–3k) · ERR-01 acceptance `[ ]` (Go-gated) · **no new deps · no new ADR** · Docker-free · ~300 lines non-test src · **5-lens review wf_f3cb8fbd: 10→5 confirmed/5 refuted, ALL FIXED** (2×IMPORTANT chi-wrapper plaintext leak on bad path-param → HandlerWithOptions+ChiServerOptions.ErrorHandlerFunc + regression test; 2×BLOCKER self-inflicted ERR-01 EARS line-wrap → reflowed; 1×NOTE NATS ARM widen) |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất
+**Core slice 3 · PR-3f — order-intake prereqs (2026-07-02):** `make verify-go` rc=0 (gofmt + vet + golangci v2 **0** +
+sqlc vet + sqlc diff [+`GetProductByID`/`NextOrderCode`/`InsertConsentGrantIfAbsent` regen] + oapi stale-check clean [no
+openapi change] + `go test -race`) · guard.test.sh **150 / 0** · osm 22 · packages/core 45/45 (acceptance ledger 22, PRC-01/02
+stay `[ ]`). **New:** `internal/pricing/pricing.go` (`PriceItem` catalog-derive UnitPrice + engrave-maxChars rune-count +
+`ShippingFee` from settings province, no-district) + `pricing_test.go` (unit + overflow/dup/engrave-boundary + property
+`TestPriceItemIsSumOfCatalogParts`) · migration `000010_order_code_seq` (`CREATE SEQUENCE START WITH 1000`) + `NextOrderCode`
+query/seam (`#LMN-%04d` via nextval) · `GetProductByID`+`Catalog.ProductByID` · `Identity.FindOrCreateCustomer` +
+`GrantConsentIfAbsent` + `InsertConsentGrantIfAbsent` query (ON CONFLICT active partial-idx) · guard order-intake ARM · acceptance
+Cụm 8. **Integration RAN vs real Postgres (colima, -race):** `TestProductByID`/`TestNextOrderCode`/`TestFindOrCreateCustomer`/
+`TestGrantConsentIfAbsent` + `TestMigrationsReversible` re-passes with renamed migration. Guard: +1 order-intake ARM PROVEN
+binding ×3 (PriceItem BasePrice+PriceDelta · Selection no client-price · nextval; mutate→149/1→restore). **No new deps · no new
+ADR** (ADR-019/017; §6 D9/D10). **spec-guardian PASS 0/1-WARN(renumber 000008→000010, FIXED)/1-NOTE.** colima ĐÃ dùng (integration
++ reversibility RAN, then stopped).
 **Core slice 3 · PR-3e-2 — auth boundary + RBAC (2026-07-01):** `make verify-go` rc=0 (gofmt + vet + golangci v2 **0** +
 sqlc vet + sqlc diff [+`GetUserByID` regen committed] + oapi generate+git-diff stale-check [clean — no openapi change] +
 `go test -race`) · guard.test.sh **149 / 0** · osm 22 · packages/core 43/43 (ledger 20, RBA-01 stays `[ ]`). **New:**

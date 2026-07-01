@@ -57,6 +57,19 @@ func (o *Orders) Items(ctx context.Context, orderID uuid.UUID) ([]sqlc.OrderItem
 	return o.q.ListOrderItems(ctx, orderID)
 }
 
+// NextOrderCode mints the next order display code (`#LMN-1000`, `#LMN-1001`, …) from the
+// order_code_seq sequence (migration 000010). Call it on an Orders built over the create tx so the
+// code is minted inside the same transaction as CreateOrder; nextval is atomic, so concurrent
+// checkouts never collide (§6 D9). %04d keeps every code ≥4 digits (matches the design mockups)
+// while growing naturally past 9999.
+func (o *Orders) NextOrderCode(ctx context.Context) (string, error) {
+	n, err := o.q.NextOrderCode(ctx)
+	if err != nil {
+		return "", fmt.Errorf("order: mint code: %w", err)
+	}
+	return fmt.Sprintf("#LMN-%04d", n), nil
+}
+
 // ErrNoItems is returned when a create is attempted with no line items. The authoritative
 // contract requires at least one (packages/core OrderSchema: items.min(1)); this seam is the
 // server-authoritative write path, so it enforces the floor rather than persisting a degenerate

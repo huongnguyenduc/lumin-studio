@@ -32,6 +32,17 @@ func (c *Catalog) ProductBySlug(ctx context.Context, slug string) (sqlc.Product,
 	return p, err
 }
 
+// ProductByID returns the product with the given id, or ErrNotFound. This is the intake read the
+// checkout handler uses to derive a server-authoritative price (base_price); ProductBySlug serves
+// the storefront.
+func (c *Catalog) ProductByID(ctx context.Context, id uuid.UUID) (sqlc.Product, error) {
+	p, err := c.q.GetProductByID(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Product{}, ErrNotFound
+	}
+	return p, err
+}
+
 // ProductsByStatus lists products in a status, newest first.
 func (c *Catalog) ProductsByStatus(ctx context.Context, status sqlc.ProductStatus) ([]sqlc.Product, error) {
 	return c.q.ListProductsByStatus(ctx, status)

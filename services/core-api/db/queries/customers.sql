@@ -17,6 +17,17 @@ INSERT INTO consent_grants (id, customer_id, scope, channel, policy_version)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
+-- InsertConsentGrantIfAbsent appends a grant idempotently: if an ACTIVE grant already exists for
+-- (customer, scope, channel) it does nothing, so a returning customer re-checking-out never trips
+-- the consent_grants_active_uq partial unique and rolls back their order tx. The ON CONFLICT target
+-- mirrors that partial index exactly (predicate included) so Postgres can infer it. PDPL: still one
+-- explicit row per active purpose, never a pre-defaulted boolean; re-grant-after-withdrawal is a new
+-- row (a withdrawn grant is not "active", so it does not conflict).
+-- name: InsertConsentGrantIfAbsent :exec
+INSERT INTO consent_grants (id, customer_id, scope, channel, policy_version)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (customer_id, scope, channel) WHERE withdrawn_at IS NULL DO NOTHING;
+
 -- name: WithdrawConsent :exec
 -- Mark the active grant for (customer, scope, channel) as withdrawn. Never deletes the row.
 UPDATE consent_grants

@@ -1,0 +1,17 @@
+-- 000010_order_code_seq.up.sql — the order display-code sequence (Core slice 3, PR-3f).
+-- spec.md §02 (Order.code `#LMN-xxxx`) · docs/plans/core-http-relay.md §3f (§6 D9) · ADR-028.
+--
+-- NUMBERED 000010, not the plan's 000008: PR-3e-1 merged out of plan order and took 000009
+-- (user_credentials). golang-migrate only applies versions ABOVE the current schema version, so a
+-- 000008 here would be silently skipped on any DB already migrated to 9 (order_code_seq would never
+-- exist → checkout fails). The number must stay monotonic vs what is already on main. 3i's
+-- dashboard_idx therefore takes the next free number (000011).
+--
+-- Order codes (`#LMN-1000`, `#LMN-1001`, …) are minted from this dedicated sequence INSIDE the
+-- create transaction (NextOrderCode → nextval), so two concurrent checkouts can never collide on
+-- a code — the sequence hands each caller a distinct value by construction. This beats a
+-- `MAX(code)+1` scan (which races) or a random suffix (which can collide). Gaps are fine and
+-- expected: nextval is non-transactional, so a rolled-back create still consumes its number — a
+-- code is a display handle, never a count. START WITH 1000 keeps every code ≥4 digits (matches the
+-- `#LMN-2261` design mockups) without a zero-padded "#LMN-0001" that reads like a brand-new shop.
+CREATE SEQUENCE order_code_seq START WITH 1000;
