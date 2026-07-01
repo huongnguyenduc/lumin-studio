@@ -119,3 +119,62 @@ func TestLoadFallsBackOnInvalidDuration(t *testing.T) {
 		t.Fatalf("RelayDupWindow with garbage env = %v, want default 2m", got)
 	}
 }
+
+func TestLoadAuthDefaults(t *testing.T) {
+	for _, k := range []string{"JWT_SECRET", "JWT_TTL", "COOKIE_SECURE", "ALLOW_DEV_JWT_SECRET"} {
+		t.Setenv(k, "")
+	}
+	cfg := Load()
+	if cfg.JWTSecret != DevJWTSecret {
+		t.Fatalf("JWTSecret default = %q, want the dev fallback", cfg.JWTSecret)
+	}
+	if cfg.JWTTTL != 12*time.Hour {
+		t.Fatalf("JWTTTL default = %v, want 12h", cfg.JWTTTL)
+	}
+	if !cfg.CookieSecure {
+		t.Fatal("CookieSecure must default true (HTTPS at the edge)")
+	}
+	if cfg.AllowDevJWTSecret {
+		t.Fatal("AllowDevJWTSecret must default false (dev secret is opt-in)")
+	}
+}
+
+func TestLoadHonoursAuthEnv(t *testing.T) {
+	t.Setenv("JWT_SECRET", "a-real-production-secret")
+	t.Setenv("JWT_TTL", "1h")
+	t.Setenv("COOKIE_SECURE", "false")
+	cfg := Load()
+	if cfg.JWTSecret != "a-real-production-secret" {
+		t.Fatalf("JWTSecret = %q, want the env value", cfg.JWTSecret)
+	}
+	if cfg.JWTTTL != time.Hour {
+		t.Fatalf("JWTTTL = %v, want 1h", cfg.JWTTTL)
+	}
+	if cfg.CookieSecure {
+		t.Fatal("CookieSecure must honour COOKIE_SECURE=false (local http dev)")
+	}
+}
+
+// The money-critical gate main.go fail-fasts on: the dev secret is "forgeable" ONLY without the
+// explicit opt-in; a real secret, or the dev default WITH ALLOW_DEV_JWT_SECRET, must not trip it.
+func TestUsesForgeableJWTSecret(t *testing.T) {
+	cases := []struct {
+		name     string
+		secret   string
+		allowDev bool
+		want     bool
+	}{
+		{"dev secret, no opt-in → forgeable (refuse start)", DevJWTSecret, false, true},
+		{"dev secret WITH opt-in → allowed", DevJWTSecret, true, false},
+		{"real secret → allowed", "a-real-production-secret", false, false},
+		{"real secret + stray opt-in → allowed", "a-real-production-secret", true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := Config{JWTSecret: tc.secret, AllowDevJWTSecret: tc.allowDev}
+			if got := cfg.UsesForgeableJWTSecret(); got != tc.want {
+				t.Fatalf("UsesForgeableJWTSecret() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

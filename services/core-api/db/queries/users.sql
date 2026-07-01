@@ -7,3 +7,17 @@ RETURNING *;
 
 -- name: GetUserByEmail :one
 SELECT * FROM users WHERE email = $1;
+
+-- name: UpsertOwnerCredential :one
+-- Seed or rotate the first owner's login credential (PR-3e-1, `make seed-owner`). Forces
+-- role=owner + active=true and is idempotent on the UNIQUE email, so re-running it rotates the
+-- password hash rather than failing. This is the ONLY writer of password_hash this slice; there
+-- is no self-service change-password endpoint yet (deferred).
+INSERT INTO users (id, name, email, role, active, password_hash)
+VALUES ($1, $2, $3, 'owner', true, $4)
+ON CONFLICT (email) DO UPDATE
+  SET password_hash = EXCLUDED.password_hash,
+      role          = 'owner',
+      active        = true,
+      name          = EXCLUDED.name
+RETURNING *;

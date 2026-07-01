@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/auth"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/config"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/httpapi"
@@ -29,6 +30,20 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	cfg := config.Load()
+
+	// Fail fast if the session JWT would be signed with the well-known dev secret and the
+	// operator has NOT explicitly opted in. A forgeable signing key lets anyone mint an owner
+	// token and reconcile→PAID / change the STK (money-out) — too grave to guard with a Warn log
+	// alone, which a deploy pipeline can miss (review finding, PR-3e-1). Local dev sets
+	// ALLOW_DEV_JWT_SECRET=true; production sets JWT_SECRET. This check never runs in
+	// `make verify-go`/CI (they don't start the server).
+	if cfg.UsesForgeableJWTSecret() {
+		logger.Error("refusing to start: JWT_SECRET is unset so the session JWT would be signed with the public dev secret (forgeable owner tokens). Set JWT_SECRET (production) or ALLOW_DEV_JWT_SECRET=true (local dev only).")
+		os.Exit(1)
+	}
+	if cfg.JWTSecret == config.DevJWTSecret {
+		logger.Warn("signing session JWTs with the INSECURE dev secret (ALLOW_DEV_JWT_SECRET=true) — never use this in production; the tokens are forgeable")
+	}
 
 	// Open the pool before serving. pgxpool connects lazily, so this fails fast only
 	// on a malformed DSN — not on a momentarily-down database (readiness reports that).
@@ -60,6 +75,11 @@ func main() {
 	// restart converges without a core-api restart (idempotent; ADR-029 carry-over).
 	nc.ReEnsureOnReconnect(cfg.RelayDupWindow, logger)
 
+	// Build the self-issued auth token issuer (ADR-030). The JWT-secret safety check ran right
+	// after config.Load() above (fail-fast unless ALLOW_DEV_JWT_SECRET), so by here the signing
+	// key is either a real JWT_SECRET or a deliberately opted-in dev secret.
+	authIssuer := auth.NewIssuer(cfg.JWTSecret, cfg.JWTTTL, cfg.CookieSecure)
+
 	// Start the outbox→NATS relay: one in-process goroutine draining committed `pending` rows
 	// publish-on-commit (ADR-006/029). Cancel + join it on shutdown BEFORE nc.Close()/pool.Close()
 	// so it releases its NATS + DB handles first. A panic inside is recovered (relay.drainOnce).
@@ -77,7 +97,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    cfg.Addr,
-		Handler: httpapi.NewRouter(logger, pool, nc),
+		Handler: httpapi.NewRouter(logger, pool, nc, authIssuer),
 		// ReadHeaderTimeout covers the Slowloris header vector. Read/Write/Idle
 		// timeouts are intentionally unset for now — TODO(phase-1): source
 		// IdleTimeout + Read/WriteTimeout from config once real request bodies land

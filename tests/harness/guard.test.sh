@@ -497,6 +497,25 @@ if [ -f "$ERRGO" ]; then
     bad "ARM: httpapi/errors.go LAND nhưng router KHÔNG wire đủ 2 seam lỗi (cần NewStrictHandlerWithOptions+ResponseErrorHandlerFunc + ChiServerOptions cho param-binding) hoặc mapError thiếu bảng TransitionError -> plaintext default rò TransitionError.Message/param ra wire!"
   fi
 else ok "ARM: chưa có httpapi/errors.go (error-envelope arm khi HTTP foundation land — PR-3d)"; fi
+# Auth self-issued login (PR-3e-1, ADR-030): khi internal/auth land, 3 bất biến bảo mật PHẢI đứng:
+#   (a) session cookie HttpOnly=true (token ngoài tầm JS → chặn XSS-theft);
+#   (b) verify mật khẩu bằng bcrypt (bcrypt.CompareHashAndPassword — KHÔNG plaintext/==);
+#   (c) nhánh unknown-email vẫn chạy VerifyPassword(nil,…) (equalize timing → no user-enumeration).
+# Bỏ dòng comment ('// …') trước khi soi để một wiring bị COMMENT-OUT không false-PASS (cùng class lỗ
+# '//' của relay-ARM 3b / error-envelope-ARM 3d). Chỉ soi file PROD (auth.go + httpapi/auth.go).
+AUTHGO="$ROOT/services/core-api/internal/auth/auth.go"
+if [ -f "$AUTHGO" ]; then
+  LOGINGO="$ROOT/services/core-api/internal/httpapi/auth.go"
+  AUTHBODY="$(grep -vE '^[[:space:]]*//' "$AUTHGO" 2>/dev/null)"
+  LOGINBODY="$(grep -vE '^[[:space:]]*//' "$LOGINGO" 2>/dev/null)"
+  if printf '%s' "$AUTHBODY" | grep -q 'HttpOnly: true' \
+     && printf '%s' "$AUTHBODY" | grep -q 'bcrypt.CompareHashAndPassword' \
+     && printf '%s' "$LOGINBODY" | grep -q 'VerifyPassword(nil'; then
+    ok "ARM: có internal/auth -> session cookie HttpOnly + login bcrypt-compare + unknown-email chạy VerifyPassword(nil) (chống XSS-theft/plaintext/enumeration — ADR-030)"
+  else
+    bad "ARM: internal/auth LAND nhưng thiếu 1 trong {cookie HttpOnly, bcrypt.CompareHashAndPassword, login VerifyPassword(nil) nhánh unknown-email} -> rò token qua JS / plaintext compare / user-enumeration (ADR-030!)"
+  fi
+else ok "ARM: chưa có internal/auth (auth self-issued login arm khi land — PR-3e-1)"; fi
 if find "$ROOT/services" -name '*.rs' 2>/dev/null | grep -q .; then
   { [ -f "$ROOT/Makefile" ] && grep -Eq '^verify-rs:' "$ROOT/Makefile"; } \
     && ok "ARM: có .rs -> Makefile verify-rs" || bad "ARM: .rs LAND nhưng thiếu Makefile verify-rs"

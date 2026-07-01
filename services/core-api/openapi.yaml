@@ -54,6 +54,11 @@ paths:
       responses:
         '200':
           description: Authenticated. The session cookie is set via Set-Cookie.
+          headers:
+            Set-Cookie:
+              description: Signed JWT in an httpOnly + Secure + SameSite=Strict session cookie (the token is not in the body).
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -71,6 +76,11 @@ paths:
       responses:
         '204':
           description: Session cookie cleared.
+          headers:
+            Set-Cookie:
+              description: Expires the session cookie immediately (logout).
+              schema:
+                type: string
         '401': { $ref: '#/components/responses/Unauthorized' }
 
   /orders:

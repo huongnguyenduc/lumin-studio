@@ -21,6 +21,7 @@ import (
 // order.TransitionError contributes its own codes verbatim (INVALID_EDGE, RBAC, …).
 const (
 	codeValidation      = "VALIDATION"
+	codeUnauthorized    = "UNAUTHORIZED"
 	codeNotFound        = "NOT_FOUND"
 	codeNoItems         = "NO_ITEMS"
 	codeInvalidEvent    = "INVALID_EVENT"

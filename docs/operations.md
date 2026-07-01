@@ -26,6 +26,17 @@ Service: `core-api` (Go), `asset-worker` (Rust+Blender, `--gpus all`), `postgres
 - Rollout: **self-hosted runner** hoặc **Watchtower** trên PC pull image mới → `docker compose up -d`.
 - Migration DB: chạy như **one-shot job** trong bước deploy (gated). 3 môi trường: preview (PR) · staging (compose profile riêng + DB/bucket prefix throwaway) · prod. Region gần VN (PC đặt tại VN).
 
+## 4b. Auth bootstrap & secrets (core-api, ADR-030)
+Core-api **tự phát JWT** (không dựa Cloudflare Access). Sau khi migrate xong, bootstrap tài khoản chủ + set secret:
+
+1. **Seed owner đầu (một lần):** `make seed-owner` — đọc **`OWNER_EMAIL`** + **`OWNER_PASSWORD`** (bắt buộc; password ≥ 8 ký tự) + `OWNER_NAME` (tuỳ chọn, default "Chủ shop") + `DATABASE_URL` từ env. Nó bcrypt-hash mật khẩu và **upsert theo email** — chạy lại = **xoay mật khẩu** (không tạo trùng, giữ nguyên id). **KHÔNG** có mật khẩu nào commit vào repo; migration `000009` chỉ là DDL (`ALTER TABLE users ADD COLUMN password_hash`). Ví dụ:
+   ```sh
+   OWNER_EMAIL=chu@lumin.vn OWNER_PASSWORD='…đặt-ở-đây…' make seed-owner
+   ```
+2. **`JWT_SECRET` (bắt buộc ở prod):** khoá ký HS256 cho session JWT. **Chưa set = core-api TỪ CHỐI khởi động** (fail-fast) vì dev-secret công khai → token owner **giả mạo được** (reconcile→PAID / đổi STK). Nguồn từ env/secret manager, **không commit**.
+   - **Local dev** (chấp nhận dev-secret): đặt `ALLOW_DEV_JWT_SECRET=true` để `go run` chạy được với secret dev (log Warn to). Không dùng cờ này ở prod.
+3. **`JWT_TTL`** (default `12h`): tuổi thọ phiên; hết hạn → đăng nhập lại (**không** refresh token — ADR-030). **`COOKIE_SECURE`** (default `true`): cờ Secure của session cookie; chỉ set `false` cho local plain-http dev (không thì browser giữ cookie lại, login "im lặng" hỏng).
+
 ## 5. Backup & DR (điều kiện launch — ADR-018)
 - **Postgres:** WAL-G (Go, S3-native — hợp; hoặc pgBackRest đã hồi sinh 5/2026) — base backup + WAL liên tục → bucket offsite.
 - **Object (Garage) + compose/secrets:** **restic** (mã hoá, dedup) → offsite + 1 ổ ngoài để restore nhanh (3-2-1).

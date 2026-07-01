@@ -1,0 +1,13 @@
+-- 000009_user_credentials.up.sql — staff/owner login credential (Core slice 3, PR-3e-1).
+-- ADR-030: core-api owns authentication (self-issued JWT, not Cloudflare Access). This adds
+-- the one column the `POST /auth/login` bcrypt check reads.
+--
+-- NULLABLE on purpose: not every `users` row can log in. A staff account may exist for
+-- attribution/RBAC before (or without) a password being set; `password_hash IS NULL` simply
+-- means "no login credential" and always fails the bcrypt compare (auth.VerifyPassword still
+-- burns one comparison so the null path is timing-indistinguishable — no user enumeration).
+--
+-- No credential is seeded here — the migration stays pure DDL (no committed secret). The first
+-- owner is created out-of-band by `make seed-owner` (cmd/seed-owner), which bcrypt-hashes a
+-- password supplied via the environment at deploy time. See docs/operations.md.
+ALTER TABLE users ADD COLUMN password_hash text;

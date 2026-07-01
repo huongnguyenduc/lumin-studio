@@ -119,6 +119,11 @@ type Querier interface {
 	// UpdateSettings writes the non-money config (shop info, shipping rules, refund policy). It does NOT
 	// touch bank_account — that goes through the audited UpdateBankAccountTx seam.
 	UpdateSettings(ctx context.Context, arg UpdateSettingsParams) (Setting, error)
+	// Seed or rotate the first owner's login credential (PR-3e-1, `make seed-owner`). Forces
+	// role=owner + active=true and is idempotent on the UNIQUE email, so re-running it rotates the
+	// password hash rather than failing. This is the ONLY writer of password_hash this slice; there
+	// is no self-service change-password endpoint yet (deferred).
+	UpsertOwnerCredential(ctx context.Context, arg UpsertOwnerCredentialParams) (User, error)
 	// Mark the active grant for (customer, scope, channel) as withdrawn. Never deletes the row.
 	WithdrawConsent(ctx context.Context, arg WithdrawConsentParams) error
 }
