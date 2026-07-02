@@ -33,6 +33,7 @@ export const vi = {
     revenueToday: 'Doanh thu hôm nay',
     printing: 'Đang in',
     reviewsWaiting: 'Đánh giá chờ trả lời',
+    needsAttention: 'Cần chú ý',
     recentOrders: 'Đơn hàng gần đây',
     viewAll: 'Xem tất cả',
     colCode: 'Mã',

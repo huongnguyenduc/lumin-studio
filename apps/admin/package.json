@@ -12,6 +12,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@lumin/api-client": "workspace:*",
     "@lumin/core": "workspace:*",
     "@lumin/ui": "workspace:*",
     "next": "^15.5.19",

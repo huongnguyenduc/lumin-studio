@@ -38,6 +38,9 @@ importers:
 
   apps/admin:
     dependencies:
+      '@lumin/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
       '@lumin/core':
         specifier: workspace:*
         version: link:../../packages/core
