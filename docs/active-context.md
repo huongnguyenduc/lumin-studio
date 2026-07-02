@@ -337,12 +337,33 @@ reflects) · `TestGetSettingsSeededDefaults` · `TestListReplyTemplatesEndToEnd`
 session) — used as-is, left running.
 
 ## Next steps (1–3)
-1. **Slice 3 · PR-3k — ✅ PR #30 OPEN, MERGED origin/main (3i #29) into branch · guard 154 · verify+integration green · review + spec-guardian PASS
-   · regular push (no force) → verify CI re-run → await user merge-gate.** Merge (not rebase) because a rebase needs a force-push (denied); conflict resolved:
-   stubs.go deleted, STK-01→Cụm 12, both guard ARMs). **Flag in PR:** openapi `BankAccountUpdate` stays looser than server validation
-   (server-authoritative fail-closed; add `pattern`/`minLength` là follow-up khi 3j consumes it). After merge: ff local `main`, prune branch.
-2. **Then remaining fan-out:** **`3i` ✅ MERGED (#29)** → only **`3j`** admin dashboard frontend left (needs 3i, now done; the
-   a11y/i18n/visual-fidelity axis). After 3k+3i land, `3j` closes the slice-3 handler track. Full DAG: `core-http-relay.md §1`.
+1. **Slice 3 · PR-3k — ✅ MERGED (PR #30) → `origin/main` `cf4c2a8` (2026-07-02, squash; CI green app-gates/selftest/services-gates).**
+   Local `main` ff'd to `cf4c2a8`; the merged `feat/core-http-relay-3k` branch + ~19 older squash-merged branches remain
+   local (guard blocks `git branch -D` → prune by hand when duyệt). **Flag carried to 3j PR:** openapi `BankAccountUpdate`
+   stays looser than server validation (server-authoritative fail-closed; add `pattern`/`minLength` follow-up).
+2. **Slice 3 · PR-3j (admin dashboard frontend) — 🔨 BUILT · verify+build+guard green · adversarial review DONE (wf_6700cbed-be7:
+   0 lens-confirmed / 4 critic gaps → 3 fixed, 1 refuted-by-existing-decision) · spec-guardian RUNNING.**
+   **Review fixes:** (a11y/WCAG 1.4.1) highlighted stat card was color-only → sr-only "Cần chú ý" cue + `needsAttention` i18n key
+   (border-presence already non-hue for colorblind; sr-only closes the screen-reader gap) · (coverage) added missing-cookie test
+   (empty-headers false-branch was untested) · (ops) operations.md §2 flags `CORE_API_URL` must wire into compose/Caddy when the
+   admin container lands. **Refuted:** empty/zero render states "untested" — admin `vitest.config.ts` DELIBERATELY defers RSC render
+   vetting to Playwright Phase 5 (data paths ARE unit-tested: `toRecentOrders([])→[]`, `highlight:false`). **Documented-deferred:**
+   401/expired-session lands on the generic retry boundary (login-redirect belongs with the deferred admin login UI — no login page
+   to redirect to yet; code comment + PR flag). 10 tests green.
+   (branch `feat/core-http-relay-3j` off `main` `cf4c2a8`.) The LAST slice-3 sub-PR — landing it **closes the entire Core
+   HTTP+relay slice**. Replaced `apps/admin/src/lib/demo-dashboard.ts` → real `GET /admin/dashboard` fetch via `@lumin/api-client`.
+   **`lib/dashboard.ts`** pure adapters (`toStatCards`/`toRecentOrders`/`toTodos`; reviews-todo synthesized from
+   `stats.reviewsWaiting` since API todos has only 2 fields — 3-row design preserved, confirmed vs hi-fi) + **`lib/dashboard-fetch.ts`**
+   server-side `fetchDashboard` (reads httpOnly `lumin_session` cookie via `next/headers`, forwards to core-api, `no-store`,
+   non-2xx→throw→error boundary; `CORE_API_URL` server-only env, throws if unset) + `page.tsx` async server component
+   (route now `ƒ Dynamic`) + 3 components take props (**zero markup/class delta** → visual identical to vetted Phase-0 shell).
+   `@lumin/api-client` added to admin deps + `transpilePackages`; `.env.example` added; `demo-dashboard.ts` deleted.
+   **10 new Docker-free tests** (adapter slotting · reviews synthesis · empty-state · cookie-forward · missing-cookie · non-2xx-throws ·
+   missing-env). `pnpm verify` rc=0 (lint+typecheck+test+format:check) · admin `next build` ✓ · api-client stale-gate ✓
+   (no openapi change) · **guard 154 · osm 22** (no new ARM — frontend PR, no Go/services invariant). **No new deps beyond
+   the workspace `@lumin/api-client` link · no new ADR.** Deferred by design: live visual-fidelity screenshot (needs running
+   core-api + seeded session → integration/QA; markup unchanged so no new visual risk) + admin login UI (401→error boundary).
+   **After review PASS:** update this ledger + push → PR → await user merge-gate.
 3. **Housekeeping:** prune now-merged local branches `feat/core-http-relay`(3a)/`-3b`/`-3c-1`/`-3c-2`/`-3d`/`-3f`/`-3h` +
    older `feat/core-data-layer-2e/2f/2g`/`feat/core-data-model`/`feat/phase-0-*` when chủ duyệt (all squash-merged → won't
    show under `git branch --merged`; verify by PR#, not sha). Harness follow-ups: the **testcontainers ARM** greps Go

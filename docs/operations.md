@@ -13,6 +13,7 @@ Service: `core-api` (Go), `asset-worker` (Rust+Blender, `--gpus all`), `postgres
 - `restart: unless-stopped` + healthcheck mọi service.
 - **`cpus=` + `cpu_shares` limit** cho mọi container observability/analytics để Blender/BFF luôn thắng CPU khi render (ADR-014).
 - Garage `replication_factor = 1`; data trên ext4 trong WSL2 (tránh path interop Windows chậm).
+- **Admin/Storefront (Next):** container đọc **`CORE_API_URL`** (server-only env, **KHÔNG** `NEXT_PUBLIC_`) trỏ tới `core-api:8080` — admin dashboard fetch `GET /admin/dashboard` **server-side** rồi forward cookie `lumin_session` (PR-3j, `apps/admin/.env.example`). Thiếu env ⇒ mỗi request dashboard trả 500 (fail-fast tại request-time, không phải boot-time). **Phải wire vào compose/Caddy khi container admin land** (app services còn deferred ở Phase 0 — chưa có Dockerfile).
 
 ## 3. GPU trong WSL2 (làm ở Phase 0 — đây là cổng chặn)
 1. Cài **driver NVIDIA trên Windows** (R535+). **KHÔNG** cài driver GPU Linux trong WSL2 (ghi đè libcuda → hỏng `/dev/dxg`).

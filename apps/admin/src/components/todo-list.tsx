@@ -2,21 +2,22 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { formatVnNumber } from '@lumin/core';
 import { Card } from '@lumin/ui';
-import { demoTodos } from '@/lib/demo-dashboard';
+import type { TodoItem } from '@/lib/dashboard';
 import { ArrowRightIcon } from './icons';
 
 /**
  * "Cần xử lý" action list (design: Lumin Admin Hi-fi). Each row = a count + a label + an arrow link
- * into the relevant queue. Counts via formatVnNumber, labels via i18n. Static → server component.
+ * into the relevant queue. Counts via formatVnNumber, labels via i18n. Data comes from GET
+ * /admin/dashboard via the page (PR-3j); server component.
  */
-export function TodoList() {
+export function TodoList({ todos }: { todos: TodoItem[] }) {
   const t = useTranslations('dashboard');
 
   return (
     <Card elevation="md" className="flex flex-col p-5">
       <h2 className="mb-2 text-lg">{t('todo')}</h2>
       <ul className="flex flex-col">
-        {demoTodos.map((todo) => (
+        {todos.map((todo) => (
           <li key={todo.labelKey}>
             <Link
               href={todo.href}

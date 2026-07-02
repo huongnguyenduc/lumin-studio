@@ -2,19 +2,18 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { formatVnd } from '@lumin/core';
 import { Card } from '@lumin/ui';
-import { demoRecentOrders } from '@/lib/demo-dashboard';
+import type { RecentOrderRow } from '@/lib/dashboard';
 import { OrderStatusBadge } from './order-status-badge';
 import { ArrowRightIcon } from './icons';
 
 /**
  * "Đơn hàng gần đây" table (design: Lumin Admin Hi-fi). Columns Mã / Khách / Tổng / Trạng thái.
  * Order code is mono, total via formatVnd, status via the shared OrderStatusBadge. Renders an
- * empty-state branch (message + CTA) when there are no orders (conventions §State). Static → server
- * component.
+ * empty-state branch (message + CTA) when there are no orders (conventions §State). Data comes from
+ * GET /admin/dashboard via the page (PR-3j); server component.
  */
-export function RecentOrders() {
+export function RecentOrders({ orders }: { orders: RecentOrderRow[] }) {
   const t = useTranslations('dashboard');
-  const orders = demoRecentOrders;
 
   return (
     <Card elevation="md" className="overflow-hidden">
