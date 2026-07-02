@@ -241,8 +241,9 @@ paid on non-money edges + tracking persist atomic + DTO assembly; invalid-edge�
 
 **AUTH BOUNDARY COMPLETE → handler fan-out unblocked {3g/3h/3i/3k→3j}.**
 
-**`3g` checkout `POST /orders` ✅ BUILT (`df16b83`, branch `feat/core-http-relay-3g` off `main` `5fad85a`) · post-build
-multi-lens review DONE · fixes applied · verify+integration(colima) green · guard 152 · chờ push→PR.** `internal/httpapi/
+**`3g` checkout `POST /orders` ✅ BUILT (`df16b83` build + `4a3ff8f` review-fixes, branch `feat/core-http-relay-3g` off
+`main` `5fad85a`) · post-build multi-lens review DONE · fixes applied · verify+integration(colima) green · guard 152 ·
+spec-guardian PASS · **PR #28 OPEN · CI green (app-gates/selftest/services-gates) · chờ user merge-gate.**** `internal/httpapi/
 checkout.go` CreateOrder strict handler behind optional-auth: ONE handler/mount branch on resolved actor (D2) · **inbox
 staff-gate** (channel=inbox mints born-PAID → 403 unless actor — critique BLOCKER/CHK-05) · web CHK-04 `paymentProofUrl`
 http(s)+host at boundary · ADR-012 ack+echo · **ADR-019 loud-reject** client unitPrice/subtotal/total/shippingFee → 400 ·
@@ -294,10 +295,9 @@ drift left for user:** `decisions.md` ADR-033 still says "migration 000008" (non
 edited unilaterally; flag in PR).
 
 ## Next steps (1–3)
-1. **Slice 3 · PR-3g — push→PR + user merge.** BUILT + reviewed + verified (see Focus). Remaining: fold spec-guardian
-   verdict → commit review-fixes on `feat/core-http-relay-3g` → push → open PR (deps 3d✓/3e-2✓/3f✓/3h✓ all merged; 3g
-   is 1 commit ahead of `main` `5fad85a`). Flag in PR: `decisions.md` ADR-033 "migration 000008" aside still stale
-   (hard-blocked file, not edited unilaterally). Then user merge-gate.
+1. **Slice 3 · PR-3g — ✅ PR #28 OPEN · CI green · awaiting user merge-gate.** BUILT + reviewed + verified + landed (see
+   Focus). Flagged in PR: `decisions.md` ADR-033 "migration 000008" aside still stale (hard-blocked file, not edited
+   unilaterally). After merge: ff local `main`, prune `feat/core-http-relay-3g`.
 2. **Then remaining fan-out (parallel-safe):** **`3i` dashboard aggregates** (→ migration **000011**_dashboard_idx, since 3f
    took 000010; Asia/Ho_Chi_Minh "today" boundary; net-revenue formula) · **`3k` settings/STK** (owner-only, audit seam) →
    **`3j`** admin dashboard frontend (needs 3i; the a11y/i18n/visual-fidelity axis). Full DAG: `core-http-relay.md §1`.
