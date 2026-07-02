@@ -327,6 +327,25 @@ func AdvanceStatusTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, to order
 	return row, nil
 }
 
+// SetTrackingCodeTx persists the carrier tracking code WITHIN tx. The PRINTING→SHIPPING status
+// flip goes through AdvanceStatusTx (the order.Transition guard); the transition handler (§3h)
+// calls this in the SAME tx immediately after, so the flip and the mandatory tracking_code
+// (spec §04) commit atomically — an order can never reach SHIPPING without its code. The
+// returned row reflects both the already-flipped status and the tracking_code (RETURNING *),
+// so the caller uses it as the authoritative post-transition order. Emits no outbox event
+// (the SHIPPING transition itself has no money-in event; ADR-006). ErrNotFound for a missing id.
+func SetTrackingCodeTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, code string) (sqlc.Order, error) {
+	q := sqlc.New(tx)
+	row, err := q.SetTrackingCode(ctx, sqlc.SetTrackingCodeParams{ID: orderID, TrackingCode: &code})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Order{}, ErrNotFound
+	}
+	if err != nil {
+		return sqlc.Order{}, fmt.Errorf("order: set tracking code %s: %w", orderID, err)
+	}
+	return row, nil
+}
+
 // lineItems maps order items to money.LineItem. Deltas are already folded into UnitPrice (the
 // row snapshots the effective unit price), so ColorDelta/OptionDeltas are zero here — the total
 // still flows through the one authoritative CalcTotals path.

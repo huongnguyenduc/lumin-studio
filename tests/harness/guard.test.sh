@@ -562,6 +562,25 @@ if [ -f "$PRICING" ]; then
     bad "ARM: internal/pricing LAND nhưng thiếu 1 trong {PriceItem derive BasePrice+PriceDelta, Selection không có trường giá client, NextOrderCode dùng nextval('order_code_seq')} -> giá client bị tin / mã đơn đua-đụng (money-out!)"
   fi
 else ok "ARM: chưa có internal/pricing (order-intake pricing arm khi land — PR-3f)"; fi
+# ARM PR-3h (transition handler): khoá 3 bất biến money-path của endpoint đổi trạng thái —
+#  (a) money-in reconcile (→PAID) route qua ConfirmPaymentTx (emitter DUY NHẤT của order.paid);
+#      một edit đổi sang AdvanceStatusTx (footgun: flip state nhưng KHÔNG phát order.paid) làm mất
+#      token ConfirmPaymentTx → RED (locked decision #9);
+#  (b) reconcile owner-only GÁC Ở BIÊN (order.RoleOwner) — ConfirmPaymentTx tự cố định role=owner nên
+#      domain guard KHÔNG tự chặn staff; bỏ check biên → staff reconcile được → mất token RoleOwner → RED;
+#  (c) SHIPPING persist mã vận chuyển (SetTrackingCode) atomically với flip (spec §04 / §6 D12).
+# Bỏ comment ('//') trước khi soi để một tham chiếu bị COMMENT-OUT không false-PASS (class lỗ '//' 3b).
+TRANSITION="$ROOT/services/core-api/internal/httpapi/transition.go"
+if [ -f "$TRANSITION" ]; then
+  TRANSBODY="$(grep -vE '^[[:space:]]*//' "$TRANSITION" 2>/dev/null)"
+  if printf '%s' "$TRANSBODY" | grep -q 'ConfirmPaymentTx' \
+     && printf '%s' "$TRANSBODY" | grep -q 'order.RoleOwner' \
+     && printf '%s' "$TRANSBODY" | grep -q 'SetTrackingCodeTx'; then
+    ok "ARM: có httpapi/transition.go -> reconcile→PAID qua ConfirmPaymentTx (emitter order.paid duy nhất) + owner-gate biên (order.RoleOwner) + SHIPPING persist SetTrackingCodeTx (dispatch-footgun/money-in/tracking — locked #9/§6 D12)"
+  else
+    bad "ARM: httpapi/transition.go LAND nhưng thiếu 1 trong {ConfirmPaymentTx cho money-in, order.RoleOwner owner-gate biên, SetTrackingCodeTx cho SHIPPING} -> reconcile qua AdvanceStatusTx (mất order.paid câm) / staff reconcile lọt / SHIPPING không mã vận chuyển (money-path!)"
+  fi
+else ok "ARM: chưa có httpapi/transition.go (transition dispatch/owner/tracking arm khi land — PR-3h)"; fi
 if find "$ROOT/services" -name '*.rs' 2>/dev/null | grep -q .; then
   { [ -f "$ROOT/Makefile" ] && grep -Eq '^verify-rs:' "$ROOT/Makefile"; } \
     && ok "ARM: có .rs -> Makefile verify-rs" || bad "ARM: .rs LAND nhưng thiếu Makefile verify-rs"

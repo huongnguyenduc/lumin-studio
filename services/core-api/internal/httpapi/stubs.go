@@ -10,9 +10,9 @@ import (
 // api.StrictServerInterface so the contract compiles and every route is mounted; each
 // stub returns errNotImplemented (rendered as 501 NOT_IMPLEMENTED, ErrorEnvelope) until
 // its domain PR lands. Replace — do not add to — each stub as the real handler arrives:
-//   LoginUser/LogoutUser → PR-3e-1 (done, see auth.go) · CreateOrder → PR-3g ·
-//   TransitionOrder → PR-3h · GetDashboard → PR-3i ·
-//   GetSettings/UpdateBankAccount/ListReplyTemplates → PR-3k.
+//   LoginUser/LogoutUser → PR-3e-1 (done, see auth.go) ·
+//   TransitionOrder → PR-3h (done, see transition.go) · CreateOrder → PR-3g ·
+//   GetDashboard → PR-3i · GetSettings/UpdateBankAccount/ListReplyTemplates → PR-3k.
 
 // GetDashboard is not implemented yet (PR-3i).
 func (s *Server) GetDashboard(_ context.Context, _ api.GetDashboardRequestObject) (api.GetDashboardResponseObject, error) {
@@ -36,10 +36,5 @@ func (s *Server) UpdateBankAccount(_ context.Context, _ api.UpdateBankAccountReq
 
 // CreateOrder is not implemented yet (PR-3g; web public, inbox staff-gated).
 func (s *Server) CreateOrder(_ context.Context, _ api.CreateOrderRequestObject) (api.CreateOrderResponseObject, error) {
-	return nil, errNotImplemented
-}
-
-// TransitionOrder is not implemented yet (PR-3h; RBAC-gated).
-func (s *Server) TransitionOrder(_ context.Context, _ api.TransitionOrderRequestObject) (api.TransitionOrderResponseObject, error) {
 	return nil, errNotImplemented
 }
