@@ -133,3 +133,12 @@
 > **+** chính các test Go đó (unit Docker-free + integration vs PG thật). `[ ]` = "không do parser-TS gác".
 
 - [ ] `DASH-01` — WHEN dashboard tính doanh thu hôm nay ở `GET /admin/dashboard`, the system shall cộng `total` của các đơn có `payment_confirmed_at` rơi trong NGÀY hôm nay (`Asia/Ho_Chi_Minh` UTC+7, cửa sổ nửa-mở `[start,end)` — anchor theo NGÀY THU TIỀN, KHÔNG theo ngày tạo, KHÔNG cắt UTC-midnight) và **loại** `REFUNDED` (giữ `CANCELLED`-sau-PAID vì shop giữ tiền, spec §04), **KHÔNG** dùng `status IN (…)` ngây thơ (rớt doanh thu CANCELLED-sau-PAID); `newOrdersToday` anchor theo ngày TẠO; zero-state trả 0 và `recentOrders` `[]` không rỗng (spec §03). *(test: `db.TestDashboardNetRevenue` + `db.TestDashboardWindowBoundary` + `httpapi.TestHcmDayBounds` + `httpapi.TestBuildDashboardSnapshot` + `db.TestDashboardZeroState`)*
+
+## Cụm 12 — Admin settings / STK (`docs/plans/core-http-relay.md` §3k · conventions §57 · ADR-012)
+
+> **Go-gated — CỐ Ý để `[ ]`** (cùng lý do Cụm 4..11): test của `STK-*` là **Go**
+> (`services/core-api/internal/httpapi`), parser TS không resolve được → tick `[x]` sẽ làm parser ĐỎ. **Gate thật** =
+> `guard.test.sh §ARM` (settings.go đổi STK qua `UpdateBankAccountTx` audit-on-commit + owner-gate `order.RoleOwner` +
+> `changed_by` từ `actorFrom(ctx)` không body) **+** chính các test Go đó (unit Docker-free + integration vs PG thật). `[ ]` = "không do parser-TS gác".
+
+- [ ] `STK-01` — WHEN owner đổi STK qua `PATCH /admin/settings/bank-account`, the system shall (a) chỉ cho **owner** ghi — staff bị chặn **403** ở biên `authOwnerOnly` **và** handler tự re-assert `order.RoleOwner` (defense-in-depth vì STK là money-out cao-giá-nhất — bad STK reroute mọi tiền khách), (b) validate VietQR field shape ngay tại HTTP boundary trước cả body-processing (`bin` **đúng 6 chữ số** napas, `accountNumber` toàn chữ số ≤19, `accountName` non-empty sau trim → **400 per-field loud-reject** — money-out field server render QR tĩnh, STK rác phải bị chặn), (c) ghi qua **`UpdateBankAccountTx`**: cột `settings.bank_account` **+** một row `setting_bank_audit` append-only trong **CÙNG một tx** (đổi STK không bao giờ land mà thiếu audit trail — conventions §57), và (d) `changed_by` lấy từ **actor context** (users.id) **KHÔNG** từ body. *(test: `httpapi.TestUpdateBankAccountEndToEnd` + `httpapi.TestUpdateBankAccountRejectsNonOwner` + `httpapi.TestCleanBankUpdate`)*
