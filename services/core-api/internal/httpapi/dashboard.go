@@ -46,7 +46,15 @@ func (s *Server) GetDashboard(ctx context.Context, _ api.GetDashboardRequestObje
 		return nil, err
 	}
 
-	return api.GetDashboard200JSONResponse(api.DashboardSnapshot{
+	return api.GetDashboard200JSONResponse(buildDashboardSnapshot(stats, reviewsWaiting, recent)), nil
+}
+
+// buildDashboardSnapshot maps the three read results into the wire DashboardSnapshot. Split out from
+// the I/O (pure) so the row→DTO slot wiring — which count lands in which stat/todo field — is pinned by
+// a Docker-free unit test (a PendingConfirm↔PaidWaitingPrint swap or a mis-sourced ReviewsWaiting must
+// fail). Money stays raw int VND (never formatted server-side, always-must #2); counts are int64→int.
+func buildDashboardSnapshot(stats sqlc.DashboardOrderStatsRow, reviewsWaiting int64, recent []sqlc.DashboardRecentOrdersRow) api.DashboardSnapshot {
+	return api.DashboardSnapshot{
 		Stats: api.DashboardStats{
 			NewOrdersToday: int(stats.NewOrdersToday),
 			RevenueToday:   stats.RevenueToday, // raw int-VND, never formatted server-side
@@ -58,7 +66,7 @@ func (s *Server) GetDashboard(ctx context.Context, _ api.GetDashboardRequestObje
 			PaidWaitingPrint: int(stats.PaidWaitingPrint),
 		},
 		RecentOrders: recentOrdersDTO(recent),
-	}), nil
+	}
 }
 
 // hcmDayBounds returns the UTC [start, end) range for the Asia/Ho_Chi_Minh calendar day containing

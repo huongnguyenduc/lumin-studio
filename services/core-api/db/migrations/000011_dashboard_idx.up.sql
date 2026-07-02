@@ -8,10 +8,10 @@
 -- Purely covering indexes — NO new tables/columns — so sqlc's schema (compiled from *.up.sql) is
 -- unchanged; only the new db/queries/dashboard.sql reads are added.
 --
--- orders_created_at_idx backs BOTH the today-scoped stats (new_orders_today / revenue_today filter
--- created_at into the Asia/Ho_Chi_Minh day, passed by the handler as a UTC [start,end) range) AND the
--- recent-orders read (ORDER BY created_at DESC LIMIT n). orders(status) is already indexed (000005),
--- so the all-time queue counts (printing / pending_confirm / paid_waiting_print) need no new index.
+-- orders_created_at_idx backs the recent-orders read (ORDER BY created_at DESC LIMIT n). It does NOT
+-- accelerate DashboardOrderStats — that query computes all-time counts alongside the today-FILTERs, so
+-- it is a full-table aggregate scan by design (fine at one-shop scale). orders(status) is already
+-- indexed (000005). The index is cheap and pays off for the recent-orders sort as the table grows.
 --
 -- reviews_waiting_idx is PARTIAL (WHERE reply IS NULL): the "reviews waiting for a reply" count scans
 -- only the un-replied rows — the small hot set an owner acts on — while the replied majority never

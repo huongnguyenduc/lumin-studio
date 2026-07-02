@@ -26,6 +26,47 @@ func TestGetDashboardRequiresAuth(t *testing.T) {
 	}
 }
 
+// TestBuildDashboardSnapshot pins the row→DTO slot wiring with DISTINCT values in every field, so a
+// swap (e.g. PendingConfirm↔PaidWaitingPrint, both int todo counts) or a mis-sourced ReviewsWaiting
+// (it comes from a SEPARATE read, not the stats row) fails. Pure — runs in the Docker-free lane.
+func TestBuildDashboardSnapshot(t *testing.T) {
+	stats := sqlc.DashboardOrderStatsRow{
+		NewOrdersToday:   7,
+		RevenueToday:     650_000,
+		Printing:         3,
+		PendingConfirm:   1,
+		PaidWaitingPrint: 2,
+	}
+	id := uuid.New()
+	recent := []sqlc.DashboardRecentOrdersRow{{
+		ID: id, Code: "#LMN-1000", CustomerName: "Nguyễn An", Status: order.Paid, Total: 420_000,
+		CreatedAt: pgtype.Timestamptz{Time: mustParse(t, "2026-07-02T09:00:00Z"), Valid: true},
+	}}
+	snap := buildDashboardSnapshot(stats, 5, recent) // reviewsWaiting=5 from the separate read
+
+	if snap.Stats.NewOrdersToday != 7 {
+		t.Errorf("newOrdersToday = %d, want 7", snap.Stats.NewOrdersToday)
+	}
+	if snap.Stats.RevenueToday != 650_000 {
+		t.Errorf("revenueToday = %d, want 650000", snap.Stats.RevenueToday)
+	}
+	if snap.Stats.Printing != 3 {
+		t.Errorf("printing = %d, want 3", snap.Stats.Printing)
+	}
+	if snap.Stats.ReviewsWaiting != 5 {
+		t.Errorf("reviewsWaiting = %d, want 5 (from the separate ReviewsWaiting read, not the stats row)", snap.Stats.ReviewsWaiting)
+	}
+	if snap.Todos.PendingConfirm != 1 {
+		t.Errorf("pendingConfirm = %d, want 1", snap.Todos.PendingConfirm)
+	}
+	if snap.Todos.PaidWaitingPrint != 2 {
+		t.Errorf("paidWaitingPrint = %d, want 2", snap.Todos.PaidWaitingPrint)
+	}
+	if len(snap.RecentOrders) != 1 || snap.RecentOrders[0].Id != id || snap.RecentOrders[0].Total != 420_000 {
+		t.Fatalf("recentOrders wrong: %+v", snap.RecentOrders)
+	}
+}
+
 // hcmDayBounds is the load-bearing correctness of the "today" window: DB timestamps are UTC, the
 // shop's day is UTC+7, so the boundary must be ICT-midnight, never UTC-midnight. These are pure
 // (no DB) so they run in the Docker-free lane.

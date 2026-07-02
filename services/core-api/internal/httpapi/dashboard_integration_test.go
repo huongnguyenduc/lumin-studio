@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -22,9 +23,12 @@ func TestGetDashboardEndToEnd(t *testing.T) {
 	ctx := context.Background()
 	orderID := seedPendingWebOrder(t, ctx, pool)
 
-	// Reconcile PENDING_CONFIRM → PAID so the order becomes revenue-bearing (total 420_000).
+	// Reconcile PENDING_CONFIRM → PAID so the order becomes revenue-bearing (total 420_000). The
+	// confirm instant must be "today" (server clock) because revenueToday anchors on payment_confirmed_at
+	// (the cash-in date), and GetDashboard windows on hcmDayBounds(time.Now()).
+	paidAt := time.Now().UTC().Format(time.RFC3339Nano)
 	if err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
-		_, err := db.ConfirmPaymentTx(ctx, tx, db.ConfirmPaymentInput{OrderID: orderID, ByUser: "chu", At: "2026-07-01T09:00:00Z"})
+		_, err := db.ConfirmPaymentTx(ctx, tx, db.ConfirmPaymentInput{OrderID: orderID, ByUser: "chu", At: paidAt})
 		return err
 	}); err != nil {
 		t.Fatalf("reconcile: %v", err)
