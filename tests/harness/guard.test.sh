@@ -603,6 +603,27 @@ if [ -f "$CHECKOUT" ]; then
     bad "ARM: httpapi/checkout.go LAND nhưng thiếu 1 trong {pricing.PriceItem, pricing.ShippingFee, errForbidden inbox-gate, CreateOrderTx} -> giá/phí không server-derive / caller vô danh mint đơn born-PAID / insert rời không outbox (money-path!)"
   fi
 else ok "ARM: chưa có httpapi/checkout.go (checkout price/fee/inbox-gate arm khi land — PR-3g)"; fi
+# ARM PR-3i (dashboard aggregate): khoá bất biến NET-REVENUE (spec §04) của GET /admin/dashboard —
+#  (a) doanh thu ròng tính theo payment_confirmed_at IS NOT NULL (đã-TỪNG-PAID) + loại REFUNDED, KHÔNG
+#      phải `status IN (PAID,PRINTING,SHIPPING,COMPLETED)` ngây thơ — status-IN sẽ RỚT doanh thu
+#      CANCELLED-sau-PAID (spec §04: "CANCELLED sau PAID mà không hoàn → shop GIỮ tiền = vẫn tính doanh
+#      thu"); một edit đổi revenue_today sang status-IN làm mất token payment_confirmed_at → RED;
+#  (b) "hôm nay" tính theo NGÀY Asia/Ho_Chi_Minh (hcmDayBounds, UTC+7 truyền [start,end)) — KHÔNG cắt
+#      UTC-midnight (DB lưu UTC, ngày shop lệch +7h); bỏ hcmDayBounds → RED.
+# Bỏ comment ('//' Go, '--' SQL) trước khi soi để một tham chiếu bị COMMENT-OUT không false-PASS (class lỗ '//' 3b).
+DASHSQL="$ROOT/services/core-api/db/queries/dashboard.sql"
+if [ -f "$DASHSQL" ]; then
+  DASHSQLBODY="$(grep -vE '^[[:space:]]*--' "$DASHSQL" 2>/dev/null)"
+  DASHGO="$ROOT/services/core-api/internal/httpapi/dashboard.go"
+  DASHGOBODY="$(grep -vE '^[[:space:]]*//' "$DASHGO" 2>/dev/null)"
+  if printf '%s' "$DASHSQLBODY" | grep -q 'payment_confirmed_at' \
+     && printf '%s' "$DASHSQLBODY" | grep -q 'REFUNDED' \
+     && printf '%s' "$DASHGOBODY" | grep -q ':= hcmDayBounds('; then
+    ok "ARM: có db/queries/dashboard.sql -> net-revenue theo payment_confirmed_at + loại REFUNDED (giữ CANCELLED-sau-PAID, spec §04) + today qua hcmDayBounds (Asia/Ho_Chi_Minh UTC+7) — không rớt doanh thu câm/cắt sai ngày"
+  else
+    bad "ARM: dashboard.sql LAND nhưng thiếu 1 trong {revenue_today theo payment_confirmed_at, loại REFUNDED, handler hcmDayBounds} -> doanh thu ròng sai (rớt CANCELLED-sau-PAID nếu dùng status-IN / cắt UTC-midnight thay vì ngày HCM — spec §04!)"
+  fi
+else ok "ARM: chưa có db/queries/dashboard.sql (dashboard net-revenue arm khi land — PR-3i)"; fi
 if find "$ROOT/services" -name '*.rs' 2>/dev/null | grep -q .; then
   { [ -f "$ROOT/Makefile" ] && grep -Eq '^verify-rs:' "$ROOT/Makefile"; } \
     && ok "ARM: có .rs -> Makefile verify-rs" || bad "ARM: .rs LAND nhưng thiếu Makefile verify-rs"
