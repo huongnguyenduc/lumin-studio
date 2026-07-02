@@ -124,3 +124,12 @@
 
 - [ ] `CHK-04` — WHEN khách tạo đơn web qua `POST /orders`, the system shall **bắt buộc `paymentProofUrl` là URL http(s) có host, kiểm ngay tại HTTP boundary trước mọi DB read** (thiếu/malformed → **422 `PROOF_REQUIRED`**), và đơn hợp lệ sinh ra ở `PENDING_CONFIRM` với genesis statusHistory `{from:null, to:PENDING_CONFIRM, byUser:"customer"}` cho guest (sentinel documented — ngoại lệ locked #6), tiền tính hoàn toàn phía server (client gửi `unitPrice`/`total`/`subtotal`/`shippingFee` → **400 loud-reject**, không âm thầm bỏ qua). *(test: `httpapi.TestCreateOrderWebRequiresPaymentProof` + `httpapi.TestCreateOrderRejectsClientMoneyFields` + `httpapi.TestCreateOrderWebEndToEnd`)*
 - [ ] `CHK-05` — WHEN caller gửi `channel=inbox` tới `POST /orders`, the system shall **từ chối 403 FORBIDDEN trừ khi middleware optional-auth đã resolve một actor staff/owner** (inbox mint đơn born-`PAID` không cần proof — money-creation primitive, critique BLOCKER), và đơn inbox hợp lệ sinh ra `PAID` + stamp `payment_confirmed_at` + phát **đúng một** `order.created`, **KHÔNG** `order.paid` (born-PAID là creation, không phải reconcile). *(test: `httpapi.TestCreateOrderInboxRequiresStaffActor` + `httpapi.TestCreateOrderInboxAnonymousWire` + `httpapi.TestCreateOrderInboxStaffEndToEnd`)*
+
+## Cụm 11 — Dashboard net revenue (`docs/plans/core-http-relay.md` §3i · spec §04)
+
+> **Go-gated — CỐ Ý để `[ ]`** (cùng lý do Cụm 4..10): test của `DASH-*` là **Go**
+> (`services/core-api/internal/{db,httpapi}`), parser TS không resolve được → tick `[x]` sẽ làm parser ĐỎ. **Gate thật**
+> = `guard.test.sh §ARM` (dashboard.sql net-revenue theo `payment_confirmed_at` + loại `REFUNDED` + handler `hcmDayBounds`)
+> **+** chính các test Go đó (unit Docker-free + integration vs PG thật). `[ ]` = "không do parser-TS gác".
+
+- [ ] `DASH-01` — WHEN dashboard tính doanh thu hôm nay ở `GET /admin/dashboard`, the system shall cộng `total` của các đơn có `payment_confirmed_at` rơi trong NGÀY hôm nay (`Asia/Ho_Chi_Minh` UTC+7, cửa sổ nửa-mở `[start,end)` — anchor theo NGÀY THU TIỀN, KHÔNG theo ngày tạo, KHÔNG cắt UTC-midnight) và **loại** `REFUNDED` (giữ `CANCELLED`-sau-PAID vì shop giữ tiền, spec §04), **KHÔNG** dùng `status IN (…)` ngây thơ (rớt doanh thu CANCELLED-sau-PAID); `newOrdersToday` anchor theo ngày TẠO; zero-state trả 0 và `recentOrders` `[]` không rỗng (spec §03). *(test: `db.TestDashboardNetRevenue` + `db.TestDashboardWindowBoundary` + `httpapi.TestHcmDayBounds` + `httpapi.TestBuildDashboardSnapshot` + `db.TestDashboardZeroState`)*

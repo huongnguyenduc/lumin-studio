@@ -8,10 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/uuid"
-
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
-	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/money"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/pricing"
@@ -91,21 +88,20 @@ func TestMapErrorNeverLeaksDomainMessage(t *testing.T) {
 	}
 }
 
-// TestDomainRouteReturns501Envelope proves the strict-server error hooks are wired: an
-// un-built handler yields a 501 ErrorEnvelope (code NOT_IMPLEMENTED), NOT the generated
-// plaintext default — and the raw error string ("endpoint not implemented") never leaks.
+// TestDomainRouteReturns501Envelope proves the strict-server ResponseErrorHandlerFunc renders a
+// handler-returned errNotImplemented as a 501 ErrorEnvelope (JSON, code NOT_IMPLEMENTED), NOT the
+// generated plaintext default — and the raw Go error string ("endpoint not implemented") never leaks.
+// Once every slice-3 handler is built (dashboard landed in PR-3i; settings/STK in PR-3k) there is no
+// live 501 stub route left to hit, so this drives the strict hook directly; the SAME hook is exercised
+// end-to-end by the domain handlers' error tests (e.g. transition invalid-edge → 409 envelope).
 func TestDomainRouteReturns501Envelope(t *testing.T) {
-	// /admin/dashboard is auth-gated (PR-3e-2), so authenticate first to reach the 501 stub —
-	// this test is about the error hooks rendering the stub's envelope, not the auth boundary.
-	u := authTestUser(sqlc.UserRoleOwner, true)
-	srv := serverWithUsers(fakeUsers{byID: map[uuid.UUID]sqlc.User{u.ID: u}})
+	srv := serverWithUsers(fakeUsers{})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil)
-	req.AddCookie(issueCookie(t, srv, u))
-	testAuthedRouter(srv).ServeHTTP(rec, req)
+	srv.handleResponseError(rec, req, errNotImplemented)
 
 	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("GET /admin/dashboard = %d, want 501", rec.Code)
+		t.Fatalf("handleResponseError(errNotImplemented) = %d, want 501", rec.Code)
 	}
 	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
 		t.Fatalf("Content-Type = %q, want application/json (envelope, not plaintext)", ct)
