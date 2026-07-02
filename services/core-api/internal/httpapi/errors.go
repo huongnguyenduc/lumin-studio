@@ -14,6 +14,7 @@ import (
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/money"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/pricing"
 )
 
 // Stable machine error codes carried in ErrorEnvelope.code. Each maps 1:1 to the
@@ -32,6 +33,16 @@ const (
 	codeInternal        = "INTERNAL"
 	codeNotImplemented  = "NOT_IMPLEMENTED"
 	codeTrackingReqd    = "TRACKING_CODE_REQUIRED"
+
+	// Checkout (PR-3g) selection/intake codes. Granular where the storefront needs a distinct
+	// user-facing message (hết hàng vs quá dài vs chưa hỗ trợ tỉnh); one INVALID_SELECTION for
+	// the shapes that only a buggy/hostile client produces (foreign color/option, duplicates).
+	codeAckRequired        = "PERSONALIZATION_ACK_REQUIRED"
+	codeInvalidSelection   = "INVALID_SELECTION"
+	codeColorUnavailable   = "COLOR_UNAVAILABLE"
+	codeEngraveTooLong     = "ENGRAVE_TOO_LONG"
+	codeNoShippingRule     = "NO_SHIPPING_RULE"
+	codeProductUnavailable = "PRODUCT_UNAVAILABLE"
 )
 
 // errNotImplemented marks a handler stub not yet built (PR-3d scaffolding). Each domain
@@ -43,6 +54,22 @@ var errNotImplemented = errors.New("httpapi: endpoint not implemented")
 // concern — the domain order.Transition guard does not model trackingCode — so it lives here and
 // maps to 422 TRACKING_CODE_REQUIRED, sibling to the domain's REASON_REQUIRED/REFUND_PROOF_REQUIRED.
 var errTrackingCodeRequired = errors.New("httpapi: tracking code required for SHIPPING")
+
+// Checkout (PR-3g) boundary sentinels — HTTP-edge rules the domain/db layers don't model.
+var (
+	// errPaymentProofRequired — a web create with a missing/malformed paymentProofUrl (CHK-04:
+	// enforced at the HTTP boundary, before any DB read). Maps to 422 with the domain's own
+	// PROOF_REQUIRED code so the wire code matches what order.InitialStatusForChannel would emit.
+	errPaymentProofRequired = errors.New("httpapi: payment proof url required for web order")
+	// errPersonalizationAckRequired — a web create carries engraving but the no-return
+	// acknowledgement + engrave-echo confirmation are not both true (ADR-012: tickbox trước
+	// thanh toán + bước echo nội dung khắc — enforced server-side, not just in the UI).
+	errPersonalizationAckRequired = errors.New("httpapi: personalization requires ack + engrave echo confirmation")
+	// errProductUnavailable — an ordered product id does not exist or is not `active`. One code
+	// for both: a 404 would leak catalog-existence on a public endpoint, and to a buyer the two
+	// states are the same ("sản phẩm không còn bán").
+	errProductUnavailable = errors.New("httpapi: product not available for ordering")
+)
 
 // msgKey derives the next-intl key from a stable code ("errors.<CODE>"). Deriving it
 // mechanically means the code and its i18n key can never drift. Frontend consumers own
@@ -92,6 +119,30 @@ func mapError(err error) (int, api.ErrorEnvelope) {
 	case errors.Is(err, errTrackingCodeRequired):
 		// SHIPPING with no tracking code — well-formed request, unprocessable per spec §04.
 		return http.StatusUnprocessableEntity, envelope(codeTrackingReqd)
+	case errors.Is(err, errPaymentProofRequired):
+		// Web create with no usable CK-receipt URL (CHK-04). Same code the domain guard uses.
+		return http.StatusUnprocessableEntity, envelope(string(order.ErrProofRequired))
+	case errors.Is(err, errPersonalizationAckRequired):
+		// Engraved web order without the ADR-012 no-return ack + engrave-echo confirmation.
+		return http.StatusUnprocessableEntity, envelope(codeAckRequired)
+	case errors.Is(err, errProductUnavailable):
+		// Ordered product missing or not active — never a 404 (catalog-existence probe).
+		return http.StatusUnprocessableEntity, envelope(codeProductUnavailable)
+	case errors.Is(err, pricing.ErrColorNotForProduct), errors.Is(err, pricing.ErrOptionNotForProduct),
+		errors.Is(err, pricing.ErrDuplicateOption), errors.Is(err, pricing.ErrEngraveNotAllowed):
+		// A selection referencing catalog rows that don't belong together — client bug/hostile.
+		return http.StatusUnprocessableEntity, envelope(codeInvalidSelection)
+	case errors.Is(err, pricing.ErrColorUnavailable):
+		return http.StatusUnprocessableEntity, envelope(codeColorUnavailable)
+	case errors.Is(err, pricing.ErrEngraveTooLong):
+		return http.StatusUnprocessableEntity, envelope(codeEngraveTooLong)
+	case errors.Is(err, pricing.ErrNoShippingRule):
+		// No shipping rule (nor "*" default) for the destination province — never a silent ₫0.
+		return http.StatusUnprocessableEntity, envelope(codeNoShippingRule)
+	case errors.Is(err, pricing.ErrPriceOverflow):
+		return http.StatusUnprocessableEntity, envelope(codeInvalidAmount)
+	// pricing.ErrMalformedShippingRules deliberately falls through to the default 500:
+	// corrupt settings.shipping_rules is a server config fault, not a client error.
 	case errors.Is(err, db.ErrNotFound):
 		return http.StatusNotFound, envelope(codeNotFound)
 	case errors.Is(err, db.ErrNoItems):
