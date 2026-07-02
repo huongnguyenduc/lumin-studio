@@ -118,6 +118,28 @@ func TestCreateOrderRejectsClientMoneyFields(t *testing.T) {
 	}
 }
 
+// ADR-019 loud-reject must fold case: encoding/json binds struct fields case-INSENSITIVELY, so a
+// client that smuggles money under a case-variant key ({"Total":…}, {"Items":[{"UnitPrice":…}]})
+// would otherwise slip past the scan yet still decode into the order — the price dropped silently
+// instead of loudly rejected. The reject folds case so these still 400.
+func TestCreateOrderRejectsCaseVariantMoneyFields(t *testing.T) {
+	raw := webBody(map[string]any{
+		"items": nil, // drop the lowercase default; keep only the case-variant "Items"
+		"Total": 999,
+		"Items": []any{map[string]any{"productId": uuid.NewString(), "quantity": 1, "UnitPrice": 1}},
+	})
+	resp, err := testCheckoutServer().CreateOrder(context.Background(), api.CreateOrderRequestObject{Body: mkCreateOrderBody(t, raw)})
+	if err != nil {
+		t.Fatalf("err = %v, want typed 400", err)
+	}
+	fields := fieldsOf(t, resp)
+	for _, want := range []string{"Total", "items[0].unitPrice"} {
+		if _, ok := fields[want]; !ok {
+			t.Errorf("case-variant money key not caught: missing %q (got %v)", want, fields)
+		}
+	}
+}
+
 // CHK-05 (boundary half): channel=inbox with no resolved actor is rejected 403 FORBIDDEN — an
 // anonymous caller must not mint a born-PAID order.
 func TestCreateOrderInboxRequiresStaffActor(t *testing.T) {

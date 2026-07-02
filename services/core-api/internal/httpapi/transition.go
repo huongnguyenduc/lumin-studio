@@ -89,7 +89,7 @@ func (s *Server) TransitionOrder(ctx context.Context, req api.TransitionOrderReq
 		return nil, err // domain/db error → mapError (handleResponseError)
 	}
 
-	dto, err := s.assembleOrderDTO(ctx, row)
+	dto, err := assembleOrderDTO(ctx, s.pool, row)
 	if err != nil {
 		return nil, err
 	}

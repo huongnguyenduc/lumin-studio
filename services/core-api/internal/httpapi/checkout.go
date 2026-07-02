@@ -61,8 +61,8 @@ func (s *Server) CreateOrder(ctx context.Context, req api.CreateOrderRequestObje
 		return nil, err
 	}
 
-	// Derive every line's server-authoritative price from the catalog (reads on the pool — the
-	// tx below stays write-only and short).
+	// Derive every line's server-authoritative price from the catalog (reads on the pool, before
+	// the tx opens, so the catalog lookups don't hold the write tx open).
 	items := make([]db.NewOrderItem, len(in.items))
 	for i, it := range in.items {
 		priced, perr := s.priceLine(ctx, it)
@@ -76,6 +76,12 @@ func (s *Server) CreateOrder(ctx context.Context, req api.CreateOrderRequestObje
 	// no matching rule → 422 NO_SHIPPING_RULE, never a silent ₫0).
 	settings, err := db.NewSettings(s.pool).Get(ctx)
 	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			// The settings singleton is seeded by migration; its absence is a server-config
+			// fault, not a client 404. Break the ErrNotFound chain (%v, not %w) so mapError
+			// renders it as a logged 500 (default) instead of an unlogged NOT_FOUND.
+			return nil, fmt.Errorf("checkout: settings singleton missing (unseeded?): %v", err)
+		}
 		return nil, err
 	}
 	fee, err := pricing.ShippingFee(settings.ShippingRules, in.address.Province)
@@ -89,8 +95,11 @@ func (s *Server) CreateOrder(ctx context.Context, req api.CreateOrderRequestObje
 	}
 
 	// One tx: customer find-or-create + PDPL consent + order code + order/items/genesis/outbox
-	// commit atomically (the seams document this contract; publish-on-commit ADR-006).
-	var row sqlc.Order
+	// commit atomically (the seams document this contract; publish-on-commit ADR-006). The
+	// response DTO is assembled INSIDE the tx too, so a read failure after the writes rolls the
+	// whole thing back — the client is never handed a 500 for an order that in fact committed
+	// and emitted order.created, which (idempotency deferred, §6 D5) a retry would then duplicate.
+	var dto api.Order
 	err = withTx(ctx, s.pool, func(tx pgx.Tx) error {
 		idn := db.NewIdentity(tx)
 		cust, _, cerr := idn.FindOrCreateCustomer(ctx, customerParams)
@@ -114,7 +123,7 @@ func (s *Server) CreateOrder(ctx context.Context, req api.CreateOrderRequestObje
 		if cerr != nil {
 			return cerr
 		}
-		row, cerr = db.CreateOrderTx(ctx, tx, db.CreateOrderInput{
+		row, cerr := db.CreateOrderTx(ctx, tx, db.CreateOrderInput{
 			ID:              uuid.New(),
 			Code:            code,
 			Channel:         in.channel,
@@ -127,15 +136,16 @@ func (s *Server) CreateOrder(ctx context.Context, req api.CreateOrderRequestObje
 			At:              in.at.UTC().Format(time.RFC3339Nano),
 			ByUser:          in.byUser,
 		})
+		if cerr != nil {
+			return cerr
+		}
+		// Assemble the response from the tx (reads its own just-written rows) so the whole
+		// create is all-or-nothing — see the block comment above.
+		dto, cerr = assembleOrderDTO(ctx, tx, row)
 		return cerr
 	})
 	if err != nil {
 		return nil, err // domain/db error → mapError (handleResponseError)
-	}
-
-	dto, err := s.assembleOrderDTO(ctx, row)
-	if err != nil {
-		return nil, err
 	}
 	return api.CreateOrder201JSONResponse(dto), nil
 }
@@ -226,6 +236,11 @@ func intakeFrom(ctx context.Context, body api.CreateOrderInput) (intake, error) 
 	case string(order.ChannelInbox):
 		// CHK-05: inbox-create is staff/owner-only (it mints a born-PAID order). The middleware
 		// resolves an actor only from a valid session over a users row, so presence == staff/owner.
+		// A no-actor caller is rejected 403 FORBIDDEN (not 401): POST /orders is a public endpoint
+		// (channel=web needs no auth), so requesting the staff-only inbox operation is an
+		// AUTHORIZATION failure, not a missing-credential one — acceptance CHK-05 locks 403. This
+		// is deliberately distinct from the middleware's 401 on a present-but-broken cookie, and is
+		// the documented exception to actor.go's generic "ok=false ⇒ unauthenticated" guidance.
 		if !hasActor {
 			return intake{}, errForbidden
 		}
@@ -255,9 +270,12 @@ func intakeFrom(ctx context.Context, body api.CreateOrderInput) (intake, error) 
 	return in, nil
 }
 
-// validate shape-checks the normalized intake per spec §05 (tên 2–60 ký tự · SĐT VN · email
-// format · address đủ 3 cấp, no district ADR-017 · quantity ≥ 1). Returns a field-path →
-// messageKey map (empty = valid); money and catalog-membership rules live in pricing, not here.
+// validate shape-checks the normalized intake per spec §05 (tên 2–60 ký tự · SĐT VN · address đủ
+// 3 cấp, no district ADR-017 · quantity ≥ 1). Returns a field-path → messageKey map (empty =
+// valid); money and catalog-membership rules live in pricing, not here. Email format is enforced
+// UPSTREAM by the typed decode (the wire type openapi_types.Email rejects a malformed address in
+// UnmarshalJSON → fields:{body}), so the "@" check below is an unreached defense-in-depth backstop
+// — kept in case that type ever loosens; a malformed email normally never reaches here.
 func (in intake) validate() map[string]string {
 	fields := map[string]string{}
 	if n := utf8.RuneCountInString(strings.TrimSpace(in.customer.Name)); n < 2 || n > 60 {
@@ -371,6 +389,12 @@ func (s *Server) priceLine(ctx context.Context, it api.OrderItemInput) (db.NewOr
 // (unitPrice/subtotal/total/shippingFee — server-authoritative, ADR-019). encoding/json would
 // silently drop them; rejecting loudly turns "my client sets the price" into a development-time
 // 400 instead of a silently different charge.
+//
+// The scan folds case because encoding/json binds struct fields CASE-INSENSITIVELY: an
+// exact-case key check would let {"Total":…} or {"Items":[{"UnitPrice":…}]} slip past the reject
+// yet still decode into the order (dropping the smuggled price silently — the exact failure this
+// loud-reject exists to prevent). No money can actually be set either way (the input DTOs carry
+// no price field and the server re-prices), but the fail-loud contract must hold across casings.
 func clientMoneyFields(body api.CreateOrderInput) map[string]string {
 	raw, err := body.MarshalJSON() // returns the stored union bytes verbatim
 	if err != nil {
@@ -381,16 +405,21 @@ func clientMoneyFields(body api.CreateOrderInput) map[string]string {
 		return nil // not an object — the decode path 400s it anyway
 	}
 	fields := map[string]string{}
-	for _, k := range []string{"subtotal", "total", "shippingFee", "unitPrice"} {
-		if _, present := top[k]; present {
+	for k, v := range top {
+		if isMoneyKey(k) {
 			fields[k] = msgKey(codeValidation)
+			continue
 		}
-	}
-	if itemsRaw, ok := top["items"]; ok {
+		if !strings.EqualFold(k, "items") {
+			continue
+		}
 		var items []map[string]json.RawMessage
-		if json.Unmarshal(itemsRaw, &items) == nil {
-			for i, item := range items {
-				if _, present := item["unitPrice"]; present {
+		if json.Unmarshal(v, &items) != nil {
+			continue
+		}
+		for i, item := range items {
+			for ik := range item {
+				if strings.EqualFold(ik, "unitPrice") {
 					fields[fmt.Sprintf("items[%d].unitPrice", i)] = msgKey(codeValidation)
 				}
 			}
@@ -400,6 +429,17 @@ func clientMoneyFields(body api.CreateOrderInput) map[string]string {
 		return nil
 	}
 	return fields
+}
+
+// isMoneyKey reports whether a top-level JSON key names one of the server-authoritative money
+// fields the contract omits (case-folded to mirror encoding/json's field binding).
+func isMoneyKey(k string) bool {
+	switch strings.ToLower(k) {
+	case "subtotal", "total", "shippingfee", "unitprice":
+		return true
+	default:
+		return false
+	}
 }
 
 // createOrderBadRequest renders a 400 VALIDATION envelope, with the per-field map when present.

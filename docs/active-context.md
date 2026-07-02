@@ -241,6 +241,34 @@ paid on non-money edges + tracking persist atomic + DTO assembly; invalid-edge�
 
 **AUTH BOUNDARY COMPLETE → handler fan-out unblocked {3g/3h/3i/3k→3j}.**
 
+**`3g` checkout `POST /orders` ✅ BUILT (`df16b83`, branch `feat/core-http-relay-3g` off `main` `5fad85a`) · post-build
+multi-lens review DONE · fixes applied · verify+integration(colima) green · guard 152 · chờ push→PR.** `internal/httpapi/
+checkout.go` CreateOrder strict handler behind optional-auth: ONE handler/mount branch on resolved actor (D2) · **inbox
+staff-gate** (channel=inbox mints born-PAID → 403 unless actor — critique BLOCKER/CHK-05) · web CHK-04 `paymentProofUrl`
+http(s)+host at boundary · ADR-012 ack+echo · **ADR-019 loud-reject** client unitPrice/subtotal/total/shippingFee → 400 ·
+money via `pricing.PriceItem`+`ShippingFee`+`CalcTotals` · one tx FindOrCreateCustomer + GrantConsentIfAbsent (PDPL
+order_fulfillment only) + NextOrderCode + `CreateOrderTx` (genesis + `order.created` publish-on-commit) · guest genesis
+`ByUser="customer"`. **Post-build review `wf_4364e692-084` (6 money-path lenses × per-finding refute, 17 agents): 11 raw
+→ 8 confirmed (ALL NOTE) / 0 BLOCKER / 0 IMPORTANT / 1 uncertain / 2 refuted — money authority + inbox-gate + PDPL +
+tx-outbox atomicity ALL held.** Fixes (4 files): (①) `clientMoneyFields` now **case-folds** (`isMoneyKey`+`EqualFold`) —
+`{"Total":…}`/`{"Items":[{"UnitPrice":…}]}` bypassed the exact-case reject (NO money impact — input DTO has no price
+field, server re-prices — but fail-loud was weaker than doc'd) + regression test; (#6) `assembleOrderDTO` → free func
+taking `sqlc.DBTX`; checkout assembles DTO **inside the write tx** so a post-write read failure rolls back instead of
+committing an order the client is told failed (dup-on-retry, idempotency deferred §6 D5); 3h keeps post-commit `s.pool`
+(unchanged); (#8) missing settings singleton → **logged 500** not unlogged client 404 (`%v` breaks ErrNotFound chain);
+(#7 doc) `validate()` email `@`-check unreached (openapi_types.Email validates at decode → `fields:{body}`) — kept as
+deliberate defense-in-depth per the existing test, doc made honest; (#3 doc) inbox no-actor stays **403** (acceptance
+CHK-05 locks it — RBAC framing, POST /orders public for web) + reconciling comment vs actor.go generic "ok=false ⇒
+unauth". No-action: #2 authOptional-401-on-broken-cookie (3e-2 already-adjudicated) · #5 policy_version-refresh (deferred
+in-code) · #4 consent-clean · uncertain inbox-emits-`order.created`-not-`order.paid` (spec'd CHK-05, by-design).
+`make verify-go` rc=0 (golangci 0, sqlc vet+diff, oapi stale-check clean [no openapi change], `go test -race`) ·
+**integration RAN vs real Postgres (colima, -race):** web-end-to-end (assemble-in-tx path) · inbox-staff-born-PAID · 7
+pricing rejections · transition walk (3h path unregressed) · guard **152** (3g ARM intact) · scratch verifier files
+deleted. **No new deps · no new ADR** (implements ADR-019/017/012/030). **spec-guardian PASS: 0 BLOCKER / 0 WARN / 1 NOTE**
+(3h transition.go:92 keeps post-commit `s.pool` assembly — out-of-scope, deliberate, lower-risk [no new row → no
+dup-order hazard]; spec-guardian confirmed assemble-in-tx STRICTLY reduces the ADR-033 dup surface w/o weakening ADR-006:
+the `order.created` outbox INSERT rolls back with the order). CHK-04/05 acceptance Cụm 10 `[ ]` (Go-gated).
+
 **`3f` order-intake prerequisites ✅ BUILT · verify+integration(colima) green · spec-guardian PASS (renumber WARN fixed) ·
 chờ push→PR. (branch `feat/core-http-relay-3f` off `main` `a442757`.)** Server-authoritative money building blocks feeding
 the 3g checkout handler; NO HTTP layer. **`internal/pricing`** (NEW pkg): `PriceItem` derives per-line UnitPrice from
@@ -266,14 +294,10 @@ drift left for user:** `decisions.md` ADR-033 still says "migration 000008" (non
 edited unilaterally; flag in PR).
 
 ## Next steps (1–3)
-1. **Slice 3 · PR-3g — checkout `POST /orders`** (plan `core-http-relay.md §PR-3g`, ~340 line budget; deps 3d✓/3e-2✓/3f✓
-   all merged): decode named `CreateOrderInput` union (web/inbox) → reject any client total → `pricing.PriceItem` +
-   `ShippingFee` + `NextOrderCode` + `FindOrCreateCustomer` (3f) → `withTx`→`db.CreateOrderTx` (genesis + `order.created`)
-   → nested `Order` DTO via **`assembleOrderDTO` from 3h's `dto.go` (reuse, don't re-write)**. **Inbox staff-gated**
-   (critique BLOCKER: `channel=inbox` mints born-PAID → 403 unless resolved staff/owner actor; web stays open via
-   optional-auth). **D2 decide in-PR:** single handler branching on actor vs dual-mount. Guest genesis `ByUser="customer"`
-   sentinel · web requires `paymentProofUrl` (CHK-04) · idempotency DEFERRED (§6 D5, dup-on-retry accepted). EARS
-   **CHK-04/05** → acceptance (Go-gated `[ ]`).
+1. **Slice 3 · PR-3g — push→PR + user merge.** BUILT + reviewed + verified (see Focus). Remaining: fold spec-guardian
+   verdict → commit review-fixes on `feat/core-http-relay-3g` → push → open PR (deps 3d✓/3e-2✓/3f✓/3h✓ all merged; 3g
+   is 1 commit ahead of `main` `5fad85a`). Flag in PR: `decisions.md` ADR-033 "migration 000008" aside still stale
+   (hard-blocked file, not edited unilaterally). Then user merge-gate.
 2. **Then remaining fan-out (parallel-safe):** **`3i` dashboard aggregates** (→ migration **000011**_dashboard_idx, since 3f
    took 000010; Asia/Ho_Chi_Minh "today" boundary; net-revenue formula) · **`3k` settings/STK** (owner-only, audit seam) →
    **`3j`** admin dashboard frontend (needs 3i; the a11y/i18n/visual-fidelity axis). Full DAG: `core-http-relay.md §1`.
@@ -320,6 +344,7 @@ edited unilaterally; flag in PR).
 | **Core slice 3 · PR-3e-2 — auth boundary: JWT-verify strict-mw + RBAC + actor injection** | **merged (PR #25)** | squash → `origin/main` `a442757` (2026-07-01) | `make verify-go` ✓ (golangci 0, sqlc vet+diff [+`GetUserByID` regen], oapi stale-check clean [no openapi change], `go test -race`) · guard **149** (+1 auth-boundary ARM PROVEN binding: router wire `StrictMiddlewareFunc{srv.authMiddleware}` non-nil + `resolveActor` `auth.Verify` + role-from-`UserByID`; nil-wire→148/1→restore) · osm 22 · core ledger 43/43 · fills the `nil` StrictMiddlewareFunc seam 3d left → unblocks fan-out {3g/3h/3i/3k→3j} · **fail-closed classify** (unlisted op→require) · public{login,logout} · optional{CreateOrder} · owner-only{UpdateBankAccount}=requireOwner · **role from DB row not token claim, `actorRole` never `system`, `!Active`→401** · Actor{ByUser=users.id,Role,At} ctx-inject · does NOT re-impl RBAC (domain guard source of truth) · errUnauthenticated→401·errForbidden→403·DB-fault→500-no-leak · RBA-01 acceptance `[ ]` (Go-gated) · **no new deps · no new ADR** (impl ADR-030/032) · ~190 non-test src · **spec-guardian PASS: 0 BLOCKER/0 WARN/1 NOTE** (optional path 401s present-but-broken cookie — deliberate, admin-only SameSite=Strict cookie) |
 | **Core slice 3 · PR-3d — HTTP foundation (ErrorEnvelope + domain-error→status mapper + Server struct + withTx + strict-server stubs)** | **merged (PR #23)** | squash → `origin/main` `eac9b0f` (2026-07-01 09:29Z) | `make verify-go` ✓ (golangci 0, sqlc vet+diff, oapi stale-check, `go test -race` incl httpapi mapError/withTx/501-envelope/400-body-bind/400-param-bind tests) · guard **147** (+1 error-envelope ARM PROVEN binding [needs BOTH strict+chi seams] · + hardened NATS ARM [exclude tests+strip comments]; mutate→RED→restore) · osm 22 · TS ledger 17/17 · strict-server (ADR-031 D8); ADR-032 one-envelope + no-leak of Vietnamese `TransitionError.Message` NOR raw param/parser strings (BOTH oapi seams overridden) ; 8 endpoints = 501 stubs (3e–3k) · ERR-01 acceptance `[ ]` (Go-gated) · **no new deps · no new ADR** · Docker-free · ~300 lines non-test src · **5-lens review wf_f3cb8fbd: 10→5 confirmed/5 refuted, ALL FIXED** (2×IMPORTANT chi-wrapper plaintext leak on bad path-param → HandlerWithOptions+ChiServerOptions.ErrorHandlerFunc + regression test; 2×BLOCKER self-inflicted ERR-01 EARS line-wrap → reflowed; 1×NOTE NATS ARM widen) |
 | **Core slice 3 · PR-3h — transition endpoints (dispatch-footgun + owner-gate + trackingCode-on-SHIPPING)** | **merged (PR #27)** | squash → `origin/main` `5fad85a` (2026-07-02) | Docker-free httpapi (staff-reconcile→403 · shipping-no-tracking→422 · missing-actor→401 · nil-body→400 · `toOrderDTO` full/empty-optionals/malformed-ts) + **integration RAN vs real Postgres (colima, -race):** PENDING→PAID→PRINTING→SHIPPING walk (exactly-one `order.paid` on reconcile · none on non-money edges [footgun] · trackingCode persist atomic · nested-DTO assembly) + invalid-edge→409/missing→404 envelope + `db.TestSetTrackingCode` (RETURNING reflects in-tx flip + ErrNotFound; **caught+fixed a leaked-tx→pool.Close-hang in my own test**) · guard **151** (+1 transition ARM PROVEN binding: `ConfirmPaymentTx`+`order.RoleOwner`+`SetTrackingCodeTx` in transition.go) · **dispatch footgun** `to=PAID`→`ConfirmPaymentTx` (only `order.paid` emitter) else→`AdvanceStatusTx` (locked #9) · **money-in owner-gate at BOUNDARY** (ConfirmPaymentTx hardcodes owner→domain guard can't reject staff→handler 403 pre-tx; money-OUT →REFUNDED stays domain-guarded via actor role) · SHIPPING `trackingCode` required + `SetTrackingCodeTx` same-tx atomic (no migration, col exists 000005) · shared `dto.go` assembler (3g reuses) · Actor from ctx/server-clock never body · PAY-01/SHP-01 acceptance Cụm 9 `[ ]` (Go-gated) · **~150 non-test src · no new deps · no new ADR** (impl locked #9/§6 D12) |
+| **Core slice 3 · PR-3g — checkout `POST /orders` (web public + staff-gated inbox + server-priced money)** | **BUILT + post-build review + fixes · chờ push→PR** | `feat/core-http-relay-3g` `df16b83` (base build) + review-fixes (uncommitted) off `main` `5fad85a` | `make verify-go` ✓ (golangci 0, sqlc vet+diff, oapi stale-check clean, `go test -race`) · **integration RAN vs real Postgres (colima, -race):** web-end-to-end (assemble-in-tx path) · inbox-staff-born-PAID · 7 pricing rejections · transition-walk unregressed · guard **152** (3g ARM intact: pricing.PriceItem+ShippingFee+errForbidden inbox-gate+CreateOrderTx) · **post-build multi-lens review `wf_4364e692-084` (6 money-path lenses × per-finding refute, 17 agents): 11 raw → 8 confirmed ALL NOTE / 0 BLOCKER / 0 IMPORTANT / 1 uncertain / 2 refuted** — fixes: ① `clientMoneyFields` case-fold (`{"Total"}`/`{"Items":[{"UnitPrice"}]}` bypassed exact-case reject; no money impact, restores fail-loud) + regression test · #6 assemble-DTO-inside-tx (post-write read fail rolls back, no dup-on-retry) · #8 missing settings→logged 500 not client 404 · #7-doc email-`@`-check unreached backstop (openapi_types.Email validates at decode) · #3-doc inbox 403 locked CHK-05 · no-action #2/#4/#5/uncertain (locked/deferred/by-design) · scratch verifier files deleted · **no new deps · no new ADR** (impl ADR-019/017/012/030) · CHK-04/05 acceptance Cụm 10 `[ ]` (Go-gated) · **spec-guardian PASS 0/0/1 NOTE** (3h post-commit path out-of-scope) |
 | ADR-026 lane B/C/D · REC-20/28/39 | todo | — | — |
 
 ## Lần verify xanh gần nhất

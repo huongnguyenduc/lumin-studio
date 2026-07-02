@@ -17,14 +17,16 @@ import (
 
 // assembleOrderDTO builds the nested wire Order (customer + items + statusHistory inline) that
 // every order-returning endpoint responds with — never the flat sqlc row (locked decision #7).
-// It reads the item lines and the customer for the given (already-committed) order row on the
-// pool. Shared by the transition handler (3h) and, when it lands, the checkout handler (3g).
-func (s *Server) assembleOrderDTO(ctx context.Context, row sqlc.Order) (api.Order, error) {
-	items, err := db.NewOrders(s.pool).Items(ctx, row.ID)
+// It reads the item lines and the customer for the given order row via the passed querier `q`:
+// a *pgxpool.Pool for a post-commit read (the transition handler, 3h), or the write tx itself so
+// the reads join the same atomic unit (the checkout handler, 3g, passes its tx — a failed
+// assembly then rolls the order back instead of committing one the client is told failed).
+func assembleOrderDTO(ctx context.Context, q sqlc.DBTX, row sqlc.Order) (api.Order, error) {
+	items, err := db.NewOrders(q).Items(ctx, row.ID)
 	if err != nil {
 		return api.Order{}, fmt.Errorf("assemble order %s: items: %w", row.ID, err)
 	}
-	cust, err := db.NewIdentity(s.pool).CustomerByID(ctx, row.CustomerID)
+	cust, err := db.NewIdentity(q).CustomerByID(ctx, row.CustomerID)
 	if err != nil {
 		return api.Order{}, fmt.Errorf("assemble order %s: customer: %w", row.ID, err)
 	}
