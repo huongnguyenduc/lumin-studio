@@ -311,6 +311,50 @@ func (q *Queries) NextOrderCode(ctx context.Context) (int64, error) {
 	return n, err
 }
 
+const setTrackingCode = `-- name: SetTrackingCode :one
+UPDATE orders
+SET tracking_code = $1,
+    updated_at = now()
+WHERE id = $2
+RETURNING id, code, channel, status, customer_id, shipping_address, subtotal, shipping_fee, total, payment_method, payment_proof_url, payment_confirmed_at, refund_proof_url, tracking_code, note, status_history, created_at, updated_at
+`
+
+type SetTrackingCodeParams struct {
+	TrackingCode *string   `json:"trackingCode"`
+	ID           uuid.UUID `json:"id"`
+}
+
+// SetTrackingCode persists the carrier tracking code on the SHIPPING transition. The status
+// flip itself goes through UpdateOrderStatus (order.Transition guard); the transition handler
+// runs this in the SAME tx so the PRINTING→SHIPPING flip and its mandatory tracking_code
+// (spec §04) commit atomically — an order can never reach SHIPPING without its code. RETURNING *
+// reflects both the new status (already flipped in this tx) and the tracking_code (§3h / §6 D12).
+func (q *Queries) SetTrackingCode(ctx context.Context, arg SetTrackingCodeParams) (Order, error) {
+	row := q.db.QueryRow(ctx, setTrackingCode, arg.TrackingCode, arg.ID)
+	var i Order
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Channel,
+		&i.Status,
+		&i.CustomerID,
+		&i.ShippingAddress,
+		&i.Subtotal,
+		&i.ShippingFee,
+		&i.Total,
+		&i.PaymentMethod,
+		&i.PaymentProofUrl,
+		&i.PaymentConfirmedAt,
+		&i.RefundProofUrl,
+		&i.TrackingCode,
+		&i.Note,
+		&i.StatusHistory,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateOrderStatus = `-- name: UpdateOrderStatus :one
 UPDATE orders
 SET status = $1,

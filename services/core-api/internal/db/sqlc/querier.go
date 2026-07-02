@@ -124,6 +124,12 @@ type Querier interface {
 	// late-committing lower-seq row forever = silent money-event loss. Single instance (ADR-009)
 	// ⇒ no SKIP LOCKED / advisory lock. Uses the partial index outbox_unpublished_idx.
 	SelectPendingOutbox(ctx context.Context, limit int32) ([]SelectPendingOutboxRow, error)
+	// SetTrackingCode persists the carrier tracking code on the SHIPPING transition. The status
+	// flip itself goes through UpdateOrderStatus (order.Transition guard); the transition handler
+	// runs this in the SAME tx so the PRINTING→SHIPPING flip and its mandatory tracking_code
+	// (spec §04) commit atomically — an order can never reach SHIPPING without its code. RETURNING *
+	// reflects both the new status (already flipped in this tx) and the tracking_code (§3h / §6 D12).
+	SetTrackingCode(ctx context.Context, arg SetTrackingCodeParams) (Order, error)
 	// UpdateAssetJobStatus records a worker lifecycle transition (slice-3 callback): the new status,
 	// the attempt count, last_error (set on 'failed', NULL clears it on 'ready'), and completed_at when
 	// supplied (COALESCE keeps the prior value when the narg is NULL).

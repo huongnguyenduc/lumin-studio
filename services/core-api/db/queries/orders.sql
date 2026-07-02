@@ -40,6 +40,18 @@ SET status = sqlc.arg('status'),
 WHERE id = sqlc.arg('id')
 RETURNING *;
 
+-- SetTrackingCode persists the carrier tracking code on the SHIPPING transition. The status
+-- flip itself goes through UpdateOrderStatus (order.Transition guard); the transition handler
+-- runs this in the SAME tx so the PRINTING→SHIPPING flip and its mandatory tracking_code
+-- (spec §04) commit atomically — an order can never reach SHIPPING without its code. RETURNING *
+-- reflects both the new status (already flipped in this tx) and the tracking_code (§3h / §6 D12).
+-- name: SetTrackingCode :one
+UPDATE orders
+SET tracking_code = sqlc.arg('tracking_code'),
+    updated_at = now()
+WHERE id = sqlc.arg('id')
+RETURNING *;
+
 -- name: InsertOrderItem :one
 INSERT INTO order_items (
   id, order_id, product_id, color_id, option_ids, personalization, quantity, unit_price

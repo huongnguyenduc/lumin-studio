@@ -31,11 +31,18 @@ const (
 	codeInvalidAmount   = "INVALID_AMOUNT"
 	codeInternal        = "INTERNAL"
 	codeNotImplemented  = "NOT_IMPLEMENTED"
+	codeTrackingReqd    = "TRACKING_CODE_REQUIRED"
 )
 
 // errNotImplemented marks a handler stub not yet built (PR-3d scaffolding). Each domain
 // PR (3e–3k) replaces its stub with the real handler; mapError renders this as 501.
 var errNotImplemented = errors.New("httpapi: endpoint not implemented")
+
+// errTrackingCodeRequired is the transition handler's boundary rejection for a PRINTING→SHIPPING
+// request with no trackingCode (spec §04 requires mã vận chuyển on SHIPPING). It is an HTTP-edge
+// concern — the domain order.Transition guard does not model trackingCode — so it lives here and
+// maps to 422 TRACKING_CODE_REQUIRED, sibling to the domain's REASON_REQUIRED/REFUND_PROOF_REQUIRED.
+var errTrackingCodeRequired = errors.New("httpapi: tracking code required for SHIPPING")
 
 // msgKey derives the next-intl key from a stable code ("errors.<CODE>"). Deriving it
 // mechanically means the code and its i18n key can never drift. Frontend consumers own
@@ -82,6 +89,9 @@ func mapError(err error) (int, api.ErrorEnvelope) {
 		return http.StatusForbidden, envelope(codeForbidden)
 	case errors.Is(err, errNotImplemented):
 		return http.StatusNotImplemented, envelope(codeNotImplemented)
+	case errors.Is(err, errTrackingCodeRequired):
+		// SHIPPING with no tracking code — well-formed request, unprocessable per spec §04.
+		return http.StatusUnprocessableEntity, envelope(codeTrackingReqd)
 	case errors.Is(err, db.ErrNotFound):
 		return http.StatusNotFound, envelope(codeNotFound)
 	case errors.Is(err, db.ErrNoItems):

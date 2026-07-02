@@ -104,3 +104,13 @@
 
 - [ ] `PRC-01` — WHEN một dòng đơn được định giá lúc checkout, the system shall **tính `unitPrice` phía server** từ catalog (`base_price` + delta màu + Σ delta option) và **KHÔNG BAO GIỜ** tin giá client gửi (`Selection` không có trường giá), đồng thời từ chối lựa chọn không hợp lệ — màu/option không thuộc sản phẩm, màu `available:false`, option trùng, hoặc text khắc vượt `maxChars` (đếm theo rune) — trước khi đơn được tạo (ADR-019). *(test: `pricing.TestPriceItemIsSumOfCatalogParts` + `pricing.TestPriceItemRejectsInvalidSelection` + `pricing.TestPriceItemEngraveBoundary`)*
 - [ ] `PRC-02` — WHEN phí vận chuyển được tính cho một địa chỉ, the system shall **tra `shippingFee` phía server** từ `settings.shipping_rules` theo `province` (khớp chính xác, hoặc rule `"*"` mặc định — KHÔNG có cấp quận/huyện, ADR-017) và trả lỗi (→422) khi không rule nào khớp thay vì âm thầm tính phí 0. *(test: `pricing.TestShippingFee` + `pricing.TestShippingFeeNoMatch` + `pricing.TestShippingFeeRejectsMalformed`)*
+
+## Cụm 9 — Order transitions (`docs/plans/core-http-relay.md` §3h · locked #9 · §6 D12)
+
+> **Go-gated — CỐ Ý để `[ ]`** (cùng lý do Cụm 4/5/6/7/8): test của `PAY-*`/`SHP-*` là **Go**
+> (`services/core-api/internal/{httpapi,db}`), parser TS không resolve được → tick `[x]` sẽ làm parser ĐỎ. **Gate
+> thật** = `guard.test.sh §ARM` (transition.go route money-in qua `ConfirmPaymentTx` + owner-gate biên `order.RoleOwner` +
+> SHIPPING `SetTrackingCodeTx`) **+** chính các test Go đó (unit Docker-free + integration vs PG thật). `[ ]` = "không do parser-TS gác".
+
+- [ ] `PAY-01` — WHEN owner đối soát `PENDING_CONFIRM→PAID` qua `POST /orders/{id}/transitions`, the system shall route qua **`ConfirmPaymentTx`** (emitter `order.paid` **DUY NHẤT**) phát **đúng một** `order.paid`, trong khi **mọi edge khác** đi `AdvanceStatusTx` và **KHÔNG** phát `order.paid` (footgun dispatch — locked #9), và **từ chối `staff` reconcile 403 ở biên** (`ConfirmPaymentTx` cố định `role=owner` nên domain guard không tự chặn). *(test: `httpapi.TestTransitionWalkEmitsPaidOnceAndPersistsTracking` + `httpapi.TestTransitionStaffReconcileForbidden`)*
+- [ ] `SHP-01` — WHEN chuyển `PRINTING→SHIPPING`, the system shall **bắt buộc `trackingCode` không rỗng** (spec §04; thiếu → **422 `TRACKING_CODE_REQUIRED`** ở biên trước tx) và persist mã vào `orders.tracking_code` **trong CÙNG tx** với flip trạng thái (atomic — không bao giờ SHIPPING mà thiếu mã); QC packing-photo hoãn cùng upload surface (§0). *(test: `httpapi.TestTransitionWalkEmitsPaidOnceAndPersistsTracking` + `httpapi.TestTransitionShippingRequiresTrackingCode` + `db.TestSetTrackingCode`)*
