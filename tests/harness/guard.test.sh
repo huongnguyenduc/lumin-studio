@@ -603,6 +603,27 @@ if [ -f "$CHECKOUT" ]; then
     bad "ARM: httpapi/checkout.go LAND nhưng thiếu 1 trong {pricing.PriceItem, pricing.ShippingFee, errForbidden inbox-gate, CreateOrderTx} -> giá/phí không server-derive / caller vô danh mint đơn born-PAID / insert rời không outbox (money-path!)"
   fi
 else ok "ARM: chưa có httpapi/checkout.go (checkout price/fee/inbox-gate arm khi land — PR-3g)"; fi
+# ARM PR-3k (settings/STK handler): khoá 3 bất biến money-out của endpoint đổi STK —
+#  (a) đổi STK đi qua db.UpdateBankAccountTx (seam audit-on-commit: cột bank_account + một row
+#      setting_bank_audit append-only trong CÙNG tx — đổi STK KHÔNG BAO GIỜ land mà thiếu audit
+#      trail; bare UPDATE cột → mất token UpdateBankAccountTx → RED — conventions §57);
+#  (b) owner-gate defense-in-depth qua order.RoleOwner (STK là money-out cao-giá-nhất: bad STK
+#      reroute MỌI tiền khách; classify() authOwnerOnly gác ở biên NHƯNG handler tự re-assert nên
+#      một classify() regress không để staff sửa STK; bỏ check → mất token order.RoleOwner → RED);
+#  (c) changed_by lấy từ actor ctx qua actorFrom (users.id — KHÔNG từ body; bỏ → người đổi giả
+#      mạo được / mất token actorFrom → RED).
+# Bỏ comment ('//') trước khi soi để một tham chiếu bị COMMENT-OUT không false-PASS (class lỗ '//' 3b).
+SETTINGS="$ROOT/services/core-api/internal/httpapi/settings.go"
+if [ -f "$SETTINGS" ]; then
+  SETTINGSBODY="$(grep -vE '^[[:space:]]*//' "$SETTINGS" 2>/dev/null)"
+  if printf '%s' "$SETTINGSBODY" | grep -q 'UpdateBankAccountTx' \
+     && printf '%s' "$SETTINGSBODY" | grep -q 'order.RoleOwner' \
+     && printf '%s' "$SETTINGSBODY" | grep -q 'actorFrom'; then
+    ok "ARM: có httpapi/settings.go -> đổi STK qua db.UpdateBankAccountTx (audit-on-commit) + owner-gate order.RoleOwner (defense-in-depth) + changed_by từ actorFrom(ctx) không body (money-out STK owner-only+audit — conventions §57/domain-core RBAC)"
+  else
+    bad "ARM: httpapi/settings.go LAND nhưng thiếu 1 trong {UpdateBankAccountTx seam, order.RoleOwner owner-gate, actorFrom changed_by-từ-ctx} -> STK đổi không audit / staff sửa STK / changed_by giả từ body (money-out!)"
+  fi
+else ok "ARM: chưa có httpapi/settings.go (settings/STK arm khi land — PR-3k)"; fi
 if find "$ROOT/services" -name '*.rs' 2>/dev/null | grep -q .; then
   { [ -f "$ROOT/Makefile" ] && grep -Eq '^verify-rs:' "$ROOT/Makefile"; } \
     && ok "ARM: có .rs -> Makefile verify-rs" || bad "ARM: .rs LAND nhưng thiếu Makefile verify-rs"

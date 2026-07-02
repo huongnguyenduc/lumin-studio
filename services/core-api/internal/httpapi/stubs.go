@@ -13,24 +13,10 @@ import (
 //   LoginUser/LogoutUser → PR-3e-1 (done, see auth.go) ·
 //   TransitionOrder → PR-3h (done, see transition.go) ·
 //   CreateOrder → PR-3g (done, see checkout.go) ·
-//   GetDashboard → PR-3i · GetSettings/UpdateBankAccount/ListReplyTemplates → PR-3k.
+//   GetSettings/UpdateBankAccount/ListReplyTemplates → PR-3k (done, see settings.go).
+// GetDashboard (PR-3i) is the last stub standing.
 
 // GetDashboard is not implemented yet (PR-3i).
 func (s *Server) GetDashboard(_ context.Context, _ api.GetDashboardRequestObject) (api.GetDashboardResponseObject, error) {
-	return nil, errNotImplemented
-}
-
-// ListReplyTemplates is not implemented yet (PR-3k).
-func (s *Server) ListReplyTemplates(_ context.Context, _ api.ListReplyTemplatesRequestObject) (api.ListReplyTemplatesResponseObject, error) {
-	return nil, errNotImplemented
-}
-
-// GetSettings is not implemented yet (PR-3k).
-func (s *Server) GetSettings(_ context.Context, _ api.GetSettingsRequestObject) (api.GetSettingsResponseObject, error) {
-	return nil, errNotImplemented
-}
-
-// UpdateBankAccount is not implemented yet (PR-3k, owner-only).
-func (s *Server) UpdateBankAccount(_ context.Context, _ api.UpdateBankAccountRequestObject) (api.UpdateBankAccountResponseObject, error) {
 	return nil, errNotImplemented
 }
