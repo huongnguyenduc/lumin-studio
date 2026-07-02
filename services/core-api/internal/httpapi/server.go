@@ -31,8 +31,8 @@ type userReader interface {
 // (set by the PR-3e auth middleware), runs withTx over one or more same-tx db seams,
 // then assembles the nested DTO. SQL lives in internal/db; money/state in
 // internal/order + internal/money. `auth`/`users` arrive with the login handler (PR-3e-1);
-// a `queries` field for the write handlers joins when 3g first consumes it (added then to
-// keep the unused-field gate green).
+// the domain handlers (3g/3h) reach the DB through the internal/db repositories over
+// pool/tx, so no raw sqlc.Queries field is needed here.
 type Server struct {
 	logger *slog.Logger
 	pool   *pgxpool.Pool

@@ -14,6 +14,7 @@ import (
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/money"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/pricing"
 )
 
 // TestMapErrorTable pins the ADR-032 domain-error → (status, code) mapping. Every branch
@@ -44,6 +45,21 @@ func TestMapErrorTable(t *testing.T) {
 		{"transition-wrapped", fmt.Errorf("seam: %w", &order.TransitionError{Code: order.ErrRBAC, Message: "x"}), http.StatusForbidden, "RBAC"},
 		{"transition-unknown-code", &order.TransitionError{Code: order.ErrorCode("SOMETHING_NEW"), Message: "y"}, http.StatusUnprocessableEntity, "SOMETHING_NEW"},
 		{"unmapped", fmt.Errorf("boom"), http.StatusInternalServerError, codeInternal},
+		// Checkout (PR-3g) boundary sentinels + pricing selection errors.
+		{"checkout-proof-required", errPaymentProofRequired, http.StatusUnprocessableEntity, string(order.ErrProofRequired)},
+		{"checkout-ack-required", errPersonalizationAckRequired, http.StatusUnprocessableEntity, codeAckRequired},
+		{"checkout-product-unavailable", errProductUnavailable, http.StatusUnprocessableEntity, codeProductUnavailable},
+		{"pricing-color-foreign", pricing.ErrColorNotForProduct, http.StatusUnprocessableEntity, codeInvalidSelection},
+		{"pricing-option-foreign", pricing.ErrOptionNotForProduct, http.StatusUnprocessableEntity, codeInvalidSelection},
+		{"pricing-option-dup", pricing.ErrDuplicateOption, http.StatusUnprocessableEntity, codeInvalidSelection},
+		{"pricing-engrave-not-allowed", pricing.ErrEngraveNotAllowed, http.StatusUnprocessableEntity, codeInvalidSelection},
+		{"pricing-color-unavailable", pricing.ErrColorUnavailable, http.StatusUnprocessableEntity, codeColorUnavailable},
+		{"pricing-engrave-too-long", pricing.ErrEngraveTooLong, http.StatusUnprocessableEntity, codeEngraveTooLong},
+		{"pricing-no-shipping-rule", pricing.ErrNoShippingRule, http.StatusUnprocessableEntity, codeNoShippingRule},
+		{"pricing-no-shipping-rule-wrapped", fmt.Errorf("fee: %w", pricing.ErrNoShippingRule), http.StatusUnprocessableEntity, codeNoShippingRule},
+		{"pricing-overflow", pricing.ErrPriceOverflow, http.StatusUnprocessableEntity, codeInvalidAmount},
+		// Corrupt settings.shipping_rules is a server config fault → the default 500, never a 4xx.
+		{"pricing-malformed-rules", pricing.ErrMalformedShippingRules, http.StatusInternalServerError, codeInternal},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

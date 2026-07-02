@@ -581,6 +581,28 @@ if [ -f "$TRANSITION" ]; then
     bad "ARM: httpapi/transition.go LAND nhưng thiếu 1 trong {ConfirmPaymentTx cho money-in, order.RoleOwner owner-gate biên, SetTrackingCodeTx cho SHIPPING} -> reconcile qua AdvanceStatusTx (mất order.paid câm) / staff reconcile lọt / SHIPPING không mã vận chuyển (money-path!)"
   fi
 else ok "ARM: chưa có httpapi/transition.go (transition dispatch/owner/tracking arm khi land — PR-3h)"; fi
+# ARM PR-3g (checkout handler): khoá 4 bất biến money-path của endpoint tạo đơn —
+#  (a) MỌI dòng đơn định giá qua pricing.PriceItem (unitPrice derive từ catalog — ADR-019; bỏ nó
+#      là handler tự bịa/snapshot giá không authenticity → mất token PriceItem → RED);
+#  (b) phí ship qua pricing.ShippingFee (tra settings theo province, không rule → 422, KHÔNG bao
+#      giờ âm thầm ₫0; bỏ → mất token → RED);
+#  (c) inbox gate errForbidden (channel=inbox mint đơn born-PAID không proof — critique BLOCKER
+#      CHK-05; bỏ check → caller vô danh mint tiền → mất token errForbidden → RED);
+#  (d) tạo đơn qua seam CreateOrderTx duy nhất (genesis + totals server + outbox order.created
+#      atomic — ADR-006/019; tự INSERT rời → mất token → RED).
+# Bỏ comment ('//') trước khi soi để một tham chiếu bị COMMENT-OUT không false-PASS (class lỗ '//' 3b).
+CHECKOUT="$ROOT/services/core-api/internal/httpapi/checkout.go"
+if [ -f "$CHECKOUT" ]; then
+  CHECKOUTBODY="$(grep -vE '^[[:space:]]*//' "$CHECKOUT" 2>/dev/null)"
+  if printf '%s' "$CHECKOUTBODY" | grep -q 'pricing.PriceItem' \
+     && printf '%s' "$CHECKOUTBODY" | grep -q 'pricing.ShippingFee' \
+     && printf '%s' "$CHECKOUTBODY" | grep -q 'errForbidden' \
+     && printf '%s' "$CHECKOUTBODY" | grep -q 'CreateOrderTx'; then
+    ok "ARM: có httpapi/checkout.go -> giá dòng qua pricing.PriceItem + phí qua pricing.ShippingFee + inbox gate errForbidden (CHK-05 born-PAID mint) + một seam CreateOrderTx (server-money/inbox-gate — ADR-019/§3g BLOCKER)"
+  else
+    bad "ARM: httpapi/checkout.go LAND nhưng thiếu 1 trong {pricing.PriceItem, pricing.ShippingFee, errForbidden inbox-gate, CreateOrderTx} -> giá/phí không server-derive / caller vô danh mint đơn born-PAID / insert rời không outbox (money-path!)"
+  fi
+else ok "ARM: chưa có httpapi/checkout.go (checkout price/fee/inbox-gate arm khi land — PR-3g)"; fi
 if find "$ROOT/services" -name '*.rs' 2>/dev/null | grep -q .; then
   { [ -f "$ROOT/Makefile" ] && grep -Eq '^verify-rs:' "$ROOT/Makefile"; } \
     && ok "ARM: có .rs -> Makefile verify-rs" || bad "ARM: .rs LAND nhưng thiếu Makefile verify-rs"
