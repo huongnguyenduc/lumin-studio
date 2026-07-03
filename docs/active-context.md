@@ -363,7 +363,7 @@ session) — used as-is, left running.
 > (plan §6): caching (P1-c/h) · customer-auth mechanism + BLOCKER-2 credentials migration >000011 (P1-r) · sprite source
 > (P1-i) · re-read `designs/Lumin Storefront - Hi-fi.dc.html` before FE PRs (P1-f+, plan §7 debt).
 >
-> **✅ PR-P1-b (`POST /price/quote` · server-authoritative line pricing) — BUILT · ALL GATES GREEN · spec-guardian PASS (0/0/0) · branch `feat/phase-1-storefront-p1b` off `main` `ca78f33` · UNCOMMITTED · chờ user commit+merge-gate.**
+> **✅ PR-P1-b (`POST /price/quote` · server-authoritative line pricing) — MERGED (PR #34) → `origin/main` `b616b1c` (2026-07-03, merge-commit; local `main` ff'd). spec-guardian PASS (0/0/0).**
 > Thin HTTP wrapper trên `pricing.PriceItem` (PRC-01 sẵn có) — KHÔNG thêm math miền. OpenAPI `POST /price/quote` +
 > `PriceQuoteInput{items[≤50]}`/`PriceQuote{lines,subtotal}`/`PriceQuoteLine{unitPrice,quantity,lineTotal}` (reuse
 > `OrderItemInput` → no client price; reuse BadRequest/Unprocessable+ErrorEnvelope → **no new enum, parity_test
@@ -380,9 +380,36 @@ session) — used as-is, left running.
 > memoization (moot sau cap) · qty>MaxInt32 checkout-parity (không divergence tiền, plan không mandate). `make
 > verify-go` GREEN (golangci 0, oapi stale-check clean, `go test -race` — **httpapi integration RAN vs colima PG**:
 > `TestQuotePriceEndToEnd` + 6 rejection subtests, KHÔNG skip) · `pnpm verify` + api-client typecheck · **guard 155 /
-> osm 22** (last-green 2026-07-03). **QTE-01 acceptance Cụm 14 `[ ]` (Go-gated).** UNCOMMITTED trên branch — chờ owner
-> commit+merge. **NEXT ready (deps thoả):** P1-c `GET /products` list · P1-d `/categories` · P1-n `/orders/lookup` ·
-> hoặc FE track P1-j/P1-k (engrave/cart, giờ unblocked bởi P1-b).
+> osm 22** (last-green 2026-07-03). **QTE-01 acceptance Cụm 14 `[ ]` (Go-gated).**
+>
+> **🔨 PR-P1-c (`GET /products` · public catalog LIST) — BUILT · ALL GATES GREEN · review DONE + folded · committed
+> `1490108` · pushed → PR #35 OPEN · chờ user merge-gate.** (branch `feat/phase-1-storefront-p1c` off `main` `b616b1c`.)
+> **spec-guardian PASS (0 BLOCKER/0 WARN/1 NOTE** — clamp `maxCatalogOffset` cố ý). **Adversarial 17-agent review
+> wf_4c60df42 (5 lens × per-finding refute + completeness critic): 1 raw → 0 confirmed / 1 refuted; critic 4 gap ĐÃ FOLD**
+> — (IMPORTANT) `?category=` rỗng im lặng trả trang rỗng (footgun FE "All") → `normalizeFilter` coi ''→bỏ lọc = tất cả;
+> (NOTE) `?sort=` rỗng → newest (đối xứng, hết bất-nhất vs category); (NOTE) test `q` reserved 200+ignored; (NOTE) test
+> 304 Cache-Control + doc ETag "tiết-kiệm-bandwidth-không-phải-origin-compute" (edge cache = P1-f). User (2026-07-03)
+> chọn **P1-c làm bước kế** (critical path — mở khoá cả FE track P1-f→g→h) +
+> caching **"Decide during P1-c"**: ship ETag + `Cache-Control` provisional **package const**, hoãn chiến lược ISR/purge
+> sang **P1-f** (nơi caching thực sự sống). OpenAPI `GET /products` (v0.5.0): `ProductCard`/`ProductList` (card projection
+> — KHÔNG colors/options/description → **no N+1**) + param `category`(slug) / `sort`(WHITELIST newest|price_asc|price_desc|
+> rating) / `page` / `pageSize`(≤48) / `q`(**RESERVED**, ignore tới P1-e) / `If-None-Match` header · resp 200(+ETag+
+> Cache-Control)/**304**/400 → regen Go+TS. **NO new domain enum** (`GetProductsParamsSort` là query-param enum, KHÔNG
+> chạm 4-way parity). sqlc `ListActiveProducts` (**active-only tại SQL WHERE** — hàng ẩn draft/archived KHÔNG rò; category
+> qua **uncorrelated subquery**; sort qua **WHITELIST-CASE** — không đưa text client thô vào ORDER BY; `created_at DESC,
+> id DESC` = total order ⇒ paginate ổn định) + `CountActiveProducts` (cùng WHERE; skew list/count cosmetic, KHÔNG phải
+> tiền). `internal/db.ListActiveProductCards`. Handler `GetProducts` (classify **authPublic**): `pageParams`/`sortParam`
+> chặn shape (pageSize>48 / page<1 / sort lạ → **400 VALIDATION** — oapi-codegen KHÔNG enforce min/max) + `maxCatalogOffset`
+> guard chống tràn int32 OFFSET (page-quá-xa → trang rỗng, không lỗi) + `weakETag` (W/ hash body — đổi khi giá/stock/rating/
+> thứ-tự đổi) + `ifNoneMatch` (RFC 9110 weak-compare + `*` + comma-list) → 304 body-less. `productCardsDTO` images empty→
+> `[]` không null; ảnh JSONB hỏng **hard-fail 500** (nhất quán detail). **NO migration** (catalog nhỏ made-to-order → chưa
+> cần index). Money `basePrice` int-VND thô (always-must #2). **NO new dep · NO new ADR.** **Gates:** `make verify-go`
+> GREEN (golangci 0, sqlc vet/diff, oapi stale-check, `go test -race` — **httpapi+db integration RAN vs colima PG**:
+> active-only non-leak · sort price/rating-nulls-last · category filter · paginate ổn định · far-page overflow · 304 · DoS
+> cap) · api-client typecheck+stale-gate+lint · core ledger 31/31 · **guard 156** (+1 **CAT-02 ARM PROVEN binding ×3**: SQL
+> `status='active'` filter · `maxPageSize` · classify `GetProducts` authPublic — mỗi mutate→155/1→restore) · osm 22 ·
+> **CAT-02** acceptance Cụm 13 `[ ]` (Go-gated). **NEXT sau P1-c:** P1-d `/categories` · P1-n `/orders/lookup` · rồi FE
+> **P1-f** (home grid, unblocked bởi P1-c) → P1-g → P1-h.
 
 1. **Slice 3 · PR-3k — ✅ MERGED (PR #30) → `origin/main` `cf4c2a8` (2026-07-02, squash; CI green app-gates/selftest/services-gates).**
    Local `main` ff'd to `cf4c2a8`; the merged `feat/core-http-relay-3k` branch + ~19 older squash-merged branches remain

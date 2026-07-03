@@ -668,6 +668,25 @@ if [ -f "$PRODUCTS" ]; then
     bad "ARM: httpapi/products.go LAND nhưng thiếu 1 trong {active-only ProductStatusActive→db.ErrNotFound, classify GetProductBySlug authPublic} -> draft/archived rò ra public / catalog read kẹt sau tường auth (CAT-01!)"
   fi
 else ok "ARM: chưa có httpapi/products.go (catalog read active-only/public arm khi land — PR-P1-a)"; fi
+# ARM PR-P1-c (public catalog LIST GET /products): khoá 3 bất biến storefront list —
+#  (a) active-only tại NGUỒN SQL: query ListActiveProducts PHẢI lọc status='active' → draft/archived
+#      không bao giờ lọt vào list công khai (bỏ filter → hàng ẩn rò ra list → RED);
+#  (b) pageSize bị CHẶN (maxPageSize) trong handler — endpoint public không rate-limit, LIMIT không
+#      giới hạn là đòn DoS khuếch-đại (cùng lẽ maxQuoteItems của QuotePrice);
+#  (c) classify() gán GetProducts = authPublic (list catalog công khai, KHÔNG sau tường auth admin).
+# Bỏ comment ('//' Go, '--' SQL) TRONG cửa sổ query trước khi soi status='active', để một filter bị
+# COMMENT-OUT không false-PASS (class lỗ '//' 3b, mở rộng cho '--').
+CATSQL="$ROOT/services/core-api/db/queries/catalog.sql"
+if [ -f "$PRODUCTS" ] && printf '%s' "$PRODUCTSBODY" | grep -qE 'func \(s \*Server\) GetProducts\('; then
+  LISTACTIVE="$(grep -A12 'name: ListActiveProducts' "$CATSQL" 2>/dev/null | grep -vE '^[[:space:]]*--')"
+  if printf '%s' "$LISTACTIVE" | grep -qi "status = 'active'" \
+     && printf '%s' "$PRODUCTSBODY" | grep -q 'maxPageSize' \
+     && printf '%s' "$MWBODY" | grep -A2 '"GetProducts"' | grep -q 'authPublic'; then
+    ok "ARM: có httpapi/products.go GetProducts -> list active-only tại SQL (ListActiveProducts lọc status='active', hàng ẩn không rò) + pageSize chặn (maxPageSize, chống DoS) + classify GetProducts=authPublic (CAT-02)"
+  else
+    bad "ARM: GetProducts LAND nhưng thiếu 1 trong {ListActiveProducts status='active' filter, maxPageSize bound, classify GetProducts authPublic} -> hàng ẩn rò ra list / pageSize DoS / list kẹt sau tường auth (CAT-02!)"
+  fi
+else ok "ARM: chưa có GetProducts list handler (catalog list active-only/bound/public arm khi land — PR-P1-c)"; fi
 if find "$ROOT/services" -name '*.rs' 2>/dev/null | grep -q .; then
   { [ -f "$ROOT/Makefile" ] && grep -Eq '^verify-rs:' "$ROOT/Makefile"; } \
     && ok "ARM: có .rs -> Makefile verify-rs" || bad "ARM: .rs LAND nhưng thiếu Makefile verify-rs"

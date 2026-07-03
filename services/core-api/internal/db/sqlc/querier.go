@@ -12,6 +12,12 @@ import (
 )
 
 type Querier interface {
+	// CountActiveProducts is the total for the list envelope — the SAME WHERE as ListActiveProducts, with no
+	// sort/limit. It runs alongside the list as a second autocommit read; a concurrent catalog write landing
+	// between the two can skew the total by one. That is cosmetic (a display count that self-heals next
+	// request) on a made-to-order shop whose catalog rarely mutates, and it is never a money value — so we
+	// accept it rather than pay for a snapshot transaction (documented on the repo method).
+	CountActiveProducts(ctx context.Context, categorySlug *string) (int64, error)
 	// jobs.sql — fulfillment/asset job queries (PR-2f). architecture.md §3D-pipeline · spec.md §02.
 	//
 	// CreateAssetJob is orchestrated by internal/db/jobs.go CreateAssetJobTx, which ALSO enqueues the
@@ -119,6 +125,15 @@ type Querier interface {
 	// users.sql — staff/owner account queries (PR-2d). spec.md §02 User.
 	InsertUser(ctx context.Context, arg InsertUserParams) (User, error)
 	ListActiveConsents(ctx context.Context, customerID uuid.UUID) ([]ConsentGrant, error)
+	// ListActiveProducts is the storefront catalog list (PR-P1-c). It returns ACTIVE products ONLY as a
+	// CARD projection (a subset of columns — no description/model3d_url, and no colors/options join → no
+	// N+1). The optional category filter matches by category SLUG via an UNCORRELATED subquery (Postgres
+	// runs it once as an InitPlan, not per row); an unknown slug simply matches no rows → an empty page,
+	// never a 404. Sort is a WHITELISTED CASE so the ORDER BY can never be built from raw client text; the
+	// non-selected CASE arms evaluate to a constant NULL and drop out, and created_at DESC, id DESC give a
+	// deterministic TOTAL order so OFFSET pagination is stable across pages. @page_limit is bounded by the
+	// handler (pageSize <= 48).
+	ListActiveProducts(ctx context.Context, arg ListActiveProductsParams) ([]ListActiveProductsRow, error)
 	ListAssetJobsByStatus(ctx context.Context, status AssetJobStatus) ([]AssetJob, error)
 	// ListBankAudit returns the money-out config history, newest first (the owner audit view). Ordering is
 	// by seq (monotonic insertion order), so it is deterministic even when two changes share a created_at

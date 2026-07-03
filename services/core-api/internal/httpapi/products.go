@@ -2,13 +2,36 @@ package httpapi
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/api"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
 )
+
+// Catalog-list paging bounds (PR-P1-c). oapi-codegen binds the query params' Go types but does NOT
+// enforce their schema minimum/maximum, so these are the RUNTIME gate. maxPageSize bounds the LIMIT on
+// this public, unauthenticated, rate-limit-free endpoint (mirrors price.go's maxQuoteItems); maxCatalogOffset
+// bounds the OFFSET so a huge page number can never overflow the int32 OFFSET into a negative SQL value —
+// a page beyond it is an empty page, not an error (generous for a made-to-order shop with no stock inventory).
+const (
+	defaultPageSize  = 12
+	maxPageSize      = 48
+	maxCatalogOffset = 100_000
+)
+
+// catalogCacheControl is the response cache directive for the public catalog list. It is a deliberately
+// CONSERVATIVE, PROVISIONAL value: the storefront's real freshness strategy (a timed ISR window vs an
+// on-write revalidateTag purge) is decided WITH the frontend PR (P1-f, user 2026-07-03) where the caching
+// actually lives. The ETag is the primary validator here — a mutated price/stock/rating changes the body
+// hash so a stale client revalidates to 304 or a fresh 200; max-age is only a short floor so a shared cache
+// never serves badly stale money. Kept a package const (not an env knob) to avoid a NewServer/NewRouter
+// signature change across ~13 call sites for a value that P1-f will supersede.
+const catalogCacheControl = "public, max-age=60"
 
 // GetProductBySlug handles GET /products/{slug} (PR-P1-a): the public storefront product-detail read.
 // It is authPublic (classify) — no session needed. It returns the ACTIVE product for the slug bundled
@@ -126,4 +149,184 @@ func maxCharsPtr(v *int32) *int {
 	}
 	n := int(*v)
 	return &n
+}
+
+// GetProducts handles GET /products (PR-P1-c): the public storefront catalog list. It is authPublic
+// (classify) — no session — and returns ONLY active products as a lightweight card projection (the
+// ListActiveProducts query selects a subset of columns and makes NO per-product colors/options read →
+// no N+1). Draft/archived products are never listed: the active-only filter lives in the SQL WHERE, so
+// the public list cannot leak a hidden row (the same non-leak stance the detail read and checkout take).
+//
+// It is paginated (page/pageSize, bounded here since oapi-codegen ignores the schema min/max), sortable
+// over a WHITELIST (newest|price_asc|price_desc|rating — never raw client text into ORDER BY), and
+// optionally filtered by category slug (an unknown slug → an empty page, not a 404). Money (basePrice)
+// crosses the wire raw int-VND (always-must #2). The response carries a weak ETag + a provisional
+// Cache-Control (see catalogCacheControl); a matching If-None-Match short-circuits to 304 with no body.
+// The `q` param is RESERVED (accepted, ignored) until P1-e wires FTS. r.Context() propagates into every
+// read so a client disconnect / 30s timeout cancels them.
+func (s *Server) GetProducts(ctx context.Context, request api.GetProductsRequestObject) (api.GetProductsResponseObject, error) {
+	badRequest := api.GetProducts400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}
+
+	page, pageSize, ok := pageParams(request.Params.Page, request.Params.PageSize)
+	if !ok {
+		// page < 1, pageSize < 1, or pageSize > maxPageSize — a request-shape violation (400), enforced
+		// here because oapi-codegen does not honor the schema's minimum/maximum. Bounds the LIMIT before
+		// any DB read on this public, rate-limit-free endpoint.
+		return badRequest, nil
+	}
+	sort, ok := sortParam(request.Params.Sort)
+	if !ok {
+		// An unrecognized sort token (only reachable if the generated enum binding is bypassed). Reject
+		// rather than silently fall back, so ORDER BY is always a whitelisted value.
+		return badRequest, nil
+	}
+
+	// Guard the OFFSET before the multiply can overflow: a page far beyond any real catalog is an empty
+	// page, so clamp the offset to maxCatalogOffset (the LIMIT then returns nothing) rather than let a
+	// huge (page-1)*pageSize wrap negative into the SQL OFFSET. The comparison avoids the multiply.
+	offset := maxCatalogOffset
+	if page-1 <= maxCatalogOffset/pageSize {
+		offset = (page - 1) * pageSize
+	}
+
+	rows, total, err := db.NewCatalog(s.pool).ListActiveProductCards(ctx, db.ProductCardFilter{
+		CategorySlug: normalizeFilter(request.Params.Category),
+		Sort:         sort,
+		Limit:        int32(pageSize),
+		Offset:       int32(offset),
+	})
+	if err != nil {
+		return nil, err // db error → mapError (handleResponseError) → 500, no leak
+	}
+
+	cards, err := productCardsDTO(rows)
+	if err != nil {
+		// Corrupt images JSONB is a server data fault (can't happen: NOT NULL DEFAULT '[]', written only
+		// via validated paths) → logged, 500. Hard-fail like the detail read rather than hide corruption.
+		return nil, err
+	}
+	list := api.ProductList{Items: cards, Page: page, PageSize: pageSize, Total: int(total)}
+
+	etag, err := weakETag(list)
+	if err != nil {
+		return nil, err // marshal fault → 500 (logged); never emit a bad validator
+	}
+	// NOTE: the ETag needs the body to hash, so a 304 still pays the two origin reads above — the
+	// conditional GET saves BANDWIDTH, not origin compute. The scan+count amplification stays bounded by
+	// maxPageSize/maxCatalogOffset; a real edge cache (revalidateTag/ISR) that offloads origin compute is
+	// the P1-f caching decision (deliberately deferred, user 2026-07-03).
+	if ifNoneMatch(request.Params.IfNoneMatch, etag) {
+		return api.GetProducts304Response{Headers: api.GetProducts304ResponseHeaders{
+			ETag: etag, CacheControl: catalogCacheControl,
+		}}, nil
+	}
+	return api.GetProducts200JSONResponse{
+		Body:    list,
+		Headers: api.GetProducts200ResponseHeaders{ETag: etag, CacheControl: catalogCacheControl},
+	}, nil
+}
+
+// pageParams applies the defaults for the omitted (nil) page/pageSize params and validates them against
+// their bounds — the runtime enforcement oapi-codegen skips. It returns ok=false for page < 1, pageSize
+// < 1, or pageSize > maxPageSize (all 400 VALIDATION at the call site).
+func pageParams(pageP, sizeP *int) (page, pageSize int, ok bool) {
+	page, pageSize = 1, defaultPageSize
+	if pageP != nil {
+		page = *pageP
+	}
+	if sizeP != nil {
+		pageSize = *sizeP
+	}
+	if page < 1 || pageSize < 1 || pageSize > maxPageSize {
+		return 0, 0, false
+	}
+	return page, pageSize, true
+}
+
+// sortParam maps the optional sort enum to the whitelisted token the SQL CASE understands. nil OR an
+// empty-string value (`?sort=`) → the default "newest": an empty query value is treated as OMITTED, so
+// it behaves like leaving the param off (and symmetric with normalizeFilter's handling of `?category=`).
+// Any other value outside the enum → ok=false (400). The returned string is one of a fixed set, so it can
+// never carry raw client text into the query's ORDER BY.
+func sortParam(s *api.GetProductsParamsSort) (string, bool) {
+	if s == nil || *s == "" {
+		return string(api.Newest), true
+	}
+	switch *s {
+	case api.Newest, api.PriceAsc, api.PriceDesc, api.Rating:
+		return string(*s), true
+	default:
+		return "", false
+	}
+}
+
+// normalizeFilter treats an empty-string query value as "omitted" (nil). A frontend commonly maps an
+// "All categories" control to `?category=${selected}` with selected="" — without this, an empty slug is
+// NOT NULL, so the SQL filter would run `slug = ”`, match no category, and return an empty page instead
+// of the full catalog. Collapsing ""→nil makes `?category=` mean "all", identical to omitting the param.
+func normalizeFilter(s *string) *string {
+	if s != nil && *s == "" {
+		return nil
+	}
+	return s
+}
+
+// productCardsDTO maps the projected list rows to wire cards. images is a non-nil empty slice when
+// absent so the JSON renders `[]`, never `null` (spec §03 zero-state); money stays raw int-VND. A corrupt
+// images JSONB hard-fails the whole page (consistent with the detail read) rather than silently dropping
+// a cover — corruption should surface, and it cannot happen on the validated write paths.
+func productCardsDTO(rows []sqlc.ListActiveProductsRow) ([]api.ProductCard, error) {
+	out := make([]api.ProductCard, len(rows))
+	for i, r := range rows {
+		images := []string{}
+		if len(r.Images) > 0 {
+			if err := json.Unmarshal(r.Images, &images); err != nil {
+				return nil, fmt.Errorf("product %s: decode images jsonb: %w", r.Slug, err)
+			}
+		}
+		out[i] = api.ProductCard{
+			Id:          r.ID,
+			Slug:        r.Slug,
+			Name:        r.Name,
+			BasePrice:   r.BasePrice, // raw int-VND, never formatted server-side (always-must #2)
+			CategoryId:  r.CategoryID,
+			Images:      images,
+			RatingAvg:   r.RatingAvg,
+			ReviewCount: int(r.ReviewCount),
+		}
+	}
+	return out, nil
+}
+
+// weakETag computes a WEAK validator over the marshaled list. Weak (W/) is correct: it asserts semantic
+// equality of the representation (the strict layer re-marshals the body, so byte identity across encoders
+// is not guaranteed), and a changed price/stock/rating/order changes the hash → a stale client revalidates.
+// The page is a single bounded slice (<= maxPageSize cards) so the extra marshal is cheap.
+func weakETag(v any) (string, error) {
+	buf, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(buf)
+	return `W/"` + hex.EncodeToString(sum[:16]) + `"`, nil
+}
+
+// ifNoneMatch reports whether the client's If-None-Match header matches the current ETag so the handler
+// can answer 304. Per RFC 9110 §13.1.2 If-None-Match uses WEAK comparison (the W/ prefix is ignored) and
+// a bare "*" matches any current representation; the header may be a comma-separated list.
+func ifNoneMatch(header *string, etag string) bool {
+	if header == nil {
+		return false
+	}
+	want := strings.TrimPrefix(etag, "W/")
+	for _, tok := range strings.Split(*header, ",") {
+		tok = strings.TrimSpace(tok)
+		if tok == "*" {
+			return true
+		}
+		if strings.TrimPrefix(tok, "W/") == want {
+			return true
+		}
+	}
+	return false
 }

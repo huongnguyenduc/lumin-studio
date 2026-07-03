@@ -12,6 +12,27 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countActiveProducts = `-- name: CountActiveProducts :one
+SELECT count(*) FROM products
+WHERE status = 'active'
+  AND (
+    $1::text IS NULL
+    OR category_id = (SELECT id FROM categories WHERE slug = $1::text)
+  )
+`
+
+// CountActiveProducts is the total for the list envelope — the SAME WHERE as ListActiveProducts, with no
+// sort/limit. It runs alongside the list as a second autocommit read; a concurrent catalog write landing
+// between the two can skew the total by one. That is cosmetic (a display count that self-heals next
+// request) on a made-to-order shop whose catalog rarely mutates, and it is never a money value — so we
+// accept it rather than pay for a snapshot transaction (documented on the repo method).
+func (q *Queries) CountActiveProducts(ctx context.Context, categorySlug *string) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveProducts, categorySlug)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getProductByID = `-- name: GetProductByID :one
 SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at FROM products WHERE id = $1
 `
@@ -261,6 +282,83 @@ func (q *Queries) InsertReview(ctx context.Context, arg InsertReviewParams) (Rev
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const listActiveProducts = `-- name: ListActiveProducts :many
+SELECT id, slug, name, base_price, category_id, images, rating_avg, review_count
+FROM products
+WHERE status = 'active'
+  AND (
+    $1::text IS NULL
+    OR category_id = (SELECT id FROM categories WHERE slug = $1::text)
+  )
+ORDER BY
+  CASE WHEN $2::text = 'price_asc'  THEN base_price END ASC,
+  CASE WHEN $2::text = 'price_desc' THEN base_price END DESC,
+  CASE WHEN $2::text = 'rating'     THEN rating_avg END DESC NULLS LAST,
+  created_at DESC,
+  id DESC
+LIMIT $4::int OFFSET $3::int
+`
+
+type ListActiveProductsParams struct {
+	CategorySlug *string `json:"categorySlug"`
+	Sort         string  `json:"sort"`
+	PageOffset   int32   `json:"pageOffset"`
+	PageLimit    int32   `json:"pageLimit"`
+}
+
+type ListActiveProductsRow struct {
+	ID          uuid.UUID `json:"id"`
+	Slug        string    `json:"slug"`
+	Name        string    `json:"name"`
+	BasePrice   int64     `json:"basePrice"`
+	CategoryID  uuid.UUID `json:"categoryId"`
+	Images      []byte    `json:"images"`
+	RatingAvg   *float32  `json:"ratingAvg"`
+	ReviewCount int32     `json:"reviewCount"`
+}
+
+// ListActiveProducts is the storefront catalog list (PR-P1-c). It returns ACTIVE products ONLY as a
+// CARD projection (a subset of columns — no description/model3d_url, and no colors/options join → no
+// N+1). The optional category filter matches by category SLUG via an UNCORRELATED subquery (Postgres
+// runs it once as an InitPlan, not per row); an unknown slug simply matches no rows → an empty page,
+// never a 404. Sort is a WHITELISTED CASE so the ORDER BY can never be built from raw client text; the
+// non-selected CASE arms evaluate to a constant NULL and drop out, and created_at DESC, id DESC give a
+// deterministic TOTAL order so OFFSET pagination is stable across pages. @page_limit is bounded by the
+// handler (pageSize <= 48).
+func (q *Queries) ListActiveProducts(ctx context.Context, arg ListActiveProductsParams) ([]ListActiveProductsRow, error) {
+	rows, err := q.db.Query(ctx, listActiveProducts,
+		arg.CategorySlug,
+		arg.Sort,
+		arg.PageOffset,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListActiveProductsRow
+	for rows.Next() {
+		var i ListActiveProductsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Name,
+			&i.BasePrice,
+			&i.CategoryID,
+			&i.Images,
+			&i.RatingAvg,
+			&i.ReviewCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listColorsByProduct = `-- name: ListColorsByProduct :many

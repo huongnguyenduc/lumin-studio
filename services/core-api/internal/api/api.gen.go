@@ -67,6 +67,14 @@ const (
 	Staff UserRole = "staff"
 )
 
+// Defines values for GetProductsParamsSort.
+const (
+	Newest    GetProductsParamsSort = "newest"
+	PriceAsc  GetProductsParamsSort = "price_asc"
+	PriceDesc GetProductsParamsSort = "price_desc"
+	Rating    GetProductsParamsSort = "rating"
+)
+
 // Address Vietnamese shipping address — no district level (ADR-017).
 type Address struct {
 	Province string `json:"province"`
@@ -356,6 +364,41 @@ type Product struct {
 	Status ProductStatus `json:"status"`
 }
 
+// ProductCard Lightweight catalog-list projection of a product (spec §02) — the fields a grid card needs, WITHOUT colors/options/description body (the list avoids the per-product reads the detail read makes → no N+1). basePrice is raw int-VND; images[0] is the card cover (sprite-first, ADR-007). Only ACTIVE products are ever listed, so status is implied and omitted.
+type ProductCard struct {
+	// BasePrice Starting price in int-VND (>= 0).
+	BasePrice  int64              `json:"basePrice"`
+	CategoryId openapi_types.UUID `json:"categoryId"`
+	Id         openapi_types.UUID `json:"id"`
+
+	// Images Shop photos; images[0] is the card cover (ADR-007). May be empty.
+	Images []string `json:"images"`
+	Name   string   `json:"name"`
+
+	// RatingAvg Denormalized average rating; null until the first review.
+	RatingAvg *float32 `json:"ratingAvg"`
+
+	// ReviewCount Denormalized review count (spec §02).
+	ReviewCount int `json:"reviewCount"`
+
+	// Slug Unique URL slug (spec §02).
+	Slug string `json:"slug"`
+}
+
+// ProductList One page of catalog cards plus the pagination envelope (spec §03 list state). `total` is the count of active products matching the filter across all pages; the client derives the page count.
+type ProductList struct {
+	Items []ProductCard `json:"items"`
+
+	// Page 1-based page number echoed from the request.
+	Page int `json:"page"`
+
+	// PageSize Items per page echoed from the request.
+	PageSize int `json:"pageSize"`
+
+	// Total Total active products matching the filter, across all pages.
+	Total int `json:"total"`
+}
+
 // ProductStatus Product lifecycle (spec §02, Postgres `product_status`). The detail read returns `active` only.
 type ProductStatus string
 
@@ -442,6 +485,30 @@ type Unauthorized = ErrorEnvelope
 
 // Unprocessable The one error shape every endpoint returns (ADR-032). `code` is a stable machine code (e.g. NOT_FOUND, INVALID_EDGE, RBAC, REASON_REQUIRED, VALIDATION); `messageKey` is a next-intl key (the domain's Vietnamese prose is NEVER forwarded). `fields` maps a field path → messageKey for per-field validation errors.
 type Unprocessable = ErrorEnvelope
+
+// GetProductsParams defines parameters for GetProducts.
+type GetProductsParams struct {
+	// Category Filter by category slug (spec §02). An unknown slug yields an empty page, not a 404.
+	Category *string `form:"category,omitempty" json:"category,omitempty"`
+
+	// Sort Sort order. Default `newest` (created_at desc, id desc tiebreak for stable paging).
+	Sort *GetProductsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Page 1-based page number.
+	Page *int `form:"page,omitempty" json:"page,omitempty"`
+
+	// PageSize Items per page. Capped at 48 to bound the query on this public, unauthenticated endpoint.
+	PageSize *int `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+
+	// Q RESERVED full-text search term (no-accent, ADR-016). Accepted but IGNORED until P1-e wires Postgres FTS; declared now so the contract stays stable when search lands.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// IfNoneMatch Conditional GET — when it matches the current ETag the server returns 304 with no body.
+	IfNoneMatch *string `json:"If-None-Match,omitempty"`
+}
+
+// GetProductsParamsSort defines parameters for GetProducts.
+type GetProductsParamsSort string
 
 // UpdateBankAccountJSONRequestBody defines body for UpdateBankAccount for application/json ContentType.
 type UpdateBankAccountJSONRequestBody = BankAccountUpdate
@@ -576,6 +643,9 @@ type ServerInterface interface {
 	// Server-authoritative line/subtotal quote for a selection (no shipping/address).
 	// (POST /price/quote)
 	QuotePrice(w http.ResponseWriter, r *http.Request)
+	// Public storefront catalog list (active-only) — paginated card projection.
+	// (GET /products)
+	GetProducts(w http.ResponseWriter, r *http.Request, params GetProductsParams)
 	// Public storefront product detail (active-only) — product + colors + options.
 	// (GET /products/{slug})
 	GetProductBySlug(w http.ResponseWriter, r *http.Request, slug string)
@@ -636,6 +706,12 @@ func (_ Unimplemented) TransitionOrder(w http.ResponseWriter, r *http.Request, i
 // Server-authoritative line/subtotal quote for a selection (no shipping/address).
 // (POST /price/quote)
 func (_ Unimplemented) QuotePrice(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Public storefront catalog list (active-only) — paginated card projection.
+// (GET /products)
+func (_ Unimplemented) GetProducts(w http.ResponseWriter, r *http.Request, params GetProductsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -833,6 +909,86 @@ func (siw *ServerInterfaceWrapper) QuotePrice(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// GetProducts operation middleware
+func (siw *ServerInterfaceWrapper) GetProducts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProductsParams
+
+	// ------------- Optional query parameter "category" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "category", r.URL.Query(), &params.Category)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "category", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sort", r.URL.Query(), &params.Sort)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "page", r.URL.Query(), &params.Page)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "pageSize", r.URL.Query(), &params.PageSize)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "q", r.URL.Query(), &params.Q)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProducts(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetProductBySlug operation middleware
 func (siw *ServerInterfaceWrapper) GetProductBySlug(w http.ResponseWriter, r *http.Request) {
 
@@ -997,6 +1153,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/price/quote", wrapper.QuotePrice)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/products", wrapper.GetProducts)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/products/{slug}", wrapper.GetProductBySlug)
@@ -1360,6 +1519,58 @@ func (response QuotePrice422JSONResponse) VisitQuotePriceResponse(w http.Respons
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetProductsRequestObject struct {
+	Params GetProductsParams
+}
+
+type GetProductsResponseObject interface {
+	VisitGetProductsResponse(w http.ResponseWriter) error
+}
+
+type GetProducts200ResponseHeaders struct {
+	CacheControl string
+	ETag         string
+}
+
+type GetProducts200JSONResponse struct {
+	Body    ProductList
+	Headers GetProducts200ResponseHeaders
+}
+
+func (response GetProducts200JSONResponse) VisitGetProductsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type GetProducts304ResponseHeaders struct {
+	CacheControl string
+	ETag         string
+}
+
+type GetProducts304Response struct {
+	Headers GetProducts304ResponseHeaders
+}
+
+func (response GetProducts304Response) VisitGetProductsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(304)
+	return nil
+}
+
+type GetProducts400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetProducts400JSONResponse) VisitGetProductsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetProductBySlugRequestObject struct {
 	Slug string `json:"slug"`
 }
@@ -1415,6 +1626,9 @@ type StrictServerInterface interface {
 	// Server-authoritative line/subtotal quote for a selection (no shipping/address).
 	// (POST /price/quote)
 	QuotePrice(ctx context.Context, request QuotePriceRequestObject) (QuotePriceResponseObject, error)
+	// Public storefront catalog list (active-only) — paginated card projection.
+	// (GET /products)
+	GetProducts(ctx context.Context, request GetProductsRequestObject) (GetProductsResponseObject, error)
 	// Public storefront product detail (active-only) — product + colors + options.
 	// (GET /products/{slug})
 	GetProductBySlug(ctx context.Context, request GetProductBySlugRequestObject) (GetProductBySlugResponseObject, error)
@@ -1695,6 +1909,32 @@ func (sh *strictHandler) QuotePrice(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(QuotePriceResponseObject); ok {
 		if err := validResponse.VisitQuotePriceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProducts operation middleware
+func (sh *strictHandler) GetProducts(w http.ResponseWriter, r *http.Request, params GetProductsParams) {
+	var request GetProductsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProducts(ctx, request.(GetProductsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProducts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProductsResponseObject); ok {
+		if err := validResponse.VisitGetProductsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
