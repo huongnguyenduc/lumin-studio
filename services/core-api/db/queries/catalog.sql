@@ -25,6 +25,43 @@ SELECT * FROM products WHERE id = $1;
 -- name: ListProductsByStatus :many
 SELECT * FROM products WHERE status = $1 ORDER BY created_at DESC;
 
+-- ListActiveProducts is the storefront catalog list (PR-P1-c). It returns ACTIVE products ONLY as a
+-- CARD projection (a subset of columns — no description/model3d_url, and no colors/options join → no
+-- N+1). The optional category filter matches by category SLUG via an UNCORRELATED subquery (Postgres
+-- runs it once as an InitPlan, not per row); an unknown slug simply matches no rows → an empty page,
+-- never a 404. Sort is a WHITELISTED CASE so the ORDER BY can never be built from raw client text; the
+-- non-selected CASE arms evaluate to a constant NULL and drop out, and created_at DESC, id DESC give a
+-- deterministic TOTAL order so OFFSET pagination is stable across pages. @page_limit is bounded by the
+-- handler (pageSize <= 48).
+-- name: ListActiveProducts :many
+SELECT id, slug, name, base_price, category_id, images, rating_avg, review_count
+FROM products
+WHERE status = 'active'
+  AND (
+    sqlc.narg('category_slug')::text IS NULL
+    OR category_id = (SELECT id FROM categories WHERE slug = sqlc.narg('category_slug')::text)
+  )
+ORDER BY
+  CASE WHEN @sort::text = 'price_asc'  THEN base_price END ASC,
+  CASE WHEN @sort::text = 'price_desc' THEN base_price END DESC,
+  CASE WHEN @sort::text = 'rating'     THEN rating_avg END DESC NULLS LAST,
+  created_at DESC,
+  id DESC
+LIMIT @page_limit::int OFFSET @page_offset::int;
+
+-- CountActiveProducts is the total for the list envelope — the SAME WHERE as ListActiveProducts, with no
+-- sort/limit. It runs alongside the list as a second autocommit read; a concurrent catalog write landing
+-- between the two can skew the total by one. That is cosmetic (a display count that self-heals next
+-- request) on a made-to-order shop whose catalog rarely mutates, and it is never a money value — so we
+-- accept it rather than pay for a snapshot transaction (documented on the repo method).
+-- name: CountActiveProducts :one
+SELECT count(*) FROM products
+WHERE status = 'active'
+  AND (
+    sqlc.narg('category_slug')::text IS NULL
+    OR category_id = (SELECT id FROM categories WHERE slug = sqlc.narg('category_slug')::text)
+  );
+
 -- name: InsertColor :one
 INSERT INTO colors (id, product_id, name, hex, available, price_delta)
 VALUES ($1, $2, $3, $4, $5, $6)

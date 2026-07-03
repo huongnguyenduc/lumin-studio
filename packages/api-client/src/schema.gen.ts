@@ -80,6 +80,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public storefront catalog list (active-only) — paginated card projection.
+         * @description Public catalog list (no auth). Returns ACTIVE products only as a lightweight card projection (no colors/options/description body → no N+1), paginated and sortable, optionally filtered by category slug. Draft/archived products are NEVER listed (no catalog-existence leak, matching the detail read). Money (basePrice) is raw int-VND; the client formats via @lumin/core (always-must #2). The response carries a weak ETag + a provisional Cache-Control (the storefront ISR/purge strategy is finalized with the frontend PR, P1-f); a matching If-None-Match returns 304. The `q` full-text parameter is RESERVED here — accepted but ignored until P1-e wires Postgres FTS (ADR-016), declared now so the contract does not change when search lands.
+         */
+        get: operations["getProducts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/products/{slug}": {
         parameters: {
             query?: never;
@@ -303,6 +323,40 @@ export interface components {
             reviewCount: number;
             /** Format: date-time */
             createdAt: string;
+        };
+        /** @description Lightweight catalog-list projection of a product (spec §02) — the fields a grid card needs, WITHOUT colors/options/description body (the list avoids the per-product reads the detail read makes → no N+1). basePrice is raw int-VND; images[0] is the card cover (sprite-first, ADR-007). Only ACTIVE products are ever listed, so status is implied and omitted. */
+        ProductCard: {
+            /** Format: uuid */
+            id: string;
+            /** @description Unique URL slug (spec §02). */
+            slug: string;
+            name: string;
+            /**
+             * Format: int64
+             * @description Starting price in int-VND (>= 0).
+             */
+            basePrice: number;
+            /** Format: uuid */
+            categoryId: string;
+            /** @description Shop photos; images[0] is the card cover (ADR-007). May be empty. */
+            images: string[];
+            /**
+             * Format: float
+             * @description Denormalized average rating; null until the first review.
+             */
+            ratingAvg?: number | null;
+            /** @description Denormalized review count (spec §02). */
+            reviewCount: number;
+        };
+        /** @description One page of catalog cards plus the pagination envelope (spec §03 list state). `total` is the count of active products matching the filter across all pages; the client derives the page count. */
+        ProductList: {
+            items: components["schemas"]["ProductCard"][];
+            /** @description 1-based page number echoed from the request. */
+            page: number;
+            /** @description Items per page echoed from the request. */
+            pageSize: number;
+            /** @description Total active products matching the filter, across all pages. */
+            total: number;
         };
         /** @description One appended statusHistory record (spec §02/§04). `from` is null only at creation. */
         StatusEvent: {
@@ -722,6 +776,56 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["Unprocessable"];
+        };
+    };
+    getProducts: {
+        parameters: {
+            query?: {
+                /** @description Filter by category slug (spec §02). An unknown slug yields an empty page, not a 404. */
+                category?: string;
+                /** @description Sort order. Default `newest` (created_at desc, id desc tiebreak for stable paging). */
+                sort?: "newest" | "price_asc" | "price_desc" | "rating";
+                /** @description 1-based page number. */
+                page?: number;
+                /** @description Items per page. Capped at 48 to bound the query on this public, unauthenticated endpoint. */
+                pageSize?: number;
+                /** @description RESERVED full-text search term (no-accent, ADR-016). Accepted but IGNORED until P1-e wires Postgres FTS; declared now so the contract stays stable when search lands. */
+                q?: string;
+            };
+            header?: {
+                /** @description Conditional GET — when it matches the current ETag the server returns 304 with no body. */
+                "If-None-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of active product cards. */
+            200: {
+                headers: {
+                    /** @description Weak validator over the response body; echo it in If-None-Match to revalidate. */
+                    ETag?: string;
+                    /** @description Public cache directive (provisional — the ISR/purge strategy is finalized in P1-f). */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductList"];
+                };
+            };
+            /** @description Not Modified — the client's If-None-Match matched the current ETag. */
+            304: {
+                headers: {
+                    /** @description The current weak validator (unchanged). */
+                    ETag?: string;
+                    /** @description Public cache directive (provisional — finalized in P1-f). */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
         };
     };
     getProductBySlug: {

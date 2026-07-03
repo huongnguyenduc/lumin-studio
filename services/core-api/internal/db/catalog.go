@@ -48,6 +48,38 @@ func (c *Catalog) ProductsByStatus(ctx context.Context, status sqlc.ProductStatu
 	return c.q.ListProductsByStatus(ctx, status)
 }
 
+// ProductCardFilter narrows the storefront catalog list. CategorySlug nil = all categories; Sort is a
+// whitelisted token already validated at the HTTP edge (never raw client text — the SQL maps it through
+// a CASE); Limit/Offset are the already-bounded page window (the handler caps pageSize and the offset).
+type ProductCardFilter struct {
+	CategorySlug *string
+	Sort         string
+	Limit        int32
+	Offset       int32
+}
+
+// ListActiveProductCards returns one page of ACTIVE product cards plus the total matching the filter.
+// The list and the count are two autocommit reads (not one snapshot transaction): a concurrent catalog
+// write between them can skew total by one — cosmetic on a made-to-order shop whose catalog rarely
+// changes, and never a money value (it is a display count that self-heals next request). The list query
+// makes NO per-product reads (no colors/options) so there is no N+1.
+func (c *Catalog) ListActiveProductCards(ctx context.Context, f ProductCardFilter) ([]sqlc.ListActiveProductsRow, int64, error) {
+	rows, err := c.q.ListActiveProducts(ctx, sqlc.ListActiveProductsParams{
+		CategorySlug: f.CategorySlug,
+		Sort:         f.Sort,
+		PageLimit:    f.Limit,
+		PageOffset:   f.Offset,
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := c.q.CountActiveProducts(ctx, f.CategorySlug)
+	if err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
+}
+
 // ColorsByProduct lists a product's named print colors.
 func (c *Catalog) ColorsByProduct(ctx context.Context, productID uuid.UUID) ([]sqlc.Color, error) {
 	return c.q.ListColorsByProduct(ctx, productID)
