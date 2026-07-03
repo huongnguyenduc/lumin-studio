@@ -12,6 +12,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.34.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.34.0
 	golang.org/x/crypto v0.38.0
+	golang.org/x/time v0.5.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

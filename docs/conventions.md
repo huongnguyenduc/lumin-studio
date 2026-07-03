@@ -56,7 +56,7 @@
 - **Cloudflare Access** trùm Admin + API admin/extension (cổng danh tính trước box nhà).
 - **STK/bank-account: chỉ owner sửa + audit log append-only**; **QR tĩnh** render **server-side** từ STK đã lưu (chống tráo STK; **nội dung/memo CK không bắt buộc**).
 - Rate-limit `/checkout`, order-lookup, auth ở **Cloudflare WAF** + token-bucket trong Go (defense-in-depth).
-- Guest order-lookup: so sánh **constant-time** mã+SĐT + lockout chống dò.
+- Guest order-lookup: so sánh **constant-time** mã+SĐT + **token-bucket per-code** chống dò (KHÔNG failure-lockout theo mã — mã đơn tuần-tự nên lockout-theo-mã để attacker khoá chủ đơn thật khỏi đơn của họ; token-bucket đã chặn brute-force, WAF là lớp per-IP — ADR-034).
 - Secrets: **SOPS + age** (.env mã hoá trong repo, giải mã lúc deploy). Không Infisical.
 - **Subprocess không kế thừa cred:** `settings.json` đặt `env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` — Bash/hook/MCP-stdio không nhận `ANTHROPIC_API_KEY` + cred cloud nhận-diện-được (chặn `echo $ENV` làm lộ). **Caveat:** token tự-đặt-tên (vd `NATS_TOKEN`) **không** đảm bảo bị strip → giữ trong SOPS+age decrypt per-service, **đừng** export vào shell. Ba lớp bổ trợ: `permissions.deny` (chỉ chặn **tool Read** đọc secret) + `guard-bash.sh` (chặn **đọc/ghi secret qua Bash** — `cat .env`/`source`/redirection vào secret·hợp-đồng; vá lỗ "deny chỉ phủ Read tool, không phủ `cat`", audit 2026-06-23) + env-scrub (chặn secret RESIDENT trong process) — REC-22/ADR-024.
 - RBAC: `owner` toàn quyền; `staff` không sửa cài đặt/STK, không reconcile→PAID (`/spec.md` §08).

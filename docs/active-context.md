@@ -429,6 +429,37 @@ session) — used as-is, left running.
 > **comp-1 (transitive draft-leak) FIXED** via browsable-only above; **comp-2 (no result-size bound) ACCEPTED-documented**
 > (categories admin-curated, no user-generated path, near-static — rationale in `ListCategories` comment; EXISTS scope tightens
 > it further). **NEXT sau P1-d:** P1-n `/orders/lookup` · rồi FE **P1-f** (home grid) → P1-g → P1-h.
+>
+> **🔨 PR-P1-n (`GET /orders/lookup` · public guest order lookup) — BUILT · reviews DONE + fixes applied · ALL GATES GREEN ·
+> committed `6c54f45` · pushed → PR #37 OPEN · CI running · chờ user merge-gate.** (branch `feat/phase-1-storefront-p1n` off `main`
+> `77b51e0` [P1-d].) Last BE read endpoint before the FE track.
+> **User-confirmed 2026-07-03 (AskUserQuestion):** rate-limit = **in-memory x/time/rate per-code token-bucket** · **declare 429 +
+> `RATE_LIMITED`** in contract · DTO = **status+tracking+date** · **DROP failure-lockout** (post-review) + **new ADR-034**. Grounded by a
+> 6-reader research sweep (wf_8ee0db04). **OpenAPI 0.6.0→0.7.0:** `GET /orders/lookup` (operationId `lookupOrder`, **no `security:` key**
+> = public like getProducts) + `PublicOrderTimeline{code,status,milestones[{status,at}],trackingCode?,createdAt}` + `OrderMilestone`
+> (reuse parity-locked `OrderStatus` enum → **NO new enum, parity untouched**; NEVER `$ref` internal Order/Customer/StatusEvent) +
+> `TooManyRequests`(429) → regen Go+TS (staged). **Handler `internal/httpapi/lookup.go`** (classify `LookupOrder`→**authPublic** + parity
+> map): per-code `s.lookup.allow()` gate BEFORE any DB → 429 (+Warn log for ops); `Orders.ByCode` + `Identity.CustomerByID` (reuse proven
+> queries, `status_history` override intact — **NO new SQL/migration**); **`subtle.ConstantTimeCompare`** on phone + **dummy-compare on the
+> code-miss path** (AUTH-01; comments now honest that the DB-read-count residual is NOT timing-equalized — resistance rests on identical
+> 404 body + rate-limit + WAF + sequential-codes-are-low-value); **uniform `db.ErrNotFound`→404** unknown-code == phone-mismatch (byte-
+> identical); length-guarded `normalizePhone` (0xxx/+84xxx/bare-84-NSN → 9-digit) + `normalizeLookupCode`; `publicTimelineDTO` whitelist
+> (drops byUser/reason/PII/money/proof; ADR-032). **`internal/httpapi/ratelimit.go`** (NEW, first in-process limiter): in-memory per-code
+> `golang.org/x/time/rate` bucket + lazy TTL-sweep (bounded map) — **NO failure-lockout** (ADR-034: codes are sequential → a per-code
+> lockout, checked before the phone, lets an attacker 429-lock the real owner out of their own order; the bucket alone makes brute-force
+> infeasible); injectable clock; **package-const defaults, env-knobs DEFERRED to P1-o** (poll cadence open, plan §6.6). `errors.go`
+> +`codeRateLimited`/`errRateLimited`→**429**. **Deps:** `golang.org/x/time` promoted indirect→**direct** (already in go.sum, **NO new
+> module download**); **go directive HELD 1.23.6.** **Reviews:** spec-guardian **PASS 0/0/1** (timing-comment NOTE → fixed); adversarial
+> 17-agent 6-lens wf_4ef2b511 (per-finding refute + completeness critic): **1 CONFIRMED IMPORTANT** (owner-lockout DoS → FIXED by dropping
+> the lockout, user-approved) / 8 refuted; **critic gaps folded:** router-level 429-envelope test · REFUNDED-milestone non-leak test ·
+> limiter concurrency test (-race) · normalizePhone bare-84 edge + test · honest timing/missing-customer comments · ops Warn log · ADR-034.
+> **Gates (last-green 2026-07-04):** `make verify-go` rc=0 (golangci 0, sqlc vet/diff, oapi stale-check, `go test -race` incl parity) ·
+> api-client typecheck+`schema.stale`+lint · **guard 157→158** (+1 **LKP-01 ARM PROVEN binding**: `subtle.ConstantTimeCompare` · uniform
+> `db.ErrNotFound` · `s.lookup.allow` · classify authPublic — mutate→157/1→restore, re-proven post-fix) · **integration RAN vs colima PG
+> (-race):** found→timeline · +84 normalize · unknown==wrong-phone byte-identical 404 · NON-LEAK whitelist · trackingCode after SHIPPING ·
+> **REFUNDED milestone drops reason/refundProofUrl**; full httpapi+db+contract green. **LKP-01** acceptance **Cụm 15** (Go-gated `[ ]`).
+> **ADR-034** (guest-lookup rate-limit: per-code token-bucket, no per-IP, no lockout) + conventions §Bảo mật line updated (via ADR-022
+> valve, user-approved). ⚠️ auth-adjacent path — owner review từng dòng trước merge.
 
 1. **Slice 3 · PR-3k — ✅ MERGED (PR #30) → `origin/main` `cf4c2a8` (2026-07-02, squash; CI green app-gates/selftest/services-gates).**
    Local `main` ff'd to `cf4c2a8`; the merged `feat/core-http-relay-3k` branch + ~19 older squash-merged branches remain

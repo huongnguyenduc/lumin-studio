@@ -39,6 +39,11 @@ type Server struct {
 	nats   NATSStatus
 	auth   *auth.Issuer
 	users  userReader
+	// lookup is the in-memory per-code token-bucket + lockout guarding the public guest order-lookup
+	// (PR-P1-n; conventions §Bảo mật). Constructed here with package-default limits — no constructor
+	// param so the existing call sites stay unchanged; tests that exercise the lockout path swap in a
+	// tight limiter directly (same package). See ratelimit.go.
+	lookup *lookupLimiter
 }
 
 // NewServer builds the handler root. pool/nats may be nil in unit tests that don't
@@ -51,6 +56,7 @@ func NewServer(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus, authIss
 		nats:   nats,
 		auth:   authIssuer,
 		users:  db.NewIdentity(pool),
+		lookup: newLookupLimiter(defaultLookupLimits()),
 	}
 }
 

@@ -70,6 +70,11 @@ func classify(operationID string) authClass {
 		// Categories have no visibility axis (all public) and no money; keeping it public avoids gating
 		// browse behind auth (a fail-closed default would 401 the storefront's category chips).
 		return authPublic
+	case "LookupOrder":
+		// Public guest order tracking (PR-P1-n) — no session; a customer looks up their own order by
+		// code + phone. It is gated instead by a constant-time code+phone match and a per-code
+		// token-bucket + lockout (handler), not by auth: a guest has no account to authenticate with.
+		return authPublic
 	case "CreateOrder":
 		return authOptional
 	case "UpdateBankAccount":

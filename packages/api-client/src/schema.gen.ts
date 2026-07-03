@@ -80,6 +80,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orders/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public guest order lookup by code + phone — a minimal, non-leaking timeline.
+         * @description Public order tracking for a guest who has no account (no auth). BOTH the order code AND the phone used on the order must match; an unknown code and a phone mismatch return the SAME 404 NOT_FOUND (no order-existence enumeration). The phone is compared in constant time and a per-code token-bucket + lockout guards against brute-forcing the phone for a known code (conventions §Bảo mật; the Cloudflare WAF is the per-IP layer). Returns a deliberately minimal PublicOrderTimeline — NEVER the internal Order: no customer PII, address, line items, money, payment/refund proof, internal note, or the statusHistory actor/reason fields (ADR-032). The `phone` param carries NO schema pattern on purpose — a malformed phone must funnel to the same 404, never a 400 (which would be an enumeration signal).
+         */
+        get: operations["lookupOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/products": {
         parameters: {
             query?: never;
@@ -627,6 +647,24 @@ export interface components {
             pendingConfirm: number;
             paidWaitingPrint: number;
         };
+        /** @description The guest-facing order timeline returned by GET /orders/lookup. It is a SEPARATE schema from Order (never a $ref) and exposes ONLY what a customer who already knows their code + phone may see: the code they typed, the current status, a status→time milestone list, an optional carrier tracking code, and the creation instant. It deliberately OMITS every internal field — customer PII, shipping address, line items, money (subtotal/shippingFee/total/unitPrice), payment/refund proof URLs, the internal note, the order uuid, the channel, and the statusHistory actor (byUser) + reason (ADR-032 non-leak). */
+        PublicOrderTimeline: {
+            /** @description The human order code the guest supplied (e.g. "#LMN-1000"). */
+            code: string;
+            status: components["schemas"]["OrderStatus"];
+            /** @description Reached statuses with the instant each was entered, oldest-first — the progress milestones plus any CANCELLED/REFUNDED close state. The frontend (P1-o) renders labels and shows the close states apart from the 5-step progress track (spec §04). */
+            milestones: components["schemas"]["OrderMilestone"][];
+            /** @description Carrier waybill, present only from SHIPPING onward (spec §04). Omitted before then. */
+            trackingCode?: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @description One reached order status with the instant it was entered — a whitelist projection of a statusHistory event that drops the actor (byUser), reason, and proof fields (ADR-032 non-leak). */
+        OrderMilestone: {
+            status: components["schemas"]["OrderStatus"];
+            /** Format: date-time */
+            at: string;
+        };
         /** @description The one error shape every endpoint returns (ADR-032). `code` is a stable machine code (e.g. NOT_FOUND, INVALID_EDGE, RBAC, REASON_REQUIRED, VALIDATION); `messageKey` is a next-intl key (the domain's Vietnamese prose is NEVER forwarded). `fields` maps a field path → messageKey for per-field validation errors. */
         ErrorEnvelope: {
             code: string;
@@ -684,6 +722,15 @@ export interface components {
         };
         /** @description Semantically invalid (e.g. missing reason/refund-proof/tracking-code, empty cart). */
         Unprocessable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorEnvelope"];
+            };
+        };
+        /** @description Rate limit or lockout tripped (RATE_LIMITED) — too many lookup attempts for this order code. The client should back off (P1-o auto-poll respects this). No Retry-After is exposed so the exact lockout window is not leaked. */
+        TooManyRequests: {
             headers: {
                 [name: string]: unknown;
             };
@@ -805,6 +852,34 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["Unprocessable"];
+        };
+    };
+    lookupOrder: {
+        parameters: {
+            query: {
+                /** @description The order code shown at checkout (e.g. "#LMN-1000"). */
+                code: string;
+                /** @description The phone number used on the order. No format constraint — a mismatch (or malformed value) returns the uniform 404, never a 400. */
+                phone: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The code + phone matched; the public order timeline is returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicOrderTimeline"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
         };
     };
     getProducts: {
