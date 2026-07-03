@@ -430,8 +430,9 @@ session) — used as-is, left running.
 > (categories admin-curated, no user-generated path, near-static — rationale in `ListCategories` comment; EXISTS scope tightens
 > it further). **NEXT sau P1-d:** P1-n `/orders/lookup` · rồi FE **P1-f** (home grid) → P1-g → P1-h.
 >
-> **🔨 PR-P1-n (`GET /orders/lookup` · public guest order lookup) — BUILT · reviews DONE + fixes applied · ALL GATES GREEN · chờ
-> push→PR.** (branch `feat/phase-1-storefront-p1n` off `main` `77b51e0` [P1-d].) Last BE read endpoint before the FE track.
+> **🔨 PR-P1-n (`GET /orders/lookup` · public guest order lookup) — BUILT · reviews DONE + fixes applied · ALL GATES GREEN ·
+> committed `6c54f45` · pushed → PR #37 OPEN · CI running · chờ user merge-gate.** (branch `feat/phase-1-storefront-p1n` off `main`
+> `77b51e0` [P1-d].) Last BE read endpoint before the FE track.
 > **User-confirmed 2026-07-03 (AskUserQuestion):** rate-limit = **in-memory x/time/rate per-code token-bucket** · **declare 429 +
 > `RATE_LIMITED`** in contract · DTO = **status+tracking+date** · **DROP failure-lockout** (post-review) + **new ADR-034**. Grounded by a
 > 6-reader research sweep (wf_8ee0db04). **OpenAPI 0.6.0→0.7.0:** `GET /orders/lookup` (operationId `lookupOrder`, **no `security:` key**
