@@ -382,8 +382,7 @@ session) — used as-is, left running.
 > `TestQuotePriceEndToEnd` + 6 rejection subtests, KHÔNG skip) · `pnpm verify` + api-client typecheck · **guard 155 /
 > osm 22** (last-green 2026-07-03). **QTE-01 acceptance Cụm 14 `[ ]` (Go-gated).**
 >
-> **🔨 PR-P1-c (`GET /products` · public catalog LIST) — BUILT · ALL GATES GREEN · review DONE + folded · committed
-> `1490108` · pushed → PR #35 OPEN · chờ user merge-gate.** (branch `feat/phase-1-storefront-p1c` off `main` `b616b1c`.)
+> **✅ PR-P1-c (`GET /products` · public catalog LIST) — MERGED (PR #35) → `origin/main` `7fcbd3e` (2026-07-03, merge-commit; CI green app-gates/selftest/services-gates; local `main` ff'd).** (branch `feat/phase-1-storefront-p1c` off `main` `b616b1c`.)
 > **spec-guardian PASS (0 BLOCKER/0 WARN/1 NOTE** — clamp `maxCatalogOffset` cố ý). **Adversarial 17-agent review
 > wf_4c60df42 (5 lens × per-finding refute + completeness critic): 1 raw → 0 confirmed / 1 refuted; critic 4 gap ĐÃ FOLD**
 > — (IMPORTANT) `?category=` rỗng im lặng trả trang rỗng (footgun FE "All") → `normalizeFilter` coi ''→bỏ lọc = tất cả;
@@ -408,8 +407,28 @@ session) — used as-is, left running.
 > active-only non-leak · sort price/rating-nulls-last · category filter · paginate ổn định · far-page overflow · 304 · DoS
 > cap) · api-client typecheck+stale-gate+lint · core ledger 31/31 · **guard 156** (+1 **CAT-02 ARM PROVEN binding ×3**: SQL
 > `status='active'` filter · `maxPageSize` · classify `GetProducts` authPublic — mỗi mutate→155/1→restore) · osm 22 ·
-> **CAT-02** acceptance Cụm 13 `[ ]` (Go-gated). **NEXT sau P1-c:** P1-d `/categories` · P1-n `/orders/lookup` · rồi FE
-> **P1-f** (home grid, unblocked bởi P1-c) → P1-g → P1-h.
+> **CAT-02** acceptance Cụm 13 `[ ]` (Go-gated).
+>
+> **🔨 PR-P1-d (`GET /categories` · public category LIST) — BUILT · ALL GATES GREEN · 2 reviewers PASS · committed `2abf26a` ·
+> pushed → PR #36 OPEN · chờ user merge-gate.** (branch `feat/phase-1-storefront-p1d` off `main` `7fcbd3e` [P1-c].)
+> The catalog-browse chips feed (unblocks FE P1-g).
+> New sqlc `ListCategories` + `Catalog.Categories`; OpenAPI `0.5.0→0.6.0` (`Category{id,slug,name}` + `GET /categories`
+> public, 200 **bare array** + weak `ETag`/`Cache-Control`, `If-None-Match`→**304**) → regen Go+TS. Handler
+> `internal/httpapi/categories.go` `GetCategories` reuses `weakETag`/`ifNoneMatch`/`catalogCacheControl` (một hình caching
+> chung với `/products`, chốt ISR/purge ở P1-f) + `categoriesDTO` (empty→`[]` không null); classify `GetCategories`→**authPublic**.
+> **NO migration** (categories table sẵn từ 000003) · **NO new enum** (parity_test KHÔNG đổi) · **NO new dep · NO new ADR.**
+> **User-confirmed 2026-07-03 (AskUserQuestion): browsable-only** — `ListCategories` scope theo category-có-≥1-hàng-`active`
+> (`WHERE EXISTS ... status='active'`), CÙNG non-leak-tại-SQL của CAT-01/02: category chỉ-chứa-draft/archived (products
+> default `draft`, `category_id` NOT NULL) hoặc rỗng KHÔNG surface → hết dead-end chip + hết rò tên category chưa-phát-hành.
+> **Gates:** `make verify-go` GREEN (golangci 0, sqlc vet/diff, oapi stale-check, `go test -race`) · api-client
+> typecheck+stale+lint · **guard 156→157** (+1 **CAT-03 ARM PROVEN binding ×2**: classify authPublic [flip→RED] · ListCategories
+> `EXISTS status='active'` scope [strip→RED] — mỗi mutate→156/1→restore) · osm 22 · **integration RAN vs colima PG (-race):**
+> no-categories→`[]` · draft-only/empty categories→still `[]` (non-leak) · browsable-only name→slug order (hidden excluded) ·
+> 304 + wrong-etag→200. **CAT-03** acceptance Cụm 13 `[ ]` (Go-gated). **Reviews:** spec-guardian **PASS 0/0/0**; adversarial
+> 5-lens wf_b771e647 (per-finding refute + completeness critic, 6 agents): **0 lens-confirmed / 0 refuted**; critic 2 NOTE →
+> **comp-1 (transitive draft-leak) FIXED** via browsable-only above; **comp-2 (no result-size bound) ACCEPTED-documented**
+> (categories admin-curated, no user-generated path, near-static — rationale in `ListCategories` comment; EXISTS scope tightens
+> it further). **NEXT sau P1-d:** P1-n `/orders/lookup` · rồi FE **P1-f** (home grid) → P1-g → P1-h.
 
 1. **Slice 3 · PR-3k — ✅ MERGED (PR #30) → `origin/main` `cf4c2a8` (2026-07-02, squash; CI green app-gates/selftest/services-gates).**
    Local `main` ff'd to `cf4c2a8`; the merged `feat/core-http-relay-3k` branch + ~19 older squash-merged branches remain

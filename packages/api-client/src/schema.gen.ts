@@ -120,6 +120,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public storefront category list — the browsable taxonomy for the catalog-browse chips.
+         * @description Public category list (no auth). Returns the BROWSABLE category taxonomy (spec §02) A→Z — only categories that contain at least one ACTIVE product. Categories inherit visibility transitively through their products, so a category whose only products are draft/archived is NOT listed (no dead-end chip, and no leak of an unreleased category name — the same non-leak stance as the product reads). It is a small, admin-curated set, so there is no filter or pagination. When no category is browsable the response is an empty array `[]`, NEVER a 404. The response carries a weak ETag + a provisional Cache-Control (the storefront ISR/purge strategy is finalized with the frontend PR, P1-f), consistent with the /products list; a matching If-None-Match returns 304 with no body.
+         */
+        get: operations["getCategories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/price/quote": {
         parameters: {
             query?: never;
@@ -357,6 +377,15 @@ export interface components {
             pageSize: number;
             /** @description Total active products matching the filter, across all pages. */
             total: number;
+        };
+        /** @description A catalog category (spec §02) — the taxonomy a product belongs to (Product.categoryId references Category.id) and the storefront browse chips render. No visibility axis: every category is public. */
+        Category: {
+            /** Format: uuid */
+            id: string;
+            /** @description Unique URL slug — the value passed to GET /products?category={slug}. */
+            slug: string;
+            /** @description Human-friendly display name (sentence case). */
+            name: string;
         };
         /** @description One appended statusHistory record (spec §02/§04). `from` is null only at creation. */
         StatusEvent: {
@@ -850,6 +879,44 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    getCategories: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Conditional GET — when it matches the current ETag the server returns 304 with no body. */
+                "If-None-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The full category taxonomy (may be empty). */
+            200: {
+                headers: {
+                    /** @description Weak validator over the response body; echo it in If-None-Match to revalidate. */
+                    ETag?: string;
+                    /** @description Public cache directive (provisional — the ISR/purge strategy is finalized in P1-f). */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Category"][];
+                };
+            };
+            /** @description Not Modified — the client's If-None-Match matched the current ETag. */
+            304: {
+                headers: {
+                    /** @description The current weak validator (unchanged). */
+                    ETag?: string;
+                    /** @description Public cache directive (provisional — finalized in P1-f). */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     quotePrice: {

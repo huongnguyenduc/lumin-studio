@@ -65,6 +65,11 @@ func classify(operationID string) authClass {
 		// Public storefront catalog list (PR-P1-c) — no session; active-only card projection. Like the
 		// detail read, a catalog list never needs an actor; keeping it public avoids gating browse behind auth.
 		return authPublic
+	case "GetCategories":
+		// Public storefront category list (PR-P1-d) — no session; the whole taxonomy for the browse chips.
+		// Categories have no visibility axis (all public) and no money; keeping it public avoids gating
+		// browse behind auth (a fail-closed default would 401 the storefront's category chips).
+		return authPublic
 	case "CreateOrder":
 		return authOptional
 	case "UpdateBankAccount":

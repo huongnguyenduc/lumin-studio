@@ -687,6 +687,27 @@ if [ -f "$PRODUCTS" ] && printf '%s' "$PRODUCTSBODY" | grep -qE 'func \(s \*Serv
     bad "ARM: GetProducts LAND nhưng thiếu 1 trong {ListActiveProducts status='active' filter, maxPageSize bound, classify GetProducts authPublic} -> hàng ẩn rò ra list / pageSize DoS / list kẹt sau tường auth (CAT-02!)"
   fi
 else ok "ARM: chưa có GetProducts list handler (catalog list active-only/bound/public arm khi land — PR-P1-c)"; fi
+# ARM PR-P1-d (public category LIST GET /categories): khoá 2 bất biến storefront —
+#  (a) classify() gán GetCategories = authPublic (list taxonomy công khai cho chip duyệt, KHÔNG sau tường
+#      auth admin — regress về fail-closed default → chip category 401 → duyệt vỡ trong im lặng tới khi bấm);
+#  (b) NON-LEAK tại NGUỒN SQL: ListCategories PHẢI scope theo category-có-hàng-active (EXISTS ... status=
+#      'active') — category chỉ-chứa-draft/archived (hoặc rỗng) là nhóm ẩn; bỏ scope → tên category chưa
+#      phát-hành rò ra public + chip dead-end (cùng lẽ non-leak status='active' tại SQL của CAT-02).
+# Bỏ comment ('//' Go, '--' SQL) trước khi soi để một entry/filter bị COMMENT-OUT không false-PASS (class
+# lỗ '//' 3b). MWBODY + CATSQL_D tính lại tại đây để ARM tự-chứa, không phụ thuộc thứ tự/sự-tồn-tại block khác.
+CATEGORIES="$ROOT/services/core-api/internal/httpapi/categories.go"
+CATSQL_D="$ROOT/services/core-api/db/queries/catalog.sql"
+if [ -f "$CATEGORIES" ]; then
+  CATMW="$(grep -vE '^[[:space:]]*//' "$ROOT/services/core-api/internal/httpapi/middleware_auth.go" 2>/dev/null)"
+  LISTCAT="$(grep -A6 'name: ListCategories' "$CATSQL_D" 2>/dev/null | grep -vE '^[[:space:]]*--')"
+  if printf '%s' "$CATMW" | grep -A2 '"GetCategories"' | grep -q 'authPublic' \
+     && printf '%s' "$LISTCAT" | grep -qi 'EXISTS' \
+     && printf '%s' "$LISTCAT" | grep -qi "status = 'active'"; then
+    ok "ARM: có httpapi/categories.go GetCategories -> classify authPublic (chip duyệt công khai) + ListCategories scope active-product (EXISTS status='active', category chỉ-chứa-hàng-ẩn không rò) — CAT-03"
+  else
+    bad "ARM: GetCategories LAND nhưng thiếu 1 trong {classify authPublic, ListCategories EXISTS active-product scope} -> chip duyệt kẹt sau auth / category unreleased rò ra public — CAT-03!"
+  fi
+else ok "ARM: chưa có GetCategories list handler (category list public + non-leak arm khi land — PR-P1-d)"; fi
 if find "$ROOT/services" -name '*.rs' 2>/dev/null | grep -q .; then
   { [ -f "$ROOT/Makefile" ] && grep -Eq '^verify-rs:' "$ROOT/Makefile"; } \
     && ok "ARM: có .rs -> Makefile verify-rs" || bad "ARM: .rs LAND nhưng thiếu Makefile verify-rs"

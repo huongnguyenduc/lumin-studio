@@ -139,6 +139,18 @@ type Querier interface {
 	// by seq (monotonic insertion order), so it is deterministic even when two changes share a created_at
 	// microsecond — a random-uuid tiebreaker would not be.
 	ListBankAudit(ctx context.Context) ([]SettingBankAudit, error)
+	// ListCategories is the storefront category list (PR-P1-d): the BROWSABLE taxonomy the catalog-browse chips
+	// render (spec §02). It returns only categories that contain at least one ACTIVE product — the EXISTS
+	// subquery applies the SAME non-leak-at-the-SQL-source discipline as ListActiveProducts (CAT-02). A category
+	// whose only products are draft/archived (products default to status='draft', and category_id is NOT NULL),
+	// or which is empty, is a hidden grouping: surfacing it would both dead-end the chip (→ an empty
+	// /products?category= page) AND leak an unreleased category name — the exact catalog-existence info the
+	// product reads deliberately withhold. Categories are a small, admin-curated, near-static set (created only
+	// via admin CreateCategory — no user-generated path), so there is no filter/pagination: the browsable set
+	// fits one response. The order is a deterministic TOTAL order (name first for a human-friendly A→Z, slug —
+	// UNIQUE — as the tiebreak) so two categories sharing a display name never flap position; a stable order
+	// keeps the response ETag stable. No browsable category → zero rows → the handler renders `[]`, not 404.
+	ListCategories(ctx context.Context) ([]Category, error)
 	ListColorsByProduct(ctx context.Context, productID uuid.UUID) ([]Color, error)
 	ListOptionsByProduct(ctx context.Context, productID uuid.UUID) ([]Option, error)
 	ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]OrderItem, error)

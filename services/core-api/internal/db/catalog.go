@@ -90,6 +90,16 @@ func (c *Catalog) OptionsByProduct(ctx context.Context, productID uuid.UUID) ([]
 	return c.q.ListOptionsByProduct(ctx, productID)
 }
 
+// Categories lists the BROWSABLE category taxonomy (name A→Z, slug tiebreak) for the storefront chips —
+// only categories that contain at least one ACTIVE product (ListCategories scopes with an EXISTS subquery,
+// the same non-leak discipline as the active-only product reads: a category whose only products are hidden
+// never surfaces as a public chip). The set is small and admin-curated, so it is one autocommit read with no
+// filter/pagination. No browsable category yields a non-nil empty slice, never an error — the handler renders
+// `[]`, not a 404.
+func (c *Catalog) Categories(ctx context.Context) ([]sqlc.Category, error) {
+	return c.q.ListCategories(ctx)
+}
+
 // CreateCategory inserts a category and returns the persisted row.
 func (c *Catalog) CreateCategory(ctx context.Context, arg sqlc.InsertCategoryParams) (sqlc.Category, error) {
 	return c.q.InsertCategory(ctx, arg)
