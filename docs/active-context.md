@@ -409,8 +409,9 @@ session) — used as-is, left running.
 > `status='active'` filter · `maxPageSize` · classify `GetProducts` authPublic — mỗi mutate→155/1→restore) · osm 22 ·
 > **CAT-02** acceptance Cụm 13 `[ ]` (Go-gated).
 >
-> **🔨 PR-P1-d (`GET /categories` · public category LIST) — BUILT · ALL GATES GREEN · 2 reviewers PASS · chờ commit→push→PR.**
-> (branch `feat/phase-1-storefront-p1d` off `main` `7fcbd3e` [P1-c].) The catalog-browse chips feed (unblocks FE P1-g).
+> **🔨 PR-P1-d (`GET /categories` · public category LIST) — BUILT · ALL GATES GREEN · 2 reviewers PASS · committed `2abf26a` ·
+> pushed → PR #36 OPEN · chờ user merge-gate.** (branch `feat/phase-1-storefront-p1d` off `main` `7fcbd3e` [P1-c].)
+> The catalog-browse chips feed (unblocks FE P1-g).
 > New sqlc `ListCategories` + `Catalog.Categories`; OpenAPI `0.5.0→0.6.0` (`Category{id,slug,name}` + `GET /categories`
 > public, 200 **bare array** + weak `ETag`/`Cache-Control`, `If-None-Match`→**304**) → regen Go+TS. Handler
 > `internal/httpapi/categories.go` `GetCategories` reuses `weakETag`/`ifNoneMatch`/`catalogCacheControl` (một hình caching
