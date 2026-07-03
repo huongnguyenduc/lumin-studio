@@ -352,14 +352,14 @@ session) — used as-is, left running.
 > Storefront still Phase-0 shell (`apps/storefront` renders `lib/demo-products.ts`); backend catalog READ endpoints
 > didn't exist (slice-3 cut them) → building in core-api first (tables/sqlc exist PR-2c/2d).
 >
-> **🔨 PR-P1-a (contract anchor · `GET /products/{slug}`) — BUILT · ALL GATES GREEN · spec-guardian review IN FLIGHT.**
-> Branch `feat/phase-1-storefront-p1a` off `main` `67a3b3d` (first commit = the plan doc `49dafda`). Adds the public
+> **✅ PR-P1-a (contract anchor · `GET /products/{slug}`) — BUILT · ALL GATES GREEN · spec-guardian PASS (0 BLOCKER/0 WARN/1 NOTE) · committed `322759f` → PR #33 OPEN · await user merge-gate.**
+> Branch `feat/phase-1-storefront-p1a` off `main` `67a3b3d` (commit 1 = plan doc `49dafda`, commit 2 = impl `322759f`). Adds the public
 > storefront catalog read: OpenAPI Product/Color/Option/Dimensions/ProductStatus/OptionType (**no productType**, v0.4.0)
 > → regen Go+TS · `internal/httpapi/products.go` handler (active-only, **uniform 404 non-leak** for unknown/draft/archived,
 > raw int-VND, classify `authPublic`) reusing `GetProductBySlug`/`ListColorsByProduct`/`ListOptionsByProduct` (no new sqlc
 > query) · unit(DTO)+integration(real-PG full public-router)+public-classify+parity(OpenAPI↔Postgres) tests · **CAT-01 ARM**
 > + Cụm-13 EARS row (Go-gated `[ ]`). `make verify-go` GREEN (race + integration vs colima PG) · api-client typecheck+schema-stale ·
-> **guard 155 / osm 22.** **After review PASS: commit → push → PR → user merge-gate.** Open Q's deferred to their PRs
+> **guard 155 / osm 22** (last-green 2026-07-03, race+integration vs colima PG). **Committed `322759f` · pushed · PR #33 OPEN · CI running · chờ user merge-gate.** Open Q's deferred to their PRs
 > (plan §6): caching (P1-c/h) · customer-auth mechanism + BLOCKER-2 credentials migration >000011 (P1-r) · sprite source
 > (P1-i) · re-read `designs/Lumin Storefront - Hi-fi.dc.html` before FE PRs (P1-f+, plan §7 debt).
 
