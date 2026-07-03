@@ -53,6 +53,10 @@ func classify(operationID string) authClass {
 	switch operationID {
 	case "LoginUser", "LogoutUser":
 		return authPublic
+	case "GetProductBySlug":
+		// Public storefront catalog read (PR-P1-a) — no session; active-only detail. Any actor
+		// resolution would be dead weight (a dashboard read needs a user; a catalog read never does).
+		return authPublic
 	case "CreateOrder":
 		return authOptional
 	case "UpdateBankAccount":

@@ -648,6 +648,26 @@ if [ -f "$SETTINGS" ]; then
     bad "ARM: httpapi/settings.go LAND nhưng thiếu 1 trong {UpdateBankAccountTx seam, order.RoleOwner owner-gate, actorFrom changed_by-từ-ctx} -> STK đổi không audit / staff sửa STK / changed_by giả từ body (money-out!)"
   fi
 else ok "ARM: chưa có httpapi/settings.go (settings/STK arm khi land — PR-3k)"; fi
+# ARM PR-P1-a (public catalog read GET /products/{slug}): khoá 2 bất biến storefront detail —
+#  (a) active-only NON-LEAK: product non-active (draft/archived) PHẢI trả db.ErrNotFound (404) y hệt slug
+#      lạ — public surface KHÔNG được phân biệt hàng ẩn với hàng không tồn tại (probe tồn-tại catalog);
+#      bỏ guard ProductStatusActive→db.ErrNotFound → draft rò ra public → RED;
+#  (b) classify() gán GetProductBySlug = authPublic (đọc catalog công khai, KHÔNG sau tường auth admin);
+#      regress đẩy về authRequired/quên entry → catalog read kẹt sau auth (hoặc default fail-closed chặn
+#      khách) → mất token authPublic → RED.
+# Bỏ comment ('//') trước khi soi để một tham chiếu bị COMMENT-OUT không false-PASS (class lỗ '//' 3b).
+PRODUCTS="$ROOT/services/core-api/internal/httpapi/products.go"
+if [ -f "$PRODUCTS" ]; then
+  PRODUCTSBODY="$(grep -vE '^[[:space:]]*//' "$PRODUCTS" 2>/dev/null)"
+  MWBODY="$(grep -vE '^[[:space:]]*//' "$ROOT/services/core-api/internal/httpapi/middleware_auth.go" 2>/dev/null)"
+  if printf '%s' "$PRODUCTSBODY" | grep -q 'ProductStatusActive' \
+     && printf '%s' "$PRODUCTSBODY" | grep -qE 'return nil, db\.ErrNotFound' \
+     && printf '%s' "$MWBODY" | grep -A2 '"GetProductBySlug"' | grep -q 'authPublic'; then
+    ok "ARM: có httpapi/products.go -> catalog read active-only (non-active→db.ErrNotFound, không rò tồn-tại) + classify GetProductBySlug=authPublic (public detail — CAT-01)"
+  else
+    bad "ARM: httpapi/products.go LAND nhưng thiếu 1 trong {active-only ProductStatusActive→db.ErrNotFound, classify GetProductBySlug authPublic} -> draft/archived rò ra public / catalog read kẹt sau tường auth (CAT-01!)"
+  fi
+else ok "ARM: chưa có httpapi/products.go (catalog read active-only/public arm khi land — PR-P1-a)"; fi
 if find "$ROOT/services" -name '*.rs' 2>/dev/null | grep -q .; then
   { [ -f "$ROOT/Makefile" ] && grep -Eq '^verify-rs:' "$ROOT/Makefile"; } \
     && ok "ARM: có .rs -> Makefile verify-rs" || bad "ARM: .rs LAND nhưng thiếu Makefile verify-rs"

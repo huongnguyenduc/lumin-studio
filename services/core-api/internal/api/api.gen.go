@@ -37,6 +37,12 @@ const (
 	Web CreateWebOrderInputChannel = "web"
 )
 
+// Defines values for OptionType.
+const (
+	Choice OptionType = "choice"
+	Text   OptionType = "text"
+)
+
 // Defines values for OrderStatus.
 const (
 	CANCELLED      OrderStatus = "CANCELLED"
@@ -46,6 +52,13 @@ const (
 	PRINTING       OrderStatus = "PRINTING"
 	REFUNDED       OrderStatus = "REFUNDED"
 	SHIPPING       OrderStatus = "SHIPPING"
+)
+
+// Defines values for ProductStatus.
+const (
+	Active   ProductStatus = "active"
+	Archived ProductStatus = "archived"
+	Draft    ProductStatus = "draft"
 )
 
 // Defines values for UserRole.
@@ -90,6 +103,22 @@ type BankAccountUpdate struct {
 
 // Channel Order origin (spec §04).
 type Channel string
+
+// Color A named print colour for a product (spec §02). priceDelta is int-VND (may be 0).
+type Color struct {
+	// Available Whether the filament is currently in stock.
+	Available bool `json:"available"`
+
+	// Hex Swatch colour as a hex string.
+	Hex string             `json:"hex"`
+	Id  openapi_types.UUID `json:"id"`
+
+	// Name Display name, e.g. "Kem sữa".
+	Name string `json:"name"`
+
+	// PriceDelta Added price in int-VND (>= 0).
+	PriceDelta int64 `json:"priceDelta"`
+}
 
 // CreateInboxOrderInput Staff/owner-created inbox order → born PAID with no payment record (the staff already verified money landed, conventions §17). Requires a resolved staff/owner actor; no `paymentProofUrl`.
 type CreateInboxOrderInput struct {
@@ -159,6 +188,18 @@ type DashboardTodos struct {
 	PendingConfirm   int `json:"pendingConfirm"`
 }
 
+// Dimensions Product bounding size in millimetres (spec §02; displayed "180 × 180 × 240 mm").
+type Dimensions struct {
+	// D Depth in mm.
+	D int `json:"d"`
+
+	// H Height in mm.
+	H int `json:"h"`
+
+	// W Width in mm.
+	W int `json:"w"`
+}
+
 // ErrorEnvelope The one error shape every endpoint returns (ADR-032). `code` is a stable machine code (e.g. NOT_FOUND, INVALID_EDGE, RBAC, REASON_REQUIRED, VALIDATION); `messageKey` is a next-intl key (the domain's Vietnamese prose is NEVER forwarded). `fields` maps a field path → messageKey for per-field validation errors.
 type ErrorEnvelope struct {
 	Code       string             `json:"code"`
@@ -171,6 +212,25 @@ type LoginRequest struct {
 	Email    openapi_types.Email `json:"email"`
 	Password string              `json:"password"`
 }
+
+// Option A customization option (spec §02). type: text carries an engraving char limit (maxChars).
+type Option struct {
+	Description string             `json:"description"`
+	Id          openapi_types.UUID `json:"id"`
+	Label       string             `json:"label"`
+
+	// MaxChars Engraving character limit; null unless a limit applies.
+	MaxChars *int `json:"maxChars"`
+
+	// PriceDelta Added price in int-VND (>= 0).
+	PriceDelta int64 `json:"priceDelta"`
+
+	// Type Customization option kind (spec §02, Postgres `option_type`). `text` carries an engraving char limit (maxChars).
+	Type OptionType `json:"type"`
+}
+
+// OptionType Customization option kind (spec §02, Postgres `option_type`). `text` carries an engraving char limit (maxChars).
+type OptionType string
 
 // Order defines model for Order.
 type Order struct {
@@ -233,6 +293,48 @@ type Personalization struct {
 	Text   string `json:"text"`
 	ZoneId string `json:"zoneId"`
 }
+
+// Product Storefront product detail (spec §02). Money fields (basePrice, colors[].priceDelta, options[].priceDelta) are raw int-VND — the client formats via @lumin/core (always-must #2). images[0] is the card cover (sprite-first, ADR-007). No productType in Phase 1 (D-P1-1).
+type Product struct {
+	// BasePrice Starting price in int-VND (>= 0); options may add to it.
+	BasePrice  int64              `json:"basePrice"`
+	CategoryId openapi_types.UUID `json:"categoryId"`
+	Colors     []Color            `json:"colors"`
+	CreatedAt  time.Time          `json:"createdAt"`
+
+	// Description Markdown stored as text (spec §02 richtext).
+	Description string `json:"description"`
+
+	// Dimensions Product bounding size in millimetres (spec §02; displayed "180 × 180 × 240 mm").
+	Dimensions Dimensions         `json:"dimensions"`
+	Id         openapi_types.UUID `json:"id"`
+
+	// Images Shop photos; images[0] is the card cover (sprite-first, ADR-007). May be empty.
+	Images []string `json:"images"`
+
+	// Material Print material (spec §02; open-ended TEXT+CHECK, ADR-028 — not a wire enum).
+	Material string `json:"material"`
+
+	// Model3dUrl .glb URL for the on-demand model viewer; empty string when none.
+	Model3dUrl string   `json:"model3dUrl"`
+	Name       string   `json:"name"`
+	Options    []Option `json:"options"`
+
+	// RatingAvg Denormalized average rating; null until the first review.
+	RatingAvg *float32 `json:"ratingAvg"`
+
+	// ReviewCount Denormalized review count (spec §02).
+	ReviewCount int `json:"reviewCount"`
+
+	// Slug Unique URL slug (spec §02).
+	Slug string `json:"slug"`
+
+	// Status Product lifecycle (spec §02, Postgres `product_status`). The detail read returns `active` only.
+	Status ProductStatus `json:"status"`
+}
+
+// ProductStatus Product lifecycle (spec §02, Postgres `product_status`). The detail read returns `active` only.
+type ProductStatus string
 
 // RecentOrder defines model for RecentOrder.
 type RecentOrder struct {
@@ -445,6 +547,9 @@ type ServerInterface interface {
 	// Advance an order's status (RBAC-gated; reconcile→PAID and →REFUNDED are owner-only).
 	// (POST /orders/{id}/transitions)
 	TransitionOrder(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Public storefront product detail (active-only) — product + colors + options.
+	// (GET /products/{slug})
+	GetProductBySlug(w http.ResponseWriter, r *http.Request, slug string)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -496,6 +601,12 @@ func (_ Unimplemented) CreateOrder(w http.ResponseWriter, r *http.Request) {
 // Advance an order's status (RBAC-gated; reconcile→PAID and →REFUNDED are owner-only).
 // (POST /orders/{id}/transitions)
 func (_ Unimplemented) TransitionOrder(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Public storefront product detail (active-only) — product + colors + options.
+// (GET /products/{slug})
+func (_ Unimplemented) GetProductBySlug(w http.ResponseWriter, r *http.Request, slug string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -673,6 +784,31 @@ func (siw *ServerInterfaceWrapper) TransitionOrder(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// GetProductBySlug operation middleware
+func (siw *ServerInterfaceWrapper) GetProductBySlug(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "slug" -------------
+	var slug string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slug", chi.URLParam(r, "slug"), &slug, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slug", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProductBySlug(w, r, slug)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -809,6 +945,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/orders/{id}/transitions", wrapper.TransitionOrder)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/products/{slug}", wrapper.GetProductBySlug)
 	})
 
 	return r
@@ -1134,6 +1273,32 @@ func (response TransitionOrder422JSONResponse) VisitTransitionOrderResponse(w ht
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetProductBySlugRequestObject struct {
+	Slug string `json:"slug"`
+}
+
+type GetProductBySlugResponseObject interface {
+	VisitGetProductBySlugResponse(w http.ResponseWriter) error
+}
+
+type GetProductBySlug200JSONResponse Product
+
+func (response GetProductBySlug200JSONResponse) VisitGetProductBySlugResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProductBySlug404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetProductBySlug404JSONResponse) VisitGetProductBySlugResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// Admin dashboard aggregates (counts + net revenue + recent orders + todos).
@@ -1160,6 +1325,9 @@ type StrictServerInterface interface {
 	// Advance an order's status (RBAC-gated; reconcile→PAID and →REFUNDED are owner-only).
 	// (POST /orders/{id}/transitions)
 	TransitionOrder(ctx context.Context, request TransitionOrderRequestObject) (TransitionOrderResponseObject, error)
+	// Public storefront product detail (active-only) — product + colors + options.
+	// (GET /products/{slug})
+	GetProductBySlug(ctx context.Context, request GetProductBySlugRequestObject) (GetProductBySlugResponseObject, error)
 }
 
 type StrictHandlerFunc = strictnethttp.StrictHTTPHandlerFunc
@@ -1406,6 +1574,32 @@ func (sh *strictHandler) TransitionOrder(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(TransitionOrderResponseObject); ok {
 		if err := validResponse.VisitTransitionOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProductBySlug operation middleware
+func (sh *strictHandler) GetProductBySlug(w http.ResponseWriter, r *http.Request, slug string) {
+	var request GetProductBySlugRequestObject
+
+	request.Slug = slug
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProductBySlug(ctx, request.(GetProductBySlugRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProductBySlug")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProductBySlugResponseObject); ok {
+		if err := validResponse.VisitGetProductBySlugResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

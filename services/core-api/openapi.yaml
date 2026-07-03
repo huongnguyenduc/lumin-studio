@@ -7,21 +7,23 @@
 # test (internal/contract/parity_test.go); change an enum here and that test (in `make verify-go`)
 # fails until all four agree.
 #
-# Scope = slice-3 surfaces only (ADR-003/031, plan core-http-relay.md §3c-1). Catalog read DTOs /
-# storefront GETs are OUT (Phase-1). Money crosses the wire as int VND (`integer, format: int64`) —
-# the single display formatter stays in packages/core (no Go formatVnd this slice, ADR-031/§6 D6).
-# Property names are camelCase (matches sqlc json_tags_case_style:camel + the as-built hand DTOs).
+# Scope = slice-3 surfaces + Phase-1 storefront catalog reads (ADR-003/031). Phase-1 opens the public
+# catalog GETs (P1-a: GET /products/{slug} detail — product + colors + options); checkout, payment,
+# and address (POST /orders / QR / receipt) stay OUT (Phase-2). Money crosses the wire as int VND
+# (`integer, format: int64`) — the single display formatter stays in packages/core (no Go formatVnd;
+# ADR-031/§6 D6). Property names are camelCase (matches sqlc json_tags_case_style:camel + hand DTOs).
 openapi: 3.0.3
 
 info:
   title: Lumin Studio Core API
-  version: 0.3.0
+  version: 0.4.0
   description: >
     Made-to-order 3D-print lighting/decor shop. One order state machine behind four surfaces
     (storefront · admin · admin-mobile · extension). This contract covers the slice-3 HTTP surface:
     self-issued auth, order intake + transitions, the admin dashboard aggregate, and the owner-only
     settings/STK + reply-template reads. The SERVER is authoritative for money and state — clients
-    never send `total`/`subtotal`/`unitPrice` and never self-transition.
+    never send `total`/`subtotal`/`unitPrice` and never self-transition. Phase-1 layers on the public
+    storefront catalog reads (product detail, active-only).
 
 servers:
   - url: /
@@ -34,6 +36,8 @@ tags:
     description: Order intake (web public · inbox staff-gated) and RBAC-gated transitions.
   - name: admin
     description: Admin-gated reads + owner-only money-out config (RBAC, ADR-010/012).
+  - name: catalog
+    description: Public storefront catalog reads (product detail; active-only). No auth (Phase-1).
 
 paths:
   /auth/login:
@@ -152,6 +156,34 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /products/{slug}:
+    get:
+      tags: [catalog]
+      operationId: getProductBySlug
+      summary: Public storefront product detail (active-only) — product + colors + options.
+      description: >
+        Public catalog read (no auth). Returns the ACTIVE product for the slug, bundled with its named
+        print colors and customization options. A draft/archived product OR an unknown slug both return
+        404 NOT_FOUND — the public surface must not distinguish a hidden product from a missing one (no
+        catalog-existence leak). Money fields (basePrice, colors[].priceDelta, options[].priceDelta) are
+        raw int-VND; the client formats via @lumin/core (always-must #2). No productType in Phase 1
+        (D-P1-1; Pet Tag activation lands later with its own migration + parity update).
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: URL slug of the product (spec §02, unique).
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The active product with its colors and options.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /admin/dashboard:
     get:
@@ -320,6 +352,164 @@ components:
       enum:
         - owner
         - staff
+
+    # --- Catalog (Phase-1 storefront reads) -------------------------------------------------------
+    # ProductStatus / OptionType are kept byte-identical to the Postgres native enums (product_status /
+    # option_type, migration 000001) by internal/contract/parity_test.go — change one here and the
+    # parity test (in `make verify-go`) fails until they agree. `material` is deliberately NOT an enum:
+    # spec §02 leaves it open-ended (PLA · PETG · recycled-PLA …) so it is TEXT+CHECK, not a wire enum
+    # (ADR-028).
+    ProductStatus:
+      type: string
+      description: Product lifecycle (spec §02, Postgres `product_status`). The detail read returns `active` only.
+      enum:
+        - active
+        - draft
+        - archived
+
+    OptionType:
+      type: string
+      description: Customization option kind (spec §02, Postgres `option_type`). `text` carries an engraving char limit (maxChars).
+      enum:
+        - text
+        - choice
+
+    Dimensions:
+      type: object
+      description: Product bounding size in millimetres (spec §02; displayed "180 × 180 × 240 mm").
+      required: [w, d, h]
+      properties:
+        w:
+          type: integer
+          description: Width in mm.
+        d:
+          type: integer
+          description: Depth in mm.
+        h:
+          type: integer
+          description: Height in mm.
+
+    Color:
+      type: object
+      description: A named print colour for a product (spec §02). priceDelta is int-VND (may be 0).
+      required: [id, name, hex, available, priceDelta]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Display name, e.g. "Kem sữa".
+        hex:
+          type: string
+          description: Swatch colour as a hex string.
+        available:
+          type: boolean
+          description: Whether the filament is currently in stock.
+        priceDelta:
+          type: integer
+          format: int64
+          description: Added price in int-VND (>= 0).
+
+    Option:
+      type: object
+      description: 'A customization option (spec §02). type: text carries an engraving char limit (maxChars).'
+      required: [id, label, description, type, priceDelta]
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+        description:
+          type: string
+        type:
+          $ref: '#/components/schemas/OptionType'
+        priceDelta:
+          type: integer
+          format: int64
+          description: Added price in int-VND (>= 0).
+        maxChars:
+          type: integer
+          nullable: true
+          description: Engraving character limit; null unless a limit applies.
+
+    Product:
+      type: object
+      description: >
+        Storefront product detail (spec §02). Money fields (basePrice, colors[].priceDelta,
+        options[].priceDelta) are raw int-VND — the client formats via @lumin/core (always-must #2).
+        images[0] is the card cover (sprite-first, ADR-007). No productType in Phase 1 (D-P1-1).
+      required:
+        - id
+        - slug
+        - name
+        - description
+        - categoryId
+        - basePrice
+        - dimensions
+        - material
+        - model3dUrl
+        - images
+        - colors
+        - options
+        - status
+        - reviewCount
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+          description: Unique URL slug (spec §02).
+        name:
+          type: string
+        description:
+          type: string
+          description: Markdown stored as text (spec §02 richtext).
+        categoryId:
+          type: string
+          format: uuid
+        basePrice:
+          type: integer
+          format: int64
+          description: Starting price in int-VND (>= 0); options may add to it.
+        dimensions:
+          $ref: '#/components/schemas/Dimensions'
+        material:
+          type: string
+          description: Print material (spec §02; open-ended TEXT+CHECK, ADR-028 — not a wire enum).
+        model3dUrl:
+          type: string
+          description: .glb URL for the on-demand model viewer; empty string when none.
+        images:
+          type: array
+          description: Shop photos; images[0] is the card cover (sprite-first, ADR-007). May be empty.
+          items:
+            type: string
+            format: uri
+        colors:
+          type: array
+          items:
+            $ref: '#/components/schemas/Color'
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/Option'
+        status:
+          $ref: '#/components/schemas/ProductStatus'
+        ratingAvg:
+          type: number
+          format: float
+          nullable: true
+          description: Denormalized average rating; null until the first review.
+        reviewCount:
+          type: integer
+          description: Denormalized review count (spec §02).
+        createdAt:
+          type: string
+          format: date-time
 
     # --- Value objects ----------------------------------------------------------------------------
     StatusEvent:

@@ -80,6 +80,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/products/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public storefront product detail (active-only) — product + colors + options.
+         * @description Public catalog read (no auth). Returns the ACTIVE product for the slug, bundled with its named print colors and customization options. A draft/archived product OR an unknown slug both return 404 NOT_FOUND — the public surface must not distinguish a hidden product from a missing one (no catalog-existence leak). Money fields (basePrice, colors[].priceDelta, options[].priceDelta) are raw int-VND; the client formats via @lumin/core (always-must #2). No productType in Phase 1 (D-P1-1; Pet Tag activation lands later with its own migration + parity update).
+         */
+        get: operations["getProductBySlug"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/dashboard": {
         parameters: {
             query?: never;
@@ -178,6 +198,92 @@ export interface components {
          * @enum {string}
          */
         UserRole: "owner" | "staff";
+        /**
+         * @description Product lifecycle (spec §02, Postgres `product_status`). The detail read returns `active` only.
+         * @enum {string}
+         */
+        ProductStatus: "active" | "draft" | "archived";
+        /**
+         * @description Customization option kind (spec §02, Postgres `option_type`). `text` carries an engraving char limit (maxChars).
+         * @enum {string}
+         */
+        OptionType: "text" | "choice";
+        /** @description Product bounding size in millimetres (spec §02; displayed "180 × 180 × 240 mm"). */
+        Dimensions: {
+            /** @description Width in mm. */
+            w: number;
+            /** @description Depth in mm. */
+            d: number;
+            /** @description Height in mm. */
+            h: number;
+        };
+        /** @description A named print colour for a product (spec §02). priceDelta is int-VND (may be 0). */
+        Color: {
+            /** Format: uuid */
+            id: string;
+            /** @description Display name, e.g. "Kem sữa". */
+            name: string;
+            /** @description Swatch colour as a hex string. */
+            hex: string;
+            /** @description Whether the filament is currently in stock. */
+            available: boolean;
+            /**
+             * Format: int64
+             * @description Added price in int-VND (>= 0).
+             */
+            priceDelta: number;
+        };
+        /** @description A customization option (spec §02). type: text carries an engraving char limit (maxChars). */
+        Option: {
+            /** Format: uuid */
+            id: string;
+            label: string;
+            description: string;
+            type: components["schemas"]["OptionType"];
+            /**
+             * Format: int64
+             * @description Added price in int-VND (>= 0).
+             */
+            priceDelta: number;
+            /** @description Engraving character limit; null unless a limit applies. */
+            maxChars?: number | null;
+        };
+        /** @description Storefront product detail (spec §02). Money fields (basePrice, colors[].priceDelta, options[].priceDelta) are raw int-VND — the client formats via @lumin/core (always-must #2). images[0] is the card cover (sprite-first, ADR-007). No productType in Phase 1 (D-P1-1). */
+        Product: {
+            /** Format: uuid */
+            id: string;
+            /** @description Unique URL slug (spec §02). */
+            slug: string;
+            name: string;
+            /** @description Markdown stored as text (spec §02 richtext). */
+            description: string;
+            /** Format: uuid */
+            categoryId: string;
+            /**
+             * Format: int64
+             * @description Starting price in int-VND (>= 0); options may add to it.
+             */
+            basePrice: number;
+            dimensions: components["schemas"]["Dimensions"];
+            /** @description Print material (spec §02; open-ended TEXT+CHECK, ADR-028 — not a wire enum). */
+            material: string;
+            /** @description .glb URL for the on-demand model viewer; empty string when none. */
+            model3dUrl: string;
+            /** @description Shop photos; images[0] is the card cover (sprite-first, ADR-007). May be empty. */
+            images: string[];
+            colors: components["schemas"]["Color"][];
+            options: components["schemas"]["Option"][];
+            status: components["schemas"]["ProductStatus"];
+            /**
+             * Format: float
+             * @description Denormalized average rating; null until the first review.
+             */
+            ratingAvg?: number | null;
+            /** @description Denormalized review count (spec §02). */
+            reviewCount: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
         /** @description One appended statusHistory record (spec §02/§04). `from` is null only at creation. */
         StatusEvent: {
             from: components["schemas"]["OrderStatus"] | null;
@@ -569,6 +675,30 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["Unprocessable"];
+        };
+    };
+    getProductBySlug: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description URL slug of the product (spec §02, unique). */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The active product with its colors and options. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Product"];
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     getDashboard: {
