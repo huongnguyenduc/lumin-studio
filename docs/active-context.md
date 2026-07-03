@@ -352,16 +352,37 @@ session) — used as-is, left running.
 > Storefront still Phase-0 shell (`apps/storefront` renders `lib/demo-products.ts`); backend catalog READ endpoints
 > didn't exist (slice-3 cut them) → building in core-api first (tables/sqlc exist PR-2c/2d).
 >
-> **✅ PR-P1-a (contract anchor · `GET /products/{slug}`) — BUILT · ALL GATES GREEN · spec-guardian PASS (0 BLOCKER/0 WARN/1 NOTE) · committed `322759f` → PR #33 OPEN · await user merge-gate.**
+> **✅ PR-P1-a (contract anchor · `GET /products/{slug}`) — MERGED → PR #33 → `origin/main` `ca78f33` (2026-07-03, merge-commit; local `main` ff'd). spec-guardian PASS (0 BLOCKER/0 WARN/1 NOTE).**
 > Branch `feat/phase-1-storefront-p1a` off `main` `67a3b3d` (commit 1 = plan doc `49dafda`, commit 2 = impl `322759f`). Adds the public
 > storefront catalog read: OpenAPI Product/Color/Option/Dimensions/ProductStatus/OptionType (**no productType**, v0.4.0)
 > → regen Go+TS · `internal/httpapi/products.go` handler (active-only, **uniform 404 non-leak** for unknown/draft/archived,
 > raw int-VND, classify `authPublic`) reusing `GetProductBySlug`/`ListColorsByProduct`/`ListOptionsByProduct` (no new sqlc
 > query) · unit(DTO)+integration(real-PG full public-router)+public-classify+parity(OpenAPI↔Postgres) tests · **CAT-01 ARM**
 > + Cụm-13 EARS row (Go-gated `[ ]`). `make verify-go` GREEN (race + integration vs colima PG) · api-client typecheck+schema-stale ·
-> **guard 155 / osm 22** (last-green 2026-07-03, race+integration vs colima PG). **Committed `322759f` · pushed · PR #33 OPEN · CI running · chờ user merge-gate.** Open Q's deferred to their PRs
+> **guard 155 / osm 22** (last-green 2026-07-03, race+integration vs colima PG). **MERGED → PR #33 → `ca78f33`; local `main` ff'd.** Open Q's deferred to their PRs
 > (plan §6): caching (P1-c/h) · customer-auth mechanism + BLOCKER-2 credentials migration >000011 (P1-r) · sprite source
 > (P1-i) · re-read `designs/Lumin Storefront - Hi-fi.dc.html` before FE PRs (P1-f+, plan §7 debt).
+>
+> **✅ PR-P1-b (`POST /price/quote` · server-authoritative line pricing) — BUILT · ALL GATES GREEN · spec-guardian PASS (0/0/0) · branch `feat/phase-1-storefront-p1b` off `main` `ca78f33` · UNCOMMITTED · chờ user commit+merge-gate.**
+> Thin HTTP wrapper trên `pricing.PriceItem` (PRC-01 sẵn có) — KHÔNG thêm math miền. OpenAPI `POST /price/quote` +
+> `PriceQuoteInput{items[≤50]}`/`PriceQuote{lines,subtotal}`/`PriceQuoteLine{unitPrice,quantity,lineTotal}` (reuse
+> `OrderItemInput` → no client price; reuse BadRequest/Unprocessable+ErrorEnvelope → **no new enum, parity_test
+> KHÔNG đổi**) → regen Go+TS. `internal/httpapi/price.go`: `QuotePrice` mirror checkout `priceLine` (ProductByID +
+> Colors/OptionsByProduct → PriceItem → guarded `money.CalcTotals`), pure `priceQuoteLine`+`quoteSubtotal` (test
+> money Docker-free), non-active/unknown → **422 PRODUCT_UNAVAILABLE** non-leak, `classify QuotePrice→authPublic`.
+> **line/subtotal ONLY (no shipping/address/tax), int-VND thô, messageKey không raw text, zoneId free-form (§5 DROP).**
+> **USER-CONFIRMED (2026-07-03):** KHÔNG loud-reject client money keys (khác checkout `clientMoneyFields`) — DTO không
+> có trường giá + response CHÍNH LÀ giá authoritative → không có divergence bền. **Adversarial review wf_1102fae9
+> (5-lens → refute-by-default verify): 7 raw → 0 auto-confirm; tự phân xử 4 fix split-verdict** — (IMPORTANT)
+> `maxItems:50` + runtime 400 (public unbounded-items DoS: 3 DB read/line, chưa có edge rate-limit) · (IMPORTANT)
+> tách `quoteSubtotal` + test cross-line-overflow GIẾT mutant naive-Σ · (NOTE) `PriceQuoteLine` desc hết over-claim
+> product (positional index mapping ghi rõ) · (NOTE) pre-DB reject tests (nil/empty/over-cap). Từ chối: per-request
+> memoization (moot sau cap) · qty>MaxInt32 checkout-parity (không divergence tiền, plan không mandate). `make
+> verify-go` GREEN (golangci 0, oapi stale-check clean, `go test -race` — **httpapi integration RAN vs colima PG**:
+> `TestQuotePriceEndToEnd` + 6 rejection subtests, KHÔNG skip) · `pnpm verify` + api-client typecheck · **guard 155 /
+> osm 22** (last-green 2026-07-03). **QTE-01 acceptance Cụm 14 `[ ]` (Go-gated).** UNCOMMITTED trên branch — chờ owner
+> commit+merge. **NEXT ready (deps thoả):** P1-c `GET /products` list · P1-d `/categories` · P1-n `/orders/lookup` ·
+> hoặc FE track P1-j/P1-k (engrave/cart, giờ unblocked bởi P1-b).
 
 1. **Slice 3 · PR-3k — ✅ MERGED (PR #30) → `origin/main` `cf4c2a8` (2026-07-02, squash; CI green app-gates/selftest/services-gates).**
    Local `main` ff'd to `cf4c2a8`; the merged `feat/core-http-relay-3k` branch + ~19 older squash-merged branches remain

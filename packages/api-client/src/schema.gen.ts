@@ -100,6 +100,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/price/quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Server-authoritative line/subtotal quote for a selection (no shipping/address).
+         * @description Public storefront pricing (no auth). Re-derives each line's unitPrice from the catalog via the same authority gate as checkout — never trusts a client price (always-must #2). Returns per-line unitPrice + lineTotal and the subtotal ONLY: no shipping, address, or tax (those enter at order creation, Phase 2). A non-active or unknown product is 422 PRODUCT_UNAVAILABLE (no catalog-existence leak, matching checkout). Engrave maxChars is enforced server-side by rune count. All money is raw int-VND; the client formats via @lumin/core. The request reuses OrderItemInput, which has no price field, so a client cannot declare a price (schema-level guarantee; unlike checkout this endpoint persists nothing and its response IS the authoritative price, so no loud money-key reject is needed).
+         */
+        post: operations["quotePrice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/dashboard": {
         parameters: {
             query?: never;
@@ -347,6 +367,33 @@ export interface components {
             optionIds: string[];
             personalization?: components["schemas"]["Personalization"];
             quantity: number;
+        };
+        /** @description One or more selections to price. Reuses OrderItemInput (which has NO unitPrice — the server re-derives every price from the catalog). Returns line/subtotal only; carries no address/shipping. Capped at 50 items: this is a public, unauthenticated read (no rate limit until the edge WAF), and each line costs a catalog round-trip, so the cap bounds the per-request work. */
+        PriceQuoteInput: {
+            items: components["schemas"]["OrderItemInput"][];
+        };
+        /** @description Server-computed line prices + subtotal (raw int-VND; no shipping/tax). `lines` is positionally aligned with the request `items` (same index) — a line carries no product reference, so a client maps a line back to its selection by array index. */
+        PriceQuote: {
+            lines: components["schemas"]["PriceQuoteLine"][];
+            /**
+             * Format: int64
+             * @description Sum of line totals, raw int VND. No shipping/tax (added at order creation, Phase 2).
+             */
+            subtotal: number;
+        };
+        /** @description One priced line, positionally aligned with the request item at the same index. Carries the server-derived unit price, its quantity, and the line total — no product ref (map back by index). */
+        PriceQuoteLine: {
+            /**
+             * Format: int64
+             * @description Server-derived int VND (base + color delta + Σ option deltas). Never accepted from the client.
+             */
+            unitPrice: number;
+            quantity: number;
+            /**
+             * Format: int64
+             * @description unitPrice × quantity, overflow-checked server-side.
+             */
+            lineTotal: number;
         };
         Order: {
             /** Format: uuid */
@@ -699,6 +746,32 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    quotePrice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PriceQuoteInput"];
+            };
+        };
+        responses: {
+            /** @description The computed line prices and subtotal. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceQuote"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            422: components["responses"]["Unprocessable"];
         };
     };
     getDashboard: {

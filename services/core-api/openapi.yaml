@@ -185,6 +185,36 @@ paths:
                 $ref: '#/components/schemas/Product'
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /price/quote:
+    post:
+      tags: [catalog]
+      operationId: quotePrice
+      summary: Server-authoritative line/subtotal quote for a selection (no shipping/address).
+      description: >
+        Public storefront pricing (no auth). Re-derives each line's unitPrice from the catalog via the
+        same authority gate as checkout — never trusts a client price (always-must #2). Returns per-line
+        unitPrice + lineTotal and the subtotal ONLY: no shipping, address, or tax (those enter at order
+        creation, Phase 2). A non-active or unknown product is 422 PRODUCT_UNAVAILABLE (no catalog-existence
+        leak, matching checkout). Engrave maxChars is enforced server-side by rune count. All money is raw
+        int-VND; the client formats via @lumin/core. The request reuses OrderItemInput, which has no price
+        field, so a client cannot declare a price (schema-level guarantee; unlike checkout this endpoint
+        persists nothing and its response IS the authoritative price, so no loud money-key reject is needed).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PriceQuoteInput'
+      responses:
+        '200':
+          description: The computed line prices and subtotal.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PriceQuote'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /admin/dashboard:
     get:
       tags: [admin]
@@ -628,6 +658,59 @@ components:
         quantity:
           type: integer
           minimum: 1
+
+    # --- Price quote (P1-b: server-authoritative pricing preview; no order, no persistence) -------
+    PriceQuoteInput:
+      type: object
+      description: >
+        One or more selections to price. Reuses OrderItemInput (which has NO unitPrice — the server
+        re-derives every price from the catalog). Returns line/subtotal only; carries no address/shipping.
+        Capped at 50 items: this is a public, unauthenticated read (no rate limit until the edge WAF),
+        and each line costs a catalog round-trip, so the cap bounds the per-request work.
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/OrderItemInput'
+
+    PriceQuote:
+      type: object
+      description: >
+        Server-computed line prices + subtotal (raw int-VND; no shipping/tax). `lines` is positionally
+        aligned with the request `items` (same index) — a line carries no product reference, so a client
+        maps a line back to its selection by array index.
+      required: [lines, subtotal]
+      properties:
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/PriceQuoteLine'
+        subtotal:
+          type: integer
+          format: int64
+          description: Sum of line totals, raw int VND. No shipping/tax (added at order creation, Phase 2).
+
+    PriceQuoteLine:
+      type: object
+      description: >
+        One priced line, positionally aligned with the request item at the same index. Carries the
+        server-derived unit price, its quantity, and the line total — no product ref (map back by index).
+      required: [unitPrice, quantity, lineTotal]
+      properties:
+        unitPrice:
+          type: integer
+          format: int64
+          description: Server-derived int VND (base + color delta + Σ option deltas). Never accepted from the client.
+        quantity:
+          type: integer
+          minimum: 1
+        lineTotal:
+          type: integer
+          format: int64
+          description: unitPrice × quantity, overflow-checked server-side.
 
     # --- Order DTO (nested; assembled by handlers — NOT the flat sqlc row) ------------------------
     Order:

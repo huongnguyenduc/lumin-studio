@@ -294,6 +294,29 @@ type Personalization struct {
 	ZoneId string `json:"zoneId"`
 }
 
+// PriceQuote Server-computed line prices + subtotal (raw int-VND; no shipping/tax). `lines` is positionally aligned with the request `items` (same index) — a line carries no product reference, so a client maps a line back to its selection by array index.
+type PriceQuote struct {
+	Lines []PriceQuoteLine `json:"lines"`
+
+	// Subtotal Sum of line totals, raw int VND. No shipping/tax (added at order creation, Phase 2).
+	Subtotal int64 `json:"subtotal"`
+}
+
+// PriceQuoteInput One or more selections to price. Reuses OrderItemInput (which has NO unitPrice — the server re-derives every price from the catalog). Returns line/subtotal only; carries no address/shipping. Capped at 50 items: this is a public, unauthenticated read (no rate limit until the edge WAF), and each line costs a catalog round-trip, so the cap bounds the per-request work.
+type PriceQuoteInput struct {
+	Items []OrderItemInput `json:"items"`
+}
+
+// PriceQuoteLine One priced line, positionally aligned with the request item at the same index. Carries the server-derived unit price, its quantity, and the line total — no product ref (map back by index).
+type PriceQuoteLine struct {
+	// LineTotal unitPrice × quantity, overflow-checked server-side.
+	LineTotal int64 `json:"lineTotal"`
+	Quantity  int   `json:"quantity"`
+
+	// UnitPrice Server-derived int VND (base + color delta + Σ option deltas). Never accepted from the client.
+	UnitPrice int64 `json:"unitPrice"`
+}
+
 // Product Storefront product detail (spec §02). Money fields (basePrice, colors[].priceDelta, options[].priceDelta) are raw int-VND — the client formats via @lumin/core (always-must #2). images[0] is the card cover (sprite-first, ADR-007). No productType in Phase 1 (D-P1-1).
 type Product struct {
 	// BasePrice Starting price in int-VND (>= 0); options may add to it.
@@ -432,6 +455,9 @@ type CreateOrderJSONRequestBody = CreateOrderInput
 // TransitionOrderJSONRequestBody defines body for TransitionOrder for application/json ContentType.
 type TransitionOrderJSONRequestBody = TransitionRequest
 
+// QuotePriceJSONRequestBody defines body for QuotePrice for application/json ContentType.
+type QuotePriceJSONRequestBody = PriceQuoteInput
+
 // AsCreateWebOrderInput returns the union data inside the CreateOrderInput as a CreateWebOrderInput
 func (t CreateOrderInput) AsCreateWebOrderInput() (CreateWebOrderInput, error) {
 	var body CreateWebOrderInput
@@ -547,6 +573,9 @@ type ServerInterface interface {
 	// Advance an order's status (RBAC-gated; reconcile→PAID and →REFUNDED are owner-only).
 	// (POST /orders/{id}/transitions)
 	TransitionOrder(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Server-authoritative line/subtotal quote for a selection (no shipping/address).
+	// (POST /price/quote)
+	QuotePrice(w http.ResponseWriter, r *http.Request)
 	// Public storefront product detail (active-only) — product + colors + options.
 	// (GET /products/{slug})
 	GetProductBySlug(w http.ResponseWriter, r *http.Request, slug string)
@@ -601,6 +630,12 @@ func (_ Unimplemented) CreateOrder(w http.ResponseWriter, r *http.Request) {
 // Advance an order's status (RBAC-gated; reconcile→PAID and →REFUNDED are owner-only).
 // (POST /orders/{id}/transitions)
 func (_ Unimplemented) TransitionOrder(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Server-authoritative line/subtotal quote for a selection (no shipping/address).
+// (POST /price/quote)
+func (_ Unimplemented) QuotePrice(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -784,6 +819,20 @@ func (siw *ServerInterfaceWrapper) TransitionOrder(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// QuotePrice operation middleware
+func (siw *ServerInterfaceWrapper) QuotePrice(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.QuotePrice(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetProductBySlug operation middleware
 func (siw *ServerInterfaceWrapper) GetProductBySlug(w http.ResponseWriter, r *http.Request) {
 
@@ -945,6 +994,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/orders/{id}/transitions", wrapper.TransitionOrder)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/price/quote", wrapper.QuotePrice)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/products/{slug}", wrapper.GetProductBySlug)
@@ -1273,6 +1325,41 @@ func (response TransitionOrder422JSONResponse) VisitTransitionOrderResponse(w ht
 	return json.NewEncoder(w).Encode(response)
 }
 
+type QuotePriceRequestObject struct {
+	Body *QuotePriceJSONRequestBody
+}
+
+type QuotePriceResponseObject interface {
+	VisitQuotePriceResponse(w http.ResponseWriter) error
+}
+
+type QuotePrice200JSONResponse PriceQuote
+
+func (response QuotePrice200JSONResponse) VisitQuotePriceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type QuotePrice400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response QuotePrice400JSONResponse) VisitQuotePriceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type QuotePrice422JSONResponse struct{ UnprocessableJSONResponse }
+
+func (response QuotePrice422JSONResponse) VisitQuotePriceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetProductBySlugRequestObject struct {
 	Slug string `json:"slug"`
 }
@@ -1325,6 +1412,9 @@ type StrictServerInterface interface {
 	// Advance an order's status (RBAC-gated; reconcile→PAID and →REFUNDED are owner-only).
 	// (POST /orders/{id}/transitions)
 	TransitionOrder(ctx context.Context, request TransitionOrderRequestObject) (TransitionOrderResponseObject, error)
+	// Server-authoritative line/subtotal quote for a selection (no shipping/address).
+	// (POST /price/quote)
+	QuotePrice(ctx context.Context, request QuotePriceRequestObject) (QuotePriceResponseObject, error)
 	// Public storefront product detail (active-only) — product + colors + options.
 	// (GET /products/{slug})
 	GetProductBySlug(ctx context.Context, request GetProductBySlugRequestObject) (GetProductBySlugResponseObject, error)
@@ -1574,6 +1664,37 @@ func (sh *strictHandler) TransitionOrder(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(TransitionOrderResponseObject); ok {
 		if err := validResponse.VisitTransitionOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// QuotePrice operation middleware
+func (sh *strictHandler) QuotePrice(w http.ResponseWriter, r *http.Request) {
+	var request QuotePriceRequestObject
+
+	var body QuotePriceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.QuotePrice(ctx, request.(QuotePriceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "QuotePrice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(QuotePriceResponseObject); ok {
+		if err := validResponse.VisitQuotePriceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
