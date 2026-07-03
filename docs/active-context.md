@@ -382,9 +382,14 @@ session) — used as-is, left running.
 > `TestQuotePriceEndToEnd` + 6 rejection subtests, KHÔNG skip) · `pnpm verify` + api-client typecheck · **guard 155 /
 > osm 22** (last-green 2026-07-03). **QTE-01 acceptance Cụm 14 `[ ]` (Go-gated).**
 >
-> **🔨 PR-P1-c (`GET /products` · public catalog LIST) — BUILT · ALL GATES GREEN · adversarial review (wf_4c60df42) +
-> spec-guardian IN-FLIGHT · branch `feat/phase-1-storefront-p1c` off `main` `b616b1c` · UNCOMMITTED · chờ review-fold →
-> owner commit+merge.** User (2026-07-03) chọn **P1-c làm bước kế** (critical path — mở khoá cả FE track P1-f→g→h) +
+> **🔨 PR-P1-c (`GET /products` · public catalog LIST) — BUILT · ALL GATES GREEN · review DONE + folded · committed
+> `1490108` · pushed → PR #35 OPEN · chờ user merge-gate.** (branch `feat/phase-1-storefront-p1c` off `main` `b616b1c`.)
+> **spec-guardian PASS (0 BLOCKER/0 WARN/1 NOTE** — clamp `maxCatalogOffset` cố ý). **Adversarial 17-agent review
+> wf_4c60df42 (5 lens × per-finding refute + completeness critic): 1 raw → 0 confirmed / 1 refuted; critic 4 gap ĐÃ FOLD**
+> — (IMPORTANT) `?category=` rỗng im lặng trả trang rỗng (footgun FE "All") → `normalizeFilter` coi ''→bỏ lọc = tất cả;
+> (NOTE) `?sort=` rỗng → newest (đối xứng, hết bất-nhất vs category); (NOTE) test `q` reserved 200+ignored; (NOTE) test
+> 304 Cache-Control + doc ETag "tiết-kiệm-bandwidth-không-phải-origin-compute" (edge cache = P1-f). User (2026-07-03)
+> chọn **P1-c làm bước kế** (critical path — mở khoá cả FE track P1-f→g→h) +
 > caching **"Decide during P1-c"**: ship ETag + `Cache-Control` provisional **package const**, hoãn chiến lược ISR/purge
 > sang **P1-f** (nơi caching thực sự sống). OpenAPI `GET /products` (v0.5.0): `ProductCard`/`ProductList` (card projection
 > — KHÔNG colors/options/description → **no N+1**) + param `category`(slug) / `sort`(WHITELIST newest|price_asc|price_desc|
