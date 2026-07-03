@@ -708,6 +708,29 @@ if [ -f "$CATEGORIES" ]; then
     bad "ARM: GetCategories LAND nhưng thiếu 1 trong {classify authPublic, ListCategories EXISTS active-product scope} -> chip duyệt kẹt sau auth / category unreleased rò ra public — CAT-03!"
   fi
 else ok "ARM: chưa có GetCategories list handler (category list public + non-leak arm khi land — PR-P1-d)"; fi
+# ARM PR-P1-n (public guest order lookup GET /orders/lookup): khoá 3 bất biến bảo mật tra-cứu khách —
+#  (a) CONSTANT-TIME + UNIFORM 404: so sánh SĐT bằng subtle.ConstantTimeCompare VÀ trả db.ErrNotFound (404)
+#      Y HỆT cho code lạ LẪN SĐT sai — public surface KHÔNG phân biệt đơn tồn-tại với đơn không (chống
+#      enumerate mã đơn); bỏ constant-time, hoặc tách nhánh phone-mismatch sang lỗi/status khác → timing rò
+#      hoặc envelope khác → RED;
+#  (b) RATE-LIMIT per-code: handler gọi s.lookup.allow(code) TRƯỚC khi đọc DB (token-bucket per-code chống
+#      brute-force SĐT của một mã đã biết — conventions §Bảo mật, lớp thứ 2 sau WAF; KHÔNG failure-lockout —
+#      mã tuần-tự nên lockout-theo-mã là DoS chủ đơn, review wf_4ef2b511); bỏ gate → dò SĐT → RED;
+#  (c) classify() gán LookupOrder = authPublic (khách KHÔNG có session; regress về fail-closed default → 401 khách).
+# Bỏ comment ('//') trước khi soi để một token bị COMMENT-OUT không false-PASS (class lỗ '//' 3b).
+LOOKUP="$ROOT/services/core-api/internal/httpapi/lookup.go"
+if [ -f "$LOOKUP" ]; then
+  LOOKUPBODY="$(grep -vE '^[[:space:]]*//' "$LOOKUP" 2>/dev/null)"
+  LKMW="$(grep -vE '^[[:space:]]*//' "$ROOT/services/core-api/internal/httpapi/middleware_auth.go" 2>/dev/null)"
+  if printf '%s' "$LOOKUPBODY" | grep -q 'subtle\.ConstantTimeCompare' \
+     && printf '%s' "$LOOKUPBODY" | grep -qE 'return nil, db\.ErrNotFound' \
+     && printf '%s' "$LOOKUPBODY" | grep -qE 's\.lookup\.allow\(' \
+     && printf '%s' "$LKMW" | grep -A2 '"LookupOrder"' | grep -q 'authPublic'; then
+    ok "ARM: có httpapi/lookup.go -> constant-time SĐT (subtle.ConstantTimeCompare) + uniform 404 (db.ErrNotFound cho code-lạ==SĐT-sai, không enumerate) + per-code token-bucket throttle (s.lookup.allow) + classify LookupOrder=authPublic (LKP-01)"
+  else
+    bad "ARM: httpapi/lookup.go LAND nhưng thiếu 1 trong {subtle.ConstantTimeCompare, uniform 'return nil, db.ErrNotFound', s.lookup.allow rate-limit gate, classify LookupOrder authPublic} -> enumerate mã đơn / brute-force SĐT / lookup kẹt sau auth (LKP-01!)"
+  fi
+else ok "ARM: chưa có httpapi/lookup.go (guest lookup constant-time/rate-limit/public arm khi land — PR-P1-n)"; fi
 if find "$ROOT/services" -name '*.rs' 2>/dev/null | grep -q .; then
   { [ -f "$ROOT/Makefile" ] && grep -Eq '^verify-rs:' "$ROOT/Makefile"; } \
     && ok "ARM: có .rs -> Makefile verify-rs" || bad "ARM: .rs LAND nhưng thiếu Makefile verify-rs"

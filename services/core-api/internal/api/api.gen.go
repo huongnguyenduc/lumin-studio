@@ -304,6 +304,14 @@ type OrderItemInput struct {
 	Quantity        int                `json:"quantity"`
 }
 
+// OrderMilestone One reached order status with the instant it was entered — a whitelist projection of a statusHistory event that drops the actor (byUser), reason, and proof fields (ADR-032 non-leak).
+type OrderMilestone struct {
+	At time.Time `json:"at"`
+
+	// Status Order lifecycle status (spec §04). 5 progress milestones + 2 close states.
+	Status OrderStatus `json:"status"`
+}
+
 // OrderStatus Order lifecycle status (spec §04). 5 progress milestones + 2 close states.
 type OrderStatus string
 
@@ -413,6 +421,22 @@ type ProductList struct {
 // ProductStatus Product lifecycle (spec §02, Postgres `product_status`). The detail read returns `active` only.
 type ProductStatus string
 
+// PublicOrderTimeline The guest-facing order timeline returned by GET /orders/lookup. It is a SEPARATE schema from Order (never a $ref) and exposes ONLY what a customer who already knows their code + phone may see: the code they typed, the current status, a status→time milestone list, an optional carrier tracking code, and the creation instant. It deliberately OMITS every internal field — customer PII, shipping address, line items, money (subtotal/shippingFee/total/unitPrice), payment/refund proof URLs, the internal note, the order uuid, the channel, and the statusHistory actor (byUser) + reason (ADR-032 non-leak).
+type PublicOrderTimeline struct {
+	// Code The human order code the guest supplied (e.g. "#LMN-1000").
+	Code      string    `json:"code"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Milestones Reached statuses with the instant each was entered, oldest-first — the progress milestones plus any CANCELLED/REFUNDED close state. The frontend (P1-o) renders labels and shows the close states apart from the 5-step progress track (spec §04).
+	Milestones []OrderMilestone `json:"milestones"`
+
+	// Status Order lifecycle status (spec §04). 5 progress milestones + 2 close states.
+	Status OrderStatus `json:"status"`
+
+	// TrackingCode Carrier waybill, present only from SHIPPING onward (spec §04). Omitted before then.
+	TrackingCode *string `json:"trackingCode,omitempty"`
+}
+
 // RecentOrder defines model for RecentOrder.
 type RecentOrder struct {
 	Code         string             `json:"code"`
@@ -491,6 +515,9 @@ type Forbidden = ErrorEnvelope
 // NotFound The one error shape every endpoint returns (ADR-032). `code` is a stable machine code (e.g. NOT_FOUND, INVALID_EDGE, RBAC, REASON_REQUIRED, VALIDATION); `messageKey` is a next-intl key (the domain's Vietnamese prose is NEVER forwarded). `fields` maps a field path → messageKey for per-field validation errors.
 type NotFound = ErrorEnvelope
 
+// TooManyRequests The one error shape every endpoint returns (ADR-032). `code` is a stable machine code (e.g. NOT_FOUND, INVALID_EDGE, RBAC, REASON_REQUIRED, VALIDATION); `messageKey` is a next-intl key (the domain's Vietnamese prose is NEVER forwarded). `fields` maps a field path → messageKey for per-field validation errors.
+type TooManyRequests = ErrorEnvelope
+
 // Unauthorized The one error shape every endpoint returns (ADR-032). `code` is a stable machine code (e.g. NOT_FOUND, INVALID_EDGE, RBAC, REASON_REQUIRED, VALIDATION); `messageKey` is a next-intl key (the domain's Vietnamese prose is NEVER forwarded). `fields` maps a field path → messageKey for per-field validation errors.
 type Unauthorized = ErrorEnvelope
 
@@ -501,6 +528,15 @@ type Unprocessable = ErrorEnvelope
 type GetCategoriesParams struct {
 	// IfNoneMatch Conditional GET — when it matches the current ETag the server returns 304 with no body.
 	IfNoneMatch *string `json:"If-None-Match,omitempty"`
+}
+
+// LookupOrderParams defines parameters for LookupOrder.
+type LookupOrderParams struct {
+	// Code The order code shown at checkout (e.g. "#LMN-1000").
+	Code string `form:"code" json:"code"`
+
+	// Phone The phone number used on the order. No format constraint — a mismatch (or malformed value) returns the uniform 404, never a 400.
+	Phone string `form:"phone" json:"phone"`
 }
 
 // GetProductsParams defines parameters for GetProducts.
@@ -657,6 +693,9 @@ type ServerInterface interface {
 	// Create an order (web → PENDING_CONFIRM, public; inbox → PAID, staff/owner only).
 	// (POST /orders)
 	CreateOrder(w http.ResponseWriter, r *http.Request)
+	// Public guest order lookup by code + phone — a minimal, non-leaking timeline.
+	// (GET /orders/lookup)
+	LookupOrder(w http.ResponseWriter, r *http.Request, params LookupOrderParams)
 	// Advance an order's status (RBAC-gated; reconcile→PAID and →REFUNDED are owner-only).
 	// (POST /orders/{id}/transitions)
 	TransitionOrder(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -720,6 +759,12 @@ func (_ Unimplemented) GetCategories(w http.ResponseWriter, r *http.Request, par
 // Create an order (web → PENDING_CONFIRM, public; inbox → PAID, staff/owner only).
 // (POST /orders)
 func (_ Unimplemented) CreateOrder(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Public guest order lookup by code + phone — a minimal, non-leaking timeline.
+// (GET /orders/lookup)
+func (_ Unimplemented) LookupOrder(w http.ResponseWriter, r *http.Request, params LookupOrderParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -921,6 +966,55 @@ func (siw *ServerInterfaceWrapper) CreateOrder(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateOrder(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LookupOrder operation middleware
+func (siw *ServerInterfaceWrapper) LookupOrder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params LookupOrderParams
+
+	// ------------- Required query parameter "code" -------------
+
+	if paramValue := r.URL.Query().Get("code"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "code"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "code", r.URL.Query(), &params.Code)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	// ------------- Required query parameter "phone" -------------
+
+	if paramValue := r.URL.Query().Get("phone"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "phone"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "phone", r.URL.Query(), &params.Phone)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "phone", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LookupOrder(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1218,6 +1312,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/orders", wrapper.CreateOrder)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/orders/lookup", wrapper.LookupOrder)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/orders/{id}/transitions", wrapper.TransitionOrder)
 	})
 	r.Group(func(r chi.Router) {
@@ -1240,6 +1337,8 @@ type ConflictJSONResponse ErrorEnvelope
 type ForbiddenJSONResponse ErrorEnvelope
 
 type NotFoundJSONResponse ErrorEnvelope
+
+type TooManyRequestsJSONResponse ErrorEnvelope
 
 type UnauthorizedJSONResponse ErrorEnvelope
 
@@ -1524,6 +1623,50 @@ func (response CreateOrder422JSONResponse) VisitCreateOrderResponse(w http.Respo
 	return json.NewEncoder(w).Encode(response)
 }
 
+type LookupOrderRequestObject struct {
+	Params LookupOrderParams
+}
+
+type LookupOrderResponseObject interface {
+	VisitLookupOrderResponse(w http.ResponseWriter) error
+}
+
+type LookupOrder200JSONResponse PublicOrderTimeline
+
+func (response LookupOrder200JSONResponse) VisitLookupOrderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type LookupOrder400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response LookupOrder400JSONResponse) VisitLookupOrderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type LookupOrder404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response LookupOrder404JSONResponse) VisitLookupOrderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type LookupOrder429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response LookupOrder429JSONResponse) VisitLookupOrderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(429)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type TransitionOrderRequestObject struct {
 	Id   openapi_types.UUID `json:"id"`
 	Body *TransitionOrderJSONRequestBody
@@ -1735,6 +1878,9 @@ type StrictServerInterface interface {
 	// Create an order (web → PENDING_CONFIRM, public; inbox → PAID, staff/owner only).
 	// (POST /orders)
 	CreateOrder(ctx context.Context, request CreateOrderRequestObject) (CreateOrderResponseObject, error)
+	// Public guest order lookup by code + phone — a minimal, non-leaking timeline.
+	// (GET /orders/lookup)
+	LookupOrder(ctx context.Context, request LookupOrderRequestObject) (LookupOrderResponseObject, error)
 	// Advance an order's status (RBAC-gated; reconcile→PAID and →REFUNDED are owner-only).
 	// (POST /orders/{id}/transitions)
 	TransitionOrder(ctx context.Context, request TransitionOrderRequestObject) (TransitionOrderResponseObject, error)
@@ -1986,6 +2132,32 @@ func (sh *strictHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateOrderResponseObject); ok {
 		if err := validResponse.VisitCreateOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LookupOrder operation middleware
+func (sh *strictHandler) LookupOrder(w http.ResponseWriter, r *http.Request, params LookupOrderParams) {
+	var request LookupOrderRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LookupOrder(ctx, request.(LookupOrderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LookupOrder")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LookupOrderResponseObject); ok {
+		if err := validResponse.VisitLookupOrderResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -33,6 +33,7 @@ const (
 	codeInternal        = "INTERNAL"
 	codeNotImplemented  = "NOT_IMPLEMENTED"
 	codeTrackingReqd    = "TRACKING_CODE_REQUIRED"
+	codeRateLimited     = "RATE_LIMITED"
 
 	// Checkout (PR-3g) selection/intake codes. Granular where the storefront needs a distinct
 	// user-facing message (hết hàng vs quá dài vs chưa hỗ trợ tỉnh); one INVALID_SELECTION for
@@ -116,6 +117,10 @@ func mapError(err error) (int, api.ErrorEnvelope) {
 		return http.StatusForbidden, envelope(codeForbidden)
 	case errors.Is(err, errNotImplemented):
 		return http.StatusNotImplemented, envelope(codeNotImplemented)
+	case errors.Is(err, errRateLimited):
+		// Guest order-lookup rate-limit / lockout tripped (PR-P1-n). 429 with no Retry-After so the
+		// exact lockout window is not leaked; the client backs off (P1-o auto-poll respects this).
+		return http.StatusTooManyRequests, envelope(codeRateLimited)
 	case errors.Is(err, errTrackingCodeRequired):
 		// SHIPPING with no tracking code — well-formed request, unprocessable per spec §04.
 		return http.StatusUnprocessableEntity, envelope(codeTrackingReqd)
