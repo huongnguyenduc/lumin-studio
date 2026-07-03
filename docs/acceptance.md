@@ -151,3 +151,13 @@
 > `TestProductStatusParity`/`TestOptionTypeParity` (OpenAPI↔Postgres) **+** chính các test Go đó (unit Docker-free + integration vs PG thật). `[ ]` = "không do parser-TS gác".
 
 - [ ] `CAT-01` — WHEN một client GET `/products/{slug}` công khai (không cần session), the system shall trả sản phẩm **active** kèm `colors[]` + `options[]` (giá int-VND thô `basePrice`/`priceDelta` — **KHÔNG** format phía server, always-must #2), và trả **404 `NOT_FOUND` đồng nhất** khi slug không tồn tại **hoặc** sản phẩm `draft`/`archived` (không phân biệt hàng ẩn với hàng không tồn tại — chống probe tồn-tại catalog), **KHÔNG** kèm `productType` (D-P1-1). *(test: `httpapi.TestGetProductBySlugEndToEnd` + `httpapi.TestProductDTO` + `httpapi.TestAuthMiddlewarePublicCatalogRunsWithoutCookie` + `contract.TestProductStatusParity`)*
+
+## Cụm 14 — Storefront price quote (`docs/plans/phase-1-storefront.md` §2 · P1-b)
+
+> **Go-gated — CỐ Ý để `[ ]`** (cùng lý do Cụm 13): test của `QTE-*` là **Go**
+> (`services/core-api/internal/httpapi`), parser TS không resolve được → tick `[x]` sẽ làm parser ĐỎ.
+> **Gate thật** = `guard.test.sh §ARM` (oapi stale-check + parity + testcontainers-boot, generic) **+**
+> chính các test Go (unit Docker-free `priceQuoteLine`/`quoteSubtotal`/pre-DB + integration vs PG thật,
+> chứng minh `authPublic` không cookie + `PRODUCT_UNAVAILABLE` non-leak + `messageKey` đúng).
+
+- [ ] `QTE-01` — WHEN một client POST `/price/quote` công khai (không cần session) với một hoặc nhiều `items` (mỗi item = `OrderItemInput`, **KHÔNG** mang giá), the system shall **tính `unitPrice`/`lineTotal` mỗi dòng + `subtotal` phía server** từ catalog qua `pricing.PriceItem` (int-VND thô, **KHÔNG** shipping/address/tax, **KHÔNG** format phía server, always-must #2), từ chối lựa chọn không hợp lệ (màu/option lạ, `available:false`, trùng, khắc vượt `maxChars` đếm theo rune) → **422** kèm `messageKey` (KHÔNG lộ prose miền, ADR-032), coi sản phẩm không tồn tại/không `active` là **422 `PRODUCT_UNAVAILABLE`** đồng nhất (chống probe catalog), và giới hạn `items` ≤ 50 (chống khuếch-đại DoS trên endpoint public không rate-limit) → over-cap/empty/nil-body là lỗi shape (**400 `VALIDATION`** / **422 `NO_ITEMS`**). *(test: `httpapi.TestQuotePriceEndToEnd` + `httpapi.TestQuotePriceRejectionsEndToEnd` + `httpapi.TestPriceQuoteLineRejectsInvalidSelection` + `httpapi.TestQuoteSubtotalCrossLineOverflow` + `httpapi.TestQuotePricePreDBRejections`)*

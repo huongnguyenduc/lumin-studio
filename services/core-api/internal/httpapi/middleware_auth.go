@@ -57,6 +57,10 @@ func classify(operationID string) authClass {
 		// Public storefront catalog read (PR-P1-a) — no session; active-only detail. Any actor
 		// resolution would be dead weight (a dashboard read needs a user; a catalog read never does).
 		return authPublic
+	case "QuotePrice":
+		// Public storefront pricing preview (PR-P1-b) — no session; server-authoritative line/subtotal.
+		// Persists nothing; the response IS the authoritative price, so no actor is ever needed.
+		return authPublic
 	case "CreateOrder":
 		return authOptional
 	case "UpdateBankAccount":
