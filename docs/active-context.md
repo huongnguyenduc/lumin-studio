@@ -338,21 +338,30 @@ session) — used as-is, left running.
 
 ## Next steps (1–3)
 
-> **✅ 2026-07-03 — CORE BACKBONE COMPLETE (supersedes the 1–3 below).** PR-3j MERGED (PR #31 → `origin/main`
-> `8377926`, squash) = the LAST slice-3 sub-PR → the **entire "Core · Data model + OrderStatus" phase is on `main`**
-> (Slice 1 domain spine · Slice 2 data layer · Slice 3 HTTP/relay). Local `main` ff'd to `8377926`; plan's Core "Done"
-> bar met (create/transition orders via API w/ statusHistory + RBAC gates settings/STK). No open PRs.
+> **✅ 2026-07-03 — CORE BACKBONE COMPLETE + PHASE 1 STARTED (supersedes the 1–3 below).** The entire "Core · Data
+> model + OrderStatus" phase is on `main` (Slice 1 spine · Slice 2 data · Slice 3 HTTP/relay; PR-3j = last, #31).
+> **Housekeeping closed → PR #32 MERGED (`origin/main` `67a3b3d`):** testcontainers ARM `//`-hole hardened + ADR-033
+> "000008"→"000010" fixed via the contract-edit valve. Local `main` ff'd to `67a3b3d`.
+> ⏳ **Branch prune still OWNER-ONLY** (guard-bash + auto-classifier block destructive git — squash-merges aren't
+> ancestors so `-d` refuses and `-D` is blocked): owner runs `git branch -D` (23 local) + `git push origin --delete`
+> (16 remote); all map to MERGED PRs #1–#32 (verified by PR#, commands handed off in chat).
 >
-> **NEXT = Phase 1 · Storefront** (plan.md §Phase 1): catalog SSG/ISR → product detail → personalization/engrave
-> (maxChars) → cart (server-priced) → guest order-lookup, sprite-first 360. Storefront is still the Phase-0 shell
-> (`apps/storefront` renders `lib/demo-products.ts` — demo→real swap like 3j). **Backend gap: catalog READ endpoints
-> don't exist** (slice-3 cut catalog read DTOs) → build them in core-api first (tables/sqlc exist PR-2c/2d).
-> **Planning workflow `wf_d4c5772c-9b4` in flight** (readers → 3 slicings → 3-lens judge → synthesis + completeness critic).
+> **NEXT = Phase 1 · Storefront.** Plan PERSISTED → `docs/plans/phase-1-storefront.md` (wf_d4c5772c-9b4; 19 sub-PRs
+> P1-a..s, risk-first spine). Locked decisions (user 2026-07-03): **D-P1-1** drop `productType` · **D-P1-2**
+> `POST /price/quote` server-authoritative · **D-P1-3** full scope (reviews + FTS no-dấu + customer accounts).
+> Storefront still Phase-0 shell (`apps/storefront` renders `lib/demo-products.ts`); backend catalog READ endpoints
+> didn't exist (slice-3 cut them) → building in core-api first (tables/sqlc exist PR-2c/2d).
 >
-> **Housekeeping (Core close-out):** ✅ testcontainers ARM `//`-comment hole hardened + PROVEN binding (guard **154**).
-> ⏳ Branch prune BLOCKED by guard+classifier (destructive git needs a human) → owner runs `git branch -D` (22 local) +
-> `git push origin --delete` (15 remote); all map to MERGED PRs #1–#31 (verified by PR#). ⏳ decisions.md ADR-033
-> "migration 000008" aside stale (should be 000010) → contract-edit valve pending owner opt-in.
+> **✅ PR-P1-a (contract anchor · `GET /products/{slug}`) — BUILT · ALL GATES GREEN · spec-guardian PASS (0 BLOCKER/0 WARN/1 NOTE) · committed `322759f` → PR #33 OPEN · await user merge-gate.**
+> Branch `feat/phase-1-storefront-p1a` off `main` `67a3b3d` (commit 1 = plan doc `49dafda`, commit 2 = impl `322759f`). Adds the public
+> storefront catalog read: OpenAPI Product/Color/Option/Dimensions/ProductStatus/OptionType (**no productType**, v0.4.0)
+> → regen Go+TS · `internal/httpapi/products.go` handler (active-only, **uniform 404 non-leak** for unknown/draft/archived,
+> raw int-VND, classify `authPublic`) reusing `GetProductBySlug`/`ListColorsByProduct`/`ListOptionsByProduct` (no new sqlc
+> query) · unit(DTO)+integration(real-PG full public-router)+public-classify+parity(OpenAPI↔Postgres) tests · **CAT-01 ARM**
+> + Cụm-13 EARS row (Go-gated `[ ]`). `make verify-go` GREEN (race + integration vs colima PG) · api-client typecheck+schema-stale ·
+> **guard 155 / osm 22** (last-green 2026-07-03, race+integration vs colima PG). **Committed `322759f` · pushed · PR #33 OPEN · CI running · chờ user merge-gate.** Open Q's deferred to their PRs
+> (plan §6): caching (P1-c/h) · customer-auth mechanism + BLOCKER-2 credentials migration >000011 (P1-r) · sprite source
+> (P1-i) · re-read `designs/Lumin Storefront - Hi-fi.dc.html` before FE PRs (P1-f+, plan §7 debt).
 
 1. **Slice 3 · PR-3k — ✅ MERGED (PR #30) → `origin/main` `cf4c2a8` (2026-07-02, squash; CI green app-gates/selftest/services-gates).**
    Local `main` ff'd to `cf4c2a8`; the merged `feat/core-http-relay-3k` branch + ~19 older squash-merged branches remain

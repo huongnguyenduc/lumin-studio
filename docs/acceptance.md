@@ -142,3 +142,12 @@
 > `changed_by` từ `actorFrom(ctx)` không body) **+** chính các test Go đó (unit Docker-free + integration vs PG thật). `[ ]` = "không do parser-TS gác".
 
 - [ ] `STK-01` — WHEN owner đổi STK qua `PATCH /admin/settings/bank-account`, the system shall (a) chỉ cho **owner** ghi — staff bị chặn **403** ở biên `authOwnerOnly` **và** handler tự re-assert `order.RoleOwner` (defense-in-depth vì STK là money-out cao-giá-nhất — bad STK reroute mọi tiền khách), (b) validate VietQR field shape ngay tại HTTP boundary trước cả body-processing (`bin` **đúng 6 chữ số** napas, `accountNumber` toàn chữ số ≤19, `accountName` non-empty sau trim → **400 per-field loud-reject** — money-out field server render QR tĩnh, STK rác phải bị chặn), (c) ghi qua **`UpdateBankAccountTx`**: cột `settings.bank_account` **+** một row `setting_bank_audit` append-only trong **CÙNG một tx** (đổi STK không bao giờ land mà thiếu audit trail — conventions §57), và (d) `changed_by` lấy từ **actor context** (users.id) **KHÔNG** từ body. *(test: `httpapi.TestUpdateBankAccountEndToEnd` + `httpapi.TestUpdateBankAccountRejectsNonOwner` + `httpapi.TestCleanBankUpdate`)*
+
+## Cụm 13 — Storefront catalog read (`docs/plans/phase-1-storefront.md` §2 · P1-a)
+
+> **Go-gated — CỐ Ý để `[ ]`** (cùng lý do Cụm 4..12): test của `CAT-*` là **Go**
+> (`services/core-api/internal/httpapi` + `internal/contract`), parser TS không resolve được → tick `[x]` sẽ làm parser ĐỎ.
+> **Gate thật** = `guard.test.sh §ARM` (CAT-01: active-only `db.ErrNotFound` non-leak + classify `authPublic`) **+**
+> `TestProductStatusParity`/`TestOptionTypeParity` (OpenAPI↔Postgres) **+** chính các test Go đó (unit Docker-free + integration vs PG thật). `[ ]` = "không do parser-TS gác".
+
+- [ ] `CAT-01` — WHEN một client GET `/products/{slug}` công khai (không cần session), the system shall trả sản phẩm **active** kèm `colors[]` + `options[]` (giá int-VND thô `basePrice`/`priceDelta` — **KHÔNG** format phía server, always-must #2), và trả **404 `NOT_FOUND` đồng nhất** khi slug không tồn tại **hoặc** sản phẩm `draft`/`archived` (không phân biệt hàng ẩn với hàng không tồn tại — chống probe tồn-tại catalog), **KHÔNG** kèm `productType` (D-P1-1). *(test: `httpapi.TestGetProductBySlugEndToEnd` + `httpapi.TestProductDTO` + `httpapi.TestAuthMiddlewarePublicCatalogRunsWithoutCookie` + `contract.TestProductStatusParity`)*

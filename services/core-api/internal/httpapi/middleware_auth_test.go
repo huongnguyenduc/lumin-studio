@@ -260,6 +260,7 @@ func TestClassifyFailsClosed(t *testing.T) {
 	cases := map[string]authClass{
 		"LoginUser":          authPublic,
 		"LogoutUser":         authPublic,
+		"GetProductBySlug":   authPublic,
 		"CreateOrder":        authOptional,
 		"UpdateBankAccount":  authOwnerOnly,
 		"GetDashboard":       authRequired,
@@ -271,6 +272,19 @@ func TestClassifyFailsClosed(t *testing.T) {
 		if got := classify(op); got != want {
 			t.Errorf("classify(%q) = %d, want %d", op, got, want)
 		}
+	}
+}
+
+// A public catalog read (GET /products/{slug}) runs the handler with NO cookie — classify marks it
+// authPublic, so the auth boundary must neither resolve an actor nor reject. Docker-free: proves the
+// public gate without a DB (the handler's own reads are covered by the integration test).
+func TestAuthMiddlewarePublicCatalogRunsWithoutCookie(t *testing.T) {
+	next, _, err := callAuthMW(serverWithUsers(fakeUsers{}), "GetProductBySlug", nil)
+	if err != nil {
+		t.Fatalf("public catalog op errored at the auth boundary: %v", err)
+	}
+	if !next.called {
+		t.Fatal("public catalog op must run the handler with no cookie (authPublic)")
 	}
 }
 

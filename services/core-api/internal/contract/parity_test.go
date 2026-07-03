@@ -215,3 +215,22 @@ func TestUserRoleParity(t *testing.T) {
 		t.Fatalf("Role must still contain `system` (the runtime delivery-complete actor)")
 	}
 }
+
+// TestProductStatusParity + TestOptionTypeParity pin the catalog enums the storefront contract adds in
+// Phase-1 (P1-a) to the Postgres native enums (product_status / option_type, migration 000001). These
+// are the two HAND-authored copies that can silently drift; sqlc's Go consts derive from Postgres and
+// the generated TS derives from OpenAPI, so the OpenAPI↔Postgres check is the meaningful guard here
+// (`material` is deliberately NOT an enum — open-ended TEXT+CHECK, ADR-028 — so it is not parity-tracked).
+func TestProductStatusParity(t *testing.T) {
+	doc := loadOpenAPI(t)
+	api := openapiEnum(t, doc, "ProductStatus")
+	pg := listAfter(t, mustRead(t, enumsSQLPath), `CREATE TYPE product_status AS ENUM`, "(", ")")
+	assertSame(t, "ProductStatus OpenAPI vs Postgres", pg, api)
+}
+
+func TestOptionTypeParity(t *testing.T) {
+	doc := loadOpenAPI(t)
+	api := openapiEnum(t, doc, "OptionType")
+	pg := listAfter(t, mustRead(t, enumsSQLPath), `CREATE TYPE option_type AS ENUM`, "(", ")")
+	assertSame(t, "OptionType OpenAPI vs Postgres", pg, api)
+}
