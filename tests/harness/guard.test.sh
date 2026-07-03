@@ -395,7 +395,10 @@ else ok "ARM: chưa có openapi.yaml+api/*.gen.go (oapi stale-check arm khi code
 # không phải skip-always stub. Pre-PR-2b: chưa có test nào -> ok "arm khi land".
 TCFILES="$(grep -rl 'testcontainers' "$ROOT/services" --include='*_test.go' 2>/dev/null || true)"
 if [ -n "$TCFILES" ]; then
-  if grep -lq -E 'postgres\.Run|GenericContainer|ContainerRequest|RunContainer' $TCFILES 2>/dev/null; then
+  # Bỏ dòng comment Go ('// ...') trước khi soi — một postgres.Run(...) bị COMMENT-OUT không được
+  # false-PASS như boot thật (cùng class lỗ '//' đã vá cho recipe/relay/parity ARM).
+  TCBODY="$(grep -vE '^[[:space:]]*//' $TCFILES 2>/dev/null)"
+  if printf '%s' "$TCBODY" | grep -q -E 'postgres\.Run|GenericContainer|ContainerRequest|RunContainer'; then
     ok "ARM: testcontainers test boot container thật (không skip-always)"
   else
     bad "ARM: testcontainers test KHÔNG boot container (skip-always stub — data gate no-op!)"
