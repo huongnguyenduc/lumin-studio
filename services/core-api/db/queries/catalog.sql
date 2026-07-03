@@ -6,6 +6,22 @@ INSERT INTO categories (id, slug, name)
 VALUES ($1, $2, $3)
 RETURNING *;
 
+-- ListCategories is the storefront category list (PR-P1-d): the BROWSABLE taxonomy the catalog-browse chips
+-- render (spec §02). It returns only categories that contain at least one ACTIVE product — the EXISTS
+-- subquery applies the SAME non-leak-at-the-SQL-source discipline as ListActiveProducts (CAT-02). A category
+-- whose only products are draft/archived (products default to status='draft', and category_id is NOT NULL),
+-- or which is empty, is a hidden grouping: surfacing it would both dead-end the chip (→ an empty
+-- /products?category= page) AND leak an unreleased category name — the exact catalog-existence info the
+-- product reads deliberately withhold. Categories are a small, admin-curated, near-static set (created only
+-- via admin CreateCategory — no user-generated path), so there is no filter/pagination: the browsable set
+-- fits one response. The order is a deterministic TOTAL order (name first for a human-friendly A→Z, slug —
+-- UNIQUE — as the tiebreak) so two categories sharing a display name never flap position; a stable order
+-- keeps the response ETag stable. No browsable category → zero rows → the handler renders `[]`, not 404.
+-- name: ListCategories :many
+SELECT * FROM categories
+WHERE EXISTS (SELECT 1 FROM products WHERE products.category_id = categories.id AND products.status = 'active')
+ORDER BY name, slug;
+
 -- name: InsertProduct :one
 INSERT INTO products (
   id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status

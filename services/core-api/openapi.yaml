@@ -16,7 +16,7 @@ openapi: 3.0.3
 
 info:
   title: Lumin Studio Core API
-  version: 0.5.0
+  version: 0.6.0
   description: >
     Made-to-order 3D-print lighting/decor shop. One order state machine behind four surfaces
     (storefront · admin · admin-mobile · extension). This contract covers the slice-3 HTTP surface:
@@ -273,6 +273,57 @@ paths:
               schema:
                 $ref: '#/components/schemas/Product'
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /categories:
+    get:
+      tags: [catalog]
+      operationId: getCategories
+      summary: Public storefront category list — the browsable taxonomy for the catalog-browse chips.
+      description: >
+        Public category list (no auth). Returns the BROWSABLE category taxonomy (spec §02) A→Z — only
+        categories that contain at least one ACTIVE product. Categories inherit visibility transitively
+        through their products, so a category whose only products are draft/archived is NOT listed (no
+        dead-end chip, and no leak of an unreleased category name — the same non-leak stance as the product
+        reads). It is a small, admin-curated set, so there is no filter or pagination. When no category is
+        browsable the response is an empty array `[]`, NEVER a 404. The response carries a weak ETag + a
+        provisional Cache-Control (the storefront ISR/purge strategy is finalized with the frontend PR,
+        P1-f), consistent with the /products list; a matching If-None-Match returns 304 with no body.
+      parameters:
+        - name: If-None-Match
+          in: header
+          required: false
+          description: Conditional GET — when it matches the current ETag the server returns 304 with no body.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The full category taxonomy (may be empty).
+          headers:
+            ETag:
+              description: Weak validator over the response body; echo it in If-None-Match to revalidate.
+              schema:
+                type: string
+            Cache-Control:
+              description: Public cache directive (provisional — the ISR/purge strategy is finalized in P1-f).
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Category'
+        '304':
+          description: Not Modified — the client's If-None-Match matched the current ETag.
+          headers:
+            ETag:
+              description: The current weak validator (unchanged).
+              schema:
+                type: string
+            Cache-Control:
+              description: Public cache directive (provisional — finalized in P1-f).
+              schema:
+                type: string
 
   /price/quote:
     post:
@@ -696,6 +747,23 @@ components:
         total:
           type: integer
           description: Total active products matching the filter, across all pages.
+
+    Category:
+      type: object
+      description: >
+        A catalog category (spec §02) — the taxonomy a product belongs to (Product.categoryId references
+        Category.id) and the storefront browse chips render. No visibility axis: every category is public.
+      required: [id, slug, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+          description: Unique URL slug — the value passed to GET /products?category={slug}.
+        name:
+          type: string
+          description: Human-friendly display name (sentence case).
 
     # --- Value objects ----------------------------------------------------------------------------
     StatusEvent:

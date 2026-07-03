@@ -109,6 +109,17 @@ type BankAccountUpdate struct {
 	Reason        *string `json:"reason,omitempty"`
 }
 
+// Category A catalog category (spec §02) — the taxonomy a product belongs to (Product.categoryId references Category.id) and the storefront browse chips render. No visibility axis: every category is public.
+type Category struct {
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Human-friendly display name (sentence case).
+	Name string `json:"name"`
+
+	// Slug Unique URL slug — the value passed to GET /products?category={slug}.
+	Slug string `json:"slug"`
+}
+
 // Channel Order origin (spec §04).
 type Channel string
 
@@ -486,6 +497,12 @@ type Unauthorized = ErrorEnvelope
 // Unprocessable The one error shape every endpoint returns (ADR-032). `code` is a stable machine code (e.g. NOT_FOUND, INVALID_EDGE, RBAC, REASON_REQUIRED, VALIDATION); `messageKey` is a next-intl key (the domain's Vietnamese prose is NEVER forwarded). `fields` maps a field path → messageKey for per-field validation errors.
 type Unprocessable = ErrorEnvelope
 
+// GetCategoriesParams defines parameters for GetCategories.
+type GetCategoriesParams struct {
+	// IfNoneMatch Conditional GET — when it matches the current ETag the server returns 304 with no body.
+	IfNoneMatch *string `json:"If-None-Match,omitempty"`
+}
+
 // GetProductsParams defines parameters for GetProducts.
 type GetProductsParams struct {
 	// Category Filter by category slug (spec §02). An unknown slug yields an empty page, not a 404.
@@ -634,6 +651,9 @@ type ServerInterface interface {
 	// Clear the session cookie.
 	// (POST /auth/logout)
 	LogoutUser(w http.ResponseWriter, r *http.Request)
+	// Public storefront category list — the browsable taxonomy for the catalog-browse chips.
+	// (GET /categories)
+	GetCategories(w http.ResponseWriter, r *http.Request, params GetCategoriesParams)
 	// Create an order (web → PENDING_CONFIRM, public; inbox → PAID, staff/owner only).
 	// (POST /orders)
 	CreateOrder(w http.ResponseWriter, r *http.Request)
@@ -688,6 +708,12 @@ func (_ Unimplemented) LoginUser(w http.ResponseWriter, r *http.Request) {
 // Clear the session cookie.
 // (POST /auth/logout)
 func (_ Unimplemented) LogoutUser(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Public storefront category list — the browsable taxonomy for the catalog-browse chips.
+// (GET /categories)
+func (_ Unimplemented) GetCategories(w http.ResponseWriter, r *http.Request, params GetCategoriesParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -835,6 +861,46 @@ func (siw *ServerInterfaceWrapper) LogoutUser(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.LogoutUser(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCategories operation middleware
+func (siw *ServerInterfaceWrapper) GetCategories(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetCategoriesParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCategories(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1146,6 +1212,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/auth/logout", wrapper.LogoutUser)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/categories", wrapper.GetCategories)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/orders", wrapper.CreateOrder)
 	})
 	r.Group(func(r chi.Router) {
@@ -1366,6 +1435,49 @@ func (response LogoutUser401JSONResponse) VisitLogoutUserResponse(w http.Respons
 	w.WriteHeader(401)
 
 	return json.NewEncoder(w).Encode(response)
+}
+
+type GetCategoriesRequestObject struct {
+	Params GetCategoriesParams
+}
+
+type GetCategoriesResponseObject interface {
+	VisitGetCategoriesResponse(w http.ResponseWriter) error
+}
+
+type GetCategories200ResponseHeaders struct {
+	CacheControl string
+	ETag         string
+}
+
+type GetCategories200JSONResponse struct {
+	Body    []Category
+	Headers GetCategories200ResponseHeaders
+}
+
+func (response GetCategories200JSONResponse) VisitGetCategoriesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type GetCategories304ResponseHeaders struct {
+	CacheControl string
+	ETag         string
+}
+
+type GetCategories304Response struct {
+	Headers GetCategories304ResponseHeaders
+}
+
+func (response GetCategories304Response) VisitGetCategoriesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(304)
+	return nil
 }
 
 type CreateOrderRequestObject struct {
@@ -1617,6 +1729,9 @@ type StrictServerInterface interface {
 	// Clear the session cookie.
 	// (POST /auth/logout)
 	LogoutUser(ctx context.Context, request LogoutUserRequestObject) (LogoutUserResponseObject, error)
+	// Public storefront category list — the browsable taxonomy for the catalog-browse chips.
+	// (GET /categories)
+	GetCategories(ctx context.Context, request GetCategoriesRequestObject) (GetCategoriesResponseObject, error)
 	// Create an order (web → PENDING_CONFIRM, public; inbox → PAID, staff/owner only).
 	// (POST /orders)
 	CreateOrder(ctx context.Context, request CreateOrderRequestObject) (CreateOrderResponseObject, error)
@@ -1814,6 +1929,32 @@ func (sh *strictHandler) LogoutUser(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(LogoutUserResponseObject); ok {
 		if err := validResponse.VisitLogoutUserResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCategories operation middleware
+func (sh *strictHandler) GetCategories(w http.ResponseWriter, r *http.Request, params GetCategoriesParams) {
+	var request GetCategoriesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCategories(ctx, request.(GetCategoriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCategories")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCategoriesResponseObject); ok {
+		if err := validResponse.VisitGetCategoriesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

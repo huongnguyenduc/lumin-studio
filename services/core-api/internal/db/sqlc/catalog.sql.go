@@ -361,6 +361,43 @@ func (q *Queries) ListActiveProducts(ctx context.Context, arg ListActiveProducts
 	return items, nil
 }
 
+const listCategories = `-- name: ListCategories :many
+SELECT id, slug, name FROM categories
+WHERE EXISTS (SELECT 1 FROM products WHERE products.category_id = categories.id AND products.status = 'active')
+ORDER BY name, slug
+`
+
+// ListCategories is the storefront category list (PR-P1-d): the BROWSABLE taxonomy the catalog-browse chips
+// render (spec §02). It returns only categories that contain at least one ACTIVE product — the EXISTS
+// subquery applies the SAME non-leak-at-the-SQL-source discipline as ListActiveProducts (CAT-02). A category
+// whose only products are draft/archived (products default to status='draft', and category_id is NOT NULL),
+// or which is empty, is a hidden grouping: surfacing it would both dead-end the chip (→ an empty
+// /products?category= page) AND leak an unreleased category name — the exact catalog-existence info the
+// product reads deliberately withhold. Categories are a small, admin-curated, near-static set (created only
+// via admin CreateCategory — no user-generated path), so there is no filter/pagination: the browsable set
+// fits one response. The order is a deterministic TOTAL order (name first for a human-friendly A→Z, slug —
+// UNIQUE — as the tiebreak) so two categories sharing a display name never flap position; a stable order
+// keeps the response ETag stable. No browsable category → zero rows → the handler renders `[]`, not 404.
+func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
+	rows, err := q.db.Query(ctx, listCategories)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Category
+	for rows.Next() {
+		var i Category
+		if err := rows.Scan(&i.ID, &i.Slug, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listColorsByProduct = `-- name: ListColorsByProduct :many
 SELECT id, product_id, name, hex, available, price_delta FROM colors WHERE product_id = $1 ORDER BY name
 `
