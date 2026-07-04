@@ -596,7 +596,7 @@ session) — used as-is, left running.
 > NFC-out-of-scope (2 lens — nhưng false comment/test sống trong P1-j nên vẫn sửa) · BOM/NEL trim-set lệch (pathological, server backstop) ·
 > multi-text-option vs single Personalization (P1-k concern) · counter aria-label che số (dup của defect ①).
 
-> **🔨 PR-P1-k (FE cart `/gio-hang`) — BUILT · verify+lint+typecheck+format green · adversarial 6-lens review DONE (fixes applied) · spec-guardian PASS (0/0/0) · committing → push→PR.**
+> **✅ PR-P1-k (FE cart `/gio-hang`) — committed `fd56578` · pushed → PR #43 OPEN · CI running · chờ user merge-gate. (verify+lint+typecheck+format green · 6-lens review DONE fixes-applied · spec-guardian PASS 0/0/0.)**
 > (branch `feat/phase-1-storefront-p1k` off `main` `296e8f9` [P1-j].) **Scope (user 2026-07-04): cart screen ONLY** — detail live-total /
 > sticky-mobile add-to-cart bar DEFERRED (follow-up hoặc gộp P1-i). **NEW:** `lib/cart.ts` (pure model + reducers + quote-map: `cartLineKey`
 > gộp-theo-cấu-hình · `buildCartItem` [engrave OFF optionIds, blank=none, key-merge] · `addItem`/`setItemQuantity` dec-tại-1→xoá/clamp/`MAX_LINES` ·
