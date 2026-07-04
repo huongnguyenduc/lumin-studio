@@ -35,7 +35,7 @@ export const vi = {
     subheading: 'Vài món vừa ra lò từ xưởng in của chúng mình.',
     viewAll: 'Xem tất cả',
     empty: 'Chưa có sản phẩm nào ở đây — chúng mình đang lên mẫu mới.',
-    emptyCta: 'Về trang chủ',
+    emptyCta: 'Xem tất cả danh mục',
   },
   product: {
     add: 'Thêm vào giỏ',

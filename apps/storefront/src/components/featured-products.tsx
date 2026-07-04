@@ -5,20 +5,19 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { ProductCard } from '@lumin/ui';
 import { CtaLink } from './cta-link';
-import { demoProducts } from '@/lib/demo-products';
+import type { ProductCardView } from '@/lib/product-view';
 
 /**
- * "Mới về" merchandising grid — mounts the ProductCard primitive against the placeholder catalog.
- * Fav toggling is local state (real cart/wishlist lands in Phase 1). Renders an empty state when the
- * catalog is bare (conventions §State: empty · loading · error).
+ * "Mới về" merchandising grid. Data is fetched server-side (page.tsx → lib/catalog) and passed in;
+ * this stays a client component only for local fav toggling (real cart/wishlist is a later Phase-1
+ * PR). Renders an empty state when the catalog is bare (conventions §State: empty · loading · error;
+ * loading + error are the route-level loading.tsx / error.tsx). It imports the VIEW TYPE only, so the
+ * server-only catalog client never enters the client bundle.
  */
-export function FeaturedProducts() {
+export function FeaturedProducts({ products }: { products: ProductCardView[] }) {
   const t = useTranslations('featured');
   const tp = useTranslations('product');
-  const tb = useTranslations('badge');
   const [faved, setFaved] = useState<Record<string, boolean>>({});
-
-  const products = demoProducts;
 
   return (
     <section className="mx-auto w-full max-w-[1200px] px-4 py-8 md:px-6">
@@ -38,7 +37,9 @@ export function FeaturedProducts() {
       {products.length === 0 ? (
         <div className="rounded-lg border-2 border-dashed border-border-default bg-surface-sunken p-10 text-center">
           <p className="text-text-muted">{t('empty')}</p>
-          <CtaLink href="/" className="mt-4">
+          {/* Recover toward the browse surface, not back to this same home page — matches the
+              `viewAll` link's /danh-muc target (conventions §State: empty needs a USEFUL CTA). */}
+          <CtaLink href="/danh-muc" className="mt-4">
             {t('emptyCta')}
           </CtaLink>
         </div>
@@ -47,17 +48,15 @@ export function FeaturedProducts() {
           {products.map((product) => (
             <ProductCard
               key={product.id}
-              href={`/san-pham/${product.id}`}
+              href={`/san-pham/${product.slug}`}
               title={product.name}
-              price={product.price}
-              compareAt={product.compareAt}
-              rating={product.rating}
+              price={product.basePrice}
+              imageSrc={product.imageSrc}
+              imageAlt={product.name}
+              rating={product.rating ?? undefined}
               reviewCount={product.reviewCount}
-              ratingLabel={tp('ratingLabel', { value: product.rating })}
-              badge={
-                product.badge
-                  ? { label: tb(product.badge.key), tone: product.badge.tone }
-                  : undefined
+              ratingLabel={
+                product.rating != null ? tp('ratingLabel', { value: product.rating }) : undefined
               }
               faved={Boolean(faved[product.id])}
               onToggleFav={() =>
