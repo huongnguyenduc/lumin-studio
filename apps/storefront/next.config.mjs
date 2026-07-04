@@ -8,7 +8,9 @@ const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 const nextConfig = {
   reactStrictMode: true,
   // Workspace TS packages ship raw source (main → src/index.ts), so Next transpiles them.
-  transpilePackages: ['@lumin/ui', '@lumin/core', '@lumin/tokens'],
+  // @lumin/api-client (openapi-fetch client + generated types) is consumed from source too — it is
+  // fetched server-side only (see lib/catalog.ts); its CORE_API_URL never reaches the client bundle.
+  transpilePackages: ['@lumin/ui', '@lumin/core', '@lumin/tokens', '@lumin/api-client'],
 };
 
 export default withNextIntl(nextConfig);

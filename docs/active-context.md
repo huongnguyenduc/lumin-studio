@@ -507,6 +507,39 @@ session) — used as-is, left running.
 > full-walk test, PROVEN binding**; (②) no-author-identity was a name-BLOCKLIST (vacuous for unlisted PII) → **exact-key ALLOWLIST** (any new field→RED).
 > **NO new dep · NO new ADR** (implements the CAT-01/CAT-02 non-leak stance + ADR-032 envelope).
 
+> **🔨 PR-P1-f (FE TRACK HEAD · wire `@lumin/api-client` + swap home grid demo→live `GET /products` + on-write cache purge) — BUILT ·
+> spec-guardian PASS 0/0/3 · adversarial 5-lens review DONE (4 confirmed/11 refuted) · all fixes applied · pnpm verify + guard GREEN · chờ commit→push→PR.**
+> (branch `feat/phase-1-storefront-p1f` off `main` `269f067` [P1-l #39] — moved OFF `feat/…-p1l` per spec-guardian branch-hygiene NOTE so the diff is P1-f-only.)
+> **FIRST FE PR of Phase 1** — pivots BE→FE. All 7 storefront read endpoints (P1-a/b/c/d/e/l/n) now on `main`; this lights up the home grid.
+> **Caching Q1 decided (user 2026-07-04) = ON-WRITE PURGE + backstop.** `fetchNewArrivals` fetch tagged `next:{revalidate:300, tags:['catalog']}`
+> (300s = BACKSTOP ceiling so an un-purged cache can't freeze) + **`app/api/revalidate` route** (shared-secret `x-revalidate-secret` → `revalidateTag('catalog')`,
+> **fail-CLOSED** on unset secret [500], `timingSafeEqual` constant-time [401 missing/wrong/wrong-len]). **Emit-side (core-api product-change webhook)
+> DEFERRED** — no product-write path exists yet (only unexposed `CreateProduct` insert, zero `UPDATE products`); receive-side ships now, wires when admin
+> product-CRUD lands (user-confirmed the receive+backstop scope). Card price is DISPLAY-ONLY (checkout re-prices via `POST /price/quote` P1-b) → ≤5-min-stale card price cosmetic, no money-integrity risk.
+> **Files:** `next.config.mjs` (+`@lumin/api-client` transpile) · `package.json` (+`@lumin/api-client` ws, +**`server-only` 0.0.1**) · **`lib/product-view.ts`** (pure API→view
+> mapper, `import type` only → client-safe) · **`lib/catalog.ts`** (`import 'server-only'` + `createApiClient`(`CORE_API_URL` thrown-not-defaulted) + `fetchNewArrivals`
+> = `GET /products?sort=newest&pageSize=8`, throw-on-error→error.tsx) · **`lib/revalidate-auth.ts`** (pure `verifyRevalidateSecret`, unit-tested) · **`app/api/revalidate/route.ts`** ·
+> `app/page.tsx` (async server-fetch → `<FeaturedProducts products>`) · `components/featured-products.tsx` (client, takes `products` prop, maps view→`@lumin/ui`
+> `ProductCard`; `basePrice` RAW int-VND→PriceTag/formatVnd, `images[0]` cover, `slug`→`/san-pham/{slug}` href; empty-CTA→`/danh-muc`) · `.env.example`
+> (`CORE_API_URL`+`REVALIDATE_SECRET` server-only) · tests `catalog.test.ts`+`revalidate-auth.test.ts` · **DELETED `lib/demo-products.ts`**.
+> **Server-only boundary COMPILER-ENFORCED** (`import 'server-only'` in catalog.ts → any future client value-import = build error; grep-verified no
+> `CORE_API_URL`/`createApiClient` in a `'use client'` runtime import — client imports only `type ProductCardView`). **openapi-fetch `next` forwarding verified at source**
+> (0.13.8 re-attaches `next` onto the Request after `new Request()` strips it → caching REAL, not a no-op). empty/loading/error all wired (empty=FeaturedProducts
+> len0 · loading=`loading.tsx` skeleton · error=`page.tsx` throw→`error.tsx` retry). NO Intl in storefront (ESLint MNY-03 armed). **Gates (last-green 2026-07-04):**
+> `pnpm verify` rc=0 (lint+typecheck+test+format, 6 workspaces) · **15 storefront tests** (mapper 6 + purge-auth 5 + messages 4) · **guard 160** (no new ARM — FE
+> track `armGates=none` per plan §3) · osm 22. **Deps:** +`@lumin/api-client`(ws) +`server-only`(0.0.1) +`openapi-fetch`(transitive). **NO new ADR** (implements Q1 caching decision).
+> **Reviews:** spec-guardian **PASS 0 BLOCKER/0 WARN/3 NOTE** (server-only boundary discipline-only→FIXED · dormant purge endpoint=conscious call · branch-hygiene→FIXED [moved off p1l]).
+> Adversarial 5-lens wf_abea142d (21 agents: 5 lens find → per-finding refute → completeness critic): **15 raw → 4 confirmed (0 BLOCKER) / 11 refuted + 3 critic gaps; ALL FIXED:**
+> (IMPORTANT, 2 lenses + spec-guardian) catalog.ts no build-time server-only guard → **`import 'server-only'` + `server-only` dep** (compiler-enforced boundary);
+> (NOTE) `imageSrc: images[0]` passed empty-string `src=""` through, contra docstring → **`images[0] || undefined`** + `['']`/`['',…]`→undefined tests; (NOTE) empty-state CTA
+> was circular self-link `/`→ **`/danh-muc`** (matches viewAll) + copy `emptyCta='Xem tất cả danh mục'`; (critic) no acceptance EARS row → **Cụm 17 SF-01 [fail-closed
+> purge auth]/SF-02 [int-VND-raw + images-empty→undefined + server-only]** (`[ ]` — ledger parser scans `packages/**` only, TS test-ids at `apps/**` can't be `[x]`).
+> **Caching lens self-REFUTED its own "no-op" headline** (matches my source trace); **security lens REFUTED all purge concerns** (fail-safe + constant-time hold).
+> **Visual-fidelity:** hi-fi home read (understand wf_307ff7c9, §7 debt paid); grid REUSES the P0-vetted `@lumin/ui` ProductCard (markup unchanged → P1-f is data-swap, not layout);
+> design's compact home cards = name+price+rating (no badge/compareAt/sale — matches the narrow projection); **live screenshot DEFERRED to P1-g/h** (need running origin + seeded products w/ image URLs). ⚠️ auth-adjacent (revalidate secret) — owner line-by-line before merge.
+> **NEXT (FE track, all unblocked by P1-f):** **P1-h** product detail `/san-pham/{slug}` (dependsOn P1-a,f — the card href already points there) · **P1-g** browse `/san-pham` (c,d,e,f) ·
+> **P1-o** guest lookup UI (n,f) · **P1-m** reviews FE (l,f). Re-read `designs/Lumin Storefront - Hi-fi.dc.html` per-screen before each.
+
 1. **Slice 3 · PR-3k — ✅ MERGED (PR #30) → `origin/main` `cf4c2a8` (2026-07-02, squash; CI green app-gates/selftest/services-gates).**
    Local `main` ff'd to `cf4c2a8`; the merged `feat/core-http-relay-3k` branch + ~19 older squash-merged branches remain
    local (guard blocks `git branch -D` → prune by hand when duyệt). **Flag carried to 3j PR:** openapi `BankAccountUpdate`
