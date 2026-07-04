@@ -21,3 +21,15 @@ export function formatVnDate(iso: string): string {
 export function formatVnNumber(n: number): string {
   return new Intl.NumberFormat('vi-VN').format(n);
 }
+
+/**
+ * Format a star-rating AVERAGE (0–5) for display, e.g. `4,9`. Unlike formatVnNumber (integer counts),
+ * a rating is a fraction and must be capped at ONE decimal: `ratingAvg` is a raw `AVG()` on the wire
+ * (`format: float`, not rounded server-side), so an average like 4.6667 must render `4,7`, never the
+ * default-3-decimal `4,667`. A whole number drops the decimal (`5`, not `5,0`) via maximumFractionDigits.
+ * vi-VN uses a comma as the decimal separator. The one place rating precision is decided — surfaces call
+ * this instead of `.toFixed`/Intl inline (conventions §Tiền: number formatting lives only in core).
+ */
+export function formatVnRating(n: number): string {
+  return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 }).format(n);
+}

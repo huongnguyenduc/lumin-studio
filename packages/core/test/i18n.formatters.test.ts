@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatVnDate, formatVnNumber } from '../src/i18n/formatters';
+import { formatVnDate, formatVnNumber, formatVnRating } from '../src/i18n/formatters';
 
 describe('i18n formatters (vi-VN)', () => {
   it('formatVnDate pins Asia/Ho_Chi_Minh — a fixed UTC instant maps to one date, regardless of ambient TZ', () => {
@@ -12,5 +12,14 @@ describe('i18n formatters (vi-VN)', () => {
   it('formatVnNumber groups integers with vi-VN separators', () => {
     expect(formatVnNumber(1234)).toBe('1.234');
     expect(formatVnNumber(0)).toBe('0');
+  });
+
+  it('formatVnRating caps a fractional average at one decimal with a vi-VN comma separator', () => {
+    // A raw AVG() on the wire (format: float) can carry many decimals — cap at one, rounded.
+    expect(formatVnRating(4.6667)).toBe('4,7');
+    expect(formatVnRating(4.9)).toBe('4,9');
+    // A whole rating drops the decimal (never "5,0").
+    expect(formatVnRating(5)).toBe('5');
+    expect(formatVnRating(0)).toBe('0');
   });
 });

@@ -5,9 +5,11 @@ import {
   toCategoryView,
   toProductCardView,
   toProductDetailView,
+  toReviewView,
   type CategoryView,
   type ProductCardView,
   type ProductDetailView,
+  type ReviewView,
 } from './product-view';
 import { PAGE_SIZE, type CatalogParams } from './catalog-params';
 
@@ -170,4 +172,59 @@ export async function fetchProductBySlug(slug: string): Promise<ProductDetailVie
   }
 
   return toProductDetailView(data);
+}
+
+/** One page of published reviews for a product (P1-m): the mapped review views plus the pagination
+ *  envelope echoed by the endpoint (`page`/`pageSize`/`total`), so the section can render the pager and
+ *  the page can redirect an out-of-range `?reviewsPage=`. `total` is the count of PUBLISHED reviews
+ *  across all pages (openapi ReviewList). */
+export type ReviewsPage = {
+  items: ReviewView[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+/** Server default page size for reviews (openapi getProductReviews `pageSize` default = 12, ≤ 48 cap).
+ *  Passed explicitly so the page-count math uses the SAME value the wire does (the response echoes it). */
+export const REVIEWS_PAGE_SIZE = 12;
+
+/**
+ * Fetch one page of published reviews for a product's detail section (/san-pham/{slug}, P1-m). Newest
+ * first (the endpoint's only order in Phase 1); ONLY published reviews cross the wire — the hidden/
+ * moderated-away filter lives at the SQL source (P1-l), so a suppressed review can never leak here.
+ *
+ * A 404 (unknown slug OR draft/archived product — the endpoint returns the same uniform 404 as the
+ * detail read) returns an EMPTY page rather than throwing: the caller reaches this only AFTER
+ * fetchProductBySlug returned a product (a 404 there already routes to notFound()), so a 404 on the
+ * reviews read is a rare product-archived-between-the-two-reads race — degrading the secondary reviews
+ * section to its empty state is friendlier than erroring a product page that otherwise rendered fine.
+ * Any OTHER failure (5xx / network) propagates so the route error boundary (app/error.tsx) renders the
+ * retry state, consistent with the other catalog reads.
+ *
+ * Caching mirrors the detail read: tagged `catalog` (busted by POST /api/revalidate the instant a
+ * product changes) with the 300s `revalidate` backstop. Reviews are append-only public content, so a
+ * ≤5-min-stale page is harmless.
+ */
+export async function fetchProductReviews(slug: string, page: number): Promise<ReviewsPage> {
+  const client = createApiClient({ baseUrl: coreApiBaseUrl() });
+
+  const { data, error, response } = await client.GET('/products/{slug}/reviews', {
+    params: { path: { slug }, query: { page, pageSize: REVIEWS_PAGE_SIZE } },
+    next: { revalidate: 300, tags: ['catalog'] },
+  });
+
+  if (response.status === 404) {
+    return { items: [], total: 0, page, pageSize: REVIEWS_PAGE_SIZE };
+  }
+  if (error || !data) {
+    throw new Error(`reviews fetch failed (${response.status})`);
+  }
+
+  return {
+    items: data.items.map(toReviewView),
+    total: data.total,
+    page: data.page,
+    pageSize: data.pageSize,
+  };
 }
