@@ -19,6 +19,12 @@ type Querier interface {
 	// request) on a made-to-order shop whose catalog rarely mutates, and it is never a money value — so we
 	// accept it rather than pay for a snapshot transaction (documented on the repo method).
 	CountActiveProducts(ctx context.Context, arg CountActiveProductsParams) (int64, error)
+	// CountPublishedReviewsByProduct is the total for the review-list envelope — the SAME product_id +
+	// status='published' filter as ListReviewsByProduct, no sort/limit. It runs alongside the list as a
+	// second autocommit read; a concurrent review write between the two can skew the total by one. That is
+	// cosmetic (a display count that self-heals next request) and never a money value, so we accept it
+	// rather than pay for a snapshot transaction (documented on the repo method).
+	CountPublishedReviewsByProduct(ctx context.Context, productID uuid.UUID) (int64, error)
 	// jobs.sql — fulfillment/asset job queries (PR-2f). architecture.md §3D-pipeline · spec.md §02.
 	//
 	// CreateAssetJob is orchestrated by internal/db/jobs.go CreateAssetJobTx, which ALSO enqueues the
@@ -169,6 +175,15 @@ type Querier interface {
 	ListPrintJobsByStage(ctx context.Context, stage PrintStage) ([]PrintJob, error)
 	ListProductsByStatus(ctx context.Context, status ProductStatus) ([]Product, error)
 	ListReplyTemplates(ctx context.Context) ([]ReplyTemplate, error)
+	// ListReviewsByProduct is the storefront product-review list (PR-P1-l). It returns PUBLISHED reviews
+	// ONLY — the status='published' predicate lives HERE at the SQL source, the same non-leak discipline as
+	// ListActiveProducts' status='active': a hidden (moderated-away) review can never surface on the public
+	// list, no matter what the handler does. It is a CONTENT projection — id/rating/body/images/reply/
+	// created_at, but NOT customer_id — so no reviewer PII (a nullable FK; guests may review) ever leaves the
+	// DB for this public endpoint. Newest first with an id tiebreak gives a deterministic TOTAL order so
+	// OFFSET pagination is stable across pages and the response ETag stays stable; @page_limit is bounded by
+	// the handler (pageSize <= 48). No sort arm in Phase 1 (newest only — an additive sort is a later PR).
+	ListReviewsByProduct(ctx context.Context, arg ListReviewsByProductParams) ([]ListReviewsByProductRow, error)
 	// MarkOutboxFailed quarantines a poison row after RelayMaxAttempts so it stops re-poisoning
 	// the seq scan and blocking later rows (head-of-line). Surfaced in a future Admin view.
 	MarkOutboxFailed(ctx context.Context, id uuid.UUID) error

@@ -760,6 +760,29 @@ if [ -f "$LOOKUP" ]; then
     bad "ARM: httpapi/lookup.go LAND nhưng thiếu 1 trong {subtle.ConstantTimeCompare, uniform 'return nil, db.ErrNotFound', s.lookup.allow rate-limit gate, classify LookupOrder authPublic} -> enumerate mã đơn / brute-force SĐT / lookup kẹt sau auth (LKP-01!)"
   fi
 else ok "ARM: chưa có httpapi/lookup.go (guest lookup constant-time/rate-limit/public arm khi land — PR-P1-n)"; fi
+# ARM PR-P1-l (public product reviews GET /products/{slug}/reviews): khoá 3 bất biến storefront review list —
+#  (a) PUBLISHED-ONLY tại NGUỒN SQL: query ListReviewsByProduct PHẢI lọc status='published' → review ẩn
+#      (moderated-away) không bao giờ lọt vào list công khai (bỏ filter → review ẩn rò ra → RED);
+#  (b) NON-LEAK tồn-tại sản phẩm: handler reviews.go resolve active-only (ProductStatusActive) → non-active
+#      /slug lạ đều 'return nil, db.ErrNotFound' (404 đồng nhất — reviews của sản phẩm ẩn KHÔNG phục vụ,
+#      không probe catalog — cùng lẽ CAT-01);
+#  (c) classify() gán GetProductReviews = authPublic (list review công khai, KHÔNG sau tường auth admin).
+# Bỏ comment ('//' Go, '--' SQL) trước khi soi để một filter/entry bị COMMENT-OUT không false-PASS (class lỗ '//' 3b).
+REVIEWS="$ROOT/services/core-api/internal/httpapi/reviews.go"
+REVSQL="$ROOT/services/core-api/db/queries/catalog.sql"
+if [ -f "$REVIEWS" ]; then
+  REVIEWSBODY="$(grep -vE '^[[:space:]]*//' "$REVIEWS" 2>/dev/null)"
+  REVMW="$(grep -vE '^[[:space:]]*//' "$ROOT/services/core-api/internal/httpapi/middleware_auth.go" 2>/dev/null)"
+  LISTPUB="$(grep -A8 'name: ListReviewsByProduct' "$REVSQL" 2>/dev/null | grep -vE '^[[:space:]]*--')"
+  if printf '%s' "$LISTPUB" | grep -qi "status = 'published'" \
+     && printf '%s' "$REVIEWSBODY" | grep -q 'ProductStatusActive' \
+     && printf '%s' "$REVIEWSBODY" | grep -qE 'return nil, db\.ErrNotFound' \
+     && printf '%s' "$REVMW" | grep -A2 '"GetProductReviews"' | grep -q 'authPublic'; then
+    ok "ARM: có httpapi/reviews.go -> review list published-only tại SQL (ListReviewsByProduct lọc status='published', review ẩn không rò) + product active-only→db.ErrNotFound (slug lạ==nháp cùng 404, không probe tồn-tại) + classify GetProductReviews=authPublic (REV-01)"
+  else
+    bad "ARM: reviews.go LAND nhưng thiếu 1 trong {ListReviewsByProduct status='published' filter, ProductStatusActive→db.ErrNotFound non-leak, classify GetProductReviews authPublic} -> review ẩn rò ra list / probe tồn-tại sản phẩm / list kẹt sau tường auth (REV-01!)"
+  fi
+else ok "ARM: chưa có httpapi/reviews.go (review list published-only/active-only/public arm khi land — PR-P1-l)"; fi
 if find "$ROOT/services" -name '*.rs' 2>/dev/null | grep -q .; then
   { [ -f "$ROOT/Makefile" ] && grep -Eq '^verify-rs:' "$ROOT/Makefile"; } \
     && ok "ARM: có .rs -> Makefile verify-rs" || bad "ARM: .rs LAND nhưng thiếu Makefile verify-rs"

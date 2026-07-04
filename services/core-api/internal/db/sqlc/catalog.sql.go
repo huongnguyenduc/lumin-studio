@@ -44,6 +44,23 @@ func (q *Queries) CountActiveProducts(ctx context.Context, arg CountActiveProduc
 	return count, err
 }
 
+const countPublishedReviewsByProduct = `-- name: CountPublishedReviewsByProduct :one
+SELECT count(*) FROM reviews
+WHERE product_id = $1 AND status = 'published'
+`
+
+// CountPublishedReviewsByProduct is the total for the review-list envelope — the SAME product_id +
+// status='published' filter as ListReviewsByProduct, no sort/limit. It runs alongside the list as a
+// second autocommit read; a concurrent review write between the two can skew the total by one. That is
+// cosmetic (a display count that self-heals next request) and never a money value, so we accept it
+// rather than pay for a snapshot transaction (documented on the repo method).
+func (q *Queries) CountPublishedReviewsByProduct(ctx context.Context, productID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countPublishedReviewsByProduct, productID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getProductByID = `-- name: GetProductByID :one
 SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at FROM products WHERE id = $1
 `
@@ -516,6 +533,64 @@ func (q *Queries) ListProductsByStatus(ctx context.Context, status ProductStatus
 			&i.Status,
 			&i.RatingAvg,
 			&i.ReviewCount,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listReviewsByProduct = `-- name: ListReviewsByProduct :many
+SELECT id, rating, body, images, reply, created_at
+FROM reviews
+WHERE product_id = $1 AND status = 'published'
+ORDER BY created_at DESC, id DESC
+LIMIT $3::int OFFSET $2::int
+`
+
+type ListReviewsByProductParams struct {
+	ProductID  uuid.UUID `json:"productId"`
+	PageOffset int32     `json:"pageOffset"`
+	PageLimit  int32     `json:"pageLimit"`
+}
+
+type ListReviewsByProductRow struct {
+	ID        uuid.UUID          `json:"id"`
+	Rating    int16              `json:"rating"`
+	Body      string             `json:"body"`
+	Images    []byte             `json:"images"`
+	Reply     []byte             `json:"reply"`
+	CreatedAt pgtype.Timestamptz `json:"createdAt"`
+}
+
+// ListReviewsByProduct is the storefront product-review list (PR-P1-l). It returns PUBLISHED reviews
+// ONLY — the status='published' predicate lives HERE at the SQL source, the same non-leak discipline as
+// ListActiveProducts' status='active': a hidden (moderated-away) review can never surface on the public
+// list, no matter what the handler does. It is a CONTENT projection — id/rating/body/images/reply/
+// created_at, but NOT customer_id — so no reviewer PII (a nullable FK; guests may review) ever leaves the
+// DB for this public endpoint. Newest first with an id tiebreak gives a deterministic TOTAL order so
+// OFFSET pagination is stable across pages and the response ETag stays stable; @page_limit is bounded by
+// the handler (pageSize <= 48). No sort arm in Phase 1 (newest only — an additive sort is a later PR).
+func (q *Queries) ListReviewsByProduct(ctx context.Context, arg ListReviewsByProductParams) ([]ListReviewsByProductRow, error) {
+	rows, err := q.db.Query(ctx, listReviewsByProduct, arg.ProductID, arg.PageOffset, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListReviewsByProductRow
+	for rows.Next() {
+		var i ListReviewsByProductRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Rating,
+			&i.Body,
+			&i.Images,
+			&i.Reply,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err

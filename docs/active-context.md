@@ -459,9 +459,7 @@ session) — used as-is, left running.
 > **ADR-034** (guest-lookup rate-limit: per-code token-bucket, no per-IP, no lockout) + conventions §Bảo mật line updated (via ADR-022
 > valve, user-approved). ⚠️ auth-adjacent path — owner review từng dòng trước merge.
 >
-> **🔨 PR-P1-e (`GET /products?q=` · no-accent full-text search, ADR-016) — BUILT · reviews DONE + 3 fixes applied ·
-> verify-go+integration(colima)+TS gates GREEN · guard 159 · CAT-04 ARM PROVEN binding ×3 · committed `28db8b7` · pushed → PR #38 OPEN ·
-> chờ user merge-gate.** (branch `feat/phase-1-storefront-p1e` off `main` `c8f9b28` [P1-n].)
+> **✅ PR-P1-e (`GET /products?q=` · no-accent full-text search, ADR-016) — MERGED (PR #38) → `origin/main` `77e2a2a` (2026-07-04, merge-commit; CI green app-gates/selftest/services-gates; local `main` ff'd).** (branch `feat/phase-1-storefront-p1e` off `main` `c8f9b28` [P1-n].)
 > Wires the `?q=` param declared-but-reserved since P1-c — **additive, KHÔNG mở lại contract shape** (chỉ đổi description + thêm
 > `maxLength:100` cho param `q`; **NO new enum → parity_test KHÔNG đổi**). **Migration `000012_product_search`** (head 000011, 000008 skip
 > → 000012 monotonic): `CREATE EXTENSION unaccent` + **`immutable_unaccent(text)`** (IMMUTABLE wrapper `unaccent('unaccent',$1)` +
@@ -485,6 +483,28 @@ session) — used as-is, left running.
 > restricted-role/pre-created deploy (privilege-asymmetric + destructive) → **bỏ DROP EXTENSION, chỉ xoá function+index nó own** (+ operations.md §4c
 > rollback note; reversibility re-passed); (③) index-expr byte-identity chưa có gate → **CAT-04 ARM (d) grep -F to_tsvector expr ở CẢ catalog.sql + migration
 > 000012** (PROVEN binding: desync migration→158/1→restore). guard giữ 159 (ARM mạnh hơn, không +count).
+
+> **🔨 PR-P1-l (`GET /products/{slug}/reviews` · public product reviews, published-only) — BUILT · reviews DONE + 2 NOTE fixes applied ·
+> verify-go+integration(colima)+TS gates GREEN · guard 159→160 · REV-01 ARM PROVEN binding · spec-guardian PASS 0/0/0 · chờ commit→push→PR.**
+> (branch `feat/phase-1-storefront-p1l` off `main` `77e2a2a` [P1-e].) The reviews BE endpoint the plan §2 defers to P1-l; unblocks FE P1-m.
+> **Contract:** openapi `GET /products/{slug}/reviews` + schemas `Review`/`ReviewReply`/`ReviewList` (money-free; camelCase; weak-ETag+304 như
+> catalog reads) → BOTH clients regen (`api.gen.go` + TS `schema.gen.ts`). **NO new enum → parity_test UNTOUCHED. NO new migration** (reviews
+> table exists since 000003). **Data:** `ListReviewsByProduct` + `CountPublishedReviewsByProduct` — **published-only filter tại NGUỒN SQL**
+> (`WHERE status='published'`, cùng non-leak `status='active'` của catalog; hidden review KHÔNG bao giờ phục vụ) + **projection bỏ `customer_id`**
+> (không PII người đánh giá ra wire — PDPL) → `Catalog.ListPublishedReviews`. **Handler `reviews.go`:** resolve slug→ACTIVE product first (slug lạ
+> HOẶC nháp/lưu-trữ đều **404 đồng nhất** — reviews sản phẩm ẩn không phục vụ, không probe catalog, cùng lẽ GetProductBySlug); newest-first;
+> `pageParams`/`weakETag`/`ifNoneMatch`/`catalogCacheControl` reuse; `classify GetProductReviews=authPublic`. **`reply` = nullable `{body,at}`
+> forward-contract cho P1-m** (chưa có write path Phase-1). **NO `sort` param Phase-1** (newest-only — deliberate scope-tightening vs GetProducts;
+> additive sau nếu design cần). **Design calls (deliberate, spec-guardian-confirmed):** no reviewer identity on wire · reply forward-contract · sort dropped.
+> **Gates (last-green 2026-07-04):** `make verify-go` rc=0 (golangci 0, sqlc vet/diff, oapi stale-check, `go test -race`) · api-client
+> typecheck+`schema.stale`+lint · **guard 159→160** (+1 **REV-01 ARM PROVEN binding**: drop `status='published'`→159/1→restore) · osm 22 ·
+> **integration RAN vs colima PG (-race):** `TestGetProductReviewsEndToEnd` (published-only-hidden-NEVER-served · newest-first · **5-row id-DESC
+> tiebreak walk PROVEN load-bearing** [drop `,id DESC`→RED→restore] · empty→`[]`-not-404 · unknown==draft-slug uniform-404 · ETag→304 · pageSize>48→400)
+> + Docker-free unit (`reviewsDTO` null/empty/corrupt-jsonb + **allowlist** no-author-identity + pre-DB 400). **REV-01** acceptance Cụm 16 `[ ]` (Go-gated).
+> **Reviews:** spec-guardian **PASS 0/0/0**. Adversarial 5-lens wf_47351c57 (per-finding refute + completeness critic, 11 agents): **5 raw → 2
+> confirmed (both NOTE) / 3 refuted; both NOTE FIXED:** (①) id-DESC tiebreak unexercised (distinct seed created_at) → **5-row identical-created_at
+> full-walk test, PROVEN binding**; (②) no-author-identity was a name-BLOCKLIST (vacuous for unlisted PII) → **exact-key ALLOWLIST** (any new field→RED).
+> **NO new dep · NO new ADR** (implements the CAT-01/CAT-02 non-leak stance + ADR-032 envelope).
 
 1. **Slice 3 · PR-3k — ✅ MERGED (PR #30) → `origin/main` `cf4c2a8` (2026-07-02, squash; CI green app-gates/selftest/services-gates).**
    Local `main` ff'd to `cf4c2a8`; the merged `feat/core-http-relay-3k` branch + ~19 older squash-merged branches remain

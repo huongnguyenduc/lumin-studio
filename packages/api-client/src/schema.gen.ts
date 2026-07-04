@@ -140,6 +140,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/products/{slug}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public storefront product reviews (published-only) — paginated, newest first.
+         * @description Public review list (no auth) for a product, newest first, paginated. Returns ONLY published reviews — the status='published' filter lives at the SQL source, so a moderated-away (hidden) review can NEVER leak (the same non-leak stance as the active-only product reads). An unknown slug OR a draft/archived product both return 404 NOT_FOUND, identical to the detail read (no catalog-existence probe). The reviewer's identity is deliberately NOT exposed (PDPL — reviews carry a nullable customer_id and guests may review; no public PII), so only the review content crosses the wire. The response carries a weak ETag + a provisional Cache-Control (the storefront ISR/purge strategy is finalized with the frontend PR, P1-f), consistent with the /products list; a matching If-None-Match returns 304 with no body. No sort param in Phase 1 (newest first only; an additive `sort` is a later PR if the reviews section design needs it).
+         */
+        get: operations["getProductReviews"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/categories": {
         parameters: {
             query?: never;
@@ -396,6 +416,44 @@ export interface components {
             /** @description Items per page echoed from the request. */
             pageSize: number;
             /** @description Total active products matching the filter, across all pages. */
+            total: number;
+        };
+        /** @description One PUBLISHED product review as it crosses the public wire (spec §02). The author's identity is deliberately omitted — reviews carry a nullable customer_id and guests may review, so exposing a reviewer name would be public PII (PDPL); only the review content is returned. `reply` is the shop's public reply, null until the shop replies (no Phase-1 write path populates it yet). Hidden reviews are filtered at the SQL source and never appear here. */
+        Review: {
+            /** Format: uuid */
+            id: string;
+            /** @description Star rating 1–5 (spec §02). */
+            rating: number;
+            /** @description The review text (may be empty). */
+            body: string;
+            /** @description Reviewer photos (spec §02). May be empty. */
+            images: string[];
+            /** @description The shop's public reply, or null until the shop has replied. */
+            reply?: components["schemas"]["ReviewReply"] | null;
+            /**
+             * Format: date-time
+             * @description ISO-8601 UTC when the review was posted.
+             */
+            createdAt: string;
+        };
+        /** @description The shop's public reply to a review (spec §02 `reply?`). Null on the parent until replied. */
+        ReviewReply: {
+            /** @description The shop reply text. */
+            body: string;
+            /**
+             * Format: date-time
+             * @description ISO-8601 UTC when the reply was posted.
+             */
+            at: string;
+        };
+        /** @description One page of published reviews plus the pagination envelope (spec §03 list state). `total` is the count of PUBLISHED reviews for the product across all pages; the client derives the page count. */
+        ReviewList: {
+            items: components["schemas"]["Review"][];
+            /** @description 1-based page number echoed from the request. */
+            page: number;
+            /** @description Items per page echoed from the request. */
+            pageSize: number;
+            /** @description Total published reviews for the product, across all pages. */
             total: number;
         };
         /** @description A catalog category (spec §02) — the taxonomy a product belongs to (Product.categoryId references Category.id) and the storefront browse chips render. No visibility axis: every category is public. */
@@ -953,6 +1011,54 @@ export interface operations {
                     "application/json": components["schemas"]["Product"];
                 };
             };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getProductReviews: {
+        parameters: {
+            query?: {
+                /** @description 1-based page number. */
+                page?: number;
+                /** @description Items per page. Capped at 48 to bound the query on this public, unauthenticated endpoint. */
+                pageSize?: number;
+            };
+            header?: {
+                /** @description Conditional GET — when it matches the current ETag the server returns 304 with no body. */
+                "If-None-Match"?: string;
+            };
+            path: {
+                /** @description URL slug of the product (spec §02, unique). */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of published reviews for the product (newest first). */
+            200: {
+                headers: {
+                    /** @description Weak validator over the response body; echo it in If-None-Match to revalidate. */
+                    ETag?: string;
+                    /** @description Public cache directive (provisional — the ISR/purge strategy is finalized in P1-f). */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewList"];
+                };
+            };
+            /** @description Not Modified — the client's If-None-Match matched the current ETag. */
+            304: {
+                headers: {
+                    /** @description The current weak validator (unchanged). */
+                    ETag?: string;
+                    /** @description Public cache directive (provisional — finalized in P1-f). */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
         };
     };
