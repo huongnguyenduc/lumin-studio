@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -77,6 +78,40 @@ func TestNormalizeFilter(t *testing.T) {
 	}
 	if got := normalizeFilter(ptrTo("den")); got == nil || *got != "den" {
 		t.Errorf("\"den\" → %v, want unchanged", got)
+	}
+}
+
+func TestSearchParam(t *testing.T) {
+	// nil (?q absent) → no search filter.
+	if got, ok := searchParam(nil); got != nil || !ok {
+		t.Errorf("nil q → %v/%v, want nil/true (no search)", got, ok)
+	}
+	// Empty / whitespace-only (?q= or ?q=%20) collapses to nil → "no search" (the full catalog), NOT a
+	// match-nothing empty query — symmetric with normalizeFilter/sortParam treating empty as omitted.
+	for _, in := range []string{"", "   ", "\t\n "} {
+		if got, ok := searchParam(ptrTo(in)); got != nil || !ok {
+			t.Errorf("q=%q → %v/%v, want nil/true (empty == omitted)", in, got, ok)
+		}
+	}
+	// A real term is trimmed of surrounding whitespace and passed through (interior spaces kept —
+	// plainto_tsquery splits them into ANDed lexemes).
+	if got, ok := searchParam(ptrTo("  đèn ngủ  ")); !ok || got == nil || *got != "đèn ngủ" {
+		t.Errorf("q trimmed → %v/%v, want \"đèn ngủ\"/true", got, ok)
+	}
+	// At the rune cap is fine; measured in RUNES so a maxSearchLen-character multi-byte Vietnamese string
+	// (2 bytes/char here) is NOT tripped early by its larger byte length.
+	atCap := strings.Repeat("đ", maxSearchLen)
+	if got, ok := searchParam(ptrTo(atCap)); !ok || got == nil || *got != atCap {
+		t.Errorf("q at rune cap = %v/%v, want passthrough/true (rune-counted, not byte)", got, ok)
+	}
+	// One rune over the cap is rejected (a 400 at the call site) — keeps a pathological term out of the query.
+	if got, ok := searchParam(ptrTo(strings.Repeat("a", maxSearchLen+1))); ok || got != nil {
+		t.Errorf("q over cap = %v/%v, want nil/false (400 bound)", got, ok)
+	}
+	// Invalid UTF-8 (e.g. ?q=%ff decodes to a raw 0xff byte) is rejected as a 400 — otherwise Postgres would
+	// reject the non-UTF-8 text param and the handler would surface a client-caused 500 on a public endpoint.
+	if got, ok := searchParam(ptrTo("den\xfftre")); ok || got != nil {
+		t.Errorf("malformed-utf8 q = %v/%v, want nil/false (400, not a 500 at the DB)", got, ok)
 	}
 }
 
@@ -197,6 +232,7 @@ func TestGetProductsRejectsBadParamsWithoutDB(t *testing.T) {
 		{"page zero", api.GetProductsParams{Page: ptrTo(0)}},
 		{"pageSize zero", api.GetProductsParams{PageSize: ptrTo(0)}},
 		{"unknown sort", api.GetProductsParams{Sort: &bad}},
+		{"q over length cap", api.GetProductsParams{Q: ptrTo(strings.Repeat("a", maxSearchLen+1))}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

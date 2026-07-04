@@ -19,15 +19,26 @@ WHERE status = 'active'
     $1::text IS NULL
     OR category_id = (SELECT id FROM categories WHERE slug = $1::text)
   )
+  AND (
+    $2::text IS NULL
+    OR to_tsvector('simple', immutable_unaccent(name || ' ' || description))
+       @@ plainto_tsquery('simple', immutable_unaccent($2::text))
+  )
 `
 
-// CountActiveProducts is the total for the list envelope — the SAME WHERE as ListActiveProducts, with no
+type CountActiveProductsParams struct {
+	CategorySlug *string `json:"categorySlug"`
+	Search       *string `json:"search"`
+}
+
+// CountActiveProducts is the total for the list envelope — the SAME WHERE as ListActiveProducts (including
+// the P1-e @search filter, so the envelope total reflects the SEARCHED set, not the whole catalog), with no
 // sort/limit. It runs alongside the list as a second autocommit read; a concurrent catalog write landing
 // between the two can skew the total by one. That is cosmetic (a display count that self-heals next
 // request) on a made-to-order shop whose catalog rarely mutates, and it is never a money value — so we
 // accept it rather than pay for a snapshot transaction (documented on the repo method).
-func (q *Queries) CountActiveProducts(ctx context.Context, categorySlug *string) (int64, error) {
-	row := q.db.QueryRow(ctx, countActiveProducts, categorySlug)
+func (q *Queries) CountActiveProducts(ctx context.Context, arg CountActiveProductsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveProducts, arg.CategorySlug, arg.Search)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -292,17 +303,23 @@ WHERE status = 'active'
     $1::text IS NULL
     OR category_id = (SELECT id FROM categories WHERE slug = $1::text)
   )
+  AND (
+    $2::text IS NULL
+    OR to_tsvector('simple', immutable_unaccent(name || ' ' || description))
+       @@ plainto_tsquery('simple', immutable_unaccent($2::text))
+  )
 ORDER BY
-  CASE WHEN $2::text = 'price_asc'  THEN base_price END ASC,
-  CASE WHEN $2::text = 'price_desc' THEN base_price END DESC,
-  CASE WHEN $2::text = 'rating'     THEN rating_avg END DESC NULLS LAST,
+  CASE WHEN $3::text = 'price_asc'  THEN base_price END ASC,
+  CASE WHEN $3::text = 'price_desc' THEN base_price END DESC,
+  CASE WHEN $3::text = 'rating'     THEN rating_avg END DESC NULLS LAST,
   created_at DESC,
   id DESC
-LIMIT $4::int OFFSET $3::int
+LIMIT $5::int OFFSET $4::int
 `
 
 type ListActiveProductsParams struct {
 	CategorySlug *string `json:"categorySlug"`
+	Search       *string `json:"search"`
 	Sort         string  `json:"sort"`
 	PageOffset   int32   `json:"pageOffset"`
 	PageLimit    int32   `json:"pageLimit"`
@@ -327,9 +344,20 @@ type ListActiveProductsRow struct {
 // non-selected CASE arms evaluate to a constant NULL and drop out, and created_at DESC, id DESC give a
 // deterministic TOTAL order so OFFSET pagination is stable across pages. @page_limit is bounded by the
 // handler (pageSize <= 48).
+//
+// The optional @search predicate (PR-P1-e, ADR-016) is the no-accent full-text filter: it is ANDed INSIDE
+// the active-only + category scope, so search can NEVER surface a draft/archived row (the same non-leak
+// discipline as the base list). The client term is never interpolated — it is parameterized through
+// plainto_tsquery, and both sides are accent-folded via immutable_unaccent so "den" matches "đèn". The
+// to_tsvector expression is byte-identical to the products_search_idx functional GIN index (000012) so the
+// planner uses it. NULL search (the common case) short-circuits to the exact pre-P1-e query — no regression.
+// Sort is unchanged under search (still the whitelist, default newest): ADR-016 scopes this to exact-token
+// matching on a tiny catalog, so relevance ranking (ts_rank) is a deliberate non-goal (it would also mean a
+// new sort enum value — a contract change P1-e avoids).
 func (q *Queries) ListActiveProducts(ctx context.Context, arg ListActiveProductsParams) ([]ListActiveProductsRow, error) {
 	rows, err := q.db.Query(ctx, listActiveProducts,
 		arg.CategorySlug,
+		arg.Search,
 		arg.Sort,
 		arg.PageOffset,
 		arg.PageLimit,

@@ -38,6 +38,13 @@ Core-api **tự phát JWT** (không dựa Cloudflare Access). Sau khi migrate xo
    - **Local dev** (chấp nhận dev-secret): đặt `ALLOW_DEV_JWT_SECRET=true` để `go run` chạy được với secret dev (log Warn to). Không dùng cờ này ở prod.
 3. **`JWT_TTL`** (default `12h`): tuổi thọ phiên; hết hạn → đăng nhập lại (**không** refresh token — ADR-030). **`COOKIE_SECURE`** (default `true`): cờ Secure của session cookie; chỉ set `false` cho local plain-http dev (không thì browser giữ cookie lại, login "im lặng" hỏng).
 
+## 4c. DB extension `unaccent` (điều kiện migrate — ADR-016 / PR-P1-e)
+Migration **`000012`** chạy `CREATE EXTENSION IF NOT EXISTS unaccent` (search catalog no-dấu). `unaccent` **không** phải extension *trusted*, nên role chạy `make migrate` phải có quyền tạo extension:
+- **All-home (mặc định):** role migrate = superuser `postgres` → chạy thẳng, không cần gì thêm.
+- **Nếu app chạy bằng role hạn chế:** pre-create một lần bằng superuser (`CREATE EXTENSION unaccent;` trong DB đích) **trước** khi migrate; migration `IF NOT EXISTS` sẽ no-op. Testcontainers/CI dùng `postgres:16-alpine` (contrib có sẵn unaccent) nên tự chạy được.
+- **Rollback:** `000012` down **chỉ xoá function + index** nó tạo, **KHÔNG** `DROP EXTENSION` — vì UP dùng `IF NOT EXISTS` (có thể không phải nó tạo, extension có thể dùng chung) + role hạn chế không xoá được extension không sở-hữu. Extension còn lại sau rollback là **cố ý** (vô hại, re-CREATE idempotent).
+- **Lưu ý:** nếu về sau đổi `unaccent.rules` (từ điển) thì phải `REINDEX INDEX products_search_idx` — `immutable_unaccent` được khai IMMUTABLE dựa trên từ điển cố định (xem comment migration 000012).
+
 ## 5. Backup & DR (điều kiện launch — ADR-018)
 - **Postgres:** WAL-G (Go, S3-native — hợp; hoặc pgBackRest đã hồi sinh 5/2026) — base backup + WAL liên tục → bucket offsite.
 - **Object (Garage) + compose/secrets:** **restic** (mã hoá, dedup) → offsite + 1 ổ ngoài để restore nhanh (3-2-1).

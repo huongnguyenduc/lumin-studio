@@ -48,11 +48,14 @@ func (c *Catalog) ProductsByStatus(ctx context.Context, status sqlc.ProductStatu
 	return c.q.ListProductsByStatus(ctx, status)
 }
 
-// ProductCardFilter narrows the storefront catalog list. CategorySlug nil = all categories; Sort is a
-// whitelisted token already validated at the HTTP edge (never raw client text — the SQL maps it through
-// a CASE); Limit/Offset are the already-bounded page window (the handler caps pageSize and the offset).
+// ProductCardFilter narrows the storefront catalog list. CategorySlug nil = all categories; Search nil =
+// no full-text filter (PR-P1-e — a length-bounded, ""→nil-normalized term the SQL matches accent-folded via
+// plainto_tsquery, never interpolated); Sort is a whitelisted token already validated at the HTTP edge
+// (never raw client text — the SQL maps it through a CASE); Limit/Offset are the already-bounded page window
+// (the handler caps pageSize and the offset).
 type ProductCardFilter struct {
 	CategorySlug *string
+	Search       *string
 	Sort         string
 	Limit        int32
 	Offset       int32
@@ -66,6 +69,7 @@ type ProductCardFilter struct {
 func (c *Catalog) ListActiveProductCards(ctx context.Context, f ProductCardFilter) ([]sqlc.ListActiveProductsRow, int64, error) {
 	rows, err := c.q.ListActiveProducts(ctx, sqlc.ListActiveProductsParams{
 		CategorySlug: f.CategorySlug,
+		Search:       f.Search,
 		Sort:         f.Sort,
 		PageLimit:    f.Limit,
 		PageOffset:   f.Offset,
@@ -73,7 +77,12 @@ func (c *Catalog) ListActiveProductCards(ctx context.Context, f ProductCardFilte
 	if err != nil {
 		return nil, 0, err
 	}
-	total, err := c.q.CountActiveProducts(ctx, f.CategorySlug)
+	// The count applies the SAME category + search filter as the list (sqlc.CountActiveProductsParams), so
+	// the envelope total reflects the searched/filtered set — never the whole catalog.
+	total, err := c.q.CountActiveProducts(ctx, sqlc.CountActiveProductsParams{
+		CategorySlug: f.CategorySlug,
+		Search:       f.Search,
+	})
 	if err != nil {
 		return nil, 0, err
 	}

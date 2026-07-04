@@ -708,6 +708,35 @@ if [ -f "$CATEGORIES" ]; then
     bad "ARM: GetCategories LAND nhưng thiếu 1 trong {classify authPublic, ListCategories EXISTS active-product scope} -> chip duyệt kẹt sau auth / category unreleased rò ra public — CAT-03!"
   fi
 else ok "ARM: chưa có GetCategories list handler (category list public + non-leak arm khi land — PR-P1-d)"; fi
+# ARM PR-P1-e (public catalog SEARCH GET /products?q=): khoá 4 bất biến no-accent FTS —
+#  (a) NON-LEAK: predicate search PHẢI nằm TRONG query active-only ListActiveProducts (cùng cửa sổ query
+#      chứa status='active') → search ANDed trong scope active, KHÔNG BAO GIỜ surface hàng draft/archived
+#      (tách search sang query bỏ active-only, hoặc bỏ status='active' → hàng ẩn rò qua tìm kiếm → RED);
+#  (b) PARAMETERIZED + no-accent: term đi qua plainto_tsquery + fold dấu qua immutable_unaccent (000012) —
+#      KHÔNG nội suy text client thô vào SQL (cùng lẽ whitelist sort của CAT-02);
+#  (c) BOUNDED: handler chặn độ dài term (maxSearchLen) trước khi term tới plainto_tsquery — endpoint public
+#      không rate-limit (cùng lẽ maxPageSize/maxQuoteItems);
+#  (d) INDEX-KHỚP-QUERY: biểu thức to_tsvector(...) trong predicate query PHẢI byte-identical với biểu thức
+#      của functional GIN index (000012) — hai bản chép tay; lệch một bên → planner bỏ index → seq-scan âm
+#      thầm (đúng kết quả nhưng tụt hiệu năng, test kết-quả không bắt được). Grep -F cùng chuỗi ở CẢ 2 file.
+# Bỏ comment ('--' SQL) trong cửa sổ query trước khi soi, để một predicate bị COMMENT-OUT không false-PASS
+# (class lỗ '//' 3b, mở rộng cho '--'). Gate "đã land" = catalog.sql có immutable_unaccent (chỉ P1-e thêm).
+P1EMIG="$ROOT/services/core-api/db/migrations/000012_product_search.up.sql"
+SEARCHEXPR="to_tsvector('simple', immutable_unaccent(name || ' ' || description))"
+if [ -f "$PRODUCTS" ] && printf '%s' "$PRODUCTSBODY" | grep -qE 'func \(s \*Server\) GetProducts\(' \
+   && grep -q 'immutable_unaccent' "$CATSQL" 2>/dev/null; then
+  LISTSEARCH="$(grep -A18 'name: ListActiveProducts' "$CATSQL" 2>/dev/null | grep -vE '^[[:space:]]*--')"
+  if printf '%s' "$LISTSEARCH" | grep -qi "status = 'active'" \
+     && printf '%s' "$LISTSEARCH" | grep -q 'plainto_tsquery' \
+     && printf '%s' "$LISTSEARCH" | grep -q 'immutable_unaccent' \
+     && printf '%s' "$PRODUCTSBODY" | grep -q 'maxSearchLen' \
+     && grep -qF "$SEARCHEXPR" "$CATSQL" 2>/dev/null \
+     && grep -qF "$SEARCHEXPR" "$P1EMIG" 2>/dev/null; then
+    ok "ARM: có product search ?q= -> predicate FTS trong CÙNG query active-only (ListActiveProducts giữ status='active' + plainto_tsquery + immutable_unaccent → search không leak hàng ẩn) + term chặn độ dài (maxSearchLen) + biểu thức to_tsvector khớp byte-identical giữa query và GIN index 000012 (không tụt seq-scan) — CAT-04"
+  else
+    bad "ARM: product search ?q= LAND nhưng thiếu 1 trong {ListActiveProducts status='active' + plainto_tsquery + immutable_unaccent trong CÙNG query, maxSearchLen bound, to_tsvector expr khớp giữa catalog.sql và migration 000012} -> search leak hàng ẩn / raw text vào SQL / term unbounded / index desync→seq-scan (CAT-04!)"
+  fi
+else ok "ARM: chưa có product search ?q= (no-accent FTS active-only/parameterized/bounded arm khi land — PR-P1-e)"; fi
 # ARM PR-P1-n (public guest order lookup GET /orders/lookup): khoá 3 bất biến bảo mật tra-cứu khách —
 #  (a) CONSTANT-TIME + UNIFORM 404: so sánh SĐT bằng subtle.ConstantTimeCompare VÀ trả db.ErrNotFound (404)
 #      Y HỆT cho code lạ LẪN SĐT sai — public surface KHÔNG phân biệt đơn tồn-tại với đơn không (chống

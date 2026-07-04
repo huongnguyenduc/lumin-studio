@@ -49,6 +49,16 @@ SELECT * FROM products WHERE status = $1 ORDER BY created_at DESC;
 -- non-selected CASE arms evaluate to a constant NULL and drop out, and created_at DESC, id DESC give a
 -- deterministic TOTAL order so OFFSET pagination is stable across pages. @page_limit is bounded by the
 -- handler (pageSize <= 48).
+--
+-- The optional @search predicate (PR-P1-e, ADR-016) is the no-accent full-text filter: it is ANDed INSIDE
+-- the active-only + category scope, so search can NEVER surface a draft/archived row (the same non-leak
+-- discipline as the base list). The client term is never interpolated — it is parameterized through
+-- plainto_tsquery, and both sides are accent-folded via immutable_unaccent so "den" matches "đèn". The
+-- to_tsvector expression is byte-identical to the products_search_idx functional GIN index (000012) so the
+-- planner uses it. NULL search (the common case) short-circuits to the exact pre-P1-e query — no regression.
+-- Sort is unchanged under search (still the whitelist, default newest): ADR-016 scopes this to exact-token
+-- matching on a tiny catalog, so relevance ranking (ts_rank) is a deliberate non-goal (it would also mean a
+-- new sort enum value — a contract change P1-e avoids).
 -- name: ListActiveProducts :many
 SELECT id, slug, name, base_price, category_id, images, rating_avg, review_count
 FROM products
@@ -56,6 +66,11 @@ WHERE status = 'active'
   AND (
     sqlc.narg('category_slug')::text IS NULL
     OR category_id = (SELECT id FROM categories WHERE slug = sqlc.narg('category_slug')::text)
+  )
+  AND (
+    sqlc.narg('search')::text IS NULL
+    OR to_tsvector('simple', immutable_unaccent(name || ' ' || description))
+       @@ plainto_tsquery('simple', immutable_unaccent(sqlc.narg('search')::text))
   )
 ORDER BY
   CASE WHEN @sort::text = 'price_asc'  THEN base_price END ASC,
@@ -65,7 +80,8 @@ ORDER BY
   id DESC
 LIMIT @page_limit::int OFFSET @page_offset::int;
 
--- CountActiveProducts is the total for the list envelope — the SAME WHERE as ListActiveProducts, with no
+-- CountActiveProducts is the total for the list envelope — the SAME WHERE as ListActiveProducts (including
+-- the P1-e @search filter, so the envelope total reflects the SEARCHED set, not the whole catalog), with no
 -- sort/limit. It runs alongside the list as a second autocommit read; a concurrent catalog write landing
 -- between the two can skew the total by one. That is cosmetic (a display count that self-heals next
 -- request) on a made-to-order shop whose catalog rarely mutates, and it is never a money value — so we
@@ -76,6 +92,11 @@ WHERE status = 'active'
   AND (
     sqlc.narg('category_slug')::text IS NULL
     OR category_id = (SELECT id FROM categories WHERE slug = sqlc.narg('category_slug')::text)
+  )
+  AND (
+    sqlc.narg('search')::text IS NULL
+    OR to_tsvector('simple', immutable_unaccent(name || ' ' || description))
+       @@ plainto_tsquery('simple', immutable_unaccent(sqlc.narg('search')::text))
   );
 
 -- name: InsertColor :one

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/api"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
@@ -22,6 +23,11 @@ const (
 	defaultPageSize  = 12
 	maxPageSize      = 48
 	maxCatalogOffset = 100_000
+	// maxSearchLen bounds the `?q=` full-text term (PR-P1-e) on this public, unauthenticated, rate-limit-free
+	// endpoint — the same "bound every public input" stance as maxPageSize / price.go's maxQuoteItems. Product
+	// names/descriptions are short, so 100 chars is generous; a longer term is a request-shape violation (400),
+	// not a silent truncation, so a client can't smuggle a pathological string into plainto_tsquery.
+	maxSearchLen = 100
 )
 
 // catalogCacheControl is the response cache directive for the public catalog list. It is a deliberately
@@ -158,12 +164,15 @@ func maxCharsPtr(v *int32) *int {
 // the public list cannot leak a hidden row (the same non-leak stance the detail read and checkout take).
 //
 // It is paginated (page/pageSize, bounded here since oapi-codegen ignores the schema min/max), sortable
-// over a WHITELIST (newest|price_asc|price_desc|rating — never raw client text into ORDER BY), and
-// optionally filtered by category slug (an unknown slug → an empty page, not a 404). Money (basePrice)
+// over a WHITELIST (newest|price_asc|price_desc|rating — never raw client text into ORDER BY), optionally
+// filtered by category slug (an unknown slug → an empty page, not a 404), and — since P1-e — optionally
+// searched by the `q` full-text term (ADR-016: accent-folded, so "den" matches "đèn"). Search is a filter
+// ANDed inside the active-only scope (SQL), so it can never surface a hidden row; the term is length-bounded
+// (maxSearchLen → 400) and parameterized through plainto_tsquery, never interpolated. Money (basePrice)
 // crosses the wire raw int-VND (always-must #2). The response carries a weak ETag + a provisional
-// Cache-Control (see catalogCacheControl); a matching If-None-Match short-circuits to 304 with no body.
-// The `q` param is RESERVED (accepted, ignored) until P1-e wires FTS. r.Context() propagates into every
-// read so a client disconnect / 30s timeout cancels them.
+// Cache-Control (see catalogCacheControl); a matching If-None-Match short-circuits to 304 with no body (the
+// ETag hashes the body, so it already varies by q). r.Context() propagates into every read so a client
+// disconnect / 30s timeout cancels them.
 func (s *Server) GetProducts(ctx context.Context, request api.GetProductsRequestObject) (api.GetProductsResponseObject, error) {
 	badRequest := api.GetProducts400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}
 
@@ -180,6 +189,12 @@ func (s *Server) GetProducts(ctx context.Context, request api.GetProductsRequest
 		// rather than silently fall back, so ORDER BY is always a whitelisted value.
 		return badRequest, nil
 	}
+	search, ok := searchParam(request.Params.Q)
+	if !ok {
+		// A search term over maxSearchLen — a request-shape violation (400), bounding the term before it
+		// reaches plainto_tsquery on this public, rate-limit-free endpoint (oapi-codegen ignores maxLength).
+		return badRequest, nil
+	}
 
 	// Guard the OFFSET before the multiply can overflow: a page far beyond any real catalog is an empty
 	// page, so clamp the offset to maxCatalogOffset (the LIMIT then returns nothing) rather than let a
@@ -191,6 +206,7 @@ func (s *Server) GetProducts(ctx context.Context, request api.GetProductsRequest
 
 	rows, total, err := db.NewCatalog(s.pool).ListActiveProductCards(ctx, db.ProductCardFilter{
 		CategorySlug: normalizeFilter(request.Params.Category),
+		Search:       search,
 		Sort:         sort,
 		Limit:        int32(pageSize),
 		Offset:       int32(offset),
@@ -258,6 +274,30 @@ func sortParam(s *api.GetProductsParamsSort) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+// searchParam normalizes the optional `?q=` full-text term (PR-P1-e). It trims surrounding whitespace and
+// treats an empty/whitespace-only value as OMITTED (nil → no search filter), symmetric with how sortParam
+// and normalizeFilter collapse an empty query value to the default — so `?q=` behaves exactly like leaving
+// the param off (the full catalog), not an empty search that matches nothing. It returns ok=false (a 400 at
+// the call site) for two request-shape violations oapi-codegen does not catch: a term longer than
+// maxSearchLen (keeps a pathological term out of plainto_tsquery on this public, rate-limit-free endpoint;
+// length measured in runes, not bytes, so a character bound is not tripped early by multi-byte Vietnamese
+// text) OR a term carrying invalid UTF-8. The encoding check matters because Postgres rejects a non-UTF-8
+// text parameter — without it, `?q=%ff` (RuneError bytes count <= the rune cap) would reach the query and
+// surface as a client-caused 500; a malformed request is a 400, not a server fault.
+func searchParam(q *string) (*string, bool) {
+	if q == nil {
+		return nil, true
+	}
+	trimmed := strings.TrimSpace(*q)
+	if trimmed == "" {
+		return nil, true
+	}
+	if !utf8.ValidString(trimmed) || utf8.RuneCountInString(trimmed) > maxSearchLen {
+		return nil, false
+	}
+	return &trimmed, true
 }
 
 // normalizeFilter treats an empty-string query value as "omitted" (nil). A frontend commonly maps an

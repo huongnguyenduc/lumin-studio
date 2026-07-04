@@ -109,7 +109,7 @@ export interface paths {
         };
         /**
          * Public storefront catalog list (active-only) — paginated card projection.
-         * @description Public catalog list (no auth). Returns ACTIVE products only as a lightweight card projection (no colors/options/description body → no N+1), paginated and sortable, optionally filtered by category slug. Draft/archived products are NEVER listed (no catalog-existence leak, matching the detail read). Money (basePrice) is raw int-VND; the client formats via @lumin/core (always-must #2). The response carries a weak ETag + a provisional Cache-Control (the storefront ISR/purge strategy is finalized with the frontend PR, P1-f); a matching If-None-Match returns 304. The `q` full-text parameter is RESERVED here — accepted but ignored until P1-e wires Postgres FTS (ADR-016), declared now so the contract does not change when search lands.
+         * @description Public catalog list (no auth). Returns ACTIVE products only as a lightweight card projection (no colors/options/description body → no N+1), paginated and sortable, optionally filtered by category slug. Draft/archived products are NEVER listed (no catalog-existence leak, matching the detail read). Money (basePrice) is raw int-VND; the client formats via @lumin/core (always-must #2). The response carries a weak ETag + a provisional Cache-Control (the storefront ISR/purge strategy is finalized with the frontend PR, P1-f); a matching If-None-Match returns 304. The `q` full-text parameter (P1-e, ADR-016) filters by an accent-insensitive search over the product name/description ("den" matches "đèn"); it is ANDed inside the active-only scope so it never surfaces a hidden product, and the sort/pagination are unchanged (no relevance ranking — small catalog).
          */
         get: operations["getProducts"];
         put?: never;
@@ -893,7 +893,7 @@ export interface operations {
                 page?: number;
                 /** @description Items per page. Capped at 48 to bound the query on this public, unauthenticated endpoint. */
                 pageSize?: number;
-                /** @description RESERVED full-text search term (no-accent, ADR-016). Accepted but IGNORED until P1-e wires Postgres FTS; declared now so the contract stays stable when search lands. */
+                /** @description Full-text search term (accent-insensitive, ADR-016) over the product name/description. Filters within the active-only + category scope; an empty/whitespace value means "no search" (the full catalog). Bounded to 100 characters on this public endpoint (over-length → 400). */
                 q?: string;
             };
             header?: {
