@@ -630,7 +630,7 @@ session) — used as-is, left running.
 
 > **✅ PR-P1-k MERGED (PR #43) → `origin/main` `452ff48` (2026-07-04, squash; local `main` ff'd). Phase-1 fan-out continues.**
 
-> **🔨 PR-P1-g (FE · catalog browse `/danh-muc`) — BUILT · adversarial review DONE + fixes applied · spec-guardian PASS (0/0/1) · verify+build+guard green · NOT committed (chờ user OK để commit→push→PR→merge-gate).**
+> **🔨 PR-P1-g (FE · catalog browse `/danh-muc`) — committed `40562e8` · pushed → PR #44 OPEN · CI GREEN (app-gates/selftest/services-gates) · MERGEABLE · chờ user merge-gate. (adversarial review DONE + fixes applied · spec-guardian PASS 0/0/1 · verify+build+guard green.)**
 > (branch `feat/phase-1-storefront-p1g` off `main` `452ff48` [P1-k].) The earliest un-done Phase-1 sub-PR; deps P1-c/d/e/f all merged.
 > **ROUTE DECISION (user 2026-07-04):** browse lives at **`/danh-muc`** (NOT the plan §3 `/san-pham`) — all 6 existing nav links
 > (bottom-nav/header/footer/hero/featured-products/[slug]not-found) + the hi-fi "Danh mục" tab already point there → chose it → **ZERO nav-file churn** (dead links now resolve); detail stays `/san-pham/{slug}`.
