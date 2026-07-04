@@ -545,7 +545,8 @@ session) — used as-is, left running.
 > **🔨 PR-P1-h (FE · product detail `/san-pham/{slug}`) — BUILT · reviews DONE + fixes applied · `pnpm verify` GREEN
 > (28 storefront tests) · guard 160/osm 22 (no FE ARM) · spec-guardian PASS (0 BLOCKER/1 WARN-FIXED/1 NOTE) · adversarial
 > 6-lens wf_bf7aa2b1 DONE (9 raised → 3 confirmed [ALL the same breadcrumb defect, corroborated by a11y+i18n+states
-> lenses + spec-guardian] / 6 refuted; 5 critic NOTEs → 4 FIXED / 1 deferred) · committed→pushed→PR chờ merge-gate.**
+> lenses + spec-guardian] / 6 refuted; 5 critic NOTEs → 4 FIXED / 1 deferred) · committed `3717291` → pushed → **PR #41 OPEN ·
+> CI green (app-gates/selftest/services-gates) · chờ user merge-gate.**
 > (branch `feat/phase-1-storefront-p1h` off `main` `a1e898b`.) Closes the dead card→detail link P1-f opened; the FE
 > critical path (P1-i/j/k/m all sit on it). **Scope (user 2026-07-04):** detail SHELL + colour swatches (out-of-stock)
 > + "Thêm vào giỏ" **LOCKED until an in-stock colour chosen**; CTA click UNWIRED (no-op seam → P1-k). Deferred (by design,
