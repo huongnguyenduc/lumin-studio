@@ -1,6 +1,11 @@
 import 'server-only';
 import { createApiClient } from '@lumin/api-client';
-import { toProductCardView, type ProductCardView } from './product-view';
+import {
+  toProductCardView,
+  toProductDetailView,
+  type ProductCardView,
+  type ProductDetailView,
+} from './product-view';
 
 // SERVER-ONLY catalog reads. This module imports the openapi-fetch client and reads CORE_API_URL, so it
 // must never be pulled into the client bundle — it is imported only by the async server page.tsx. The
@@ -57,4 +62,36 @@ export async function fetchNewArrivals(): Promise<ProductCardView[]> {
   }
 
   return data.items.map(toProductCardView);
+}
+
+/**
+ * Fetch one active product for the detail page (/san-pham/{slug}).
+ *
+ * Returns `null` when core-api answers 404 — the backend returns an IDENTICAL 404 for an unknown slug
+ * and for a draft/archived product (no catalog-existence leak, P1-a), so the caller maps null →
+ * `notFound()` without probing why. Any OTHER failure (5xx, or a network error that rejects the fetch)
+ * propagates so the route error boundary (app/error.tsx) renders "thử lại" rather than a silent 404.
+ *
+ * Caching mirrors the grid (fetchNewArrivals): tagged `catalog` so the existing POST /api/revalidate
+ * purge busts every catalog read — detail pages included — the instant a product changes, with the
+ * 300s `revalidate` as the backstop ceiling. A ≤5-min-stale card/detail price is cosmetic: checkout
+ * re-prices server-side via POST /price/quote (P1-b). (A finer per-product tag is a future refinement
+ * once the emit-side product-change webhook lands with admin product-CRUD.)
+ */
+export async function fetchProductBySlug(slug: string): Promise<ProductDetailView | null> {
+  const client = createApiClient({ baseUrl: coreApiBaseUrl() });
+
+  const { data, error, response } = await client.GET('/products/{slug}', {
+    params: { path: { slug } },
+    next: { revalidate: 300, tags: ['catalog'] },
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+  if (error || !data) {
+    throw new Error(`product fetch failed (${response.status})`);
+  }
+
+  return toProductDetailView(data);
 }
