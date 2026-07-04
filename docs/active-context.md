@@ -485,7 +485,8 @@ session) — used as-is, left running.
 > 000012** (PROVEN binding: desync migration→158/1→restore). guard giữ 159 (ARM mạnh hơn, không +count).
 
 > **🔨 PR-P1-l (`GET /products/{slug}/reviews` · public product reviews, published-only) — BUILT · reviews DONE + 2 NOTE fixes applied ·
-> verify-go+integration(colima)+TS gates GREEN · guard 159→160 · REV-01 ARM PROVEN binding · spec-guardian PASS 0/0/0 · chờ commit→push→PR.**
+> verify-go+integration(colima)+TS gates GREEN · guard 159→160 · REV-01 ARM PROVEN binding · spec-guardian PASS 0/0/0 · committed `a12fb5f` ·
+> pushed → PR #39 OPEN · chờ user merge-gate.**
 > (branch `feat/phase-1-storefront-p1l` off `main` `77e2a2a` [P1-e].) The reviews BE endpoint the plan §2 defers to P1-l; unblocks FE P1-m.
 > **Contract:** openapi `GET /products/{slug}/reviews` + schemas `Review`/`ReviewReply`/`ReviewList` (money-free; camelCase; weak-ETag+304 như
 > catalog reads) → BOTH clients regen (`api.gen.go` + TS `schema.gen.ts`). **NO new enum → parity_test UNTOUCHED. NO new migration** (reviews
