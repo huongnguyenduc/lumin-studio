@@ -540,6 +540,34 @@ session) — used as-is, left running.
 > **NEXT (FE track, all unblocked by P1-f):** **P1-h** product detail `/san-pham/{slug}` (dependsOn P1-a,f — the card href already points there) · **P1-g** browse `/san-pham` (c,d,e,f) ·
 > **P1-o** guest lookup UI (n,f) · **P1-m** reviews FE (l,f). Re-read `designs/Lumin Storefront - Hi-fi.dc.html` per-screen before each.
 
+> **✅ P1-f MERGED (PR #40) → `origin/main` `a1e898b` (2026-07-04, merge-commit; local `main` ff'd).**
+>
+> **🔨 PR-P1-h (FE · product detail `/san-pham/{slug}`) — BUILT · reviews DONE + fixes applied · `pnpm verify` GREEN
+> (28 storefront tests) · guard 160/osm 22 (no FE ARM) · spec-guardian PASS (0 BLOCKER/1 WARN-FIXED/1 NOTE) · adversarial
+> 6-lens wf_bf7aa2b1 DONE (9 raised → 3 confirmed [ALL the same breadcrumb defect, corroborated by a11y+i18n+states
+> lenses + spec-guardian] / 6 refuted; 5 critic NOTEs → 4 FIXED / 1 deferred) · committed→pushed→PR chờ merge-gate.**
+> (branch `feat/phase-1-storefront-p1h` off `main` `a1e898b`.) Closes the dead card→detail link P1-f opened; the FE
+> critical path (P1-i/j/k/m all sit on it). **Scope (user 2026-07-04):** detail SHELL + colour swatches (out-of-stock)
+> + "Thêm vào giỏ" **LOCKED until an in-stock colour chosen**; CTA click UNWIRED (no-op seam → P1-k). Deferred (by design,
+> not missing): cart+quantity P1-k · engrave/option pickers P1-j (contract exposes no choice `values[]`) · 360/sprite P1-i ·
+> reviews FE P1-m · live `/price/quote` total P1-k. **Files (9):** `lib/product-view.ts` (+`ProductDetailView`/`ColorView`
+> types, `toProductDetailView` mapper, pure `canAddToCart`/`isColorSelectable`/`formatDimensions`) · `lib/catalog.ts`
+> (+`fetchProductBySlug`: server-only, **404→null / else throw**, `tags:['catalog']`+300s backstop) · `components/product-detail.tsx`
+> (NEW client: media+thumb gallery · `PriceTag(basePrice)` · Rating/no-reviews · description · specs `w × d × h mm`+material ·
+> swatches hex+selected-ring+**available:false→disabled+`core.errors.colorOutOfStock`** · `Button` pop gated by `canAddToCart`) ·
+> `app/san-pham/[slug]/{page,loading,not-found}.tsx` (server route · Next-15 async `params` · uniform `notFound()` non-leak ·
+> skeleton · 404 CTA→/danh-muc) · `messages/vi.ts` (+`productDetail` ns; reuse `product.add`+`core.errors.colorOutOfStock`) ·
+> `test/product-detail-view.test.ts` (13 tests: mapper edges + dedupe + `canAddToCart` lock truth-table) · `docs/acceptance.md`
+> **Cụm 18 SF-03/SF-04** (`[ ]` TS-gated). **Money:** basePrice-only via PriceTag/formatVnd, **NO client sum** of colour/option
+> `priceDelta` (server-authoritative `/price/quote` P1-k); no Intl outside core (MNY-03). **NO new dep · NO new ADR · NO migration
+> · NO contract change** (consumes P1-a `GET /products/{slug}`). **Review fixes (4):** (①IMPORTANT ×4-reviewer) breadcrumb
+> `<nav>` reused `nav.primaryNav` → dup landmark w/ BottomNav on mobile → dedicated `productDetail.breadcrumbLabel` "Đường dẫn";
+> (②NOTE) `aria-current="page"` on terminal crumb; (③NOTE) swatch `<div role="group" aria-labelledby>` names the set (kept
+> `aria-pressed` toggles per locked invariant — radiogroup change REFUTED as over-reach); (④NOTE) `toProductDetailView` now
+> **de-dupes images** (+test) so a repeated photo can't dup a React key. **Deferred (documented):** out-of-stock note keeps
+> spec §05-mandated `core.errors.colorOutOfStock` (refuted as redundancy-not-defect) · per-product meta description/canonical/OG/
+> JSON-LD → **P1-q** (SEO PR). **Live screenshot vs hi-fi DEFERRED** (needs running origin + seeded product images; same as P1-f).
+
 1. **Slice 3 · PR-3k — ✅ MERGED (PR #30) → `origin/main` `cf4c2a8` (2026-07-02, squash; CI green app-gates/selftest/services-gates).**
    Local `main` ff'd to `cf4c2a8`; the merged `feat/core-http-relay-3k` branch + ~19 older squash-merged branches remain
    local (guard blocks `git branch -D` → prune by hand when duyệt). **Flag carried to 3j PR:** openapi `BankAccountUpdate`

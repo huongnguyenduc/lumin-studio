@@ -42,6 +42,36 @@ export const vi = {
     favLabel: 'Lưu {name} vào yêu thích',
     ratingLabel: '{value} trên 5 sao',
   },
+  productDetail: {
+    // Breadcrumb landmark name — MUST differ from nav.primaryNav (which names BottomNav, mounted on
+    // every page): two <nav> landmarks sharing a name breaks landmark navigation on mobile (WCAG 1.3.1).
+    breadcrumbLabel: 'Đường dẫn',
+    // Section headings + spec labels. Values (dimensions, material) come from product data, formatted
+    // in the component — never baked into copy here.
+    descriptionHeading: 'Mô tả',
+    specsHeading: 'Thông số',
+    specDimensions: 'Kích thước',
+    specMaterial: 'Chất liệu',
+    madeToOrder: 'In theo đơn · giao trong 3–5 ngày',
+    // Colour picker.
+    colorsLabel: 'Màu in',
+    selectColorLabel: 'Chọn màu {name}',
+    colorUnavailableLabel: '{name} — tạm hết',
+    // Shown under the disabled CTA to explain the lock (spec §03: khoá tới khi chọn màu).
+    pickColorHint: 'Chọn màu để thêm vào giỏ nhé.',
+    // Colour/option surcharges are priced at checkout (server-authoritative), not summed on the card.
+    priceNote: 'Màu và tuỳ chọn được tính khi đặt hàng.',
+    // Rating fallback before the first review.
+    noReviews: 'Chưa có đánh giá',
+    // Gallery thumbnail button label; {index} is 1-based.
+    galleryThumbLabel: 'Xem ảnh {index}',
+    // <title> for the detail route.
+    metaTitle: '{name} — Lumin Studio',
+    // 404 (unknown slug or draft/archived — uniform, no leak).
+    notFoundTitle: 'Không tìm thấy sản phẩm',
+    notFoundBody: 'Sản phẩm này không còn nữa, hoặc đường dẫn chưa đúng.',
+    notFoundCta: 'Xem sản phẩm khác',
+  },
   badge: {
     featured: 'Nổi bật',
     new: 'Mới',
