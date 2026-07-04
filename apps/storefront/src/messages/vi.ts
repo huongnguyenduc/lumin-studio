@@ -83,6 +83,28 @@ export const vi = {
     optionsHeading: 'Tuỳ chọn',
     optionFree: 'miễn phí',
   },
+  cart: {
+    // <title> for /gio-hang (kept out of the index — see the route's generateMetadata).
+    metaTitle: 'Giỏ hàng — Lumin Studio',
+    heading: 'Giỏ hàng',
+    // Item-count line under the heading. Vietnamese has no plural inflection → one form.
+    itemCount: '{count} món',
+    // Summary line composer: colour · add-ons · engraving. {text} is the shopper's engraving.
+    engraveSummary: 'khắc "{text}"',
+    // QuantityStepper aria-labels (required at the call site, never hard-coded in the primitive). At
+    // quantity 1 the − button removes the line, so its label becomes the remove copy.
+    decrementLabel: 'Giảm số lượng',
+    incrementLabel: 'Tăng số lượng',
+    removeLabel: 'Xoá {name} khỏi giỏ',
+    // Summary card.
+    subtotalLabel: 'Tạm tính',
+    shippingNote: 'Phí ship tính theo khu vực ở bước sau.',
+    // States. `unavailableError` = a line's product/colour/option is no longer valid (server 422);
+    // `pricingError` = a transient failure computing the subtotal. Both offer retry.
+    unavailableError: 'Một món trong giỏ không còn khả dụng — thử xoá rồi thêm lại nhé.',
+    pricingError: 'Chưa tính được tạm tính — thử lại giúp mình nhé.',
+    retry: 'Thử lại',
+  },
   badge: {
     featured: 'Nổi bật',
     new: 'Mới',

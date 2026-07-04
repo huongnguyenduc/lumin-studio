@@ -2,8 +2,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button, PriceTag, Rating, cn } from '@lumin/ui';
+import { buildCartItem } from '@/lib/cart';
+import { useCart } from '@/lib/cart-store';
 import {
   canAddToCart,
   canAddToCartWithOptions,
@@ -39,6 +42,9 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
   const [engraveTexts, setEngraveTexts] = useState<Record<string, string>>({});
   const [selectedChoiceIds, setSelectedChoiceIds] = useState<string[]>([]);
 
+  const router = useRouter();
+  const { add } = useCart();
+
   const cover = product.images[activeImage];
   const hasColors = product.colors.length > 0;
   const anyUnavailable = product.colors.some((c) => !c.available);
@@ -60,6 +66,22 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
 
   const toggleChoice = (id: string) =>
     setSelectedChoiceIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+
+  // Add the current selection to the cart, then send the shopper to /gio-hang (P1-k). The Selection is
+  // snapshot-shaped by buildCartItem (no price — the cart re-prices via POST /price/quote); the button
+  // is disabled unless `canAdd`, so this only fires on a valid, in-limit selection. The guard is belt-
+  // and-braces against a programmatic click.
+  const handleAddToCart = () => {
+    if (!canAdd) return;
+    add(
+      buildCartItem(product, {
+        colorId: selectedColorId,
+        choiceIds: selectedChoiceIds,
+        engraveTexts,
+      }),
+    );
+    router.push('/gio-hang');
+  };
 
   return (
     <article className="mx-auto w-full max-w-[1200px] px-4 py-6 md:px-6 md:py-10">
@@ -276,9 +298,15 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
           ) : null}
 
           {/* Add-to-cart: locked until an in-stock colour is chosen AND every engraving fits its limit.
-              Click is unwired — the cart Selection + onClick land in P1-k. */}
+              On click it snapshots the selection into the cart and navigates to /gio-hang (P1-k). */}
           <div>
-            <Button variant="pop" size="lg" disabled={!canAdd} className="w-full md:w-auto">
+            <Button
+              variant="pop"
+              size="lg"
+              disabled={!canAdd}
+              onClick={handleAddToCart}
+              className="w-full md:w-auto"
+            >
               {tp('add')}
             </Button>
             {hasColors && !colorOk ? (

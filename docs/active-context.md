@@ -596,6 +596,38 @@ session) — used as-is, left running.
 > NFC-out-of-scope (2 lens — nhưng false comment/test sống trong P1-j nên vẫn sửa) · BOM/NEL trim-set lệch (pathological, server backstop) ·
 > multi-text-option vs single Personalization (P1-k concern) · counter aria-label che số (dup của defect ①).
 
+> **🔨 PR-P1-k (FE cart `/gio-hang`) — BUILT · verify+lint+typecheck+format green · adversarial 6-lens review DONE (fixes applied) · spec-guardian PASS (0/0/0) · committing → push→PR.**
+> (branch `feat/phase-1-storefront-p1k` off `main` `296e8f9` [P1-j].) **Scope (user 2026-07-04): cart screen ONLY** — detail live-total /
+> sticky-mobile add-to-cart bar DEFERRED (follow-up hoặc gộp P1-i). **NEW:** `lib/cart.ts` (pure model + reducers + quote-map: `cartLineKey`
+> gộp-theo-cấu-hình · `buildCartItem` [engrave OFF optionIds, blank=none, key-merge] · `addItem`/`setItemQuantity` dec-tại-1→xoá/clamp/`MAX_LINES` ·
+> `cartQuoteItems` **gấp engrave optionId vào optionIds** + bỏ null colorId + **KHÔNG personalization/giá lên wire** · `sanitizeCart` đọc-total) ·
+> `lib/cart-store.ts` (localStorage external store `useSyncExternalStore`, cross-tab `storage`, stable-snapshot cache, mutators đọc `read()` mới nhất) ·
+> `lib/quote.ts` (`'use server'` `quoteCart` → POST /price/quote; err→safe code, **KHÔNG forward envelope/messageKey**) · `lib/core-api.ts` (tách
+> server-only `coreApiBaseUrl`, dùng chung catalog.ts) · `components/cart-view.tsx` (mount-skeleton→empty/list/error; debounced quote + stale-guard +
+> retry; subtotal `aria-live`) · `cart-line.tsx` (`QuantityStepper` min=0 dec-tại-1→xoá + dynamic remove-label; PriceTag line total) · `app/gio-hang/
+> {page,loading}.tsx` (**noindex**). **MOD:** product-detail wire "Thêm vào giỏ" → `add`+`router.push('/gio-hang')` · site-header+bottom-nav `/gio`→
+> `/gio-hang` · messages `cart` ns · acceptance **Cụm 20 SF-07/08** (`[ ]` TS-gated). **MONEY:** zero client-sum — subtotal + mọi line total CHỈ từ
+> /price/quote (server-authoritative, ADR-019); tiền qua PriceTag/@lumin/core; `CORE_API_URL` giữ server-only (client bundle sạch). **BOUNDARY (plan
+> §0):** KHÔNG nút checkout (footer = tạm tính + note ship-tính-sau); zero order/payment/address code (grep-verified — chỉ comment + CSS
+> `transition-colors`). **NO new dep · NO new ADR · NO migration · NO contract change** (tiêu thụ P1-a/P1-b). **Verify:** storefront **70** test (24 new
+> cart) · core **66** (ledger 43) · ui 105 · guard **160** / osm 22 · `next build` compiles+types-ok (`/` prerender fail = **pre-existing** P1-f home
+> fetch tới API-down, KHÔNG do CI gate — app-gates chạy `pnpm verify`, không `next build`).
+> **Adversarial review `wf_d56a1e76-943` (6 lens money/contract/persistence/a11y/scope/design × per-finding refute + completeness critic, 16 agents):
+> 2 defect thực (fixed) + 2 critic NOTE (fixed) + 1 accepted-documented; các finding còn lại refuted.** ① (IMPORTANT persistence+contract, cùng lỗi)
+> **stale-quote positional misalignment**: sau khi xoá dòng-giữa (index-shift), `quote` (state cũ) + `items` (mới) cập nhật non-atomic → 1 frame
+> vẽ **line total của dòng bên cạnh** + subtotal cũ → **FIX:** gắn `signature` vào quote 'ok'/'error', chỉ áp giá khi `quote.signature===cartSignature(items)`
+> (else skeleton) — khử cả line-total-sai lẫn subtotal-flash, zero round-trip thêm. ② (IMPORTANT a11y) cart-line thumbnail `<Link>` bọc chỉ
+> `<img alt="">` → **empty link** (WCAG 2.4.4/4.1.2) → **FIX:** `aria-label={item.name}` (theo pattern gallery-thumb product-detail). ③ (critic NOTE)
+> `unavailable`(422) Retry re-fire y request → no-op loop → **FIX:** Retry chỉ hiện khi `code==='error'` (transient); `unavailable` dựa copy
+> "thử xoá rồi thêm lại" (sửa dòng → đổi signature → auto re-quote). ④ (critic NOTE) comment `MAX_LINES` "caller/UI prevents" sai → **FIX:** sửa
+> comment (silent backstop, 50 > mọi giỏ thực). **Accepted-documented:** multi-text-option collapse → single-personalization contract (OrderItemInput
+> có 1 slot; server cũng engrave text-option đầu) → không đại diện được sản phẩm 2-engrave, không fix. **Refuted (sound):** money-lens stale-frame
+> (giá vẫn server-authoritative int-VND qua core, chỉ lệch vị trí — đã fix qua ①) · focus-loss-on-remove (2.4.3 misapplied, out-of-scope) ·
+> mount-skeleton no-aria (skeleton đủ theo §State; live-region không announce SSR-initial) · empty-state/shipping-note fidelity (verbatim hi-fi copy,
+> spec-mandated no-checkout). Re-verify sau fix: storefront 70 · typecheck/lint/format green. **spec-guardian PASS: 0 BLOCKER/0 WARN/0 NOTE**
+> (money server-authoritative · boundary zero-order/payment/address · i18n key-driven · engrave-fold+personalization-omit khớp `pricing.PriceItem`/
+> `validateEngrave` · Cụm 20 `[ ]` EARS-ok). **NEXT:** commit → push → PR → CI green → user merge-gate.
+
 1. **Slice 3 · PR-3k — ✅ MERGED (PR #30) → `origin/main` `cf4c2a8` (2026-07-02, squash; CI green app-gates/selftest/services-gates).**
    Local `main` ff'd to `cf4c2a8`; the merged `feat/core-http-relay-3k` branch + ~19 older squash-merged branches remain
    local (guard blocks `git branch -D` → prune by hand when duyệt). **Flag carried to 3j PR:** openapi `BankAccountUpdate`

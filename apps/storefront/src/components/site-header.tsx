@@ -69,7 +69,7 @@ export function SiteHeader() {
             </span>
 
             <Link
-              href="/gio"
+              href="/gio-hang"
               aria-label={t('cart')}
               className="inline-flex h-11 w-11 items-center justify-center rounded-full text-text-strong transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
             >
