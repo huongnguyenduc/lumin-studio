@@ -89,6 +89,38 @@ func (c *Catalog) ListActiveProductCards(ctx context.Context, f ProductCardFilte
 	return rows, total, nil
 }
 
+// ReviewFilter narrows the public product-review list (PR-P1-l). ProductID scopes to one product;
+// Limit/Offset are the already-bounded page window (the handler caps pageSize and the offset). There is
+// no visibility knob here on purpose — the published-only filter lives in the SQL, never a caller-supplied
+// flag, so a handler can never widen the list to hidden reviews.
+type ReviewFilter struct {
+	ProductID uuid.UUID
+	Limit     int32
+	Offset    int32
+}
+
+// ListPublishedReviews returns one page of PUBLISHED reviews for a product (newest first) plus the total.
+// Like ListActiveProductCards it is TWO autocommit reads (list + count), so a concurrent review write
+// between them can skew total by one — cosmetic (a display count that self-heals next request) and never a
+// money value, so we accept it rather than pay for a snapshot transaction. The published-only filter and
+// the customer_id-omitting projection live in the SQL (ListReviewsByProduct), so a hidden review can never
+// leak and no reviewer PII leaves the DB for this public endpoint.
+func (c *Catalog) ListPublishedReviews(ctx context.Context, f ReviewFilter) ([]sqlc.ListReviewsByProductRow, int64, error) {
+	rows, err := c.q.ListReviewsByProduct(ctx, sqlc.ListReviewsByProductParams{
+		ProductID:  f.ProductID,
+		PageLimit:  f.Limit,
+		PageOffset: f.Offset,
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := c.q.CountPublishedReviewsByProduct(ctx, f.ProductID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
+}
+
 // ColorsByProduct lists a product's named print colors.
 func (c *Catalog) ColorsByProduct(ctx context.Context, productID uuid.UUID) ([]sqlc.Color, error) {
 	return c.q.ListColorsByProduct(ctx, productID)

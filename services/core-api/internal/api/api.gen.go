@@ -461,6 +461,48 @@ type ReplyTemplate struct {
 	Variables []string `json:"variables"`
 }
 
+// Review One PUBLISHED product review as it crosses the public wire (spec §02). The author's identity is deliberately omitted — reviews carry a nullable customer_id and guests may review, so exposing a reviewer name would be public PII (PDPL); only the review content is returned. `reply` is the shop's public reply, null until the shop replies (no Phase-1 write path populates it yet). Hidden reviews are filtered at the SQL source and never appear here.
+type Review struct {
+	// Body The review text (may be empty).
+	Body string `json:"body"`
+
+	// CreatedAt ISO-8601 UTC when the review was posted.
+	CreatedAt time.Time          `json:"createdAt"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// Images Reviewer photos (spec §02). May be empty.
+	Images []string `json:"images"`
+
+	// Rating Star rating 1–5 (spec §02).
+	Rating int `json:"rating"`
+
+	// Reply The shop's public reply, or null until the shop has replied.
+	Reply *ReviewReply `json:"reply"`
+}
+
+// ReviewList One page of published reviews plus the pagination envelope (spec §03 list state). `total` is the count of PUBLISHED reviews for the product across all pages; the client derives the page count.
+type ReviewList struct {
+	Items []Review `json:"items"`
+
+	// Page 1-based page number echoed from the request.
+	Page int `json:"page"`
+
+	// PageSize Items per page echoed from the request.
+	PageSize int `json:"pageSize"`
+
+	// Total Total published reviews for the product, across all pages.
+	Total int `json:"total"`
+}
+
+// ReviewReply The shop's public reply to a review (spec §02 `reply?`). Null on the parent until replied.
+type ReviewReply struct {
+	// At ISO-8601 UTC when the reply was posted.
+	At time.Time `json:"at"`
+
+	// Body The shop reply text.
+	Body string `json:"body"`
+}
+
 // Settings The settings singleton. `shopInfo` and `shippingRules` are free-form jsonb whose precise shapes are pinned in the Phase-1 storefront slice; typed loosely here on purpose.
 type Settings struct {
 	// BankAccount VietQR STK the server renders the static QR from (conventions §57). May be unset.
@@ -562,6 +604,18 @@ type GetProductsParams struct {
 
 // GetProductsParamsSort defines parameters for GetProducts.
 type GetProductsParamsSort string
+
+// GetProductReviewsParams defines parameters for GetProductReviews.
+type GetProductReviewsParams struct {
+	// Page 1-based page number.
+	Page *int `form:"page,omitempty" json:"page,omitempty"`
+
+	// PageSize Items per page. Capped at 48 to bound the query on this public, unauthenticated endpoint.
+	PageSize *int `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+
+	// IfNoneMatch Conditional GET — when it matches the current ETag the server returns 304 with no body.
+	IfNoneMatch *string `json:"If-None-Match,omitempty"`
+}
 
 // UpdateBankAccountJSONRequestBody defines body for UpdateBankAccount for application/json ContentType.
 type UpdateBankAccountJSONRequestBody = BankAccountUpdate
@@ -708,6 +762,9 @@ type ServerInterface interface {
 	// Public storefront product detail (active-only) — product + colors + options.
 	// (GET /products/{slug})
 	GetProductBySlug(w http.ResponseWriter, r *http.Request, slug string)
+	// Public storefront product reviews (published-only) — paginated, newest first.
+	// (GET /products/{slug}/reviews)
+	GetProductReviews(w http.ResponseWriter, r *http.Request, slug string, params GetProductReviewsParams)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -789,6 +846,12 @@ func (_ Unimplemented) GetProducts(w http.ResponseWriter, r *http.Request, param
 // Public storefront product detail (active-only) — product + colors + options.
 // (GET /products/{slug})
 func (_ Unimplemented) GetProductBySlug(w http.ResponseWriter, r *http.Request, slug string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Public storefront product reviews (published-only) — paginated, newest first.
+// (GET /products/{slug}/reviews)
+func (_ Unimplemented) GetProductReviews(w http.ResponseWriter, r *http.Request, slug string, params GetProductReviewsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1174,6 +1237,71 @@ func (siw *ServerInterfaceWrapper) GetProductBySlug(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetProductReviews operation middleware
+func (siw *ServerInterfaceWrapper) GetProductReviews(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "slug" -------------
+	var slug string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slug", chi.URLParam(r, "slug"), &slug, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slug", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProductReviewsParams
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "page", r.URL.Query(), &params.Page)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "pageSize", r.URL.Query(), &params.PageSize)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProductReviews(w, r, slug, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1325,6 +1453,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/products/{slug}", wrapper.GetProductBySlug)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/products/{slug}/reviews", wrapper.GetProductReviews)
 	})
 
 	return r
@@ -1852,6 +1983,68 @@ func (response GetProductBySlug404JSONResponse) VisitGetProductBySlugResponse(w 
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetProductReviewsRequestObject struct {
+	Slug   string `json:"slug"`
+	Params GetProductReviewsParams
+}
+
+type GetProductReviewsResponseObject interface {
+	VisitGetProductReviewsResponse(w http.ResponseWriter) error
+}
+
+type GetProductReviews200ResponseHeaders struct {
+	CacheControl string
+	ETag         string
+}
+
+type GetProductReviews200JSONResponse struct {
+	Body    ReviewList
+	Headers GetProductReviews200ResponseHeaders
+}
+
+func (response GetProductReviews200JSONResponse) VisitGetProductReviewsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type GetProductReviews304ResponseHeaders struct {
+	CacheControl string
+	ETag         string
+}
+
+type GetProductReviews304Response struct {
+	Headers GetProductReviews304ResponseHeaders
+}
+
+func (response GetProductReviews304Response) VisitGetProductReviewsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(304)
+	return nil
+}
+
+type GetProductReviews400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetProductReviews400JSONResponse) VisitGetProductReviewsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProductReviews404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetProductReviews404JSONResponse) VisitGetProductReviewsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// Admin dashboard aggregates (counts + net revenue + recent orders + todos).
@@ -1893,6 +2086,9 @@ type StrictServerInterface interface {
 	// Public storefront product detail (active-only) — product + colors + options.
 	// (GET /products/{slug})
 	GetProductBySlug(ctx context.Context, request GetProductBySlugRequestObject) (GetProductBySlugResponseObject, error)
+	// Public storefront product reviews (published-only) — paginated, newest first.
+	// (GET /products/{slug}/reviews)
+	GetProductReviews(ctx context.Context, request GetProductReviewsRequestObject) (GetProductReviewsResponseObject, error)
 }
 
 type StrictHandlerFunc = strictnethttp.StrictHTTPHandlerFunc
@@ -2274,6 +2470,33 @@ func (sh *strictHandler) GetProductBySlug(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetProductBySlugResponseObject); ok {
 		if err := validResponse.VisitGetProductBySlugResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProductReviews operation middleware
+func (sh *strictHandler) GetProductReviews(w http.ResponseWriter, r *http.Request, slug string, params GetProductReviewsParams) {
+	var request GetProductReviewsRequestObject
+
+	request.Slug = slug
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProductReviews(ctx, request.(GetProductReviewsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProductReviews")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProductReviewsResponseObject); ok {
+		if err := validResponse.VisitGetProductReviewsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
