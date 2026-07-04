@@ -126,6 +126,31 @@ export const vi = {
     optionsHeading: 'Tuỳ chọn',
     optionFree: 'miễn phí',
   },
+  // Product reviews section on the detail page (P1-m). Reviews are read-only in Phase 1 — no write
+  // path yet — so there is no "viết đánh giá" CTA here. The reviewer's identity is never shown (PDPL —
+  // the contract omits it), so there is no author-name copy.
+  productReviews: {
+    // Section heading (<h2> under the product <h1>).
+    heading: 'Đánh giá khách',
+    // Summary line under the heading. {count} is a PRE-FORMATTED number string (formatVnNumber,
+    // @lumin/core) — never a raw grouped number baked here (conventions §Tiền; messages.test forbids it).
+    summaryCount: '{count} đánh giá',
+    // Empty state — no reviews yet. No CTA: writing a review is out of Phase-1 scope (read-only).
+    empty: 'Chưa có đánh giá nào cho sản phẩm này.',
+    emptyHint: 'Đánh giá của khách sẽ xuất hiện ở đây sau những đơn đầu tiên.',
+    // Accessible name for one review's star group; {value} is the review's rating (1–5).
+    ratingLabel: '{value} trên 5 sao',
+    // Alt text for a reviewer photo thumbnail; {index} is 1-based.
+    photoAlt: 'Ảnh từ khách {index}',
+    // Owner reply block (Review.reply). The shop replies publicly under a review.
+    replyLabel: 'Lumin Studio đã phản hồi',
+    // Pager (server-rendered ?reviewsPage links). Newest reviews are page 1, so "older" pages back.
+    pagerLabel: 'Trang đánh giá',
+    pagerNewer: 'Mới hơn',
+    pagerOlder: 'Cũ hơn',
+    // Current position, e.g. "Trang 2 / 5". Both args are small page numbers (no grouping).
+    pagerPosition: 'Trang {page} / {total}',
+  },
   cart: {
     // <title> for /gio-hang (kept out of the index — see the route's generateMetadata).
     metaTitle: 'Giỏ hàng — Lumin Studio',

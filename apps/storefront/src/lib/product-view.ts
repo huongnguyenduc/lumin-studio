@@ -148,6 +148,63 @@ export function toProductDetailView(product: components['schemas']['Product']): 
   };
 }
 
+/** The shop's public reply to a review (API `ReviewReply`) — null on the parent until the shop replies
+ *  (no Phase-1 write path populates it yet). `at` stays a raw ISO instant, formatted at render by
+ *  @lumin/core `formatVnDate` (never here — MNY-03: no Intl outside core). */
+export type ReviewReplyView = {
+  body: string;
+  /** ISO-8601 UTC when the reply was posted. Formatted downstream by formatVnDate. */
+  at: string;
+};
+
+/** One published product review as the storefront renders it (API `Review`). The reviewer's identity
+ *  is DELIBERATELY absent — the contract omits it (PDPL: reviews carry a nullable customer_id and guests
+ *  may review, so a name would be public PII), so this view has no author/name/avatar field and the
+ *  section renders none. `body` may be empty (a star-only review). `createdAt`/`reply.at` stay raw ISO
+ *  instants, formatted at render by @lumin/core `formatVnDate`. Pure projection → unit-tested. */
+export type ReviewView = {
+  id: string;
+  /** Star rating 1–5 (spec §02). */
+  rating: number;
+  /** The review text; may be empty (the section then renders stars + date only). */
+  body: string;
+  /** Reviewer photos; `[]` when none. Empty-string URLs dropped + de-duplicated (same guard as the
+   *  product gallery — a broken `src=""` or a doubled photo never reaches <img>). */
+  images: string[];
+  /** The shop's public reply, or null until the shop has replied. */
+  reply: ReviewReplyView | null;
+  /** ISO-8601 UTC when the review was posted. Formatted downstream by formatVnDate. */
+  createdAt: string;
+};
+
+/** Project an API `Review` onto the view the reviews section renders. Pure — unit-tested in
+ *  test/product-reviews.test.ts. Drops empty-string image URLs and de-duplicates (same rationale as
+ *  toProductDetailView.images: a broken/repeated photo never reaches <img> or a duplicate React key).
+ *  A null/absent `reply` collapses to null so the component's `reply != null` guard is unambiguous. */
+export function toReviewView(review: components['schemas']['Review']): ReviewView {
+  return {
+    id: review.id,
+    rating: review.rating,
+    body: review.body,
+    images: review.images.filter((src, i) => src !== '' && review.images.indexOf(src) === i),
+    reply: review.reply ? { body: review.reply.body, at: review.reply.at } : null,
+    createdAt: review.createdAt,
+  };
+}
+
+/**
+ * Parse the `?reviewsPage=` URL param into a safe 1-based page number, the way parseCatalogParams
+ * bounds `page`: a non-numeric / < 1 / fractional value collapses to 1, so the reviews fetch can never
+ * ask the endpoint for a page it would 400 on. A repeated param (`?reviewsPage=2&reviewsPage=3`) takes
+ * the first, matching a single browser field. Pure → unit-testable. (An out-of-range-but-valid page —
+ * e.g. page 9 of a 2-page product — is caught by the page, which redirects to the last page.)
+ */
+export function parseReviewsPage(raw: string | string[] | undefined): number {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const parsed = Number.parseInt(value ?? '', 10);
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : 1;
+}
+
 /** Render a Dimensions triple as the spec's "w × d × h mm" display string (spec §02). Kept out of JSX
  *  so the "×"/"mm" notation isn't a hard-coded literal in the component, and stays unit-testable. Values
  *  are small mm integers → plain interpolation (no grouping/Intl needed). */
