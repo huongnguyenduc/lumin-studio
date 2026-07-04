@@ -460,8 +460,8 @@ session) — used as-is, left running.
 > valve, user-approved). ⚠️ auth-adjacent path — owner review từng dòng trước merge.
 >
 > **🔨 PR-P1-e (`GET /products?q=` · no-accent full-text search, ADR-016) — BUILT · reviews DONE + 3 fixes applied ·
-> verify-go+integration(colima)+TS gates GREEN · guard 159 · CAT-04 ARM PROVEN binding ×3 · chờ commit/push.** (branch
-> `feat/phase-1-storefront-p1e` off `main` `c8f9b28` [P1-n].)
+> verify-go+integration(colima)+TS gates GREEN · guard 159 · CAT-04 ARM PROVEN binding ×3 · committed `28db8b7` · pushed → PR #38 OPEN ·
+> chờ user merge-gate.** (branch `feat/phase-1-storefront-p1e` off `main` `c8f9b28` [P1-n].)
 > Wires the `?q=` param declared-but-reserved since P1-c — **additive, KHÔNG mở lại contract shape** (chỉ đổi description + thêm
 > `maxLength:100` cho param `q`; **NO new enum → parity_test KHÔNG đổi**). **Migration `000012_product_search`** (head 000011, 000008 skip
 > → 000012 monotonic): `CREATE EXTENSION unaccent` + **`immutable_unaccent(text)`** (IMMUTABLE wrapper `unaccent('unaccent',$1)` +
