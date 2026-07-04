@@ -553,7 +553,7 @@ type GetProductsParams struct {
 	// PageSize Items per page. Capped at 48 to bound the query on this public, unauthenticated endpoint.
 	PageSize *int `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 
-	// Q RESERVED full-text search term (no-accent, ADR-016). Accepted but IGNORED until P1-e wires Postgres FTS; declared now so the contract stays stable when search lands.
+	// Q Full-text search term (accent-insensitive, ADR-016) over the product name/description. Filters within the active-only + category scope; an empty/whitespace value means "no search" (the full catalog). Bounded to 100 characters on this public endpoint (over-length → 400).
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
 	// IfNoneMatch Conditional GET — when it matches the current ETag the server returns 304 with no body.

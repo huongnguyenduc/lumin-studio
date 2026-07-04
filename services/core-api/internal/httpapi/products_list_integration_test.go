@@ -204,14 +204,21 @@ func TestGetProductsEndToEnd(t *testing.T) {
 		}
 	})
 
-	// The reserved `q` param is accepted (200, no 400) and IGNORED until P1-e wires FTS — the result set
-	// is identical to omitting it. Pins the forward-contract promise so a future change can't silently break it.
-	t.Run("reserved q is accepted and ignored (200, same results)", func(t *testing.T) {
+	// Since P1-e the `q` param FILTERS (accent-folded FTS). The seed names are "SP <slug>", so `q=den`
+	// matches the four active den-* products by name (moc-b1's name has no "den"), and the den-draft is
+	// excluded — search stays inside the active-only scope, never leaking a hidden row. A blank q is treated
+	// as omitted (the full catalog). The dedicated accent-folding + edge cases live in the search test file.
+	t.Run("q filters within the active-only scope (name match, draft excluded)", func(t *testing.T) {
+		_, hits := getProducts(t, router, "?pageSize=10&q=den")
+		if got, want := slugsOf(hits), []string{"den-a1", "den-a2", "den-a3", "den-a4"}; hits.Total != 4 || !eqSlugs(got, want) {
+			t.Errorf("q=den = %v/%d, want the 4 active den-* (moc + draft excluded)", got, hits.Total)
+		}
+		// Blank q == omitted → the full active catalog (not a match-nothing empty search).
 		_, noq := getProducts(t, router, "?pageSize=10")
-		_, withq := getProducts(t, router, "?pageSize=10&q=bất-kỳ")
-		if !eqSlugs(slugsOf(noq), slugsOf(withq)) || withq.Total != noq.Total {
-			t.Errorf("q changed the result: with=%v/%d vs without=%v/%d (must be ignored)",
-				slugsOf(withq), withq.Total, slugsOf(noq), noq.Total)
+		_, blank := getProducts(t, router, "?pageSize=10&q=%20%20")
+		if !eqSlugs(slugsOf(noq), slugsOf(blank)) || blank.Total != noq.Total {
+			t.Errorf("blank q changed the result: %v/%d vs %v/%d (blank == omitted)",
+				slugsOf(blank), blank.Total, slugsOf(noq), noq.Total)
 		}
 	})
 

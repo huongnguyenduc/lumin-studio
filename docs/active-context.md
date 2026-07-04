@@ -409,8 +409,7 @@ session) — used as-is, left running.
 > `status='active'` filter · `maxPageSize` · classify `GetProducts` authPublic — mỗi mutate→155/1→restore) · osm 22 ·
 > **CAT-02** acceptance Cụm 13 `[ ]` (Go-gated).
 >
-> **🔨 PR-P1-d (`GET /categories` · public category LIST) — BUILT · ALL GATES GREEN · 2 reviewers PASS · committed `2abf26a` ·
-> pushed → PR #36 OPEN · chờ user merge-gate.** (branch `feat/phase-1-storefront-p1d` off `main` `7fcbd3e` [P1-c].)
+> **✅ PR-P1-d (`GET /categories` · public category LIST) — MERGED (PR #36) → `origin/main` `77b51e0` (2026-07-03, merge-commit; local `main` ff'd).** (branch `feat/phase-1-storefront-p1d` off `main` `7fcbd3e` [P1-c].)
 > The catalog-browse chips feed (unblocks FE P1-g).
 > New sqlc `ListCategories` + `Catalog.Categories`; OpenAPI `0.5.0→0.6.0` (`Category{id,slug,name}` + `GET /categories`
 > public, 200 **bare array** + weak `ETag`/`Cache-Control`, `If-None-Match`→**304**) → regen Go+TS. Handler
@@ -430,8 +429,7 @@ session) — used as-is, left running.
 > (categories admin-curated, no user-generated path, near-static — rationale in `ListCategories` comment; EXISTS scope tightens
 > it further). **NEXT sau P1-d:** P1-n `/orders/lookup` · rồi FE **P1-f** (home grid) → P1-g → P1-h.
 >
-> **🔨 PR-P1-n (`GET /orders/lookup` · public guest order lookup) — BUILT · reviews DONE + fixes applied · ALL GATES GREEN ·
-> committed `6c54f45` · pushed → PR #37 OPEN · CI running · chờ user merge-gate.** (branch `feat/phase-1-storefront-p1n` off `main`
+> **✅ PR-P1-n (`GET /orders/lookup` · public guest order lookup) — MERGED (PR #37) → `origin/main` `c8f9b28` (2026-07-03, merge-commit; CI green app-gates/selftest/services-gates; local `main` ff'd).** (branch `feat/phase-1-storefront-p1n` off `main`
 > `77b51e0` [P1-d].) Last BE read endpoint before the FE track.
 > **User-confirmed 2026-07-03 (AskUserQuestion):** rate-limit = **in-memory x/time/rate per-code token-bucket** · **declare 429 +
 > `RATE_LIMITED`** in contract · DTO = **status+tracking+date** · **DROP failure-lockout** (post-review) + **new ADR-034**. Grounded by a
@@ -460,6 +458,33 @@ session) — used as-is, left running.
 > **REFUNDED milestone drops reason/refundProofUrl**; full httpapi+db+contract green. **LKP-01** acceptance **Cụm 15** (Go-gated `[ ]`).
 > **ADR-034** (guest-lookup rate-limit: per-code token-bucket, no per-IP, no lockout) + conventions §Bảo mật line updated (via ADR-022
 > valve, user-approved). ⚠️ auth-adjacent path — owner review từng dòng trước merge.
+>
+> **🔨 PR-P1-e (`GET /products?q=` · no-accent full-text search, ADR-016) — BUILT · reviews DONE + 3 fixes applied ·
+> verify-go+integration(colima)+TS gates GREEN · guard 159 · CAT-04 ARM PROVEN binding ×3 · chờ commit/push.** (branch
+> `feat/phase-1-storefront-p1e` off `main` `c8f9b28` [P1-n].)
+> Wires the `?q=` param declared-but-reserved since P1-c — **additive, KHÔNG mở lại contract shape** (chỉ đổi description + thêm
+> `maxLength:100` cho param `q`; **NO new enum → parity_test KHÔNG đổi**). **Migration `000012_product_search`** (head 000011, 000008 skip
+> → 000012 monotonic): `CREATE EXTENSION unaccent` + **`immutable_unaccent(text)`** (IMMUTABLE wrapper `unaccent('unaccent',$1)` +
+> **`translate(…, 'đĐ','dd')`** vì đ/Đ U+0111/U+0110 là chữ-gạch KHÔNG phân rã Unicode → shipped rules không fold "đèn"→"den"; translate
+> tường minh, idempotent) + **functional GIN index** `products_search_idx` (KHÔNG cột `search_tsv` → `sqlc.Product`/`SELECT *`/parity
+> UNTOUCHED — zero blast radius). Query: `@search` narg ANDed **TRONG** `ListActiveProducts`/`CountActiveProducts` (giữ `status='active'`
+> → search KHÔNG leak hàng ẩn) qua `plainto_tsquery('simple', immutable_unaccent(...))` (parameterized, KHÔNG nội suy); count cùng filter →
+> envelope `total` phản ánh tập đã-tìm. Handler `searchParam` (""/space→nil=bỏ tìm; trim; **rune-count > `maxSearchLen`=100 → 400**);
+> **sort/paginate/ETag KHÔNG đổi** (ETag hash body → tự khác theo q); **KHÔNG relevance-rank** (catalog nhỏ, tránh mở contract sort enum).
+> **Gates (last-green 2026-07-04):** `make verify-go` rc=0 (golangci 0, sqlc vet/diff, oapi stale-check, `go test -race`) · api-client
+> typecheck+`schema.stale`+lint · core ledger 34/34 · **guard 158→159** (+1 **CAT-04 ARM PROVEN binding ×2**: `plainto_tsquery` strip→RED ·
+> `maxSearchLen` rename→RED — mỗi mutate→158/1→restore) · osm 22 · **integration RAN vs colima PG (-race):** `TestGetProductsSearch` 7
+> subtest (đ-fold "den"→"đèn" · accented==no-accent · tone-mark "may"→"mây" · multi-word AND · description-searched · +category AND +
+> no-match→trang rỗng · ETag khác theo q) + `TestMigrationsReversible` (000012 up+down sạch, unaccent trong postgres:16-alpine) + list
+> q-filter subtest (draft excluded). **CAT-04** acceptance Cụm 13 `[ ]` (Go-gated). **operations.md §4c** (unaccent = điều kiện migrate;
+> role cần quyền CREATE EXTENSION / pre-create nếu role hạn chế; REINDEX nếu đổi từ điển). **NO new dep · NO new ADR** (implements ADR-016).
+> **Reviews:** spec-guardian **PASS 0/0/0** (7 checks: money/parity/ADR-016/non-leak/i18n/migration-numbering/additivity; REC-05 no-test-weaken + REC-16
+> no-special-case xác nhận). Adversarial 6-lens wf_26e7d75f (per-finding refute + completeness critic, 10 agents): **3 raw → 0 confirmed / 3 refuted**
+> (test-quality nitpicks: reversibility-fn-check redundant, seed-dependency covered by 2nd test, inline-block-comment ARM gap low-risk) + **3 critic
+> NOTE gaps ALL FIXED:** (①) malformed-UTF-8 `?q=%ff` → 500 → **`utf8.ValidString` guard → 400** (+ test); (②) down.sql `DROP EXTENSION` broken cho
+> restricted-role/pre-created deploy (privilege-asymmetric + destructive) → **bỏ DROP EXTENSION, chỉ xoá function+index nó own** (+ operations.md §4c
+> rollback note; reversibility re-passed); (③) index-expr byte-identity chưa có gate → **CAT-04 ARM (d) grep -F to_tsvector expr ở CẢ catalog.sql + migration
+> 000012** (PROVEN binding: desync migration→158/1→restore). guard giữ 159 (ARM mạnh hơn, không +count).
 
 1. **Slice 3 · PR-3k — ✅ MERGED (PR #30) → `origin/main` `cf4c2a8` (2026-07-02, squash; CI green app-gates/selftest/services-gates).**
    Local `main` ff'd to `cf4c2a8`; the merged `feat/core-http-relay-3k` branch + ~19 older squash-merged branches remain
