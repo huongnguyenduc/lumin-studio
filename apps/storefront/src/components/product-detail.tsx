@@ -6,10 +6,12 @@ import { useTranslations } from 'next-intl';
 import { Button, PriceTag, Rating, cn } from '@lumin/ui';
 import {
   canAddToCart,
+  canAddToCartWithOptions,
   formatDimensions,
   isColorSelectable,
   type ProductDetailView,
 } from '@/lib/product-view';
+import { EngraveField } from './engrave-field';
 
 /**
  * Product detail (/san-pham/{slug}). Data is fetched server-side (page.tsx → lib/catalog) and passed in;
@@ -32,12 +34,32 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
 
   const [activeImage, setActiveImage] = useState(0);
   const [selectedColorId, setSelectedColorId] = useState<string | null>(null);
+  // Engraving text per text-option id; choice add-on ids that are toggled on. Selection is UI-only
+  // until the cart lands (P1-k) — no /price/quote call, no total change here.
+  const [engraveTexts, setEngraveTexts] = useState<Record<string, string>>({});
+  const [selectedChoiceIds, setSelectedChoiceIds] = useState<string[]>([]);
 
   const cover = product.images[activeImage];
-  const canAdd = canAddToCart(selectedColorId, product.colors);
   const hasColors = product.colors.length > 0;
   const anyUnavailable = product.colors.some((c) => !c.available);
   const anyPriceDelta = product.colors.some((c) => c.priceDelta > 0);
+
+  // Options split by kind: `text` → engrave fields, `choice` → add-on toggles (no sub-values in the
+  // contract). The engrave entries feed the composite lock so an over-limit engraving keeps the CTA shut.
+  const textOptions = product.options.filter((o) => o.type === 'text');
+  const choiceOptions = product.options.filter((o) => o.type === 'choice');
+  const engraveEntries = textOptions.map((o) => ({
+    text: engraveTexts[o.id] ?? '',
+    maxChars: o.maxChars,
+  }));
+
+  // Colour lock (SF-03) drives the "pick a colour" hint; the composite lock (colour AND every engraving
+  // within its limit) drives the button. An engrave error is surfaced by EngraveField itself.
+  const colorOk = canAddToCart(selectedColorId, product.colors);
+  const canAdd = canAddToCartWithOptions(selectedColorId, product.colors, engraveEntries);
+
+  const toggleChoice = (id: string) =>
+    setSelectedChoiceIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
 
   return (
     <article className="mx-auto w-full max-w-[1200px] px-4 py-6 md:px-6 md:py-10">
@@ -176,13 +198,90 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
             </div>
           ) : null}
 
-          {/* Add-to-cart: locked until an in-stock colour is chosen. Click is unwired in P1-h — the
-              cart Selection + onClick land in P1-k. */}
+          {/* Engraving (text options). Live preview + rune counter + over-limit block (P1-j). Each text
+              option is independently counted against its own maxChars — realistically one per product. */}
+          {textOptions.map((o) => (
+            <EngraveField
+              key={o.id}
+              option={o}
+              value={engraveTexts[o.id] ?? ''}
+              onChange={(next) => setEngraveTexts((prev) => ({ ...prev, [o.id]: next }))}
+            />
+          ))}
+
+          {/* Choice add-on toggles. The contract carries no sub-values[] — a choice option is a boolean
+              add-on (label + priceDelta). Selection is UI-only until P1-k wires the cart + live total. */}
+          {choiceOptions.length > 0 ? (
+            <div role="group" aria-labelledby="detail-options-heading">
+              <h2
+                id="detail-options-heading"
+                className="mb-2 font-display text-sm font-semibold text-text-strong"
+              >
+                {t('optionsHeading')}
+              </h2>
+              <ul className="flex flex-col gap-1">
+                {choiceOptions.map((o) => {
+                  const checked = selectedChoiceIds.includes(o.id);
+                  const descId = `detail-option-${o.id}-desc`;
+                  return (
+                    <li key={o.id}>
+                      <label className="flex min-h-11 cursor-pointer items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleChoice(o.id)}
+                          aria-describedby={o.description ? descId : undefined}
+                          className="peer sr-only"
+                        />
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-xs border-2 border-border-strong bg-surface-card text-on-primary',
+                            'transition-[background-color,border-color] duration-150 ease-out motion-reduce:transition-none',
+                            'peer-checked:border-primary peer-checked:bg-primary peer-checked:[&_svg]:opacity-100',
+                            'peer-focus-visible:ring-2 peer-focus-visible:ring-accent-sky peer-focus-visible:ring-offset-2',
+                          )}
+                        >
+                          <svg
+                            viewBox="0 0 16 16"
+                            className="h-3.5 w-3.5 opacity-0"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth={2.5}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M3 8.5l3.5 3.5L13 4.5" />
+                          </svg>
+                        </span>
+                        <span className="flex-1 text-text-body">{o.label}</span>
+                        {o.priceDelta > 0 ? (
+                          <span className="text-sm text-text-muted">
+                            +<PriceTag amount={o.priceDelta} className="text-sm font-medium" />
+                          </span>
+                        ) : (
+                          <span className="text-sm text-accent-teal">{t('optionFree')}</span>
+                        )}
+                      </label>
+                      {o.description ? (
+                        <p id={descId} className="ml-8 text-sm text-text-muted">
+                          {o.description}
+                        </p>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
+
+          {/* Add-to-cart: locked until an in-stock colour is chosen AND every engraving fits its limit.
+              Click is unwired — the cart Selection + onClick land in P1-k. */}
           <div>
             <Button variant="pop" size="lg" disabled={!canAdd} className="w-full md:w-auto">
               {tp('add')}
             </Button>
-            {hasColors && !canAdd ? (
+            {hasColors && !colorOk ? (
               <p className="mt-2 text-sm text-text-muted">{t('pickColorHint')}</p>
             ) : null}
           </div>

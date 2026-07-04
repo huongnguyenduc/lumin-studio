@@ -54,11 +54,28 @@ export type ColorView = {
   priceDelta: number;
 };
 
+/** A customization option on the detail page (spec §02). Two kinds, mirroring the catalog `option_type`:
+ *  - `text`  → an ENGRAVING field. `maxChars` is the rune limit the server enforces (pricing.validateEngrave,
+ *              utf8.RuneCountInString); the client counter mirrors it (see engraveLength). null = no limit.
+ *  - `choice` → a boolean ADD-ON toggle. The contract carries NO sub-values[] — a choice option is simply
+ *              selected or not, adding its priceDelta. `maxChars` is irrelevant (kept null).
+ *  `priceDelta` stays raw int-VND (applied server-side by POST /price/quote when the cart lands, P1-k). */
+export type OptionView = {
+  id: string;
+  label: string;
+  description: string;
+  type: 'text' | 'choice';
+  /** Added price, int VND (>= 0). Formatted downstream by PriceTag/@lumin/core — never summed here. */
+  priceDelta: number;
+  /** Engraving rune limit for a `text` option; null when no limit applies (or for a `choice` option). */
+  maxChars: number | null;
+};
+
 /** The product-detail view the client component renders. A narrow, serialisable projection of the API
- *  `Product`: it drops categoryId, options[], model3dUrl and status (option/engrave pickers are P1-j,
- *  the 360° model viewer is P1-i). `import type` only above keeps this module client-safe, so the
- *  server-only catalog client (./catalog) is never pulled into the client bundle. Money stays raw
- *  int-VND — formatted by PriceTag/@lumin/core at render, never here. */
+ *  `Product`: it drops categoryId, model3dUrl and status (the 360° model viewer is P1-i). `options[]`
+ *  IS surfaced (P1-j: engrave field + choice add-on toggles). `import type` only above keeps this module
+ *  client-safe, so the server-only catalog client (./catalog) is never pulled into the client bundle.
+ *  Money stays raw int-VND — formatted by PriceTag/@lumin/core at render, never here. */
 export type ProductDetailView = {
   id: string;
   slug: string;
@@ -74,6 +91,8 @@ export type ProductDetailView = {
    *  product has no photo yet → the component shows its dotgrid placeholder. */
   images: string[];
   colors: ColorView[];
+  /** Customization options: `text` engrave fields + `choice` add-on toggles (P1-j). `[]` when none. */
+  options: OptionView[];
   /** Average rating, or null until the first review (the detail hides the Rating block when null). */
   rating: number | null;
   reviewCount: number;
@@ -100,6 +119,15 @@ export function toProductDetailView(product: components['schemas']['Product']): 
       hex: c.hex,
       available: c.available,
       priceDelta: c.priceDelta,
+    })),
+    options: product.options.map((o) => ({
+      id: o.id,
+      label: o.label,
+      description: o.description,
+      type: o.type,
+      priceDelta: o.priceDelta,
+      // openapi maxChars is `nullable` (and only meaningful for a text option); collapse absent/null to null.
+      maxChars: o.maxChars ?? null,
     })),
     rating: product.ratingAvg ?? null,
     reviewCount: product.reviewCount,
@@ -133,4 +161,47 @@ export function canAddToCart(
   if (selectedColorId === null) return false;
   const selected = colors.find((c) => c.id === selectedColorId);
   return selected !== undefined && selected.available;
+}
+
+/**
+ * Count an engraving the way the SERVER does, so the client's live counter and over-limit block predict
+ * POST /price/quote's 422 exactly (plan §3 P1-j: rune-accurate, KHÔNG `.length`). The server measures
+ * `utf8.RuneCountInString` on the RAW text (it does NOT normalise) — i.e. it counts Unicode CODE POINTS.
+ * The faithful mirror is therefore `Array.from(text).length`: `Array.from` iterates by code point, so for
+ * the SAME string it equals the server's rune count exactly — NFC or NFD, BMP or non-BMP. `str.length`
+ * (UTF-16 code units) would over-count a non-BMP char as 2; grapheme clusters (`Intl.Segmenter`) would
+ * under-count a decomposed/emoji sequence. Deliberately NOT NFC-normalising: the server does not either,
+ * so normalising here would make the client MORE lenient than the server for pasted decomposed (NFD) input
+ * — the exact case parity must hold for. Counting the raw string keeps the block and the server 422 in
+ * lockstep today, independent of what P1-k serialises onto the wire (user-confirmed 2026-07-04).
+ */
+export function engraveLength(text: string): number {
+  return Array.from(text).length;
+}
+
+/**
+ * Whether an engraving fits a text option's rune limit — mirrors pricing.validateEngrave. A blank /
+ * whitespace-only text is ALWAYS fine (no engraving requested; the server treats `TrimSpace == ""` as
+ * none). A null `maxChars` means the option sets no limit. Otherwise the RAW text (trailing spaces
+ * included, exactly as the server counts) must be within the limit. Pure → unit-testable.
+ */
+export function isEngraveWithinLimit(text: string, maxChars: number | null): boolean {
+  if (text.trim() === '') return true;
+  if (maxChars === null) return true;
+  return engraveLength(text) <= maxChars;
+}
+
+/**
+ * The full detail-page add-to-cart gate: the colour lock (canAddToCart) AND every engraving within its
+ * option's limit. An over-limit engraving keeps the CTA locked so the client never lets a customer add
+ * something the server would 422; a blank engraving never blocks (it is optional). Kept separate from
+ * `canAddToCart` so the colour-only invariant (SF-03) stays intact and independently tested. Pure.
+ */
+export function canAddToCartWithOptions(
+  selectedColorId: string | null,
+  colors: ReadonlyArray<Pick<ColorView, 'id' | 'available'>>,
+  engraveEntries: ReadonlyArray<{ text: string; maxChars: number | null }>,
+): boolean {
+  if (!canAddToCart(selectedColorId, colors)) return false;
+  return engraveEntries.every((e) => isEngraveWithinLimit(e.text, e.maxChars));
 }

@@ -542,11 +542,11 @@ session) — used as-is, left running.
 
 > **✅ P1-f MERGED (PR #40) → `origin/main` `a1e898b` (2026-07-04, merge-commit; local `main` ff'd).**
 >
-> **🔨 PR-P1-h (FE · product detail `/san-pham/{slug}`) — BUILT · reviews DONE + fixes applied · `pnpm verify` GREEN
+> **✅ PR-P1-h (FE · product detail `/san-pham/{slug}`) — MERGED (PR #41) → `origin/main` `8d293fa` · `pnpm verify` GREEN
 > (28 storefront tests) · guard 160/osm 22 (no FE ARM) · spec-guardian PASS (0 BLOCKER/1 WARN-FIXED/1 NOTE) · adversarial
 > 6-lens wf_bf7aa2b1 DONE (9 raised → 3 confirmed [ALL the same breadcrumb defect, corroborated by a11y+i18n+states
-> lenses + spec-guardian] / 6 refuted; 5 critic NOTEs → 4 FIXED / 1 deferred) · committed `3717291` → pushed → **PR #41 OPEN ·
-> CI green (app-gates/selftest/services-gates) · chờ user merge-gate.**
+> lenses + spec-guardian] / 6 refuted; 5 critic NOTEs → 4 FIXED / 1 deferred) · committed `3717291` → **PR #41 ✅ MERGED →
+> `origin/main` `8d293fa` (2026-07-04, squash; local `main` ff'd to `8d293fa`).**
 > (branch `feat/phase-1-storefront-p1h` off `main` `a1e898b`.) Closes the dead card→detail link P1-f opened; the FE
 > critical path (P1-i/j/k/m all sit on it). **Scope (user 2026-07-04):** detail SHELL + colour swatches (out-of-stock)
 > + "Thêm vào giỏ" **LOCKED until an in-stock colour chosen**; CTA click UNWIRED (no-op seam → P1-k). Deferred (by design,
@@ -568,6 +568,33 @@ session) — used as-is, left running.
 > **de-dupes images** (+test) so a repeated photo can't dup a React key. **Deferred (documented):** out-of-stock note keeps
 > spec §05-mandated `core.errors.colorOutOfStock` (refuted as redundancy-not-defect) · per-product meta description/canonical/OG/
 > JSON-LD → **P1-q** (SEO PR). **Live screenshot vs hi-fi DEFERRED** (needs running origin + seeded product images; same as P1-f).
+>
+> **🔨 PR-P1-j (FE · engrave/personalize + choice-option pickers trên `/san-pham/{slug}`) — BUILT · review DONE + fixes applied ·
+> `pnpm verify` re-GREEN (46 storefront tests, product-detail-view 13→31) · guard 160/osm 22 (no FE ARM) · spec-guardian PASS (0/0/2) ·
+> committed `4b14df1` → pushed → **PR #42 OPEN · chờ user merge-gate.**
+> (branch `feat/phase-1-storefront-p1j` off `main` `8d293fa`.) On the FE critical path — unblocks **P1-k** cart (j→k→p).
+> **Scope (user 2026-07-04, 2 quyết định + 1 correction):** (1) render CẢ engrave text field LẪN choice add-on toggles;
+> (2) counter **mirror server** — **đếm code point THÔ** qua `Array.from(text)`, **KHÔNG normalize** (server `utf8.RuneCountInString`
+> cũng không → normalize sẽ làm client lỏng hơn server cho NFD; user chọn "drop NFC" sau khi review vạch ra premise sai của câu hỏi đầu).
+> **zoneId UI DEFERRED** (§5 DROP server-side; draggable-orb zone picker = P1-i). CTA click vẫn **UNWIRED** (no-op seam → P1-k);
+> selection UI-only (no `/price/quote` call, no total). **Files (6):** `lib/product-view.ts` (+`OptionView` + `options[]` view/mapper
+> `maxChars ?? null`; pure `engraveLength` [raw code point] / `isEngraveWithinLimit` / `canAddToCartWithOptions` = colour-lock AND mọi
+> engraving trong hạn) · **NEW** `components/engrave-field.tsx` (client: `Input` label=option.label + `hint`=maxChars + over-limit
+> `error`/`role=alert` [native-associated, không tự đặt aria-describedby] + live nameplate preview + counter visual `aria-hidden`;
+> reduced-motion) · `components/product-detail.tsx` (wire engrave fields/text-option + choice toggles [sr-only checkbox + styled box +
+> `PriceTag` priceDelta, no sub-`values[]`]; composite lock; pick-colour hint chỉ theo colour blocker) · `messages/vi.ts`
+> (+engrave/option keys trong `productDetail` ns) · `test/product-detail-view.test.ts` (+18: engraveLength ASCII/NFC/**NFD-raw=2**/non-BMP
+> [explicit `\u` escapes] · isEngraveWithinLimit blank/null/limit/trailing-space · canAddToCartWithOptions truth-table · options mapping) ·
+> `docs/acceptance.md` **Cụm 19 SF-05/SF-06** (`[ ]` TS-gated). **Money:** basePrice-only, **NO client sum** priceDelta; no Intl ngoài core
+> (MNY-03 — counter dùng `Array.from`, không `Intl`). **NO new dep · NO new ADR · NO migration · NO contract change** (consumes P1-a
+> `GET /products/{slug}`). **Adversarial 6-lens review `wf_4cb45ad6-ccf` (rune-parity/money/a11y/i18n/states/contract-scope × per-finding
+> refute, 17 agents): 11 raw → 5 confirmed / 6 refuted; 5 confirmed rút về 2 defect, CẢ HAI FIXED:** (①IMPORTANT ×2-lens a11y+states)
+> caller `aria-describedby={counterId}` **clobber** Input primitive's own error wiring (`{...props}` spread SAU nội bộ) → over-limit error
+> `<p role=alert>` mồ côi → **FIX:** bỏ aria-describedby, dùng native `hint`(maxChars)+`error` của Input; counter span → `aria-hidden`
+> (cũng bỏ `aria-label` — ARIA-prohibited trên generic span + che số "5/20"); (②IMPORTANT states) **rune-parity**: NFC-normalize làm
+> client lỏng hơn server thô cho NFD → **FIX:** drop NFC, đếm raw code point (user-confirmed) + sửa comment/test sai. **Refuted (sound):**
+> NFC-out-of-scope (2 lens — nhưng false comment/test sống trong P1-j nên vẫn sửa) · BOM/NEL trim-set lệch (pathological, server backstop) ·
+> multi-text-option vs single Personalization (P1-k concern) · counter aria-label che số (dup của defect ①).
 
 1. **Slice 3 · PR-3k — ✅ MERGED (PR #30) → `origin/main` `cf4c2a8` (2026-07-02, squash; CI green app-gates/selftest/services-gates).**
    Local `main` ff'd to `cf4c2a8`; the merged `feat/core-http-relay-3k` branch + ~19 older squash-merged branches remain

@@ -71,6 +71,17 @@ export const vi = {
     notFoundTitle: 'Không tìm thấy sản phẩm',
     notFoundBody: 'Sản phẩm này không còn nữa, hoặc đường dẫn chưa đúng.',
     notFoundCta: 'Xem sản phẩm khác',
+    // Engrave / personalize (P1-j). The field's visible label is the option's own catalog `label`;
+    // these are the surrounding copy. Counter + over-limit mirror the server's rune count ({max} args).
+    engravePlaceholder: 'Gõ tên — xem trước ngay bên trên',
+    engravePreviewDefault: 'Tên của bạn',
+    engraveFree: 'miễn phí',
+    engraveCounter: '{count}/{max}',
+    engraveHint: 'Tối đa {max} ký tự.',
+    engraveTooLong: 'Dài quá rồi — tối đa {max} ký tự thôi nhé.',
+    // Choice add-on options (P1-j). Boolean add-ons; the live total lands with the cart (P1-k).
+    optionsHeading: 'Tuỳ chọn',
+    optionFree: 'miễn phí',
   },
   badge: {
     featured: 'Nổi bật',
