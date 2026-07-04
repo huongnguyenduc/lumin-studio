@@ -570,7 +570,8 @@ session) — used as-is, left running.
 > JSON-LD → **P1-q** (SEO PR). **Live screenshot vs hi-fi DEFERRED** (needs running origin + seeded product images; same as P1-f).
 >
 > **🔨 PR-P1-j (FE · engrave/personalize + choice-option pickers trên `/san-pham/{slug}`) — BUILT · review DONE + fixes applied ·
-> `pnpm verify` re-GREEN (46 storefront tests, product-detail-view 13→31) · guard 160/osm 22 (no FE ARM) · chưa commit/push.**
+> `pnpm verify` re-GREEN (46 storefront tests, product-detail-view 13→31) · guard 160/osm 22 (no FE ARM) · spec-guardian PASS (0/0/2) ·
+> committed `4b14df1` → pushed → **PR #42 OPEN · chờ user merge-gate.**
 > (branch `feat/phase-1-storefront-p1j` off `main` `8d293fa`.) On the FE critical path — unblocks **P1-k** cart (j→k→p).
 > **Scope (user 2026-07-04, 2 quyết định + 1 correction):** (1) render CẢ engrave text field LẪN choice add-on toggles;
 > (2) counter **mirror server** — **đếm code point THÔ** qua `Array.from(text)`, **KHÔNG normalize** (server `utf8.RuneCountInString`
