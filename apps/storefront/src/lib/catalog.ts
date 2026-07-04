@@ -1,5 +1,6 @@
 import 'server-only';
 import { createApiClient } from '@lumin/api-client';
+import { coreApiBaseUrl } from './core-api';
 import {
   toProductCardView,
   toProductDetailView,
@@ -7,27 +8,16 @@ import {
   type ProductDetailView,
 } from './product-view';
 
-// SERVER-ONLY catalog reads. This module imports the openapi-fetch client and reads CORE_API_URL, so it
-// must never be pulled into the client bundle — it is imported only by the async server page.tsx. The
-// client `FeaturedProducts` imports the VIEW TYPE from ./product-view (type-only, erased), never this
-// file. (P1-f done-criterion: "no CORE_API_URL in client bundle" — grep-verifiable.)
+// SERVER-ONLY catalog reads. This module imports the openapi-fetch client and reads CORE_API_URL (via
+// core-api.ts), so it must never be pulled into the client bundle — it is imported only by the async
+// server page.tsx. The client `FeaturedProducts` imports the VIEW TYPE from ./product-view (type-only,
+// erased), never this file. (P1-f done-criterion: "no CORE_API_URL in client bundle" — grep-verifiable.)
 //
 // The `import 'server-only'` above turns that discipline into a COMPILER ERROR: any future client
 // component that value-imports this module fails the build (mirrors the guard apps/admin's
 // dashboard-fetch.ts gets for free via its next/headers import — this public catalog read needs no
 // cookie, so it takes the guard explicitly). product-view.ts deliberately does NOT get this marker: it
 // is type-only-imported by the client grid, so it must stay client-safe.
-
-/** Base URL of core-api, injected server-side only (never a NEXT_PUBLIC_ var, so it never enters the
- *  client bundle). Thrown-not-defaulted: a silent localhost fallback in production would fail
- *  confusingly far from here (mirrors apps/admin/src/lib/dashboard-fetch.ts). */
-function coreApiBaseUrl(): string {
-  const url = process.env.CORE_API_URL;
-  if (!url) {
-    throw new Error('CORE_API_URL is not set — the storefront cannot reach core-api.');
-  }
-  return url;
-}
 
 /** How many "Mới về" (new arrivals) cards the home preview shows — 2 full rows of the 4-up desktop
  *  grid. The full catalog with filters/paging is the /san-pham browse surface (P1-g), not the home. */

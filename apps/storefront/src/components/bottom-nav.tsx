@@ -14,7 +14,7 @@ export function BottomNav() {
   const tabs = [
     { href: '/', label: t('home'), Icon: HomeIcon },
     { href: '/danh-muc', label: t('categories'), Icon: GridIcon },
-    { href: '/gio', label: t('cart'), Icon: BagIcon },
+    { href: '/gio-hang', label: t('cart'), Icon: BagIcon },
     { href: '/tai-khoan', label: t('account'), Icon: UserIcon },
   ];
 
