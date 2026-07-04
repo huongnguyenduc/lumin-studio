@@ -38,6 +38,20 @@ export function toProductCardView(card: components['schemas']['ProductCard']): P
   };
 }
 
+/** A browsable catalog category (API `Category`) — the taxonomy the /danh-muc filter chips render and
+ *  the value passed back as `?category={slug}`. Already a flat, serialisable shape, but projected through
+ *  its own view type (and `toCategoryView`) so the client toolbar imports a plain type, never the
+ *  api-client runtime, keeping the server-only catalog client out of the client bundle. */
+export type CategoryView = {
+  id: string;
+  slug: string;
+  name: string;
+};
+
+export function toCategoryView(category: components['schemas']['Category']): CategoryView {
+  return { id: category.id, slug: category.slug, name: category.name };
+}
+
 /** A selectable print colour on the detail page. `available:false` renders a disabled swatch that can
  *  never enable the add-to-cart CTA — out-of-stock is per-colour (a filament run-out), not a
  *  product-level inventory count (made-to-order has none; spec §03). */

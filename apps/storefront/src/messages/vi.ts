@@ -42,6 +42,49 @@ export const vi = {
     favLabel: 'Lưu {name} vào yêu thích',
     ratingLabel: '{value} trên 5 sao',
   },
+  catalog: {
+    // <title> for /danh-muc (kept out of the index — see the route's generateMetadata).
+    metaTitle: 'Danh mục — Lumin Studio',
+    heading: 'Danh mục',
+    // Visually-hidden <h2> above the product grid so the heading order is h1 (page) → h2 → h3 (cards) —
+    // the grid cards would otherwise jump h1 → h3 (axe heading-order).
+    resultsHeading: 'Danh sách sản phẩm',
+    // Result-count line. {count} is a PRE-FORMATTED number string (formatVnNumber, @lumin/core) — never a
+    // raw price/number baked here (conventions §Tiền; messages.test forbids grouped digits in copy).
+    resultCount: '{count} sản phẩm',
+    // Category filter chips.
+    categoriesLabel: 'Lọc theo danh mục',
+    allCategories: 'Tất cả',
+    // Search box (accent-insensitive FTS, ADR-016).
+    searchLabel: 'Tìm sản phẩm',
+    searchPlaceholder: 'Tìm mô hình, gadget, quà tặng…',
+    searchSubmit: 'Tìm',
+    searchClear: 'Xoá tìm kiếm',
+    // Sort control. Only the four orders the endpoint supports (the design's "Bán chạy"/"Nổi bật" have
+    // no Phase-1 backing column).
+    sortLabel: 'Sắp xếp',
+    sortNewest: 'Mới nhất',
+    sortPriceAsc: 'Giá thấp → cao',
+    sortPriceDesc: 'Giá cao → thấp',
+    sortRating: 'Đánh giá cao',
+    // Empty states — three distinct cases (plan §3 P1-g: search-miss vs filter-miss vs bare catalog).
+    emptyFilterTitle: 'Chưa có món nào khớp',
+    emptyFilterBody: 'Thử bỏ bớt bộ lọc để xem thêm nhé.',
+    emptyFilterCta: 'Xoá bộ lọc',
+    emptySearchTitle: 'Chưa tìm thấy mẫu nào',
+    // {query} is the shopper's search term (not a baked value).
+    emptySearchBody: 'Không có kết quả cho “{query}”. Thử từ khoá ngắn hơn nhé.',
+    emptySearchCta: 'Xoá tìm kiếm',
+    emptyCatalogTitle: 'Chưa có sản phẩm nào',
+    emptyCatalogBody: 'Chúng mình đang lên mẫu mới — quay lại sau nhé.',
+    // Pagination. {page}/{total} are pre-formatted number strings (formatVnNumber) at the call site.
+    paginationLabel: 'Phân trang',
+    paginationPrev: 'Trang trước',
+    paginationNext: 'Trang sau',
+    paginationGoTo: 'Tới trang {page}',
+    paginationCurrent: 'Trang {page}, trang hiện tại',
+    paginationStatus: 'Trang {page} / {total}',
+  },
   productDetail: {
     // Breadcrumb landmark name — MUST differ from nav.primaryNav (which names BottomNav, mounted on
     // every page): two <nav> landmarks sharing a name breaks landmark navigation on mobile (WCAG 1.3.1).

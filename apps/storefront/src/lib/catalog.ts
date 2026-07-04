@@ -2,11 +2,14 @@ import 'server-only';
 import { createApiClient } from '@lumin/api-client';
 import { coreApiBaseUrl } from './core-api';
 import {
+  toCategoryView,
   toProductCardView,
   toProductDetailView,
+  type CategoryView,
   type ProductCardView,
   type ProductDetailView,
 } from './product-view';
+import { PAGE_SIZE, type CatalogParams } from './catalog-params';
 
 // SERVER-ONLY catalog reads. This module imports the openapi-fetch client and reads CORE_API_URL (via
 // core-api.ts), so it must never be pulled into the client bundle — it is imported only by the async
@@ -52,6 +55,89 @@ export async function fetchNewArrivals(): Promise<ProductCardView[]> {
   }
 
   return data.items.map(toProductCardView);
+}
+
+/** One page of the catalog-browse grid (/danh-muc): the mapped cards plus the pagination envelope the
+ *  server page needs to render the page controls (plan §3 P1-g). `total` is the count across all pages
+ *  for the active filter (openapi ProductList). */
+export type CatalogPage = {
+  items: ProductCardView[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+/**
+ * Fetch a page of the catalog for /danh-muc — active products filtered by category + full-text `q`
+ * (ADR-016, accent-insensitive), sorted, paginated. The card projection carries no colours/options
+ * (no N+1). Every filter dimension comes from the validated URL params (lib/catalog-params) so the
+ * request is always within the endpoint's bounds (pageSize ≤ 48, q ≤ 100, known sort).
+ *
+ * Caching mirrors the home grid (fetchNewArrivals): tagged `catalog` so the POST /api/revalidate purge
+ * busts every catalog read the instant a product changes, with the 300s `revalidate` as the backstop
+ * ceiling. A ≤5-min-stale card price is cosmetic — checkout re-prices server-side via POST /price/quote
+ * (P1-b). Throws on a non-2xx / network failure so the route error boundary (app/error.tsx) renders the
+ * retry state; an empty-but-OK page (0 matches) returns items:[] so the page shows its designed empty
+ * state, not an error.
+ */
+export async function fetchCatalog(params: CatalogParams): Promise<CatalogPage> {
+  const client = createApiClient({ baseUrl: coreApiBaseUrl() });
+
+  const { data, error, response } = await client.GET('/products', {
+    params: {
+      query: {
+        // Omit category/q when unset so the URL the client sends matches the "all / no search" scope.
+        category: params.category,
+        q: params.q,
+        sort: params.sort,
+        page: params.page,
+        pageSize: PAGE_SIZE,
+      },
+    },
+    next: { revalidate: 300, tags: ['catalog'] },
+  });
+
+  if (error || !data) {
+    throw new Error(`catalog list fetch failed (${response.status})`);
+  }
+
+  return {
+    items: data.items.map(toProductCardView),
+    total: data.total,
+    page: data.page,
+    pageSize: data.pageSize,
+  };
+}
+
+/**
+ * Fetch the browsable category taxonomy for the /danh-muc filter chips. Returns `[]` (never throws) when
+ * core-api answers with an empty list — an empty taxonomy is a valid "all only" state, not an error.
+ * Caching matches the catalog reads (tag `catalog` + 300s backstop). A non-2xx / network failure throws
+ * so the route error boundary renders the retry state (the chips and grid load from the same origin).
+ */
+export async function fetchCategories(): Promise<CategoryView[]> {
+  const client = createApiClient({ baseUrl: coreApiBaseUrl() });
+
+  const { data, error, response } = await client.GET('/categories', {
+    // getCategories takes no required params (only an optional If-None-Match header); the empty `params`
+    // keeps openapi-fetch's typed overload resolving (an omitted `params` collapses the result type).
+    params: {},
+    next: { revalidate: 300, tags: ['catalog'] },
+  });
+
+  // Read the status up front, NOT inside the guard below: the /categories contract declares no error
+  // response (only 200/304), so openapi-fetch's `error` member is `never` and TS proves the
+  // `error || !data` branch unreachable — narrowing `response` to `never` there. Capturing status here
+  // (where `response` is still `Response`) keeps the runtime guard (a real 5xx/network failure DOES set
+  // error / drops data) without the dead-branch narrowing. Contrast fetchCatalog, whose /products 400
+  // keeps its guard live. (openapi-fetch v0.13.)
+  const status = response.status;
+
+  if (error || !data) {
+    throw new Error(`categories fetch failed (${status})`);
+  }
+
+  return data.map(toCategoryView);
 }
 
 /**

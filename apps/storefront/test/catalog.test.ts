@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toProductCardView } from '../src/lib/product-view';
+import { toCategoryView, toProductCardView } from '../src/lib/product-view';
 import type { components } from '@lumin/api-client';
 
 type ApiCard = components['schemas']['ProductCard'];
@@ -56,5 +56,20 @@ describe('toProductCardView', () => {
 
   it('keeps a zero price (free/placeholder) as 0, not falsy-dropped', () => {
     expect(toProductCardView(apiCard({ basePrice: 0 })).basePrice).toBe(0);
+  });
+});
+
+describe('toCategoryView', () => {
+  it('projects the API category onto the flat view (id/slug/name only)', () => {
+    const category: components['schemas']['Category'] = {
+      id: '33333333-3333-3333-3333-333333333333',
+      slug: 'den-trang-tri',
+      name: 'Đèn & trang trí',
+    };
+    expect(toCategoryView(category)).toEqual({
+      id: '33333333-3333-3333-3333-333333333333',
+      slug: 'den-trang-tri',
+      name: 'Đèn & trang trí',
+    });
   });
 });
