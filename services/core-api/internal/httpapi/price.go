@@ -3,6 +3,8 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/api"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
@@ -18,10 +20,12 @@ import (
 // declares maxItems:50 for the contract, but oapi-codegen does not enforce it at runtime — this does.
 const maxQuoteItems = 50
 
-// QuotePrice handles POST /price/quote (PR-P1-b): the public storefront pricing preview. It is
-// authPublic (classify) — no session — and computes each requested line's server-authoritative
-// unit price and line total plus the aggregate subtotal, and NOTHING else: no shipping, address,
-// or tax (those enter at order creation, Phase 2). It persists nothing.
+// QuotePrice handles POST /price/quote (PR-P1-b; shipping added P2-b): the public storefront pricing
+// preview. It is authPublic (classify) — no session — and computes each requested line's
+// server-authoritative unit price and line total plus the aggregate subtotal. When the request names a
+// province (P2-b) it also folds in shippingFee (resolved from settings via the SAME pricing.ShippingFee
+// the checkout charge path uses) and total; without one the response is line/subtotal only,
+// byte-identical to the pre-P2-b shape. It persists nothing.
 //
 // MONEY (ADR-019 / always-must #2): the wire input carries no price. Every unit price is derived
 // from the catalog via pricing.PriceItem — the same authenticity gate checkout's priceLine uses —
@@ -64,31 +68,62 @@ func (s *Server) QuotePrice(ctx context.Context, request api.QuotePriceRequestOb
 		lines = append(lines, line)
 	}
 
-	subtotal, err := quoteSubtotal(lines)
+	// A named province (P2-b) folds shipping into the quote; blank/absent → line/subtotal only.
+	province := ""
+	if request.Body.Province != nil {
+		province = strings.TrimSpace(*request.Body.Province)
+	}
+	var fee int64
+	if province != "" {
+		settings, serr := db.NewSettings(s.pool).Get(ctx)
+		if serr != nil {
+			if errors.Is(serr, db.ErrNotFound) {
+				// The settings singleton is migration-seeded; its absence is a server-config fault,
+				// not a client 404. Break the ErrNotFound chain (%v, not %w) so mapError renders a
+				// logged 500 instead of an unlogged NOT_FOUND (mirrors checkout.go).
+				return nil, fmt.Errorf("quote: settings singleton missing (unseeded?): %v", serr)
+			}
+			return nil, serr
+		}
+		// Same authority as the checkout charge path (checkout.go) → the quote's fee/total equal what
+		// POST /orders will charge for this cart+province. No matching rule → 422 NO_SHIPPING_RULE
+		// (errors.go), never a silent ₫0.
+		if fee, serr = pricing.ShippingFee(settings.ShippingRules, province); serr != nil {
+			return nil, serr
+		}
+	}
+
+	totals, err := quoteTotals(lines, fee)
 	if err != nil {
 		// money.ErrInvalidAmount → 422 INVALID_AMOUNT. Includes a cross-line int64 overflow: an
 		// absurd cart whose lines each fit but whose sum does not is rejected, never wrapped negative.
 		return nil, err
 	}
-	return api.QuotePrice200JSONResponse(api.PriceQuote{Lines: lines, Subtotal: subtotal}), nil
+	// shippingFee/total appear ONLY when a province was given — otherwise the pointers stay nil and
+	// omitempty drops them, keeping the response byte-identical to the pre-P2-b shape.
+	resp := api.PriceQuote{Lines: lines, Subtotal: totals.Subtotal}
+	if province != "" {
+		resp.ShippingFee = &totals.ShippingFee
+		resp.Total = &totals.Total
+	}
+	return api.QuotePrice200JSONResponse(resp), nil
 }
 
-// quoteSubtotal sums the line totals with the guarded money math (money.CalcTotals). It is split
-// out and PURE so the cross-line overflow guard — the ONLY behaviour it adds over a naive Σ, since
-// subtotal == Σ lineTotal by construction — is unit-testable: two lines that each fit int64 but
-// whose sum does not must surface INVALID_AMOUNT, never a wrapped-negative subtotal. pricing.PriceItem
-// already summed base + deltas into each UnitPrice, so the LineItem gets zero deltas (feeding
-// ColorDelta/OptionDeltas here would re-add them — money.go:95-106).
-func quoteSubtotal(lines []api.PriceQuoteLine) (int64, error) {
+// quoteTotals sums the line totals through the guarded money math (money.CalcTotals) and folds in the
+// shipping fee. It is split out and PURE so the cross-line overflow guard — the ONLY behaviour it adds
+// over a naive Σ, since subtotal == Σ lineTotal by construction — is unit-testable: two lines that each
+// fit int64 but whose sum does not must surface INVALID_AMOUNT, never a wrapped-negative subtotal.
+// pricing.PriceItem already summed base + deltas into each UnitPrice, so the LineItem gets zero deltas
+// (feeding ColorDelta/OptionDeltas here would re-add them — money.go:95-106). It routes the SAME
+// LineItems + fee through money.CalcTotals that CreateOrderTx.lineItems does (orders.go), so a quote's
+// subtotal/shippingFee/total equal the order's for the same cart+province (parity). fee is 0 when the
+// request named no province — the handler then omits Total/ShippingFee from the response.
+func quoteTotals(lines []api.PriceQuoteLine, fee int64) (money.Totals, error) {
 	items := make([]money.LineItem, len(lines))
 	for i, l := range lines {
 		items[i] = money.LineItem{UnitPrice: l.UnitPrice, Quantity: int64(l.Quantity)}
 	}
-	totals, err := money.CalcTotals(money.TotalsInput{Items: items})
-	if err != nil {
-		return 0, err
-	}
-	return totals.Subtotal, nil
+	return money.CalcTotals(money.TotalsInput{Items: items, ShippingFee: fee})
 }
 
 // quoteLine reads one requested line's product + full color/option sets and prices it. A missing

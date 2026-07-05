@@ -343,17 +343,26 @@ type Personalization struct {
 	ZoneId string `json:"zoneId"`
 }
 
-// PriceQuote Server-computed line prices + subtotal (raw int-VND; no shipping/tax). `lines` is positionally aligned with the request `items` (same index) — a line carries no product reference, so a client maps a line back to its selection by array index.
+// PriceQuote Server-computed line prices + subtotal (raw int-VND). `lines` is positionally aligned with the request `items` (same index) — a line carries no product reference, so a client maps a line back to its selection by array index. `shippingFee` and `total` are present ONLY when the request carried a province (P2-b); without one the response is line/subtotal only.
 type PriceQuote struct {
 	Lines []PriceQuoteLine `json:"lines"`
 
-	// Subtotal Sum of line totals, raw int VND. No shipping/tax (added at order creation, Phase 2).
+	// ShippingFee Server-resolved shipping fee (settings.shipping_rules), raw int VND. Present ONLY when the request carried a province — same authority as the checkout charge path.
+	ShippingFee *int64 `json:"shippingFee,omitempty"`
+
+	// Subtotal Sum of line totals, raw int VND (no shipping).
 	Subtotal int64 `json:"subtotal"`
+
+	// Total subtotal + shippingFee, overflow-checked. Present ONLY when the request carried a province.
+	Total *int64 `json:"total,omitempty"`
 }
 
-// PriceQuoteInput One or more selections to price. Reuses OrderItemInput (which has NO unitPrice — the server re-derives every price from the catalog). Returns line/subtotal only; carries no address/shipping. Capped at 50 items: this is a public, unauthenticated read (no rate limit until the edge WAF), and each line costs a catalog round-trip, so the cap bounds the per-request work.
+// PriceQuoteInput One or more selections to price. Reuses OrderItemInput (which has NO unitPrice — the server re-derives every price from the catalog). An optional `province` folds in shipping + total. Capped at 50 items: this is a public, unauthenticated read (no rate limit until the edge WAF), and each line costs a catalog round-trip, so the cap bounds the per-request work.
 type PriceQuoteInput struct {
 	Items []OrderItemInput `json:"items"`
+
+	// Province Optional VN destination province (no district, ADR-017). When present, the response adds shippingFee (resolved server-side from settings.shipping_rules, same authority as checkout) and total (subtotal + shippingFee). Omitted or blank → line/subtotal only, byte-identical to the pre-P2-b response. An unshippable province → 422 NO_SHIPPING_RULE (never a silent ₫0).
+	Province *string `json:"province,omitempty"`
 }
 
 // PriceQuoteLine One priced line, positionally aligned with the request item at the same index. Carries the server-derived unit price, its quantity, and the line total — no product ref (map back by index).
@@ -793,7 +802,7 @@ type ServerInterface interface {
 	// Advance an order's status (RBAC-gated; reconcile→PAID and →REFUNDED are owner-only).
 	// (POST /orders/{id}/transitions)
 	TransitionOrder(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-	// Server-authoritative line/subtotal quote for a selection (no shipping/address).
+	// Server-authoritative line/subtotal quote; optional province adds shippingFee + total.
 	// (POST /price/quote)
 	QuotePrice(w http.ResponseWriter, r *http.Request)
 	// Public storefront catalog list (active-only) — paginated card projection.
@@ -895,7 +904,7 @@ func (_ Unimplemented) TransitionOrder(w http.ResponseWriter, r *http.Request, i
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Server-authoritative line/subtotal quote for a selection (no shipping/address).
+// Server-authoritative line/subtotal quote; optional province adds shippingFee + total.
 // (POST /price/quote)
 func (_ Unimplemented) QuotePrice(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -2359,7 +2368,7 @@ type StrictServerInterface interface {
 	// Advance an order's status (RBAC-gated; reconcile→PAID and →REFUNDED are owner-only).
 	// (POST /orders/{id}/transitions)
 	TransitionOrder(ctx context.Context, request TransitionOrderRequestObject) (TransitionOrderResponseObject, error)
-	// Server-authoritative line/subtotal quote for a selection (no shipping/address).
+	// Server-authoritative line/subtotal quote; optional province adds shippingFee + total.
 	// (POST /price/quote)
 	QuotePrice(ctx context.Context, request QuotePriceRequestObject) (QuotePriceResponseObject, error)
 	// Public storefront catalog list (active-only) — paginated card projection.
