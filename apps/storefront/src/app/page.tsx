@@ -1,7 +1,14 @@
+import type { Metadata } from 'next';
 import { Hero } from '@/components/hero';
 import { FeaturedProducts } from '@/components/featured-products';
 import { Trust } from '@/components/trust';
 import { fetchNewArrivals } from '@/lib/catalog';
+
+// Title/description inherit from the root layout; this only pins the canonical (the home canonical is the
+// bare origin, so a `?utm=…`-tagged share still consolidates to `/`).
+export function generateMetadata(): Metadata {
+  return { alternates: { canonical: '/' } };
+}
 
 // Server component: fetches the "Mới về" grid from core-api (server-side, CORE_API_URL never reaches
 // the client). A fetch failure throws → app/error.tsx retry boundary; an empty result → the grid's

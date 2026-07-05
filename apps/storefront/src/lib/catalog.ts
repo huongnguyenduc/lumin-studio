@@ -111,6 +111,50 @@ export async function fetchCatalog(params: CatalogParams): Promise<CatalogPage> 
   };
 }
 
+/** The endpoint's max page size (openapi getProducts `pageSize` cap) — the widest window the sitemap can
+ *  pull per round-trip. */
+const SITEMAP_PAGE_SIZE = 48;
+
+/** Hard ceiling on sitemap paging so a misbehaving `total` can never spin the build into an unbounded
+ *  loop: 50 × 48 = 2400 products, far above any realistic made-to-order catalog. If the shop ever grows
+ *  past this, the sitemap silently truncates — acceptable (and grep-loud via this constant) vs. hanging. */
+const SITEMAP_MAX_PAGES = 50;
+
+/**
+ * List the slugs of every ACTIVE product, for the sitemap (P1-q). Pages through the same `GET /products`
+ * the catalog uses (active-only projection), accumulating slugs until the reported `total` is covered or
+ * the page ceiling is hit. Tagged `catalog` + 300s backstop like the other reads, so a product-change
+ * webhook busts the sitemap too. Throws on a non-2xx / network failure; the sitemap route degrades that
+ * to the static routes rather than erroring /sitemap.xml (see app/sitemap.ts).
+ */
+export async function fetchAllProductSlugs(): Promise<string[]> {
+  const client = createApiClient({ baseUrl: coreApiBaseUrl() });
+  const slugs: string[] = [];
+
+  for (let page = 1; page <= SITEMAP_MAX_PAGES; page++) {
+    const { data, error, response } = await client.GET('/products', {
+      params: { query: { sort: 'newest', page, pageSize: SITEMAP_PAGE_SIZE } },
+      next: { revalidate: 300, tags: ['catalog'] },
+    });
+
+    if (error || !data) {
+      throw new Error(`sitemap product listing failed (${response.status})`);
+    }
+
+    for (const item of data.items) {
+      slugs.push(item.slug);
+    }
+
+    // Stop when this page finished the set (covered `total`) or came back short/empty — never trust the
+    // ceiling to be the terminator on a well-behaved response.
+    if (data.items.length === 0 || page * SITEMAP_PAGE_SIZE >= data.total) {
+      break;
+    }
+  }
+
+  return slugs;
+}
+
 /**
  * Fetch the browsable category taxonomy for the /danh-muc filter chips. Returns `[]` (never throws) when
  * core-api answers with an empty list — an empty taxonomy is a valid "all only" state, not an error.

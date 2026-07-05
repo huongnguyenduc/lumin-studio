@@ -7,11 +7,31 @@ import { SiteHeader } from '@/components/site-header';
 import { SiteFooter } from '@/components/site-footer';
 import { BottomNav } from '@/components/bottom-nav';
 import { locale } from '@/messages';
+import { siteBaseUrl } from '@/lib/site';
+import { BRAND } from '@/lib/product-jsonld';
 import './globals.css';
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('meta');
-  return { title: t('title'), description: t('description') };
+  const title = t('title');
+  const description = t('description');
+  return {
+    // Resolves every page's relative `alternates.canonical` + `openGraph.images` to an absolute URL, and
+    // anchors the default OG card (app/opengraph-image.tsx). Server-only + thrown-not-defaulted (see
+    // lib/site.ts) — a silent localhost base would de-index the site.
+    metadataBase: new URL(siteBaseUrl()),
+    title,
+    description,
+    // Default Open Graph for the whole site (P1-q). A page may override — the product detail sets the
+    // real product photo as its og:image; anything without its own inherits the branded opengraph-image.
+    openGraph: {
+      type: 'website',
+      siteName: BRAND,
+      locale: 'vi_VN',
+      title,
+      description,
+    },
+  };
 }
 
 export default async function RootLayout({ children }: { children: ReactNode }) {

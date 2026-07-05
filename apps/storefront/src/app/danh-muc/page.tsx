@@ -15,7 +15,9 @@ import {
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('catalog');
-  return { title: t('metaTitle') };
+  // Canonical is the bare /danh-muc: filter/sort/page query params are crawlable variants that all
+  // consolidate to the unfiltered catalog (avoids duplicate-content dilution across ?category/?q/?page).
+  return { title: t('metaTitle'), alternates: { canonical: '/danh-muc' } };
 }
 
 // searchParams is async in Next 15 (awaited below). Reading it opts this route into dynamic rendering,
