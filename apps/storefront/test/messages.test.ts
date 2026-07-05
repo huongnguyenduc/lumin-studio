@@ -43,3 +43,24 @@ describe('storefront i18n catalog', () => {
     expect(messages.core?.validation?.addressIncomplete).toBeTruthy();
   });
 });
+
+describe('chinh-sach policy page (P2-h)', () => {
+  const p = messages.chinhSach;
+
+  it('declares the privacy-notice version matching core-api consentPolicyVersion', () => {
+    // Must stay in sync with services/core-api/internal/httpapi/checkout.go `consentPolicyVersion`.
+    // The consent + đổi-trả links in checkout (P2-d) point at this page; a drift means customers
+    // consent under a version whose notice text they can't see (PDPL, compliance §2).
+    expect(p.version).toBe('2026-01');
+  });
+
+  it('covers both required policy surfaces (return/exchange + PDPL what/why/retention/rights)', () => {
+    // Return/exchange (Luật BVNTD 19/2023, ADR-012): personalized goods are non-returnable.
+    expect(p.returns.personalized).toContain('không đổi trả');
+    // PDPL privacy notice must state what we collect, why, how long, and the customer's rights.
+    expect(Object.keys(p.privacy.collectItems).length).toBeGreaterThan(0);
+    expect(Object.keys(p.privacy.rightsItems).length).toBeGreaterThan(0);
+    expect(p.privacy.purpose.trim()).not.toBe('');
+    expect(p.privacy.retention.trim()).not.toBe('');
+  });
+});

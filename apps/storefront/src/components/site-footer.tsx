@@ -19,7 +19,7 @@ export function SiteFooter() {
       heading: t('supportHeading'),
       links: [
         { href: '/tra-cuu-don', label: t('supportOrderLookup') },
-        { href: '/doi-tra', label: t('supportReturns') },
+        { href: '/chinh-sach#doi-tra', label: t('supportReturns') },
         { href: '/lien-he', label: t('supportContact') },
       ],
     },

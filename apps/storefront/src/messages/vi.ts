@@ -349,6 +349,78 @@ export const vi = {
       },
     },
   },
+  // Legal / policy destination page (/chinh-sach, P2-h). One public, indexable page with two
+  // deep-linkable sections: return/exchange policy (Luật BVNTD 19/2023, ADR-012) at #doi-tra, and the
+  // PDPL privacy notice — thu gì / mục đích / lưu bao lâu / quyền (compliance §2) — at #quyen-rieng-tu.
+  // The consent link + đổi-trả pre-purchase link in checkout (P2-d) point here. Static i18n prose (no
+  // runtime fetch): a legal page must render even when the API is down; the shorter refundPolicy blurb
+  // (settings.refund_policy) is rendered inline at checkout, this is the full policy. `version` MUST
+  // stay in sync with core-api's consentPolicyVersion ("2026-01", checkout.go) — a drift means a
+  // customer consents under a version whose notice text they can't read. Sentence case, warm voice.
+  chinhSach: {
+    metaTitle: 'Chính sách đổi trả & quyền riêng tư — Lumin Studio',
+    metaDescription:
+      'Chính sách đổi trả, huỷ đơn và cách Lumin Studio thu thập, dùng và bảo vệ dữ liệu cá nhân của bạn.',
+    heading: 'Chính sách của chúng mình',
+    intro:
+      'Trang này gộp chính sách đổi trả và thông báo quyền riêng tư của Lumin Studio. Có gì chưa rõ, bạn cứ nhắn shop nhé.',
+    // Machine version — asserted in test/messages.test.ts; keep in sync with consentPolicyVersion.
+    version: '2026-01',
+    updated: 'Phiên bản chính sách: tháng 1 năm 2026',
+    returns: {
+      heading: 'Đổi trả & huỷ đơn',
+      madeToOrder:
+        'Mỗi món ở Lumin đều được in theo đơn của bạn — chúng mình không giữ sẵn hàng. Vì vậy chính sách đổi trả có chút khác với hàng bán đại trà, và mình muốn nói rõ trước khi bạn đặt.',
+      standardHeading: 'Hàng in theo mẫu có sẵn',
+      standard:
+        'Với món in theo mẫu tiêu chuẩn (không khắc tên, không tuỳ biến riêng), nếu hàng bị lỗi hoặc không đúng mô tả, bạn báo cho chúng mình trong vòng bảy ngày kể từ khi nhận để được đổi hoặc hoàn tiền.',
+      personalizedHeading: 'Hàng cá nhân hoá / khắc tên',
+      personalized:
+        'Món có khắc tên hoặc làm riêng theo yêu cầu được sản xuất riêng cho bạn nên không đổi trả vì đổi ý — bạn xác nhận điều này trước khi thanh toán. Nhưng nếu lỗi do chúng mình (in sai nội dung đã xác nhận, hàng lỗi kỹ thuật), chúng mình in lại hoặc hoàn tiền cho bạn, miễn phí.',
+      echo: 'Trước khi thanh toán, bạn sẽ thấy lại đúng nội dung khắc để kiểm tra một lần nữa — bước này để chắc chắn tên và chính tả đúng ý bạn.',
+      prepayHeading: 'Thanh toán',
+      prepay:
+        'Đơn khắc tên trả đủ trước qua chuyển khoản VietQR, không thu tiền khi nhận hàng. Bạn đính ảnh biên lai để chúng mình xác nhận rồi mới vào xưởng in.',
+      howToHeading: 'Cần đổi trả?',
+      howTo:
+        'Bạn nhắn shop kèm mã đơn và mô tả vấn đề, tốt nhất là có ảnh. Chúng mình sẽ phản hồi và hướng dẫn các bước tiếp theo.',
+    },
+    privacy: {
+      heading: 'Quyền riêng tư của bạn',
+      intro:
+        'Chúng mình chỉ thu thập những thông tin cần để làm và giao đơn cho bạn, và giữ chúng cẩn thận. Dưới đây là chi tiết.',
+      collectHeading: 'Chúng mình thu thập gì',
+      // Keyed object (not an array) — next-intl's message type rejects arrays; rendered via Object.values.
+      collectItems: {
+        name: 'Tên của bạn — để ghi đơn và giao hàng.',
+        phone: 'Số điện thoại — để liên hệ về đơn và giao hàng.',
+        email: 'Email (nếu bạn cung cấp) — để gửi cập nhật về đơn.',
+        address: 'Địa chỉ giao hàng (tỉnh, phường/xã, đường) — để tính phí ship và giao đến bạn.',
+      },
+      purposeHeading: 'Dùng để làm gì',
+      purpose:
+        'Chúng mình dùng thông tin này để xử lý đơn, giao hàng và liên hệ với bạn về đơn. Chúng mình không bán dữ liệu của bạn cho bên thứ ba.',
+      marketingHeading: 'Marketing',
+      marketing:
+        'Chúng mình chỉ gửi tin khuyến mãi nếu bạn đồng ý riêng — việc này tách khỏi việc đặt hàng và không bao giờ tích sẵn. Bạn có thể rút đồng ý bất cứ lúc nào.',
+      retentionHeading: 'Lưu bao lâu',
+      retention:
+        'Chúng mình giữ dữ liệu đơn trong thời gian cần cho việc bán hàng và nghĩa vụ sổ sách, sau đó xoá hoặc ẩn danh. Dữ liệu được lưu trên máy chủ đặt tại Việt Nam.',
+      rightsHeading: 'Quyền của bạn',
+      rightsItems: {
+        access: 'Xem thông tin cá nhân chúng mình đang giữ về bạn.',
+        rectify: 'Yêu cầu sửa thông tin chưa đúng.',
+        erase: 'Yêu cầu xoá hoặc xuất dữ liệu của bạn.',
+        withdraw: 'Rút lại đồng ý marketing bất cứ lúc nào.',
+      },
+      analyticsHeading: 'Số liệu khi bạn duyệt web',
+      analytics:
+        'Chúng mình dùng số liệu ẩn danh để hiểu cách mọi người dùng web và cải thiện trải nghiệm. Chúng mình không ghi lại thao tác gõ phím hay quay lại màn hình của bạn, và số liệu chỉ chạy khi bạn đồng ý.',
+      contactHeading: 'Liên hệ & thực hiện quyền',
+      contact:
+        'Để xem, sửa, xoá, xuất dữ liệu hoặc hỏi về quyền riêng tư, bạn nhắn shop nhé — chúng mình sẽ hỗ trợ bạn.',
+    },
+  },
 } as const;
 
 export type StorefrontMessages = typeof vi;
