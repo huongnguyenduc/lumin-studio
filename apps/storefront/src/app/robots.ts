@@ -10,10 +10,11 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: '*',
       allow: '/',
-      // Private per-visitor / internal paths that exist today. Admin is a SEPARATE app (not this origin);
-      // checkout (Phase 2) and the customer account (P1-s) don't exist yet — each will carry its own
-      // per-page noindex when it lands (the cart/lookup pattern), so no speculative path is listed here.
-      disallow: ['/gio-hang', '/tra-cuu-don', '/api/'],
+      // Private per-visitor / internal paths that exist today. Admin is a SEPARATE app (not this origin).
+      // `/tai-khoan` (+ its /dang-nhap, /dang-ky sub-routes) is the customer account (P1-s) — private, per
+      // customer; a prefix disallow covers the whole subtree. Each of these also carries its own per-page
+      // noindex (belt + suspenders). Checkout (Phase 2) will add its path here when it lands.
+      disallow: ['/gio-hang', '/tra-cuu-don', '/tai-khoan', '/api/'],
     },
     sitemap: `${base}/sitemap.xml`,
     host: base,
