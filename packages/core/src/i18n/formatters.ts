@@ -17,6 +17,30 @@ export function formatVnDate(iso: string): string {
   }).format(new Date(iso));
 }
 
+/**
+ * Format an ISO-8601 UTC instant as a vi-VN date + 24-hour time, e.g. `25/06/2026 · 09:20`.
+ * Like formatVnDate, the timezone is PINNED to Asia/Ho_Chi_Minh so a stored UTC instant renders the
+ * same wall-clock everywhere (server/SSR/client/CI) — the order-tracking timeline (P1-o) stamps each
+ * milestone with this. Date and time are formatted separately and joined with a middot so the layout
+ * is locale-stable (a single combined `Intl` call would interleave a comma the vi-VN locale inserts).
+ */
+export function formatVnDateTime(iso: string): string {
+  const at = new Date(iso);
+  const date = new Intl.DateTimeFormat('vi-VN', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(at);
+  const time = new Intl.DateTimeFormat('vi-VN', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(at);
+  return `${date} · ${time}`;
+}
+
 /** Format an integer count with vi-VN grouping, e.g. `1.234`. */
 export function formatVnNumber(n: number): string {
   return new Intl.NumberFormat('vi-VN').format(n);

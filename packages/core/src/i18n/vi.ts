@@ -29,6 +29,19 @@ export const vi = {
   order: {
     extensionToast: 'Đã tạo đơn #{code} 🎉',
   },
+  // Order-status labels for the guest tracking timeline (P1-o) and the customer account (P1-s). Keyed
+  // 1:1 by OrderStatus (order-state.ts) so a surface renders `orderStatus[order.status]` directly; a
+  // completeness test (test/messages.test.ts) fails if a status lacks a label or a label has no status.
+  // Sentence case, warm voice — these are the shopper-facing names of the states in spec §04.
+  orderStatus: {
+    PENDING_CONFIRM: 'Chờ xác nhận',
+    PAID: 'Đã thanh toán',
+    PRINTING: 'Đang in',
+    SHIPPING: 'Đang giao',
+    COMPLETED: 'Hoàn tất',
+    CANCELLED: 'Đã huỷ',
+    REFUNDED: 'Đã hoàn tiền',
+  },
 } as const;
 
 export type Messages = typeof vi;

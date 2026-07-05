@@ -29,5 +29,5 @@ export {
 } from './money';
 
 export * from './schemas';
-export { formatVnDate, formatVnNumber, formatVnRating } from './i18n/formatters';
+export { formatVnDate, formatVnDateTime, formatVnNumber, formatVnRating } from './i18n/formatters';
 export { vi, messages, defaultLocale, type Messages } from './i18n/vi';
