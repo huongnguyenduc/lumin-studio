@@ -145,32 +145,41 @@ func TestPriceQuoteLineNonPositiveQuantity(t *testing.T) {
 	}
 }
 
-// quoteSubtotal is Σ lineTotal — the same value the client could add up, but computed with the
-// guarded money math so the aggregate is server-authoritative.
-func TestQuoteSubtotalSumsLineTotals(t *testing.T) {
+// quoteTotals is Σ lineTotal (the value a client could add up, but computed with the guarded money
+// math so the aggregate is server-authoritative) plus the folded-in shipping fee. fee 0 → subtotal
+// only; a fee → total == subtotal + fee, the same CalcTotals the order charge path runs (P2-b parity).
+func TestQuoteTotalsSumsLineTotals(t *testing.T) {
 	lines := []api.PriceQuoteLine{
 		{UnitPrice: 550_000, Quantity: 2, LineTotal: 1_100_000},
 		{UnitPrice: 390_000, Quantity: 1, LineTotal: 390_000},
 	}
-	got, err := quoteSubtotal(lines)
+	got, err := quoteTotals(lines, 0)
 	if err != nil {
-		t.Fatalf("quoteSubtotal: %v", err)
+		t.Fatalf("quoteTotals: %v", err)
 	}
-	if got != 1_490_000 {
-		t.Fatalf("subtotal = %d, want 1490000 (Σ lineTotal)", got)
+	if got.Subtotal != 1_490_000 {
+		t.Fatalf("subtotal = %d, want 1490000 (Σ lineTotal)", got.Subtotal)
+	}
+	withFee, err := quoteTotals(lines, 30_000)
+	if err != nil {
+		t.Fatalf("quoteTotals(fee): %v", err)
+	}
+	if withFee.Subtotal != 1_490_000 || withFee.ShippingFee != 30_000 || withFee.Total != 1_520_000 {
+		t.Fatalf("with fee = subtotal %d fee %d total %d, want 1490000/30000/1520000",
+			withFee.Subtotal, withFee.ShippingFee, withFee.Total)
 	}
 }
 
-// The reason quoteSubtotal routes through money.CalcTotals rather than a naive Σ: two lines that
+// The reason quoteTotals routes through money.CalcTotals rather than a naive Σ: two lines that
 // EACH fit int64 but whose sum overflows must surface INVALID_AMOUNT, never a wrapped-negative
 // subtotal. A mutant that dropped the aggregate guard and returned a plain sum would pass every
 // other test but fail this one.
-func TestQuoteSubtotalCrossLineOverflow(t *testing.T) {
+func TestQuoteTotalsCrossLineOverflow(t *testing.T) {
 	lines := []api.PriceQuoteLine{
 		{UnitPrice: math.MaxInt64, Quantity: 1, LineTotal: math.MaxInt64},
 		{UnitPrice: math.MaxInt64, Quantity: 1, LineTotal: math.MaxInt64},
 	}
-	if _, err := quoteSubtotal(lines); !errors.Is(err, money.ErrInvalidAmount) {
+	if _, err := quoteTotals(lines, 0); !errors.Is(err, money.ErrInvalidAmount) {
 		t.Fatalf("err = %v, want money.ErrInvalidAmount (cross-line overflow)", err)
 	}
 }

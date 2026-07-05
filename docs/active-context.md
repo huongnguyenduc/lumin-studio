@@ -6,6 +6,38 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**✅ PHASE 1 STOREFRONT COMPLETE (2026-07-05)** — cả 19 sub-PR `P1-a..s` MERGED; cuối = **P1-i #51** (`origin/main`
+`1dc8c05`, on-demand 3D model-viewer, 11:34Z). Local `main` đã ff `1dc8c05`, working tree clean. Housekeeping nợ:
+~30 nhánh local đã-merge/`:gone` + `chore/core-closeout-housekeeping` (20 behind/1 ahead, obsolete) — **chờ chủ duyệt xoá**.
+
+**➡️ PHASE 2 · Checkout & thanh toán — PLAN LOCKED, chưa code.** Plan `docs/plans/phase-2-checkout.md`
+(workflow `wf_cae0afba`: 10 readers → 3 angles → 3-lens judge → synthesis + completeness-critic; winner = risk-first
+money-spine). **9 sub-PR** `P2-a..i`, dependency-sound: seam BE/infra/content trước (`P2-a` checkout-config+STK-gate ·
+`P2-b` `/price/quote`+shipping · `P2-c` proof presigned-POST upload · `P2-i` tokenized phone-less tracking · `P2-h`
+`/chinh-sach` legal) → FE journey (`P2-d` địa chỉ → `P2-e` engrave-acks → `P2-f` QR+proof+submit → `P2-g` wait-screen).
+**Xương sống tiền/đơn ĐÃ có** (`POST /orders` 3g, `/price/quote` P1-b, cart P1-k, guest-poll P1-o) — Phase-2 chỉ lấp
+gap + treo FE. **4 quyết định chủ LOCKED (2026-07-05):** proof = **presigned POST + auto-delete 90d** · đổi-trả =
+**disclosure MỌI đơn + trang `/chinh-sach`** · deposit = **100% prepay, không migration** · **D-P2-8 = DỰNG endpoint
+theo dõi phone-less tokenized** (HMAC capability, KHÔNG migration → +P2-i). 6 còn lại lấy đề xuất (VietQR img.vietqr.io ·
+province=shipping_rules keys · ETA tĩnh · missing-STK 422 · double-submit FE-guard+runbook · analytics defer).
+**NEXT = P2-b hoặc P2-h** (cả hai ADR-free, `dependsOn=[]`, land song song được); `P2-a`/`P2-c`/`P2-i` cần ADR/secret lock.
+
+**🔨 PR-P2-b (`POST /price/quote` optional `province` → `{lines, subtotal, shippingFee, total}`) — BUILT · verify+
+integration(colima) green · chưa review/push. (branch `feat/phase-2-checkout-p2b` off `main` `1dc8c05`.)** Additive
+contract: `PriceQuoteInput.province?` + `PriceQuote.shippingFee?/total?` (omitempty → **vắng province = byte-identical**
+pre-P2-b). Handler `price.go`: province≠"" → `db.Settings.Get` (ErrNotFound→logged 500 như checkout) → `pricing.ShippingFee`
+(no-rule→**422 `NO_SHIPPING_RULE`** đã map sẵn errors.go:148) → `quoteTotals(lines,fee)` (đổi từ `quoteSubtotal`, giờ trả
+`money.Totals` + fold shipping). **Parity = tường tiền:** `quoteTotals` route CÙNG `money.LineItem{UnitPrice,Quantity}`+fee
+qua `money.CalcTotals` mà `CreateOrderTx.lineItems` (orders.go:359) chạy → quote money == order charge cho cùng cart+tỉnh.
+**Test:** unit `quoteTotals` (subtotal + fold-fee + cross-line overflow) · integration (real PG, colima, -race)
+`TestQuotePriceParityWithOrder` (**cart CÓ KHẮC** 550k×2+30k=1.130.000, quote==order field-by-field) +
+`TestQuotePriceProvinceNoRule` (422) + no-province nil-shipping byte-identical. `make verify-go` rc=0 (golangci 0, sqlc
+vet+diff, oapi stale-check staged) · full httpapi integration 28s green · `pnpm verify` 6/6 (api-client stale-gate + 138
+storefront) · guard **161** / osm 22. **No new dep · no new ADR · no migration.** Codegen regen (Go api.gen.go + TS
+schema.gen.ts) staged.
+
+> Lịch sử Phase-0/Core/Slice-1..3 bên dưới (volatile log, giữ tham chiếu). Phase-1 P1-a..s chi tiết ở giữa file.
+
 **PHASE 0 DONE — cả 5 slice trên `main` (`ab99360`):** compose(#5) · ui(#6) · storefront(#7) · admin(#9) ·
 services backbone(#10, squash-merged 2026-06-26 03:28Z). Local `main` đã ff về `ab99360`; nhánh
 `feat/phase-0-services-backbone` đã xoá local (remote còn — chưa được duyệt xoá). Còn nợ Phase 0 = **ops (không

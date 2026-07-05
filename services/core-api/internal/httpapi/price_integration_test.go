@@ -86,6 +86,11 @@ func TestQuotePriceEndToEnd(t *testing.T) {
 	if got.Subtotal != 1_490_000 {
 		t.Fatalf("subtotal = %d, want 1490000 (line/subtotal only, no shipping)", got.Subtotal)
 	}
+	// No province in the request → shippingFee/total folded out entirely (byte-identical to the
+	// pre-P2-b shape; the omitempty pointers stay nil).
+	if got.ShippingFee != nil || got.Total != nil {
+		t.Fatalf("no-province quote leaked shippingFee/total: %+v", got)
+	}
 }
 
 // Every rejection renders its ADR-032 envelope over HTTP. Unknown and archived products both yield
@@ -134,5 +139,93 @@ func TestQuotePriceRejectionsEndToEnd(t *testing.T) {
 				t.Fatalf("envelope = %s/%s, want %s/errors.%s", env.Code, env.MessageKey, tc.want, tc.want)
 			}
 		})
+	}
+}
+
+// quoteBodyProvince builds a `{"items":[…],"province":…}` body — the P2-b path that folds shipping
+// + total into the quote.
+func quoteBodyProvince(t *testing.T, province string, items ...map[string]any) string {
+	t.Helper()
+	raw, err := json.Marshal(map[string]any{"items": items, "province": province})
+	if err != nil {
+		t.Fatalf("marshal quote body: %v", err)
+	}
+	return string(raw)
+}
+
+// P2-b parity — the money-integrity wall: for the SAME personalized cart + province, the quote's
+// subtotal/shippingFee/total MUST equal what POST /orders actually charges. A customer who sees a
+// total at checkout that differs from what the order records is a dispute. Both paths route the
+// engrave-surcharged unit prices through the same pricing.PriceItem + money.CalcTotals, so this pins
+// that the quote endpoint feeds CalcTotals the same LineItems + fee CreateOrderTx.lineItems does.
+func TestQuotePriceParityWithOrder(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+	fx := seedCheckoutCatalog(t, ctx, pool)
+	setShippingRules(t, ctx, pool, `[{"province":"Hà Nội","fee":30000},{"province":"*","fee":45000}]`)
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
+	router := testAuthedRouter(srv)
+
+	// One engraved line: 390k base + 20k color + 90k dimmer + 50k engrave = 550k, ×2.
+	item := map[string]any{
+		"productId":       fx.product.ID.String(),
+		"colorId":         fx.colorMint.ID.String(),
+		"optionIds":       []string{fx.optDimmer.ID.String(), fx.optEngrave.ID.String()},
+		"quantity":        2,
+		"personalization": map[string]any{"text": "Miu ơi", "zoneId": "front"},
+	}
+
+	rec := postQuote(router, quoteBodyProvince(t, "Hà Nội", item))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("quote with province = %d, want 200 (body=%s)", rec.Code, rec.Body.String())
+	}
+	var quote api.PriceQuote
+	if err := json.Unmarshal(rec.Body.Bytes(), &quote); err != nil {
+		t.Fatalf("decode quote: %v", err)
+	}
+	if quote.ShippingFee == nil || quote.Total == nil {
+		t.Fatalf("province quote omitted shippingFee/total: %+v", quote)
+	}
+
+	// webBody defaults shippingAddress.province = "Hà Nội" — matches the quote province.
+	order := mustCreateOrder(t, srv, ctx, webBody(map[string]any{
+		"items":                []any{item},
+		"personalizationAck":   true,
+		"engraveEchoConfirmed": true,
+	}))
+
+	// The parity assertion: quote money == order money, field for field.
+	if quote.Subtotal != order.Subtotal || *quote.ShippingFee != order.ShippingFee || *quote.Total != order.Total {
+		t.Fatalf("PARITY BROKEN: quote {subtotal %d fee %d total %d} != order {subtotal %d fee %d total %d}",
+			quote.Subtotal, *quote.ShippingFee, *quote.Total, order.Subtotal, order.ShippingFee, order.Total)
+	}
+	// Concrete numbers too, so BOTH paths can't drift together undetected: 550k×2 + 30k = 1,130,000.
+	if quote.Subtotal != 1_100_000 || *quote.ShippingFee != 30_000 || *quote.Total != 1_130_000 {
+		t.Fatalf("quote money = subtotal %d fee %d total %d, want 1100000/30000/1130000",
+			quote.Subtotal, *quote.ShippingFee, *quote.Total)
+	}
+}
+
+// A province with no matching shipping rule (and no "*" wildcard) is 422 NO_SHIPPING_RULE — never a
+// silent ₫0 total. Mirrors the checkout charge path's guard on the quote surface.
+func TestQuotePriceProvinceNoRule(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+	fx := seedCheckoutCatalog(t, ctx, pool)
+	setShippingRules(t, ctx, pool, `[{"province":"Hà Nội","fee":30000}]`) // no wildcard
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
+	router := testAuthedRouter(srv)
+
+	body := quoteBodyProvince(t, "Cà Mau", map[string]any{"productId": fx.product.ID.String(), "quantity": 1})
+	rec := postQuote(router, body)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422 (body=%s)", rec.Code, rec.Body.String())
+	}
+	var env api.ErrorEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if env.Code != codeNoShippingRule || env.MessageKey != "errors."+codeNoShippingRule {
+		t.Fatalf("envelope = %s/%s, want %s/errors.%s", env.Code, env.MessageKey, codeNoShippingRule, codeNoShippingRule)
 	}
 }

@@ -267,8 +267,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Server-authoritative line/subtotal quote for a selection (no shipping/address).
-         * @description Public storefront pricing (no auth). Re-derives each line's unitPrice from the catalog via the same authority gate as checkout — never trusts a client price (always-must #2). Returns per-line unitPrice + lineTotal and the subtotal ONLY: no shipping, address, or tax (those enter at order creation, Phase 2). A non-active or unknown product is 422 PRODUCT_UNAVAILABLE (no catalog-existence leak, matching checkout). Engrave maxChars is enforced server-side by rune count. All money is raw int-VND; the client formats via @lumin/core. The request reuses OrderItemInput, which has no price field, so a client cannot declare a price (schema-level guarantee; unlike checkout this endpoint persists nothing and its response IS the authoritative price, so no loud money-key reject is needed).
+         * Server-authoritative line/subtotal quote; optional province adds shippingFee + total.
+         * @description Public storefront pricing (no auth). Re-derives each line's unitPrice from the catalog via the same authority gate as checkout — never trusts a client price (always-must #2). Returns per-line unitPrice + lineTotal and the subtotal. When the request carries a `province` (P2-b), the response also resolves `shippingFee` from settings.shipping_rules — the SAME pricing.ShippingFee the checkout charge path uses, so a quote's fee/total equal what POST /orders will charge for the same cart + province — and `total` (subtotal + shippingFee). An unshippable province is 422 NO_SHIPPING_RULE (never a silent ₫0). WITHOUT a province the response is line/subtotal only, byte-identical to the pre-P2-b shape. A non-active or unknown product is 422 PRODUCT_UNAVAILABLE (no catalog-existence leak, matching checkout). Engrave maxChars is enforced server-side by rune count. All money is raw int-VND; the client formats via @lumin/core. The request reuses OrderItemInput, which has no price field, so a client cannot declare a price (schema-level guarantee; unlike checkout this endpoint persists nothing and its response IS the authoritative price, so no loud money-key reject is needed).
          */
         post: operations["quotePrice"];
         delete?: never;
@@ -606,18 +606,30 @@ export interface components {
             personalization?: components["schemas"]["Personalization"];
             quantity: number;
         };
-        /** @description One or more selections to price. Reuses OrderItemInput (which has NO unitPrice — the server re-derives every price from the catalog). Returns line/subtotal only; carries no address/shipping. Capped at 50 items: this is a public, unauthenticated read (no rate limit until the edge WAF), and each line costs a catalog round-trip, so the cap bounds the per-request work. */
+        /** @description One or more selections to price. Reuses OrderItemInput (which has NO unitPrice — the server re-derives every price from the catalog). An optional `province` folds in shipping + total. Capped at 50 items: this is a public, unauthenticated read (no rate limit until the edge WAF), and each line costs a catalog round-trip, so the cap bounds the per-request work. */
         PriceQuoteInput: {
             items: components["schemas"]["OrderItemInput"][];
+            /** @description Optional VN destination province (no district, ADR-017). When present, the response adds shippingFee (resolved server-side from settings.shipping_rules, same authority as checkout) and total (subtotal + shippingFee). Omitted or blank → line/subtotal only, byte-identical to the pre-P2-b response. An unshippable province → 422 NO_SHIPPING_RULE (never a silent ₫0). */
+            province?: string;
         };
-        /** @description Server-computed line prices + subtotal (raw int-VND; no shipping/tax). `lines` is positionally aligned with the request `items` (same index) — a line carries no product reference, so a client maps a line back to its selection by array index. */
+        /** @description Server-computed line prices + subtotal (raw int-VND). `lines` is positionally aligned with the request `items` (same index) — a line carries no product reference, so a client maps a line back to its selection by array index. `shippingFee` and `total` are present ONLY when the request carried a province (P2-b); without one the response is line/subtotal only. */
         PriceQuote: {
             lines: components["schemas"]["PriceQuoteLine"][];
             /**
              * Format: int64
-             * @description Sum of line totals, raw int VND. No shipping/tax (added at order creation, Phase 2).
+             * @description Sum of line totals, raw int VND (no shipping).
              */
             subtotal: number;
+            /**
+             * Format: int64
+             * @description Server-resolved shipping fee (settings.shipping_rules), raw int VND. Present ONLY when the request carried a province — same authority as the checkout charge path.
+             */
+            shippingFee?: number;
+            /**
+             * Format: int64
+             * @description subtotal + shippingFee, overflow-checked. Present ONLY when the request carried a province.
+             */
+            total?: number;
         };
         /** @description One priced line, positionally aligned with the request item at the same index. Carries the server-derived unit price, its quantity, and the line total — no product ref (map back by index). */
         PriceQuoteLine: {
@@ -1307,7 +1319,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The computed line prices and subtotal. */
+            /** @description The computed line prices and subtotal (plus shippingFee + total when a province was given). */
             200: {
                 headers: {
                     [name: string]: unknown;
