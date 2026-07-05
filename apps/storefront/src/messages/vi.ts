@@ -108,6 +108,12 @@ export const vi = {
     noReviews: 'Chưa có đánh giá',
     // Gallery thumbnail button label; {index} is 1-based.
     galleryThumbLabel: 'Xem ảnh {index}',
+    // On-demand 3D viewer (P1-i). The button only appears when the product has a .glb and the browser
+    // supports WebGL; model-viewer loads on click, not before.
+    view3dLabel: 'Xem mẫu 3D',
+    view3dLoading: 'Đang tải mẫu 3D…',
+    view3dError: 'Chưa tải được mẫu 3D — bạn xem ảnh phía trên nhé.',
+    view3dAlt: 'Mẫu 3D của {name}',
     // <title> for the detail route.
     metaTitle: '{name} — Lumin Studio',
     // 404 (unknown slug or draft/archived — uniform, no leak).
