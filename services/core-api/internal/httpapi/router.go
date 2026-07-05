@@ -28,8 +28,9 @@ type NATSStatus interface {
 // NewRouter builds the chi router with the baseline middleware stack, the platform probes,
 // and the OpenAPI domain routes. The pool and nats handle back the readiness check; pass
 // nil for either in unit tests that don't exercise that dependency (readiness then skips
-// that check). authIssuer signs/clears the session cookie for the login handlers (PR-3e-1).
-func NewRouter(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus, authIssuer *auth.Issuer) http.Handler {
+// that check). authIssuer signs/clears the session cookie for the login handlers (PR-3e-1). opts
+// wire optional dependencies (the storefront customer realm via WithCustomerAuth, PR-P1-r).
+func NewRouter(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus, authIssuer *auth.Issuer, opts ...ServerOption) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -46,7 +47,7 @@ func NewRouter(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus, authIss
 	// socket-level backstop is the http.Server Read/Write timeouts (Phase-1).
 	r.Use(middleware.Timeout(30 * time.Second))
 
-	srv := NewServer(logger, pool, nats, authIssuer)
+	srv := NewServer(logger, pool, nats, authIssuer, opts...)
 
 	// Liveness: the process is up. Readiness adds Postgres + NATS reachability checks;
 	// Garage joins them once it is wired — see architecture.md §2.

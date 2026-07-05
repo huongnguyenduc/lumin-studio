@@ -578,6 +578,7 @@ type Customer struct {
 	SocialHandle *string            `json:"socialHandle"`
 	Addresses    []byte             `json:"addresses"`
 	CreatedAt    pgtype.Timestamptz `json:"createdAt"`
+	PasswordHash *string            `json:"passwordHash"`
 }
 
 type Option struct {

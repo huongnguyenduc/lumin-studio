@@ -11,6 +11,24 @@ SELECT * FROM customers WHERE id = $1;
 -- name: GetCustomerByPhone :one
 SELECT * FROM customers WHERE phone = $1;
 
+-- InsertCustomerWithCredential registers a storefront account (PR-P1-r): a customer row that
+-- carries a login credential. addresses defaults to '[]' and social_handle to NULL (a registrant
+-- supplies only name/phone/email/password). A duplicate login email is rejected by the
+-- customers_login_email_uq partial unique index (23505 → 409 in the handler), so there is no
+-- find-then-insert race — the DB is the single arbiter of login-email uniqueness.
+-- name: InsertCustomerWithCredential :one
+INSERT INTO customers (id, name, phone, email, password_hash)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING *;
+
+-- GetCustomerByLoginEmail resolves a login (PR-P1-r): only CREDENTIALED customers (password_hash
+-- NOT NULL) are candidates, matched case-insensitively on lower(email) — the exact predicate +
+-- expression of customers_login_email_uq, so this read rides that index and a guest row (NULL
+-- credential, possibly duplicate email) can never be logged into.
+-- name: GetCustomerByLoginEmail :one
+SELECT * FROM customers
+WHERE lower(email) = lower($1) AND password_hash IS NOT NULL;
+
 -- name: InsertConsentGrant :one
 -- Append a granted purpose. granted_at defaults to now(); withdrawn_at is NULL (active).
 INSERT INTO consent_grants (id, customer_id, scope, channel, policy_version)

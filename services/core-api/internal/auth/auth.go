@@ -17,29 +17,40 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// SessionCookieName is the name of the httpOnly session cookie carrying the JWT. Kept plain
-// (not a __Host- prefix) so it also works over local plain-http dev; the Secure flag is
-// config-driven (CookieSecure). The prod hardening to __Host- can follow with the HTTPS edge.
+// SessionCookieName is the admin session cookie carrying the JWT. Kept plain (not a __Host-
+// prefix) so it also works over local plain-http dev; the Secure flag is config-driven
+// (CookieSecure). The prod hardening to __Host- can follow with the HTTPS edge.
 const SessionCookieName = "lumin_session"
+
+// CustomerCookieName is the SEPARATE storefront-customer session cookie (PR-P1-r). The customer
+// realm uses its own Issuer signed with a different secret, so an admin token can never validate
+// as a customer session (and vice versa) even if copied across cookie names — cryptographic realm
+// isolation, ADR-030 ("cookie riêng, KHÔNG JWT admin").
+const CustomerCookieName = "lumin_customer"
 
 // signingAlg is the JWT signature algorithm. HS256 (symmetric) suits a single self-issuing
 // service — one secret signs and verifies; there is no third party that needs a public key.
 const signingAlg = "HS256"
 
-// Issuer mints and clears the session cookie. It is safe for concurrent use.
+// Issuer mints and clears a session cookie for ONE realm. It is safe for concurrent use. The admin
+// and customer realms each construct their own Issuer with a distinct secret + cookieName, so their
+// tokens are cryptographically and namespace isolated (PR-P1-r).
 type Issuer struct {
-	ja     *jwtauth.JWTAuth
-	ttl    time.Duration
-	secure bool
+	ja         *jwtauth.JWTAuth
+	ttl        time.Duration
+	secure     bool
+	cookieName string
 }
 
-// NewIssuer builds an Issuer over the HS256 signing secret. ttl is the token lifetime; secure
-// sets the cookie Secure flag (true in prod behind the HTTPS edge, false for local http dev).
-func NewIssuer(secret string, ttl time.Duration, secure bool) *Issuer {
+// NewIssuer builds an Issuer over the HS256 signing secret. ttl is the token lifetime; secure sets
+// the cookie Secure flag (true in prod behind the HTTPS edge, false for local http dev); cookieName
+// is the realm's cookie (auth.SessionCookieName for admin, auth.CustomerCookieName for storefront).
+func NewIssuer(secret string, ttl time.Duration, secure bool, cookieName string) *Issuer {
 	return &Issuer{
-		ja:     jwtauth.New(signingAlg, []byte(secret), nil),
-		ttl:    ttl,
-		secure: secure,
+		ja:         jwtauth.New(signingAlg, []byte(secret), nil),
+		ttl:        ttl,
+		secure:     secure,
+		cookieName: cookieName,
 	}
 }
 
@@ -108,7 +119,7 @@ func (is *Issuer) Clear() *http.Cookie {
 // admin surface PR-3e-2/3h/3k build on top).
 func (is *Issuer) cookie(value string, expires time.Time, maxAge int) *http.Cookie {
 	return &http.Cookie{
-		Name:     SessionCookieName,
+		Name:     is.cookieName,
 		Value:    value,
 		Path:     "/",
 		HttpOnly: true,
@@ -124,6 +135,17 @@ func (is *Issuer) cookie(value string, expires time.Time, maxAge int) *http.Cook
 // same as a real comparison — an attacker can't distinguish unknown-email from wrong-password
 // by timing (no user enumeration). It is not a secret; it never matches a real password.
 var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("lumin-timing-equalizer"), bcrypt.DefaultCost)
+
+// A nil/empty dummyHash would silently break the timing-equalizer: VerifyPassword's no-credential
+// path would fail the bcrypt compare in microseconds instead of ~cost-10 time, re-opening the
+// user-enumeration channel it exists to close. GenerateFromPassword can only fail here on a broken
+// crypto/rand (the fixed cost + <72-byte input are always valid), so fail fast at init rather than
+// serve auth with a leaky compare — a box that can't hash at boot must not authenticate.
+func init() {
+	if len(dummyHash) == 0 {
+		panic("auth: bcrypt dummy hash failed to initialize (broken crypto/rand?) — refusing to run with a leaky timing-equalizer")
+	}
+}
 
 // VerifyPassword reports whether password matches the stored bcrypt hash. A nil/empty hash
 // (a user row with no login credential) always fails, but still burns one bcrypt comparison

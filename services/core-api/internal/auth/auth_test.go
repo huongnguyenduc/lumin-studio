@@ -7,7 +7,7 @@ import (
 )
 
 func TestIssueSetsSecureHttpOnlyCookie(t *testing.T) {
-	is := NewIssuer("test-secret", time.Hour, true)
+	is := NewIssuer("test-secret", time.Hour, true, SessionCookieName)
 	cookie, err := is.Issue("user-1", "owner", time.Now().UTC())
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
@@ -33,7 +33,7 @@ func TestIssueSetsSecureHttpOnlyCookie(t *testing.T) {
 }
 
 func TestIssueInsecureCookieForLocalHTTP(t *testing.T) {
-	is := NewIssuer("s", time.Hour, false)
+	is := NewIssuer("s", time.Hour, false, SessionCookieName)
 	cookie, err := is.Issue("u", "staff", time.Now().UTC())
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
@@ -45,7 +45,7 @@ func TestIssueInsecureCookieForLocalHTTP(t *testing.T) {
 
 func TestIssuedTokenCarriesClaims(t *testing.T) {
 	const ttl = 12 * time.Hour
-	is := NewIssuer("test-secret", ttl, true)
+	is := NewIssuer("test-secret", ttl, true, SessionCookieName)
 	now := time.Now().UTC()
 	cookie, err := is.Issue("user-42", "owner", now)
 	if err != nil {
@@ -74,8 +74,8 @@ func TestIssuedTokenCarriesClaims(t *testing.T) {
 
 // A token signed with a different secret must NOT verify — the signature is the whole point.
 func TestForeignSecretTokenRejected(t *testing.T) {
-	minted := NewIssuer("secret-A", time.Hour, true)
-	other := NewIssuer("secret-B", time.Hour, true)
+	minted := NewIssuer("secret-A", time.Hour, true, SessionCookieName)
+	other := NewIssuer("secret-B", time.Hour, true, SessionCookieName)
 	cookie, err := minted.Issue("u", "owner", time.Now().UTC())
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
@@ -86,7 +86,7 @@ func TestForeignSecretTokenRejected(t *testing.T) {
 }
 
 func TestClearExpiresCookie(t *testing.T) {
-	is := NewIssuer("s", time.Hour, true)
+	is := NewIssuer("s", time.Hour, true, SessionCookieName)
 	c := is.Clear()
 	if c.Name != SessionCookieName || c.Value != "" || c.MaxAge >= 0 {
 		t.Fatalf("clear cookie = %+v, want empty value + negative MaxAge", c)

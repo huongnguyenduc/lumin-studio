@@ -543,6 +543,35 @@ if [ -f "$MWGO" ]; then
     bad "ARM: httpapi/middleware_auth.go LAND nhưng thiếu 1 trong {router wire StrictMiddlewareFunc{srv.authMiddleware}, resolveActor auth.Verify, UserByID role-từ-DB} -> admin surface chạy KHÔNG auth / cookie giả qua cửa / token cũ leo thang role (ADR-030!)"
   fi
 else ok "ARM: chưa có httpapi/middleware_auth.go (auth boundary/RBAC arm khi land — PR-3e-2)"; fi
+# Storefront customer realm (PR-P1-r, ADR-030): khi httpapi/customer.go land, các bất biến RIÊNG của realm
+# khách PHẢI đứng, nếu không thì hoặc token admin đọc được dữ liệu khách, hoặc lịch sử đơn của người này rò
+# sang người khác (PII):
+#   (a) resolveCustomer VERIFY qua issuer KHÁCH (s.customerAuth.Verify) — KHÔNG dùng s.auth (admin): dùng nhầm
+#       admin issuer thì token admin verify được như session khách → vỡ cô lập realm;
+#   (b) đọc cookie KHÁCH riêng (auth.CustomerCookieName=lumin_customer) — KHÔNG dùng chung cookie admin;
+#   (c) classify gác GetCustomerOrders bằng authCustomer (session khách hợp lệ) — thiếu → endpoint lịch sử hở;
+#   (d) GetCustomerOrders scope theo subject session đã-verify (customerFrom(ctx)) — KHÔNG theo body/param:
+#       bỏ → client tự chọn customer_id → đọc đơn người khác (PII);
+#   (e) main.go fail-fast khi CUSTOMER_JWT_SECRET là dev-secret không opt-in (UsesForgeableCustomerJWTSecret) —
+#       thiếu → token khách giả-mạo-được → đọc lịch sử đơn bất kỳ ai. Bỏ dòng comment ('//') trước khi soi để
+#       một wiring bị COMMENT-OUT không false-PASS (cùng class lỗ '//' của relay-ARM 3b). Chỉ soi file PROD.
+CUSTOMERGO="$ROOT/services/core-api/internal/httpapi/customer.go"
+if [ -f "$CUSTOMERGO" ]; then
+  MWGO="$ROOT/services/core-api/internal/httpapi/middleware_auth.go"
+  MAINGO="$ROOT/services/core-api/cmd/core-api/main.go"
+  CUSTBODY="$(grep -vE '^[[:space:]]*//' "$CUSTOMERGO" 2>/dev/null)"
+  MWBODY2="$(grep -vE '^[[:space:]]*//' "$MWGO" 2>/dev/null)"
+  MAINBODY="$(grep -vE '^[[:space:]]*//' "$MAINGO" 2>/dev/null)"
+  if printf '%s' "$MWBODY2" | grep -q 'customerAuth.Verify\|s.customerAuth.Verify' \
+     && printf '%s' "$MWBODY2" | grep -q 'CustomerCookieName' \
+     && printf '%s' "$MWBODY2" | grep -q 'authCustomer' \
+     && printf '%s' "$CUSTBODY" | grep -q 'customerFrom' \
+     && printf '%s' "$MAINBODY" | grep -q 'UsesForgeableCustomerJWTSecret'; then
+    ok "ARM: có httpapi/customer.go -> resolveCustomer VERIFY qua customerAuth (issuer khách riêng) + đọc CustomerCookieName + classify authCustomer + GetCustomerOrders scope customerFrom(ctx) + main.go fail-fast UsesForgeableCustomerJWTSecret (cô lập realm + PII-scope + không token giả — ADR-030)"
+  else
+    bad "ARM: httpapi/customer.go LAND nhưng thiếu 1 trong {resolveCustomer s.customerAuth.Verify, CustomerCookieName, classify authCustomer, GetCustomerOrders customerFrom(ctx), main.go UsesForgeableCustomerJWTSecret} -> token admin đọc dữ liệu khách / cookie dùng chung / endpoint lịch sử hở / client tự chọn customer_id rò PII / token khách giả-mạo-được (ADR-030!)"
+  fi
+else ok "ARM: chưa có httpapi/customer.go (customer realm arm khi land — PR-P1-r)"; fi
 # Order-intake pricing (PR-3f, ADR-019/§6 D9): khi internal/pricing land, 2 bất biến money-out PHẢI đứng:
 #  (a) PriceItem DERIVE unit price từ catalog (product.BasePrice + *.PriceDelta) — KHÔNG nhận/không tin
 #      giá client: input `Selection` không được mang trường giá (UnitPrice/unitPrice); một edit thêm

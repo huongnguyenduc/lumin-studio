@@ -40,6 +40,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/customer/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register a storefront customer account; sets the customer session cookie on success.
+         * @description Creates a customer account (name + phone + email + password) in the SEPARATE storefront realm (ADR-030) and logs it in immediately by setting a signed JWT in an httpOnly+Secure+SameSite customer cookie (distinct secret + name from the admin session — the token is not in the body). A login email already registered returns 409 (the only field the client may safely surface). Totals/orders are unrelated; guest orders placed before registering are NOT auto-linked.
+         */
+        post: operations["registerCustomer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/customer/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Email + password login for a storefront customer; sets the customer session cookie.
+         * @description Verifies the credential (bcrypt, constant-time) against the customer realm and, on success, mints a signed JWT set as the httpOnly+Secure customer cookie. A uniform error is returned for both unknown email and bad password (no enumeration). The cookie — not the body — carries the token.
+         */
+        post: operations["loginCustomer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/customer/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Clear the customer session cookie. */
+        post: operations["logoutCustomer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/customer/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The authenticated customer's own order history (timeline projection).
+         * @description Returns the signed-in customer's orders, newest-first, as the SAME public timeline projection the guest lookup returns (code + status + milestones + tracking; never internal money/PII/address fields). Scoped strictly by the verified session's customer id. Requires a valid customer session (401 otherwise) — the admin cookie does not grant it (separate realm, ADR-030).
+         */
+        get: operations["getCustomerOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orders": {
         parameters: {
             query?: never;
@@ -635,6 +712,26 @@ export interface components {
             email: string;
             role: components["schemas"]["UserRole"];
         };
+        /** @description The authenticated storefront customer (no credential material). Distinct from AuthUser (admin): a customer has no role, and carries the phone captured at registration. */
+        CustomerAccount: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: email */
+            email: string;
+            phone: string;
+        };
+        /** @description New storefront account registration (ADR-030 realm riêng). Money/orders unrelated. */
+        CustomerRegisterInput: {
+            name: string;
+            /** Format: email */
+            email: string;
+            phone: string;
+            /** @description Plaintext password; bcrypt-hashed server-side (never stored/returned in clear). */
+            password: string;
+        };
+        /** @description A customer's own orders, newest-first, each as the public timeline projection (the same shape the guest lookup returns) — deliberately NO internal money/PII/address fields (ADR-032). P1-s reuses the P1-o timeline renderer over this list. */
+        CustomerOrderList: components["schemas"]["PublicOrderTimeline"][];
         /** @description VietQR STK the server renders the static QR from (conventions §57). May be unset. */
         BankAccount: {
             /** @description Bank BIN (VietQR napas bank id). */
@@ -849,6 +946,103 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    registerCustomer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerRegisterInput"];
+            };
+        };
+        responses: {
+            /** @description Account created and logged in. The customer session cookie is set via Set-Cookie. */
+            201: {
+                headers: {
+                    /** @description Signed JWT in an httpOnly + Secure + SameSite=Strict customer session cookie. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerAccount"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    loginCustomer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Authenticated. The customer session cookie is set via Set-Cookie. */
+            200: {
+                headers: {
+                    /** @description Signed JWT in an httpOnly + Secure + SameSite=Strict customer session cookie. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerAccount"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    logoutCustomer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Customer session cookie cleared. */
+            204: {
+                headers: {
+                    /** @description Expires the customer session cookie immediately (logout). */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getCustomerOrders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The customer's orders, newest-first (possibly empty). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerOrderList"];
+                };
             };
             401: components["responses"]["Unauthorized"];
         };

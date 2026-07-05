@@ -54,7 +54,7 @@ func testLoginServer(users userReader) *Server {
 	return &Server{
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		users:  users,
-		auth:   auth.NewIssuer("test-secret", time.Hour, true),
+		auth:   auth.NewIssuer("test-secret", time.Hour, true, auth.SessionCookieName),
 	}
 }
 

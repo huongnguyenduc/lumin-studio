@@ -39,6 +39,11 @@ type Server struct {
 	nats   NATSStatus
 	auth   *auth.Issuer
 	users  userReader
+	// customerAuth mints/verifies the SEPARATE storefront-customer session cookie (PR-P1-r). It is a
+	// distinct Issuer signed with a different secret than `auth`, so an admin token can never validate
+	// as a customer session (realm isolation, ADR-030). Nil unless WithCustomerAuth wires it — the
+	// customer endpoints are the only ones that touch it, so admin-only call sites leave it nil.
+	customerAuth *auth.Issuer
 	// lookup is the in-memory per-code token-bucket + lockout guarding the public guest order-lookup
 	// (PR-P1-n; conventions §Bảo mật). Constructed here with package-default limits — no constructor
 	// param so the existing call sites stay unchanged; tests that exercise the lockout path swap in a
@@ -46,11 +51,24 @@ type Server struct {
 	lookup *lookupLimiter
 }
 
+// ServerOption customizes an optional Server dependency without churning every existing
+// constructor call site. The admin-only surfaces pass none; the storefront customer realm
+// (PR-P1-r) is wired with WithCustomerAuth.
+type ServerOption func(*Server)
+
+// WithCustomerAuth wires the storefront-customer session issuer (PR-P1-r). Separate from the admin
+// issuer so the two realms sign with different secrets — an admin JWT can never validate as a
+// customer session (ADR-030). Optional so the admin-only call sites stay unchanged.
+func WithCustomerAuth(issuer *auth.Issuer) ServerOption {
+	return func(s *Server) { s.customerAuth = issuer }
+}
+
 // NewServer builds the handler root. pool/nats may be nil in unit tests that don't
 // exercise those dependencies (readiness then skips the corresponding check); auth may be
-// nil in tests that don't hit the login handler.
-func NewServer(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus, authIssuer *auth.Issuer) *Server {
-	return &Server{
+// nil in tests that don't hit the login handler. opts wire optional dependencies (e.g. the
+// customer realm via WithCustomerAuth) without changing the base signature.
+func NewServer(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus, authIssuer *auth.Issuer, opts ...ServerOption) *Server {
+	s := &Server{
 		logger: logger,
 		pool:   pool,
 		nats:   nats,
@@ -58,6 +76,10 @@ func NewServer(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus, authIss
 		users:  db.NewIdentity(pool),
 		lookup: newLookupLimiter(defaultLookupLimits()),
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // readiness reports 200 only when every wired dependency is reachable, 503 otherwise — so

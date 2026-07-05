@@ -80,7 +80,7 @@ func serverWithUsers(users userReader) *Server {
 	return &Server{
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		users:  users,
-		auth:   auth.NewIssuer("test-secret", time.Hour, true),
+		auth:   auth.NewIssuer("test-secret", time.Hour, true, auth.SessionCookieName),
 	}
 }
 
@@ -309,7 +309,7 @@ func TestActorRoleNeverSystem(t *testing.T) {
 // unit-callable. These use nil pool/nats — the exercised paths never touch them.
 
 func TestAdminRouteUnauthenticatedReturns401Envelope(t *testing.T) {
-	h := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, auth.NewIssuer("test-secret", time.Hour, true))
+	h := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, auth.NewIssuer("test-secret", time.Hour, true, auth.SessionCookieName))
 	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -326,7 +326,7 @@ func TestAdminRouteUnauthenticatedReturns401Envelope(t *testing.T) {
 }
 
 func TestLogoutRouteReachableWithoutCookie(t *testing.T) {
-	h := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, auth.NewIssuer("test-secret", time.Hour, true))
+	h := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, auth.NewIssuer("test-secret", time.Hour, true, auth.SessionCookieName))
 	req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -336,7 +336,7 @@ func TestLogoutRouteReachableWithoutCookie(t *testing.T) {
 }
 
 func TestPublicCreateOrderNotGatedByAuth(t *testing.T) {
-	h := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, auth.NewIssuer("test-secret", time.Hour, true))
+	h := NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, auth.NewIssuer("test-secret", time.Hour, true, auth.SessionCookieName))
 	req := httptest.NewRequest(http.MethodPost, "/orders", http.NoBody)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)

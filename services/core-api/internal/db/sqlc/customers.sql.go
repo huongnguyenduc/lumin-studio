@@ -12,7 +12,7 @@ import (
 )
 
 const getCustomerByID = `-- name: GetCustomerByID :one
-SELECT id, name, phone, email, social_handle, addresses, created_at FROM customers WHERE id = $1
+SELECT id, name, phone, email, social_handle, addresses, created_at, password_hash FROM customers WHERE id = $1
 `
 
 func (q *Queries) GetCustomerByID(ctx context.Context, id uuid.UUID) (Customer, error) {
@@ -26,12 +26,38 @@ func (q *Queries) GetCustomerByID(ctx context.Context, id uuid.UUID) (Customer, 
 		&i.SocialHandle,
 		&i.Addresses,
 		&i.CreatedAt,
+		&i.PasswordHash,
+	)
+	return i, err
+}
+
+const getCustomerByLoginEmail = `-- name: GetCustomerByLoginEmail :one
+SELECT id, name, phone, email, social_handle, addresses, created_at, password_hash FROM customers
+WHERE lower(email) = lower($1) AND password_hash IS NOT NULL
+`
+
+// GetCustomerByLoginEmail resolves a login (PR-P1-r): only CREDENTIALED customers (password_hash
+// NOT NULL) are candidates, matched case-insensitively on lower(email) — the exact predicate +
+// expression of customers_login_email_uq, so this read rides that index and a guest row (NULL
+// credential, possibly duplicate email) can never be logged into.
+func (q *Queries) GetCustomerByLoginEmail(ctx context.Context, lower string) (Customer, error) {
+	row := q.db.QueryRow(ctx, getCustomerByLoginEmail, lower)
+	var i Customer
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Phone,
+		&i.Email,
+		&i.SocialHandle,
+		&i.Addresses,
+		&i.CreatedAt,
+		&i.PasswordHash,
 	)
 	return i, err
 }
 
 const getCustomerByPhone = `-- name: GetCustomerByPhone :one
-SELECT id, name, phone, email, social_handle, addresses, created_at FROM customers WHERE phone = $1
+SELECT id, name, phone, email, social_handle, addresses, created_at, password_hash FROM customers WHERE phone = $1
 `
 
 func (q *Queries) GetCustomerByPhone(ctx context.Context, phone string) (Customer, error) {
@@ -45,6 +71,7 @@ func (q *Queries) GetCustomerByPhone(ctx context.Context, phone string) (Custome
 		&i.SocialHandle,
 		&i.Addresses,
 		&i.CreatedAt,
+		&i.PasswordHash,
 	)
 	return i, err
 }
@@ -120,7 +147,7 @@ const insertCustomer = `-- name: InsertCustomer :one
 
 INSERT INTO customers (id, name, phone, email, social_handle, addresses)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, name, phone, email, social_handle, addresses, created_at
+RETURNING id, name, phone, email, social_handle, addresses, created_at, password_hash
 `
 
 type InsertCustomerParams struct {
@@ -151,6 +178,48 @@ func (q *Queries) InsertCustomer(ctx context.Context, arg InsertCustomerParams) 
 		&i.SocialHandle,
 		&i.Addresses,
 		&i.CreatedAt,
+		&i.PasswordHash,
+	)
+	return i, err
+}
+
+const insertCustomerWithCredential = `-- name: InsertCustomerWithCredential :one
+INSERT INTO customers (id, name, phone, email, password_hash)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, name, phone, email, social_handle, addresses, created_at, password_hash
+`
+
+type InsertCustomerWithCredentialParams struct {
+	ID           uuid.UUID `json:"id"`
+	Name         string    `json:"name"`
+	Phone        string    `json:"phone"`
+	Email        *string   `json:"email"`
+	PasswordHash *string   `json:"passwordHash"`
+}
+
+// InsertCustomerWithCredential registers a storefront account (PR-P1-r): a customer row that
+// carries a login credential. addresses defaults to '[]' and social_handle to NULL (a registrant
+// supplies only name/phone/email/password). A duplicate login email is rejected by the
+// customers_login_email_uq partial unique index (23505 → 409 in the handler), so there is no
+// find-then-insert race — the DB is the single arbiter of login-email uniqueness.
+func (q *Queries) InsertCustomerWithCredential(ctx context.Context, arg InsertCustomerWithCredentialParams) (Customer, error) {
+	row := q.db.QueryRow(ctx, insertCustomerWithCredential,
+		arg.ID,
+		arg.Name,
+		arg.Phone,
+		arg.Email,
+		arg.PasswordHash,
+	)
+	var i Customer
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Phone,
+		&i.Email,
+		&i.SocialHandle,
+		&i.Addresses,
+		&i.CreatedAt,
+		&i.PasswordHash,
 	)
 	return i, err
 }

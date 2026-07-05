@@ -34,6 +34,10 @@ const (
 	codeNotImplemented  = "NOT_IMPLEMENTED"
 	codeTrackingReqd    = "TRACKING_CODE_REQUIRED"
 	codeRateLimited     = "RATE_LIMITED"
+	// codeEmailTaken is the storefront-register 409: the login email is already registered. It is
+	// the ONE field a register form may safely surface (a login email is user-known, not a secret —
+	// unlike the login endpoint, which stays uniform to avoid enumeration). PR-P1-r.
+	codeEmailTaken = "EMAIL_TAKEN"
 
 	// Checkout (PR-3g) selection/intake codes. Granular where the storefront needs a distinct
 	// user-facing message (hết hàng vs quá dài vs chưa hỗ trợ tỉnh); one INVALID_SELECTION for
