@@ -253,6 +253,15 @@ export const vi = {
     errorBody: 'Mất kết nối một chút — thử lại giúp mình nhé.',
     retry: 'Thử lại',
   },
+  // Analytics consent banner (P1-p, PDPL / ADR-015). Umami loads ONLY after "Đồng ý"; refusing is one
+  // equal-weight click and never blocks shopping (compliance §Consent). Body names what we do NOT do
+  // (no keystroke/session-replay tracking) so the notice is honest. Sentence case, warm voice.
+  consent: {
+    title: 'Về quyền riêng tư của bạn',
+    body: 'Chúng mình dùng số liệu ẩn danh để hiểu cách mọi người dùng web và cải thiện trải nghiệm — không ghi lại thao tác gõ hay quay màn hình của bạn. Từ chối vẫn mua sắm bình thường nhé.',
+    accept: 'Đồng ý',
+    decline: 'Từ chối',
+  },
 } as const;
 
 export type StorefrontMessages = typeof vi;

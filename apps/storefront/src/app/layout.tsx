@@ -6,6 +6,7 @@ import { fontBody, fontDisplay, fontMono } from '@/fonts';
 import { SiteHeader } from '@/components/site-header';
 import { SiteFooter } from '@/components/site-footer';
 import { BottomNav } from '@/components/bottom-nav';
+import { ConsentBanner } from '@/components/consent-banner';
 import { locale } from '@/messages';
 import { siteBaseUrl } from '@/lib/site';
 import { BRAND } from '@/lib/product-jsonld';
@@ -60,6 +61,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           </main>
           <SiteFooter />
           <BottomNav />
+          <ConsentBanner />
         </NextIntlClientProvider>
       </body>
     </html>
