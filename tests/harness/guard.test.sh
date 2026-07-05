@@ -629,12 +629,32 @@ if [ -f "$CHECKOUT" ]; then
   if printf '%s' "$CHECKOUTBODY" | grep -q 'pricing.PriceItem' \
      && printf '%s' "$CHECKOUTBODY" | grep -q 'pricing.ShippingFee' \
      && printf '%s' "$CHECKOUTBODY" | grep -q 'errForbidden' \
+     && printf '%s' "$CHECKOUTBODY" | grep -q 'errNoSTKConfigured' \
      && printf '%s' "$CHECKOUTBODY" | grep -q 'CreateOrderTx'; then
-    ok "ARM: có httpapi/checkout.go -> giá dòng qua pricing.PriceItem + phí qua pricing.ShippingFee + inbox gate errForbidden (CHK-05 born-PAID mint) + một seam CreateOrderTx (server-money/inbox-gate — ADR-019/§3g BLOCKER)"
+    ok "ARM: có httpapi/checkout.go -> giá dòng qua pricing.PriceItem + phí qua pricing.ShippingFee + inbox gate errForbidden (CHK-05 born-PAID mint) + web STK gate errNoSTKConfigured (P2-a CHK-07: web-create phải có STK, chống 'thanh toán' vào shop không có tài khoản đích) + một seam CreateOrderTx (server-money/inbox-gate/STK-gate — ADR-019/§3g BLOCKER/P2-a)"
   else
-    bad "ARM: httpapi/checkout.go LAND nhưng thiếu 1 trong {pricing.PriceItem, pricing.ShippingFee, errForbidden inbox-gate, CreateOrderTx} -> giá/phí không server-derive / caller vô danh mint đơn born-PAID / insert rời không outbox (money-path!)"
+    bad "ARM: httpapi/checkout.go LAND nhưng thiếu 1 trong {pricing.PriceItem, pricing.ShippingFee, errForbidden inbox-gate, errNoSTKConfigured web-STK-gate, CreateOrderTx} -> giá/phí không server-derive / caller vô danh mint đơn born-PAID / web-create không có STK vẫn tạo đơn / insert rời không outbox (money-path!)"
   fi
-else ok "ARM: chưa có httpapi/checkout.go (checkout price/fee/inbox-gate arm khi land — PR-3g)"; fi
+else ok "ARM: chưa có httpapi/checkout.go (checkout price/fee/inbox-gate/STK-gate arm khi land — PR-3g/P2-a)"; fi
+# ARM PR-P2-a (checkout config + STK gate): khoá bất biến money/QR-integrity của GET /checkout/config —
+#  (a) vietqrUrl dựng SERVER-SIDE từ STK đã lưu qua vietQRImageURL (D-P2-1: QR tĩnh từ STK, KHÔNG nhận
+#      field client → client không tráo được tài khoản đích; conventions §Bảo mật / ADR-010); bỏ
+#      vietQRImageURL (handler tự nối URL / nhận amount|accountNumber client) → mất token → RED;
+#  (b) classify GetCheckoutConfig = authPublic (đọc config công khai — guest checkout; regress đẩy về
+#      authRequired / quên entry → checkout screen kẹt sau tường auth → mất token authPublic → RED).
+# Bỏ comment ('//') trước khi soi để một wiring bị COMMENT-OUT không false-PASS (class lỗ '//' 3b).
+CFG="$ROOT/services/core-api/internal/httpapi/checkout_config.go"
+if [ -f "$CFG" ]; then
+  CFGBODY="$(grep -vE '^[[:space:]]*//' "$CFG" 2>/dev/null)"
+  CFGMWBODY="$(grep -vE '^[[:space:]]*//' "$ROOT/services/core-api/internal/httpapi/middleware_auth.go" 2>/dev/null)"
+  if printf '%s' "$CFGBODY" | grep -q 'func vietQRImageURL' \
+     && printf '%s' "$CFGBODY" | grep -q 'vietQRImageURL(' \
+     && printf '%s' "$CFGMWBODY" | grep -A2 '"GetCheckoutConfig"' | grep -q 'authPublic'; then
+    ok "ARM: có httpapi/checkout_config.go -> vietqrUrl dựng server-side qua vietQRImageURL (từ STK đã lưu, KHÔNG input client — D-P2-1/§Bảo mật) + classify GetCheckoutConfig=authPublic (public checkout config — P2-a CHK-06)"
+  else
+    bad "ARM: httpapi/checkout_config.go LAND nhưng thiếu 1 trong {vietQRImageURL server-build từ STK, classify GetCheckoutConfig=authPublic} -> QR có thể tráo qua input client / config kẹt sau auth (money/QR-integrity — P2-a!)"
+  fi
+else ok "ARM: chưa có httpapi/checkout_config.go (checkout config/QR arm khi land — PR-P2-a)"; fi
 # ARM PR-3i (dashboard aggregate): khoá bất biến NET-REVENUE (spec §04) của GET /admin/dashboard —
 #  (a) doanh thu ròng tính theo payment_confirmed_at IS NOT NULL (đã-TỪNG-PAID) + loại REFUNDED, KHÔNG
 #      phải `status IN (PAID,PRINTING,SHIPPING,COMPLETED)` ngây thơ — status-IN sẽ RỚT doanh thu

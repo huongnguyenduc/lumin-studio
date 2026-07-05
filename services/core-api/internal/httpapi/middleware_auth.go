@@ -84,6 +84,11 @@ func classify(operationID string) authClass {
 		// code + phone. It is gated instead by a constant-time code+phone match and a per-code
 		// token-bucket + lockout (handler), not by auth: a guest has no account to authenticate with.
 		return authPublic
+	case "GetCheckoutConfig":
+		// Public checkout config (PR-P2-a) — no session; the anonymous STK + VietQR URL + shippable
+		// provinces + refund policy the payment step needs. A whitelist read that persists nothing and
+		// leaks no PII; keeping it public avoids gating the checkout screen behind auth (guests check out).
+		return authPublic
 	case "CreateOrder":
 		return authOptional
 	case "UpdateBankAccount":

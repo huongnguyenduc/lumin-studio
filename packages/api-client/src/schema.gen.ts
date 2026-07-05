@@ -277,6 +277,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/checkout/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public checkout config — STK + server-built VietQR image URL + shippable provinces + refund policy.
+         * @description Public storefront checkout config (no auth) — the anonymous data the payment step (C2) and the pre-purchase disclosure need, and NOTHING else: the VietQR STK the buyer transfers to, a server-built `img.vietqr.io` image URL derived from that STK (D-P2-1: no client input, no memo, no amount — the QR can't be swapped by a client param, conventions §Bảo mật/ADR-010), the list of provinces the shop ships to (the keys of settings.shipping_rules, the "*" wildcard excluded — it is a flat-fee fallback, not a selectable destination), and the refund/return policy text shown BEFORE purchase for every order (compliance §3, Luật BVNTD 19/2023). It is a deliberate whitelist: it NEVER leaks shopInfo contact PII, the shipping fee table, or any other settings field. When the shop has no bank account configured (bank_account unset / no bin+accountNumber), there is no way to take a web payment, so this returns 422 NO_STK_CONFIGURED — the SAME signal POST /orders gives on a web create — rather than a half-config with an unrenderable QR.
+         */
+        get: operations["getCheckoutConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/dashboard": {
         parameters: {
             query?: never;
@@ -770,6 +790,16 @@ export interface components {
             refundPolicy: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        /** @description Public checkout config (GET /checkout/config). A whitelist of the anonymous data the payment step and pre-purchase disclosure need — never the full Settings singleton (no shopInfo PII, no shipping-fee table). */
+        CheckoutConfig: {
+            bankAccount: components["schemas"]["BankAccount"];
+            /** @description Server-built img.vietqr.io image URL for the STK static QR (D-P2-1). Derived entirely from the stored bank_account — no client-controllable field, no amount, no memo. */
+            vietqrUrl: string;
+            /** @description Provinces the shop ships to (settings.shipping_rules keys; the "*" wildcard excluded). */
+            shippableProvinces: string[];
+            /** @description Refund/return policy text shown before purchase (compliance §3). May be empty if unset. */
+            refundPolicy: string;
         };
         /** @description An extension reply template (spec §02). */
         ReplyTemplate: {
@@ -1329,6 +1359,27 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    getCheckoutConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The public checkout config (STK, VietQR image URL, shippable provinces, refund policy). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutConfig"];
+                };
+            };
             422: components["responses"]["Unprocessable"];
         };
     };

@@ -124,6 +124,21 @@ type Category struct {
 // Channel Order origin (spec §04).
 type Channel string
 
+// CheckoutConfig Public checkout config (GET /checkout/config). A whitelist of the anonymous data the payment step and pre-purchase disclosure need — never the full Settings singleton (no shopInfo PII, no shipping-fee table).
+type CheckoutConfig struct {
+	// BankAccount VietQR STK the server renders the static QR from (conventions §57). May be unset.
+	BankAccount BankAccount `json:"bankAccount"`
+
+	// RefundPolicy Refund/return policy text shown before purchase (compliance §3). May be empty if unset.
+	RefundPolicy string `json:"refundPolicy"`
+
+	// ShippableProvinces Provinces the shop ships to (settings.shipping_rules keys; the "*" wildcard excluded).
+	ShippableProvinces []string `json:"shippableProvinces"`
+
+	// VietqrUrl Server-built img.vietqr.io image URL for the STK static QR (D-P2-1). Derived entirely from the stored bank_account — no client-controllable field, no amount, no memo.
+	VietqrUrl string `json:"vietqrUrl"`
+}
+
 // Color A named print colour for a product (spec §02). priceDelta is int-VND (may be 0).
 type Color struct {
 	// Available Whether the filament is currently in stock.
@@ -781,6 +796,9 @@ type ServerInterface interface {
 	// Public storefront category list — the browsable taxonomy for the catalog-browse chips.
 	// (GET /categories)
 	GetCategories(w http.ResponseWriter, r *http.Request, params GetCategoriesParams)
+	// Public checkout config — STK + server-built VietQR image URL + shippable provinces + refund policy.
+	// (GET /checkout/config)
+	GetCheckoutConfig(w http.ResponseWriter, r *http.Request)
 	// Email + password login for a storefront customer; sets the customer session cookie.
 	// (POST /customer/login)
 	LoginCustomer(w http.ResponseWriter, r *http.Request)
@@ -859,6 +877,12 @@ func (_ Unimplemented) LogoutUser(w http.ResponseWriter, r *http.Request) {
 // Public storefront category list — the browsable taxonomy for the catalog-browse chips.
 // (GET /categories)
 func (_ Unimplemented) GetCategories(w http.ResponseWriter, r *http.Request, params GetCategoriesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Public checkout config — STK + server-built VietQR image URL + shippable provinces + refund policy.
+// (GET /checkout/config)
+func (_ Unimplemented) GetCheckoutConfig(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1082,6 +1106,20 @@ func (siw *ServerInterfaceWrapper) GetCategories(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCategories(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCheckoutConfig operation middleware
+func (siw *ServerInterfaceWrapper) GetCheckoutConfig(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCheckoutConfig(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1572,6 +1610,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/categories", wrapper.GetCategories)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/checkout/config", wrapper.GetCheckoutConfig)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/customer/login", wrapper.LoginCustomer)
 	})
 	r.Group(func(r chi.Router) {
@@ -1855,6 +1896,31 @@ func (response GetCategories304Response) VisitGetCategoriesResponse(w http.Respo
 	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
 	w.WriteHeader(304)
 	return nil
+}
+
+type GetCheckoutConfigRequestObject struct {
+}
+
+type GetCheckoutConfigResponseObject interface {
+	VisitGetCheckoutConfigResponse(w http.ResponseWriter) error
+}
+
+type GetCheckoutConfig200JSONResponse CheckoutConfig
+
+func (response GetCheckoutConfig200JSONResponse) VisitGetCheckoutConfigResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetCheckoutConfig422JSONResponse struct{ UnprocessableJSONResponse }
+
+func (response GetCheckoutConfig422JSONResponse) VisitGetCheckoutConfigResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type LoginCustomerRequestObject struct {
@@ -2347,6 +2413,9 @@ type StrictServerInterface interface {
 	// Public storefront category list — the browsable taxonomy for the catalog-browse chips.
 	// (GET /categories)
 	GetCategories(ctx context.Context, request GetCategoriesRequestObject) (GetCategoriesResponseObject, error)
+	// Public checkout config — STK + server-built VietQR image URL + shippable provinces + refund policy.
+	// (GET /checkout/config)
+	GetCheckoutConfig(ctx context.Context, request GetCheckoutConfigRequestObject) (GetCheckoutConfigResponseObject, error)
 	// Email + password login for a storefront customer; sets the customer session cookie.
 	// (POST /customer/login)
 	LoginCustomer(ctx context.Context, request LoginCustomerRequestObject) (LoginCustomerResponseObject, error)
@@ -2588,6 +2657,30 @@ func (sh *strictHandler) GetCategories(w http.ResponseWriter, r *http.Request, p
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCategoriesResponseObject); ok {
 		if err := validResponse.VisitGetCategoriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCheckoutConfig operation middleware
+func (sh *strictHandler) GetCheckoutConfig(w http.ResponseWriter, r *http.Request) {
+	var request GetCheckoutConfigRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCheckoutConfig(ctx, request.(GetCheckoutConfigRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCheckoutConfig")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCheckoutConfigResponseObject); ok {
+		if err := validResponse.VisitGetCheckoutConfigResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

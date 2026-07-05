@@ -84,6 +84,17 @@ func (s *Server) CreateOrder(ctx context.Context, req api.CreateOrderRequestObje
 		}
 		return nil, err
 	}
+
+	// STK gate (P2-a): a web order is paid by transferring to the shop STK, so a web create against a
+	// shop with no usable bank account cannot be honoured — reject BEFORE any write (422
+	// NO_STK_CONFIGURED), the SAME signal GET /checkout/config gives. Inbox orders are staff-created and
+	// already paid (born-PAID, CHK-05), so they need no STK at create time.
+	if in.channel == order.ChannelWeb {
+		if _, ok := stkFromSettings(settings.BankAccount); !ok {
+			return nil, errNoSTKConfigured
+		}
+	}
+
 	fee, err := pricing.ShippingFee(settings.ShippingRules, in.address.Province)
 	if err != nil {
 		return nil, err
