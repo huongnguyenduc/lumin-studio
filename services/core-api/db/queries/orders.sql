@@ -26,6 +26,13 @@ SELECT * FROM orders WHERE id = $1 FOR UPDATE;
 -- name: ListOrdersByStatus :many
 SELECT * FROM orders WHERE status = $1 ORDER BY created_at DESC;
 
+-- ListOrdersByCustomer returns a customer's own orders, newest-first, for the authenticated
+-- storefront account history (PR-P1-r, GET /customer/orders). Scoped strictly by customer_id (the
+-- verified session subject) — never by phone, which is non-unique. Guest orders placed before the
+-- customer registered are NOT auto-linked (claiming an unverified identity's orders is deferred).
+-- name: ListOrdersByCustomer :many
+SELECT * FROM orders WHERE customer_id = $1 ORDER BY created_at DESC;
+
 -- UpdateOrderStatus persists a transition: the new status, the full appended statusHistory,
 -- and — only when supplied — the denormalized refund_proof_url and payment_confirmed_at
 -- (COALESCE keeps the existing value when the narg is NULL). The append itself is computed in

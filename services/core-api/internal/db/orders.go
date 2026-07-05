@@ -52,6 +52,13 @@ func (o *Orders) ByStatus(ctx context.Context, status order.Status) ([]sqlc.Orde
 	return o.q.ListOrdersByStatus(ctx, status)
 }
 
+// ByCustomer lists a customer's own orders, newest first (the authenticated storefront account
+// history, PR-P1-r). Scoped strictly by the verified session's customer_id; an unknown id simply
+// returns an empty slice, never an error.
+func (o *Orders) ByCustomer(ctx context.Context, customerID uuid.UUID) ([]sqlc.Order, error) {
+	return o.q.ListOrdersByCustomer(ctx, customerID)
+}
+
 // Items lists an order's line items.
 func (o *Orders) Items(ctx context.Context, orderID uuid.UUID) ([]sqlc.OrderItem, error) {
 	return o.q.ListOrderItems(ctx, orderID)

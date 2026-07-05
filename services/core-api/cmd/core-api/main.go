@@ -41,8 +41,24 @@ func main() {
 		logger.Error("refusing to start: JWT_SECRET is unset so the session JWT would be signed with the public dev secret (forgeable owner tokens). Set JWT_SECRET (production) or ALLOW_DEV_JWT_SECRET=true (local dev only).")
 		os.Exit(1)
 	}
+	// The storefront-customer realm (PR-P1-r) has the same fatal-misconfig guard: a forgeable
+	// customer secret lets anyone forge a session and read any customer's order history (PII).
+	if cfg.UsesForgeableCustomerJWTSecret() {
+		logger.Error("refusing to start: CUSTOMER_JWT_SECRET is unset so the storefront session JWT would be signed with the public dev secret (forgeable customer tokens → anyone reads any customer's orders). Set CUSTOMER_JWT_SECRET (production) or ALLOW_DEV_JWT_SECRET=true (local dev only).")
+		os.Exit(1)
+	}
+	// The two realms MUST sign with different secrets, or ADR-030's *cryptographic* isolation
+	// collapses to mere cookie-name scoping (an admin token could then validate as a customer
+	// session, and vice versa). Enforce the invariant the auth layer's comments/ARM rely on.
+	if cfg.RealmSecretsCollide() {
+		logger.Error("refusing to start: JWT_SECRET and CUSTOMER_JWT_SECRET are identical — the admin and customer realms would share a signing key, collapsing realm isolation (ADR-030). Set distinct secrets for the two realms.")
+		os.Exit(1)
+	}
 	if cfg.JWTSecret == config.DevJWTSecret {
 		logger.Warn("signing session JWTs with the INSECURE dev secret (ALLOW_DEV_JWT_SECRET=true) — never use this in production; the tokens are forgeable")
+	}
+	if cfg.CustomerJWTSecret == config.DevCustomerJWTSecret {
+		logger.Warn("signing customer session JWTs with the INSECURE dev secret (ALLOW_DEV_JWT_SECRET=true) — never use this in production; the tokens are forgeable")
 	}
 
 	// Open the pool before serving. pgxpool connects lazily, so this fails fast only
@@ -78,7 +94,10 @@ func main() {
 	// Build the self-issued auth token issuer (ADR-030). The JWT-secret safety check ran right
 	// after config.Load() above (fail-fast unless ALLOW_DEV_JWT_SECRET), so by here the signing
 	// key is either a real JWT_SECRET or a deliberately opted-in dev secret.
-	authIssuer := auth.NewIssuer(cfg.JWTSecret, cfg.JWTTTL, cfg.CookieSecure)
+	authIssuer := auth.NewIssuer(cfg.JWTSecret, cfg.JWTTTL, cfg.CookieSecure, auth.SessionCookieName)
+	// The storefront-customer realm's own issuer (PR-P1-r): a DIFFERENT secret + the lumin_customer
+	// cookie, so the two realms are cryptographically and namespace isolated (ADR-030).
+	customerAuthIssuer := auth.NewIssuer(cfg.CustomerJWTSecret, cfg.CustomerJWTTTL, cfg.CookieSecure, auth.CustomerCookieName)
 
 	// Start the outbox→NATS relay: one in-process goroutine draining committed `pending` rows
 	// publish-on-commit (ADR-006/029). Cancel + join it on shutdown BEFORE nc.Close()/pool.Close()
@@ -97,7 +116,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    cfg.Addr,
-		Handler: httpapi.NewRouter(logger, pool, nc, authIssuer),
+		Handler: httpapi.NewRouter(logger, pool, nc, authIssuer, httpapi.WithCustomerAuth(customerAuthIssuer)),
 		// ReadHeaderTimeout covers the Slowloris header vector. Read/Write/Idle
 		// timeouts are intentionally unset for now — TODO(phase-1): source
 		// IdleTimeout + Read/WriteTimeout from config once real request bodies land

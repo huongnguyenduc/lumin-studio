@@ -72,6 +72,11 @@ type Querier interface {
 	DashboardReviewsWaiting(ctx context.Context) (int64, error)
 	GetAssetJobByID(ctx context.Context, id uuid.UUID) (AssetJob, error)
 	GetCustomerByID(ctx context.Context, id uuid.UUID) (Customer, error)
+	// GetCustomerByLoginEmail resolves a login (PR-P1-r): only CREDENTIALED customers (password_hash
+	// NOT NULL) are candidates, matched case-insensitively on lower(email) — the exact predicate +
+	// expression of customers_login_email_uq, so this read rides that index and a guest row (NULL
+	// credential, possibly duplicate email) can never be logged into.
+	GetCustomerByLoginEmail(ctx context.Context, lower string) (Customer, error)
 	GetCustomerByPhone(ctx context.Context, phone string) (Customer, error)
 	GetOrderByCode(ctx context.Context, code string) (Order, error)
 	GetOrderByID(ctx context.Context, id uuid.UUID) (Order, error)
@@ -118,6 +123,12 @@ type Querier interface {
 	InsertConsentGrantIfAbsent(ctx context.Context, arg InsertConsentGrantIfAbsentParams) error
 	// customers.sql — customer + PDPL consent queries (PR-2d). spec.md §02 + vn-compliance.
 	InsertCustomer(ctx context.Context, arg InsertCustomerParams) (Customer, error)
+	// InsertCustomerWithCredential registers a storefront account (PR-P1-r): a customer row that
+	// carries a login credential. addresses defaults to '[]' and social_handle to NULL (a registrant
+	// supplies only name/phone/email/password). A duplicate login email is rejected by the
+	// customers_login_email_uq partial unique index (23505 → 409 in the handler), so there is no
+	// find-then-insert race — the DB is the single arbiter of login-email uniqueness.
+	InsertCustomerWithCredential(ctx context.Context, arg InsertCustomerWithCredentialParams) (Customer, error)
 	InsertOption(ctx context.Context, arg InsertOptionParams) (Option, error)
 	InsertOrderItem(ctx context.Context, arg InsertOrderItemParams) (OrderItem, error)
 	// outbox.sql — the transactional outbox write path (PR-2b) + the slice-3 relay drain path
@@ -171,6 +182,11 @@ type Querier interface {
 	ListColorsByProduct(ctx context.Context, productID uuid.UUID) ([]Color, error)
 	ListOptionsByProduct(ctx context.Context, productID uuid.UUID) ([]Option, error)
 	ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]OrderItem, error)
+	// ListOrdersByCustomer returns a customer's own orders, newest-first, for the authenticated
+	// storefront account history (PR-P1-r, GET /customer/orders). Scoped strictly by customer_id (the
+	// verified session subject) — never by phone, which is non-unique. Guest orders placed before the
+	// customer registered are NOT auto-linked (claiming an unverified identity's orders is deferred).
+	ListOrdersByCustomer(ctx context.Context, customerID uuid.UUID) ([]Order, error)
 	ListOrdersByStatus(ctx context.Context, status order.Status) ([]Order, error)
 	ListPrintJobsByStage(ctx context.Context, stage PrintStage) ([]PrintJob, error)
 	ListProductsByStatus(ctx context.Context, status ProductStatus) ([]Product, error)

@@ -178,3 +178,40 @@ func TestUsesForgeableJWTSecret(t *testing.T) {
 		})
 	}
 }
+
+// The customer realm's forgeable-secret guard mirrors the admin one (PR-P1-r): a forgeable customer
+// token lets anyone read any customer's order history (PII), so main.go fail-fasts on it.
+func TestUsesForgeableCustomerJWTSecret(t *testing.T) {
+	cases := []struct {
+		name     string
+		secret   string
+		allowDev bool
+		want     bool
+	}{
+		{"dev customer secret, no opt-in → forgeable (refuse start)", DevCustomerJWTSecret, false, true},
+		{"dev customer secret WITH opt-in → allowed", DevCustomerJWTSecret, true, false},
+		{"real customer secret → allowed", "a-real-customer-secret", false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := Config{CustomerJWTSecret: tc.secret, AllowDevJWTSecret: tc.allowDev}
+			if got := cfg.UsesForgeableCustomerJWTSecret(); got != tc.want {
+				t.Fatalf("UsesForgeableCustomerJWTSecret() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// The two realms MUST sign with different secrets (ADR-030 cryptographic isolation); main.go
+// fail-fasts when they collide. The dev fallbacks are distinct, so a default Load() never collides.
+func TestRealmSecretsCollide(t *testing.T) {
+	if (Config{JWTSecret: "same", CustomerJWTSecret: "same"}).RealmSecretsCollide() != true {
+		t.Fatal("identical secrets must collide")
+	}
+	if (Config{JWTSecret: "admin", CustomerJWTSecret: "customer"}).RealmSecretsCollide() != false {
+		t.Fatal("distinct secrets must not collide")
+	}
+	if Load().RealmSecretsCollide() {
+		t.Fatal("default Load() must not collide (dev fallbacks are deliberately distinct)")
+	}
+}

@@ -63,7 +63,19 @@ type Config struct {
 	// JWT_SECRET is unset and this flag is off (a Warn log alone can be missed in a deploy —
 	// review finding, PR-3e-1). `make verify-go`/CI never start the server, so this gate does not
 	// affect them. Set ALLOW_DEV_JWT_SECRET=true for local `go run`; set JWT_SECRET in production.
+	// The same opt-in also covers CustomerJWTSecret below (one dev-mode switch for both realms).
 	AllowDevJWTSecret bool
+
+	// CustomerJWTSecret signs the SEPARATE storefront-customer session JWT (PR-P1-r). It MUST differ
+	// from JWTSecret so an admin token can never validate as a customer session and vice versa
+	// (cryptographic realm isolation, ADR-030). REQUIRED in production: a forgeable customer token
+	// lets anyone read any customer's order history (PII leak), so main.go fail-fasts on the dev
+	// fallback without the opt-in — exactly like the admin secret. Source it from the environment.
+	CustomerJWTSecret string
+	// CustomerJWTTTL is the storefront session lifetime. Defaults longer than the admin's (a shopper
+	// should not be logged out mid-browse); on expiry the customer simply logs in again — no refresh
+	// token this slice (ADR-030). Override via CUSTOMER_JWT_TTL (Go duration, e.g. "720h").
+	CustomerJWTTTL time.Duration
 }
 
 // DevJWTSecret is the fallback signing secret used when JWT_SECRET is unset. It is
@@ -73,6 +85,13 @@ type Config struct {
 // session and reconcile→PAID / change the STK).
 const DevJWTSecret = "lumin-dev-insecure-jwt-secret-do-not-use-in-prod"
 
+// DevCustomerJWTSecret is the fallback signing secret for the storefront-customer realm when
+// CUSTOMER_JWT_SECRET is unset. Deliberately NOT a secret and deliberately DIFFERENT from
+// DevJWTSecret so the two realms stay isolated even in local dev. Production MUST set
+// CUSTOMER_JWT_SECRET (a known key means anyone can forge a customer session and read others'
+// order history — a PII leak); main.go refuses to start on it without ALLOW_DEV_JWT_SECRET.
+const DevCustomerJWTSecret = "lumin-dev-insecure-customer-jwt-secret-do-not-use-in-prod"
+
 // UsesForgeableJWTSecret reports whether the server would sign session tokens with the public
 // DevJWTSecret fallback WITHOUT an explicit opt-in (ALLOW_DEV_JWT_SECRET). main.go treats this
 // as a fatal misconfiguration and refuses to start — a forgeable owner token is a money-out risk
@@ -80,6 +99,23 @@ const DevJWTSecret = "lumin-dev-insecure-jwt-secret-do-not-use-in-prod"
 // default WITH the opt-in, both return false.
 func (c Config) UsesForgeableJWTSecret() bool {
 	return c.JWTSecret == DevJWTSecret && !c.AllowDevJWTSecret
+}
+
+// UsesForgeableCustomerJWTSecret is the customer-realm twin of UsesForgeableJWTSecret (PR-P1-r):
+// true when the storefront session JWT would be signed with the public DevCustomerJWTSecret without
+// an explicit opt-in. main.go fail-fasts on it — a forgeable customer token exposes every
+// customer's order history (PII). The same ALLOW_DEV_JWT_SECRET opt-in clears both realms.
+func (c Config) UsesForgeableCustomerJWTSecret() bool {
+	return c.CustomerJWTSecret == DevCustomerJWTSecret && !c.AllowDevJWTSecret
+}
+
+// RealmSecretsCollide reports whether the admin and customer realms would sign with the SAME secret
+// (PR-P1-r). ADR-030's realm isolation is *cryptographic*: the two secrets must differ, or an admin
+// token could validate as a customer session (and vice versa) and the separation collapses to mere
+// cookie-name scoping. main.go fail-fasts on it. The dev fallbacks are deliberately distinct, so this
+// only trips when an operator sets JWT_SECRET == CUSTOMER_JWT_SECRET.
+func (c Config) RealmSecretsCollide() bool {
+	return c.JWTSecret == c.CustomerJWTSecret
 }
 
 // Load reads configuration from the environment, applying defaults. PORT matches the
@@ -102,6 +138,8 @@ func Load() Config {
 		JWTTTL:            getenvDuration("JWT_TTL", 12*time.Hour),
 		CookieSecure:      getenvBool("COOKIE_SECURE", true),
 		AllowDevJWTSecret: getenvBool("ALLOW_DEV_JWT_SECRET", false),
+		CustomerJWTSecret: getenv("CUSTOMER_JWT_SECRET", DevCustomerJWTSecret),
+		CustomerJWTTTL:    getenvDuration("CUSTOMER_JWT_TTL", 720*time.Hour),
 	}
 }
 

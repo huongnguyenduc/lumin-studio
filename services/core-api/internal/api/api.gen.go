@@ -18,7 +18,8 @@ import (
 )
 
 const (
-	CookieAuthScopes = "cookieAuth.Scopes"
+	CookieAuthScopes   = "cookieAuth.Scopes"
+	CustomerAuthScopes = "customerAuth.Scopes"
 )
 
 // Defines values for Channel.
@@ -182,6 +183,27 @@ type Customer struct {
 	// Phone Vietnamese mobile — `0` or `+84` prefix + 9 digits.
 	Phone        string  `json:"phone"`
 	SocialHandle *string `json:"socialHandle,omitempty"`
+}
+
+// CustomerAccount The authenticated storefront customer (no credential material). Distinct from AuthUser (admin): a customer has no role, and carries the phone captured at registration.
+type CustomerAccount struct {
+	Email openapi_types.Email `json:"email"`
+	Id    openapi_types.UUID  `json:"id"`
+	Name  string              `json:"name"`
+	Phone string              `json:"phone"`
+}
+
+// CustomerOrderList A customer's own orders, newest-first, each as the public timeline projection (the same shape the guest lookup returns) — deliberately NO internal money/PII/address fields (ADR-032). P1-s reuses the P1-o timeline renderer over this list.
+type CustomerOrderList = []PublicOrderTimeline
+
+// CustomerRegisterInput New storefront account registration (ADR-030 realm riêng). Money/orders unrelated.
+type CustomerRegisterInput struct {
+	Email openapi_types.Email `json:"email"`
+	Name  string              `json:"name"`
+
+	// Password Plaintext password; bcrypt-hashed server-side (never stored/returned in clear).
+	Password string `json:"password"`
+	Phone    string `json:"phone"`
 }
 
 // DashboardSnapshot defines model for DashboardSnapshot.
@@ -623,6 +645,12 @@ type UpdateBankAccountJSONRequestBody = BankAccountUpdate
 // LoginUserJSONRequestBody defines body for LoginUser for application/json ContentType.
 type LoginUserJSONRequestBody = LoginRequest
 
+// LoginCustomerJSONRequestBody defines body for LoginCustomer for application/json ContentType.
+type LoginCustomerJSONRequestBody = LoginRequest
+
+// RegisterCustomerJSONRequestBody defines body for RegisterCustomer for application/json ContentType.
+type RegisterCustomerJSONRequestBody = CustomerRegisterInput
+
 // CreateOrderJSONRequestBody defines body for CreateOrder for application/json ContentType.
 type CreateOrderJSONRequestBody = CreateOrderInput
 
@@ -744,6 +772,18 @@ type ServerInterface interface {
 	// Public storefront category list — the browsable taxonomy for the catalog-browse chips.
 	// (GET /categories)
 	GetCategories(w http.ResponseWriter, r *http.Request, params GetCategoriesParams)
+	// Email + password login for a storefront customer; sets the customer session cookie.
+	// (POST /customer/login)
+	LoginCustomer(w http.ResponseWriter, r *http.Request)
+	// Clear the customer session cookie.
+	// (POST /customer/logout)
+	LogoutCustomer(w http.ResponseWriter, r *http.Request)
+	// The authenticated customer's own order history (timeline projection).
+	// (GET /customer/orders)
+	GetCustomerOrders(w http.ResponseWriter, r *http.Request)
+	// Register a storefront customer account; sets the customer session cookie on success.
+	// (POST /customer/register)
+	RegisterCustomer(w http.ResponseWriter, r *http.Request)
 	// Create an order (web → PENDING_CONFIRM, public; inbox → PAID, staff/owner only).
 	// (POST /orders)
 	CreateOrder(w http.ResponseWriter, r *http.Request)
@@ -810,6 +850,30 @@ func (_ Unimplemented) LogoutUser(w http.ResponseWriter, r *http.Request) {
 // Public storefront category list — the browsable taxonomy for the catalog-browse chips.
 // (GET /categories)
 func (_ Unimplemented) GetCategories(w http.ResponseWriter, r *http.Request, params GetCategoriesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Email + password login for a storefront customer; sets the customer session cookie.
+// (POST /customer/login)
+func (_ Unimplemented) LoginCustomer(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Clear the customer session cookie.
+// (POST /customer/logout)
+func (_ Unimplemented) LogoutCustomer(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// The authenticated customer's own order history (timeline projection).
+// (GET /customer/orders)
+func (_ Unimplemented) GetCustomerOrders(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Register a storefront customer account; sets the customer session cookie on success.
+// (POST /customer/register)
+func (_ Unimplemented) RegisterCustomer(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1009,6 +1073,68 @@ func (siw *ServerInterfaceWrapper) GetCategories(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCategories(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LoginCustomer operation middleware
+func (siw *ServerInterfaceWrapper) LoginCustomer(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LoginCustomer(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LogoutCustomer operation middleware
+func (siw *ServerInterfaceWrapper) LogoutCustomer(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LogoutCustomer(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCustomerOrders operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomerOrders(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CustomerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCustomerOrders(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RegisterCustomer operation middleware
+func (siw *ServerInterfaceWrapper) RegisterCustomer(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RegisterCustomer(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1437,6 +1563,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/categories", wrapper.GetCategories)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/customer/login", wrapper.LoginCustomer)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/customer/logout", wrapper.LogoutCustomer)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/customer/orders", wrapper.GetCustomerOrders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/customer/register", wrapper.RegisterCustomer)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/orders", wrapper.CreateOrder)
 	})
 	r.Group(func(r chi.Router) {
@@ -1708,6 +1846,138 @@ func (response GetCategories304Response) VisitGetCategoriesResponse(w http.Respo
 	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
 	w.WriteHeader(304)
 	return nil
+}
+
+type LoginCustomerRequestObject struct {
+	Body *LoginCustomerJSONRequestBody
+}
+
+type LoginCustomerResponseObject interface {
+	VisitLoginCustomerResponse(w http.ResponseWriter) error
+}
+
+type LoginCustomer200ResponseHeaders struct {
+	SetCookie string
+}
+
+type LoginCustomer200JSONResponse struct {
+	Body    CustomerAccount
+	Headers LoginCustomer200ResponseHeaders
+}
+
+func (response LoginCustomer200JSONResponse) VisitLoginCustomerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Set-Cookie", fmt.Sprint(response.Headers.SetCookie))
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type LoginCustomer400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response LoginCustomer400JSONResponse) VisitLoginCustomerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type LoginCustomer401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response LoginCustomer401JSONResponse) VisitLoginCustomerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type LogoutCustomerRequestObject struct {
+}
+
+type LogoutCustomerResponseObject interface {
+	VisitLogoutCustomerResponse(w http.ResponseWriter) error
+}
+
+type LogoutCustomer204ResponseHeaders struct {
+	SetCookie string
+}
+
+type LogoutCustomer204Response struct {
+	Headers LogoutCustomer204ResponseHeaders
+}
+
+func (response LogoutCustomer204Response) VisitLogoutCustomerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Set-Cookie", fmt.Sprint(response.Headers.SetCookie))
+	w.WriteHeader(204)
+	return nil
+}
+
+type GetCustomerOrdersRequestObject struct {
+}
+
+type GetCustomerOrdersResponseObject interface {
+	VisitGetCustomerOrdersResponse(w http.ResponseWriter) error
+}
+
+type GetCustomerOrders200JSONResponse CustomerOrderList
+
+func (response GetCustomerOrders200JSONResponse) VisitGetCustomerOrdersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetCustomerOrders401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetCustomerOrders401JSONResponse) VisitGetCustomerOrdersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type RegisterCustomerRequestObject struct {
+	Body *RegisterCustomerJSONRequestBody
+}
+
+type RegisterCustomerResponseObject interface {
+	VisitRegisterCustomerResponse(w http.ResponseWriter) error
+}
+
+type RegisterCustomer201ResponseHeaders struct {
+	SetCookie string
+}
+
+type RegisterCustomer201JSONResponse struct {
+	Body    CustomerAccount
+	Headers RegisterCustomer201ResponseHeaders
+}
+
+func (response RegisterCustomer201JSONResponse) VisitRegisterCustomerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Set-Cookie", fmt.Sprint(response.Headers.SetCookie))
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type RegisterCustomer400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RegisterCustomer400JSONResponse) VisitRegisterCustomerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type RegisterCustomer409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RegisterCustomer409JSONResponse) VisitRegisterCustomerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type CreateOrderRequestObject struct {
@@ -2068,6 +2338,18 @@ type StrictServerInterface interface {
 	// Public storefront category list — the browsable taxonomy for the catalog-browse chips.
 	// (GET /categories)
 	GetCategories(ctx context.Context, request GetCategoriesRequestObject) (GetCategoriesResponseObject, error)
+	// Email + password login for a storefront customer; sets the customer session cookie.
+	// (POST /customer/login)
+	LoginCustomer(ctx context.Context, request LoginCustomerRequestObject) (LoginCustomerResponseObject, error)
+	// Clear the customer session cookie.
+	// (POST /customer/logout)
+	LogoutCustomer(ctx context.Context, request LogoutCustomerRequestObject) (LogoutCustomerResponseObject, error)
+	// The authenticated customer's own order history (timeline projection).
+	// (GET /customer/orders)
+	GetCustomerOrders(ctx context.Context, request GetCustomerOrdersRequestObject) (GetCustomerOrdersResponseObject, error)
+	// Register a storefront customer account; sets the customer session cookie on success.
+	// (POST /customer/register)
+	RegisterCustomer(ctx context.Context, request RegisterCustomerRequestObject) (RegisterCustomerResponseObject, error)
 	// Create an order (web → PENDING_CONFIRM, public; inbox → PAID, staff/owner only).
 	// (POST /orders)
 	CreateOrder(ctx context.Context, request CreateOrderRequestObject) (CreateOrderResponseObject, error)
@@ -2297,6 +2579,116 @@ func (sh *strictHandler) GetCategories(w http.ResponseWriter, r *http.Request, p
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCategoriesResponseObject); ok {
 		if err := validResponse.VisitGetCategoriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LoginCustomer operation middleware
+func (sh *strictHandler) LoginCustomer(w http.ResponseWriter, r *http.Request) {
+	var request LoginCustomerRequestObject
+
+	var body LoginCustomerJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LoginCustomer(ctx, request.(LoginCustomerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LoginCustomer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LoginCustomerResponseObject); ok {
+		if err := validResponse.VisitLoginCustomerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LogoutCustomer operation middleware
+func (sh *strictHandler) LogoutCustomer(w http.ResponseWriter, r *http.Request) {
+	var request LogoutCustomerRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LogoutCustomer(ctx, request.(LogoutCustomerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LogoutCustomer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LogoutCustomerResponseObject); ok {
+		if err := validResponse.VisitLogoutCustomerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCustomerOrders operation middleware
+func (sh *strictHandler) GetCustomerOrders(w http.ResponseWriter, r *http.Request) {
+	var request GetCustomerOrdersRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomerOrders(ctx, request.(GetCustomerOrdersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomerOrders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomerOrdersResponseObject); ok {
+		if err := validResponse.VisitGetCustomerOrdersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RegisterCustomer operation middleware
+func (sh *strictHandler) RegisterCustomer(w http.ResponseWriter, r *http.Request) {
+	var request RegisterCustomerRequestObject
+
+	var body RegisterCustomerJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RegisterCustomer(ctx, request.(RegisterCustomerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RegisterCustomer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RegisterCustomerResponseObject); ok {
+		if err := validResponse.VisitRegisterCustomerResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

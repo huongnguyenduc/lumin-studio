@@ -90,6 +90,103 @@ paths:
                 type: string
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /customer/register:
+    post:
+      tags: [customer]
+      operationId: registerCustomer
+      summary: Register a storefront customer account; sets the customer session cookie on success.
+      description: >
+        Creates a customer account (name + phone + email + password) in the SEPARATE storefront realm
+        (ADR-030) and logs it in immediately by setting a signed JWT in an httpOnly+Secure+SameSite
+        customer cookie (distinct secret + name from the admin session — the token is not in the body).
+        A login email already registered returns 409 (the only field the client may safely surface).
+        Totals/orders are unrelated; guest orders placed before registering are NOT auto-linked.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerRegisterInput'
+      responses:
+        '201':
+          description: Account created and logged in. The customer session cookie is set via Set-Cookie.
+          headers:
+            Set-Cookie:
+              description: Signed JWT in an httpOnly + Secure + SameSite=Strict customer session cookie.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerAccount'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /customer/login:
+    post:
+      tags: [customer]
+      operationId: loginCustomer
+      summary: Email + password login for a storefront customer; sets the customer session cookie.
+      description: >
+        Verifies the credential (bcrypt, constant-time) against the customer realm and, on success,
+        mints a signed JWT set as the httpOnly+Secure customer cookie. A uniform error is returned for
+        both unknown email and bad password (no enumeration). The cookie — not the body — carries the token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authenticated. The customer session cookie is set via Set-Cookie.
+          headers:
+            Set-Cookie:
+              description: Signed JWT in an httpOnly + Secure + SameSite=Strict customer session cookie.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerAccount'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /customer/logout:
+    post:
+      tags: [customer]
+      operationId: logoutCustomer
+      summary: Clear the customer session cookie.
+      responses:
+        '204':
+          description: Customer session cookie cleared.
+          headers:
+            Set-Cookie:
+              description: Expires the customer session cookie immediately (logout).
+              schema:
+                type: string
+
+  /customer/orders:
+    get:
+      tags: [customer]
+      operationId: getCustomerOrders
+      summary: The authenticated customer's own order history (timeline projection).
+      description: >
+        Returns the signed-in customer's orders, newest-first, as the SAME public timeline projection
+        the guest lookup returns (code + status + milestones + tracking; never internal money/PII/address
+        fields). Scoped strictly by the verified session's customer id. Requires a valid customer session
+        (401 otherwise) — the admin cookie does not grant it (separate realm, ADR-030).
+      security:
+        - customerAuth: []
+      responses:
+        '200':
+          description: The customer's orders, newest-first (possibly empty).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerOrderList'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /orders:
     post:
       tags: [orders]
@@ -567,6 +664,13 @@ components:
       in: cookie
       name: lumin_session
       description: Signed JWT in an httpOnly+Secure cookie (ADR-030; cookie name finalized in PR-3e-1).
+    customerAuth:
+      type: apiKey
+      in: cookie
+      name: lumin_customer
+      description: >
+        Storefront customer session JWT in an httpOnly+Secure cookie (PR-P1-r). SEPARATE realm from
+        cookieAuth — signed with a different secret, so an admin token can never authenticate here.
 
   responses:
     BadRequest:
@@ -1314,6 +1418,54 @@ components:
           format: email
         role:
           $ref: '#/components/schemas/UserRole'
+
+    # --- Storefront customer account (PR-P1-r) ----------------------------------------------------
+    CustomerAccount:
+      type: object
+      description: >
+        The authenticated storefront customer (no credential material). Distinct from AuthUser (admin):
+        a customer has no role, and carries the phone captured at registration.
+      required: [id, name, email, phone]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+
+    CustomerRegisterInput:
+      type: object
+      description: New storefront account registration (ADR-030 realm riêng). Money/orders unrelated.
+      required: [name, email, phone, password]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 60
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          minLength: 1
+        password:
+          type: string
+          minLength: 8
+          description: Plaintext password; bcrypt-hashed server-side (never stored/returned in clear).
+
+    CustomerOrderList:
+      type: array
+      description: >
+        A customer's own orders, newest-first, each as the public timeline projection (the same shape
+        the guest lookup returns) — deliberately NO internal money/PII/address fields (ADR-032). P1-s
+        reuses the P1-o timeline renderer over this list.
+      items:
+        $ref: '#/components/schemas/PublicOrderTimeline'
 
     # --- Settings / STK (PR-3k) -------------------------------------------------------------------
     BankAccount:

@@ -43,6 +43,10 @@ const (
 	// the STK write — owner-only per conventions §Bảo mật / ADR-012). This is the requireOwner
 	// boundary; transition RBAC (reconcile→PAID, →REFUNDED) stays in the domain guard.
 	authOwnerOnly
+	// authCustomer needs a valid STOREFRONT customer session (PR-P1-r) — a DIFFERENT realm from the
+	// admin classes above (separate cookie + secret, ADR-030). It resolves the customer id from the
+	// customer cookie and injects it; absent/invalid → 401. An admin token can never satisfy it.
+	authCustomer
 )
 
 // classify maps a generated operationID to its gate. Unlisted operations fall through to
@@ -84,6 +88,15 @@ func classify(operationID string) authClass {
 		return authOptional
 	case "UpdateBankAccount":
 		return authOwnerOnly
+	case "RegisterCustomer", "LoginCustomer", "LogoutCustomer":
+		// Storefront customer auth entry points (PR-P1-r) — issuing or clearing a customer cookie
+		// can't itself require one (mirrors LoginUser/LogoutUser). Register/login gate on the
+		// credential; logout is idempotent.
+		return authPublic
+	case "GetCustomerOrders":
+		// The authenticated customer's own order history — needs a valid CUSTOMER session (not the
+		// admin cookie). resolveCustomer injects the scoping customer id.
+		return authCustomer
 	default:
 		// GetDashboard, ListReplyTemplates, GetSettings, TransitionOrder, + any new operation.
 		return authRequired
@@ -101,6 +114,19 @@ func (s *Server) authMiddleware(next api.StrictHandlerFunc, operationID string) 
 		class := classify(operationID)
 		if class == authPublic {
 			return next(ctx, w, r, request)
+		}
+
+		// The storefront customer realm resolves from its OWN cookie + issuer (separate secret), never
+		// the admin path below — an admin token can't authenticate a customer request and vice versa.
+		if class == authCustomer {
+			id, ok, err := s.resolveCustomer(r)
+			if err != nil {
+				return nil, err // customer cookie present but invalid → 401
+			}
+			if !ok {
+				return nil, errUnauthenticated // no customer session
+			}
+			return next(withCustomer(ctx, id), w, r, request)
 		}
 
 		actor, ok, err := s.resolveActor(ctx, r)
@@ -160,6 +186,30 @@ func (s *Server) resolveActor(ctx context.Context, r *http.Request) (Actor, bool
 		return Actor{}, false, errUnauthenticated
 	}
 	return Actor{ByUser: user.ID.String(), Role: role, At: time.Now().UTC()}, true, nil
+}
+
+// resolveCustomer reads the customer session cookie and returns the authenticated customer id. It
+// returns (_, false, nil) when no customer cookie is present, and errUnauthenticated when a cookie is
+// present but its token is invalid (bad signature/expired — verified with the CUSTOMER issuer's
+// secret, so an admin token fails here) or its subject is not a uuid. Unlike resolveActor it does NO
+// DB read: the token subject IS the scoping customer id (GetCustomerOrders filters by it, so a since-
+// deleted account simply sees an empty list) — one fewer query, and no role/active axis to re-read.
+// ponytail: no existence re-check; a deleted customer's token is harmless until it expires (stateless
+// JWT, same posture as the admin realm). Add a DB confirm only if hard logout/ban lands.
+func (s *Server) resolveCustomer(r *http.Request) (uuid.UUID, bool, error) {
+	cookie, err := r.Cookie(auth.CustomerCookieName)
+	if err != nil || cookie.Value == "" {
+		return uuid.UUID{}, false, nil
+	}
+	claims, err := s.customerAuth.Verify(cookie.Value)
+	if err != nil {
+		return uuid.UUID{}, false, errUnauthenticated
+	}
+	id, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		return uuid.UUID{}, false, errUnauthenticated
+	}
+	return id, true, nil
 }
 
 // actorRole maps the stored user_role to a domain order.Role. It is explicit (not a raw cast)

@@ -252,6 +252,53 @@ func (q *Queries) ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]Orde
 	return items, nil
 }
 
+const listOrdersByCustomer = `-- name: ListOrdersByCustomer :many
+SELECT id, code, channel, status, customer_id, shipping_address, subtotal, shipping_fee, total, payment_method, payment_proof_url, payment_confirmed_at, refund_proof_url, tracking_code, note, status_history, created_at, updated_at FROM orders WHERE customer_id = $1 ORDER BY created_at DESC
+`
+
+// ListOrdersByCustomer returns a customer's own orders, newest-first, for the authenticated
+// storefront account history (PR-P1-r, GET /customer/orders). Scoped strictly by customer_id (the
+// verified session subject) — never by phone, which is non-unique. Guest orders placed before the
+// customer registered are NOT auto-linked (claiming an unverified identity's orders is deferred).
+func (q *Queries) ListOrdersByCustomer(ctx context.Context, customerID uuid.UUID) ([]Order, error) {
+	rows, err := q.db.Query(ctx, listOrdersByCustomer, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Order
+	for rows.Next() {
+		var i Order
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Channel,
+			&i.Status,
+			&i.CustomerID,
+			&i.ShippingAddress,
+			&i.Subtotal,
+			&i.ShippingFee,
+			&i.Total,
+			&i.PaymentMethod,
+			&i.PaymentProofUrl,
+			&i.PaymentConfirmedAt,
+			&i.RefundProofUrl,
+			&i.TrackingCode,
+			&i.Note,
+			&i.StatusHistory,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOrdersByStatus = `-- name: ListOrdersByStatus :many
 SELECT id, code, channel, status, customer_id, shipping_address, subtotal, shipping_fee, total, payment_method, payment_proof_url, payment_confirmed_at, refund_proof_url, tracking_code, note, status_history, created_at, updated_at FROM orders WHERE status = $1 ORDER BY created_at DESC
 `

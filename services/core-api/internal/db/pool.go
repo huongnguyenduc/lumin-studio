@@ -23,6 +23,12 @@ import (
 // %w sentinel style in internal/money and internal/order.
 var ErrNotFound = errors.New("db: record not found")
 
+// ErrDuplicate is the domain-level "unique constraint violated" sentinel. Repository wrappers
+// translate a Postgres 23505 into this so callers (e.g. the customer-register handler mapping it
+// to 409) use errors.Is without importing pgconn. Which key conflicted is not carried — the caller
+// knows the single unique constraint reachable on its write path.
+var ErrDuplicate = errors.New("db: duplicate key")
+
 // Open builds a pgx connection pool from cfg. It validates the DSN and applies pool
 // knobs but does NOT open a connection (pgxpool connects lazily on first use) — a
 // momentarily-unreachable database must not block process start; readiness is reported

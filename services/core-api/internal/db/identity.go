@@ -6,9 +6,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
 )
+
+// pgerrcodeUniqueViolation is the Postgres SQLSTATE for a unique_violation (a duplicate key). Used
+// to translate a login-email collision on register into the ErrDuplicate sentinel (PR-P1-r).
+const pgerrcodeUniqueViolation = "23505"
 
 // Identity is the read/write repository for the identity + PDPL-consent axis (customers,
 // consent_grants, users). It wraps the sqlc Querier; pgx.ErrNoRows surfaces as ErrNotFound
@@ -43,6 +48,34 @@ func (i *Identity) CustomerByPhone(ctx context.Context, phone string) (sqlc.Cust
 		return sqlc.Customer{}, ErrNotFound
 	}
 	return c, err
+}
+
+// CustomerByLoginEmail returns the CREDENTIALED customer with the given login email (case-
+// insensitive), or ErrNotFound. Guest rows (no password_hash) are excluded by the query, so a
+// login can only ever resolve a registered account (PR-P1-r).
+func (i *Identity) CustomerByLoginEmail(ctx context.Context, email string) (sqlc.Customer, error) {
+	c, err := i.q.GetCustomerByLoginEmail(ctx, email)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Customer{}, ErrNotFound
+	}
+	return c, err
+}
+
+// RegisterCustomer inserts a storefront account carrying a login credential (PR-P1-r). A duplicate
+// login email surfaces as ErrDuplicate (the customers_login_email_uq partial unique → 23505), which
+// the handler maps to 409 — the DB, not an app pre-check, is the single arbiter of uniqueness, so
+// there is no find-then-insert race. Any other Postgres constraint (e.g. the name-length CHECK) or
+// fault passes through unwrapped (→ 400/500 at the boundary).
+func (i *Identity) RegisterCustomer(ctx context.Context, arg sqlc.InsertCustomerWithCredentialParams) (sqlc.Customer, error) {
+	c, err := i.q.InsertCustomerWithCredential(ctx, arg)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgerrcodeUniqueViolation {
+			return sqlc.Customer{}, ErrDuplicate
+		}
+		return sqlc.Customer{}, err
+	}
+	return c, nil
 }
 
 // FindOrCreateCustomer returns the existing customer matching arg.Phone, or inserts arg as a new
