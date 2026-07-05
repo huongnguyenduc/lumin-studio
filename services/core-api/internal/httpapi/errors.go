@@ -48,6 +48,10 @@ const (
 	codeEngraveTooLong     = "ENGRAVE_TOO_LONG"
 	codeNoShippingRule     = "NO_SHIPPING_RULE"
 	codeProductUnavailable = "PRODUCT_UNAVAILABLE"
+	// codeNoSTK — the shop has no bank account (STK) configured, so no web payment can be taken
+	// (P2-a). Gates both GET /checkout/config and a web POST /orders; 422, not 500 — it is a
+	// recoverable shop-config state the storefront renders as "checkout tạm đóng", not a crash.
+	codeNoSTK = "NO_STK_CONFIGURED"
 )
 
 // errNotImplemented marks a handler stub not yet built (PR-3d scaffolding). Each domain
@@ -74,6 +78,10 @@ var (
 	// for both: a 404 would leak catalog-existence on a public endpoint, and to a buyer the two
 	// states are the same ("sản phẩm không còn bán").
 	errProductUnavailable = errors.New("httpapi: product not available for ordering")
+	// errNoSTKConfigured — the settings singleton has no usable bank account (STK), so the shop
+	// cannot take a web payment (P2-a). Raised by GET /checkout/config and by a web POST /orders
+	// BEFORE any write, so a customer can never "pay" against a shop with no destination account.
+	errNoSTKConfigured = errors.New("httpapi: shop bank account (STK) not configured")
 )
 
 // msgKey derives the next-intl key from a stable code ("errors.<CODE>"). Deriving it
@@ -137,6 +145,10 @@ func mapError(err error) (int, api.ErrorEnvelope) {
 	case errors.Is(err, errProductUnavailable):
 		// Ordered product missing or not active — never a 404 (catalog-existence probe).
 		return http.StatusUnprocessableEntity, envelope(codeProductUnavailable)
+	case errors.Is(err, errNoSTKConfigured):
+		// Shop has no STK configured — no web payment possible (P2-a). 422, not 500: a
+		// recoverable config state the storefront shows as "checkout tạm đóng".
+		return http.StatusUnprocessableEntity, envelope(codeNoSTK)
 	case errors.Is(err, pricing.ErrColorNotForProduct), errors.Is(err, pricing.ErrOptionNotForProduct),
 		errors.Is(err, pricing.ErrDuplicateOption), errors.Is(err, pricing.ErrEngraveNotAllowed):
 		// A selection referencing catalog rows that don't belong together — client bug/hostile.

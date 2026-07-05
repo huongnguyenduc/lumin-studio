@@ -110,6 +110,18 @@ func setShippingRules(t *testing.T, ctx context.Context, pool *pgxpool.Pool, rul
 	}
 }
 
+// setBankAccount seeds a usable VietQR STK on the settings singleton. The migration seed leaves
+// bank_account `{}`, and the P2-a web checkout STK gate rejects a web create against an unconfigured
+// shop — so any web-order integration test must seed one. Direct UPDATE (not the audited seam): this is
+// test config seeding, not the money-out change path the seam guards (that has its own tests).
+func setBankAccount(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	if _, err := pool.Exec(ctx,
+		`UPDATE settings SET bank_account = '{"bin":"970436","accountNumber":"0011001234567","accountName":"LUMIN STUDIO"}' WHERE id = true`); err != nil {
+		t.Fatalf("seed bank account: %v", err)
+	}
+}
+
 func countOutbox(t *testing.T, ctx context.Context, pool *pgxpool.Pool, orderID uuid.UUID, eventType string) int {
 	t.Helper()
 	var n int
@@ -142,6 +154,7 @@ func TestCreateOrderWebEndToEnd(t *testing.T) {
 	ctx := context.Background()
 	fx := seedCheckoutCatalog(t, ctx, pool)
 	setShippingRules(t, ctx, pool, `[{"province":"Hà Nội","fee":30000},{"province":"*","fee":45000}]`)
+	setBankAccount(t, ctx, pool) // P2-a: a web create needs a configured STK
 	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
 
 	raw := webBody(map[string]any{
@@ -286,6 +299,7 @@ func TestCreateOrderPricingRejectionsIntegration(t *testing.T) {
 	fx := seedCheckoutCatalog(t, ctx, pool)
 	// Deliberately NO wildcard: an unlisted province must 422, never ₫0.
 	setShippingRules(t, ctx, pool, `[{"province":"Hà Nội","fee":30000}]`)
+	setBankAccount(t, ctx, pool) // P2-a: STK configured so the NO_SHIPPING_RULE case isn't masked by the STK gate
 	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
 
 	item := func(productID string, patch map[string]any) []any {

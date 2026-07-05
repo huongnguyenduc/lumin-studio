@@ -6,6 +6,25 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**➡️ PHASE 2 STATUS (2026-07-05 PM):** **P2-b MERGED** (PR #52 → `origin/main` `b8af772`, 13:47Z; local `main` ff'd —
+the earlier "awaiting merge-gate" note is stale). **2 of 9 sub-PRs building/done.** **🔨 P2-a (`GET /checkout/config`
+public whitelist [STK + server-built VietQR URL + shippable provinces + refundPolicy] + web `POST /orders` STK gate
+→ 422 `NO_STK_CONFIGURED` before any write) — BUILT on branch `feat/phase-2-checkout-p2a` (off `main` `b8af772`;
+staged, NOT committed — awaiting review outcomes + user merge-gate). verify-go rc=0 (golangci 0, sqlc vet+diff, oapi stale-check
+staged, `go test -race` incl httpapi+db integration vs real PG/colima) · `pnpm verify` 6/6 (api-client stale-gate) ·
+guard 161→162 (+1 config ARM; STK-gate + vietQRImageURL + classify all PROVEN binding mutate→RED→restore) · osm 22.
+Additive openapi (`GetCheckoutConfig` + `CheckoutConfig` schema) + regen api.gen.go/schema.gen.ts staged. No new dep ·
+no new ADR (impl D-P2-1/ADR-010) · no migration. Acceptance Cụm 22 `CHK-06`/`CHK-07` (Go-gated `[ ]`).
+**spec-guardian PASS (0 BLK/0 WARN/2 NOTE-informational). Adversarial 5-lens wf_b41c27c8 = 1 confirmed NOTE → FIXED:**
+`shippableProvinces` chỉ bắt malformed *shape*, KHÔNG bắt `fee<0` mà `pricing.ShippingFee` coi là malformed→500 →
+`/checkout/config` sẽ 200-list tỉnh mà web-order tới đó 500 (mâu thuẫn comment + CHK-06); fix = mirror check `r.Fee<0`
+loop-top (mọi rule kể cả `*`) + 3-case malformed test. Re-verify full green (verify-go rc=0 · guard 162 · osm 22).
+**Op-note: một stray `services/core-api/api.gen.go` (2999 dòng, dup của `internal/api/api.gen.go` — `output:` relative +
+cwd sai) lọt vào `git add -A` → CAUGHT qua diffstat nhảy 642→3641, `git rm`'d; `go generate ./internal/api/...` chỉ ghi
+internal/api.** 16 files / 648 ins → **committed + PR #53 OPEN** (`feat/phase-2-checkout-p2a` → `main`, MERGEABLE, CI
+running: selftest green · app-gates · services-gates) — chờ user merge-gate.** NEXT after P2-a lands = **P2-h**
+(`/chinh-sach`, ADR-free).
+
 **✅ PHASE 1 STOREFRONT COMPLETE (2026-07-05)** — cả 19 sub-PR `P1-a..s` MERGED; cuối = **P1-i #51** (`origin/main`
 `1dc8c05`, on-demand 3D model-viewer, 11:34Z). Local `main` đã ff `1dc8c05`, working tree clean. Housekeeping nợ:
 ~30 nhánh local đã-merge/`:gone` + `chore/core-closeout-housekeeping` (20 behind/1 ahead, obsolete) — **chờ chủ duyệt xoá**.
