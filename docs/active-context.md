@@ -23,7 +23,11 @@ province=shipping_rules keys · ETA tĩnh · missing-STK 422 · double-submit FE
 **NEXT = P2-b hoặc P2-h** (cả hai ADR-free, `dependsOn=[]`, land song song được); `P2-a`/`P2-c`/`P2-i` cần ADR/secret lock.
 
 **🔨 PR-P2-b (`POST /price/quote` optional `province` → `{lines, subtotal, shippingFee, total}`) — BUILT · verify+
-integration(colima) green · chưa review/push. (branch `feat/phase-2-checkout-p2b` off `main` `1dc8c05`.)** Additive
+integration(colima) green · **spec-guardian PASS (0 BLK/1 WARN-fixed/1 NOTE-fixed)** · **adversarial 4-lens wf_8d47e86a
+0 confirmed** (2 NOTE refuted: whitespace-province + >int32-qty đều bị checkout độc-lập reject → không under-charge được;
+contract-compat + edge-errors sạch) · chờ push→PR. (branch `feat/phase-2-checkout-p2b` off `main` `1dc8c05`.)** Review-fix:
+`acceptance.md` sync `quoteSubtotal`→`quoteTotals` + test-id `TestQuoteSubtotalCrossLineOverflow`→`…Totals…` (QTE-01) +
+**QTE-02 mới** (Go-gated `[ ]`: shipping-fold + 422 NO_SHIPPING_RULE + no-province byte-identical + parity). Additive
 contract: `PriceQuoteInput.province?` + `PriceQuote.shippingFee?/total?` (omitempty → **vắng province = byte-identical**
 pre-P2-b). Handler `price.go`: province≠"" → `db.Settings.Get` (ErrNotFound→logged 500 như checkout) → `pricing.ShippingFee`
 (no-rule→**422 `NO_SHIPPING_RULE`** đã map sẵn errors.go:148) → `quoteTotals(lines,fee)` (đổi từ `quoteSubtotal`, giờ trả
