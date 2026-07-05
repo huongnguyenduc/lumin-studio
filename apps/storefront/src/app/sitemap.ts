@@ -2,7 +2,7 @@ import type { MetadataRoute } from 'next';
 import { fetchAllProductSlugs } from '@/lib/catalog';
 import { siteBaseUrl } from '@/lib/site';
 
-// XML sitemap (plan §3 P1-q): the two indexable static surfaces + every active product detail page.
+// XML sitemap (plan §3 P1-q): the indexable static surfaces + every active product detail page.
 // Private/noindex routes (cart, lookup) are deliberately absent. No `lastModified` — the card projection
 // carries no updatedAt, and a build-time timestamp would be non-deterministic (conventions §determinism);
 // changeFrequency/priority are enough signal for a small made-to-order catalog.
@@ -12,6 +12,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: `${base}/`, changeFrequency: 'daily', priority: 1 },
     { url: `${base}/danh-muc`, changeFrequency: 'daily', priority: 0.8 },
+    // Legal / policy page (P2-h) — indexable trust signal, changes rarely.
+    { url: `${base}/chinh-sach`, changeFrequency: 'yearly', priority: 0.3 },
   ];
 
   let slugs: string[] = [];

@@ -6,6 +6,23 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**➡️ PHASE 2 STATUS (2026-07-05 late PM):** **P2-a MERGED** (PR #53 → `origin/main` `3e62468`; local `main` ff'd).
+**P2-b MERGED** (#52 `b8af772`). **3 of 9 sub-PRs done.** **🔨 P2-h (`/chinh-sach` legal page — return/exchange
+policy [Luật BVNTD 19/2023, ADR-012] + PDPL privacy notice [thu gì/mục đích/lưu/quyền, compliance §2]) — BUILT on
+branch `feat/phase-2-checkout-p2h` (off `main` `3e62468`).** Static i18n prose (NO runtime fetch — legal page must
+render even if API down; the `settings.refund_policy` blurb is the separate inline checkout summary, this is the full
+policy). 5 source files: new `chinhSach` namespace in `messages/vi.ts` (lists as keyed objects — next-intl rejects
+arrays) + `app/chinh-sach/page.tsx` (server component, 2 deep-linkable sections `#doi-tra`/`#quyen-rieng-tu`,
+indexable + canonical `/chinh-sach`) + footer link repoint `/doi-tra`→`/chinh-sach#doi-tra` + `sitemap.ts` (+`/chinh-sach`)
++ `messages.test.ts` (+2: version==`2026-01` sync w/ `consentPolicyVersion` checkout.go + both-surfaces content).
+**spec-guardian PASS (0 BLK / 1 WARN / 1 NOTE → both fixed):** WARN missing `alternates.canonical` + NOTE missing
+sitemap entry — both were consistency gaps vs the sibling indexable-page pattern, added. **`pnpm verify` 6/6 green**
+(typecheck rc=0 · lint 0 · 140 storefront tests · format clean). No new dep · no new ADR · no migration · no guard ARM
+(static content, no binding mutation). Unblocks
+FE checkout chain P2-d (last of its `dependsOn=[P2-a,P2-b,P2-h]`). **NEXT after P2-h = P2-i or P2-c (BE foundation,
+`dependsOn=[]`), then FE chain P2-d→e→f→g.**
+
+**— earlier P2-a/P2-b history below (P2-a now merged; the "🔨 BUILT … PR #53 OPEN" note is superseded) —**
 **➡️ PHASE 2 STATUS (2026-07-05 PM):** **P2-b MERGED** (PR #52 → `origin/main` `b8af772`, 13:47Z; local `main` ff'd —
 the earlier "awaiting merge-gate" note is stale). **2 of 9 sub-PRs building/done.** **🔨 P2-a (`GET /checkout/config`
 public whitelist [STK + server-built VietQR URL + shippable provinces + refundPolicy] + web `POST /orders` STK gate
