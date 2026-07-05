@@ -21,7 +21,9 @@ no new ADR (impl D-P2-1/ADR-010) · no migration. Acceptance Cụm 22 `CHK-06`/`
 loop-top (mọi rule kể cả `*`) + 3-case malformed test. Re-verify full green (verify-go rc=0 · guard 162 · osm 22).
 **Op-note: một stray `services/core-api/api.gen.go` (2999 dòng, dup của `internal/api/api.gen.go` — `output:` relative +
 cwd sai) lọt vào `git add -A` → CAUGHT qua diffstat nhảy 642→3641, `git rm`'d; `go generate ./internal/api/...` chỉ ghi
-internal/api.** 16 files / 642 ins staged, CHƯA commit.** NEXT after P2-a lands = **P2-h** (`/chinh-sach`, ADR-free).
+internal/api.** 16 files / 648 ins → **committed + PR #53 OPEN** (`feat/phase-2-checkout-p2a` → `main`, MERGEABLE, CI
+running: selftest green · app-gates · services-gates) — chờ user merge-gate.** NEXT after P2-a lands = **P2-h**
+(`/chinh-sach`, ADR-free).
 
 **✅ PHASE 1 STOREFRONT COMPLETE (2026-07-05)** — cả 19 sub-PR `P1-a..s` MERGED; cuối = **P1-i #51** (`origin/main`
 `1dc8c05`, on-demand 3D model-viewer, 11:34Z). Local `main` đã ff `1dc8c05`, working tree clean. Housekeeping nợ:
