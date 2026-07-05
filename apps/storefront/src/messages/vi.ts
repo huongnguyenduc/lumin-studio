@@ -262,6 +262,87 @@ export const vi = {
     accept: 'Đồng ý',
     decline: 'Từ chối',
   },
+  // Customer account + order history (/tai-khoan, P1-s). The auth realm is SEPARATE from admin (ADR-030):
+  // register/login/logout set an httpOnly session cookie; the hub reads GET /customer/orders and reuses the
+  // guest P1-o timeline (status LABELS from @lumin/core, shared). noindex (private, per-customer). Scope is
+  // only what the P1-r backend ships — no OAuth / magic-link / forgot-password / addresses (no endpoint yet).
+  account: {
+    // <title> + hub heading. `greeting` shows the signed-in name (from the profile cookie); `heading` is
+    // the fallback when that cookie is missing/corrupt (auth still valid — the greeting is display-only).
+    metaTitle: 'Tài khoản — Lumin Studio',
+    heading: 'Tài khoản của bạn',
+    greeting: 'Chào {name} 🧡',
+    logout: 'Đăng xuất',
+    // Order-history section.
+    ordersHeading: 'Đơn hàng của tôi',
+    // Row: when the order was placed. {date} is formatted by @lumin/core (formatVnDate) — never baked.
+    orderedOn: 'Đặt ngày {date}',
+    // Empty history — CTA into the catalog.
+    emptyTitle: 'Bạn chưa có đơn nào',
+    emptyBody: 'Khi bạn đặt món đầu tiên, đơn sẽ hiện ở đây để bạn theo dõi.',
+    emptyCta: 'Khám phá sản phẩm',
+    // Error fetching history (network / 5xx) — offers a reload.
+    errorTitle: 'Có gì đó chưa ổn',
+    errorBody: 'Chưa tải được đơn của bạn — thử lại giúp mình nhé.',
+    retry: 'Thử lại',
+    // Loading (a11y status while the hub fetch is in flight).
+    loading: 'Đang tải tài khoản…',
+    // Logged-out / expired-session hub panel (no session cookie, or core-api rejected it).
+    loggedOutTitle: 'Đăng nhập để xem đơn của bạn',
+    loggedOutBody:
+      'Đăng nhập để theo dõi đơn hàng, hoặc tra cứu nhanh bằng mã đơn và số điện thoại nhé.',
+    loginCta: 'Đăng nhập',
+    registerCta: 'Tạo tài khoản',
+    // Login screen (/tai-khoan/dang-nhap).
+    login: {
+      metaTitle: 'Đăng nhập — Lumin Studio',
+      heading: 'Chào mừng quay lại 🧡',
+      intro: 'Đăng nhập để xem đơn hàng của bạn.',
+      emailLabel: 'Email',
+      emailPlaceholder: 'email của bạn',
+      passwordLabel: 'Mật khẩu',
+      passwordPlaceholder: '••••••••',
+      submit: 'Đăng nhập',
+      noAccount: 'Chưa có tài khoản?',
+      registerLink: 'Tạo tài khoản',
+      guestLookup: 'Tra cứu đơn không cần đăng nhập',
+      errors: {
+        // Both fields required — client guard before the round-trip.
+        formError: 'Nhập email và mật khẩu giúp mình nhé.',
+        // Uniform for unknown email OR wrong password (no enumeration — ADR-030).
+        invalidCredentials: 'Email hoặc mật khẩu chưa đúng.',
+        validation: 'Thông tin đăng nhập chưa hợp lệ.',
+        networkError: 'Mất kết nối một chút — thử lại giúp mình nhé.',
+      },
+    },
+    // Register screen (/tai-khoan/dang-ky).
+    register: {
+      metaTitle: 'Tạo tài khoản — Lumin Studio',
+      heading: 'Tạo tài khoản',
+      intro: 'Tạo tài khoản để lưu và theo dõi đơn hàng của bạn.',
+      nameLabel: 'Họ tên',
+      namePlaceholder: 'tên của bạn',
+      emailLabel: 'Email',
+      emailPlaceholder: 'email',
+      phoneLabel: 'Số điện thoại',
+      phonePlaceholder: '0912 345 678',
+      passwordLabel: 'Mật khẩu',
+      passwordPlaceholder: '••••••••',
+      passwordHint: 'Ít nhất 8 ký tự.',
+      submit: 'Tạo tài khoản',
+      haveAccount: 'Đã có tài khoản?',
+      loginLink: 'Đăng nhập',
+      errors: {
+        formError: 'Điền đủ các ô giúp mình nhé.',
+        nameInvalid: 'Họ tên cần từ 2 đến 60 ký tự.',
+        passwordTooShort: 'Mật khẩu cần ít nhất 8 ký tự.',
+        // The one register field-error safe to surface (the login email is already registered).
+        emailTaken: 'Email này đã có tài khoản. Bạn thử đăng nhập nhé.',
+        validation: 'Thông tin chưa hợp lệ — kiểm tra lại giúp mình nhé.',
+        networkError: 'Mất kết nối một chút — thử lại giúp mình nhé.',
+      },
+    },
+  },
 } as const;
 
 export type StorefrontMessages = typeof vi;
