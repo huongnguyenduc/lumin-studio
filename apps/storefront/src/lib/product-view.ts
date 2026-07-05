@@ -86,10 +86,10 @@ export type OptionView = {
 };
 
 /** The product-detail view the client component renders. A narrow, serialisable projection of the API
- *  `Product`: it drops categoryId, model3dUrl and status (the 360° model viewer is P1-i). `options[]`
- *  IS surfaced (P1-j: engrave field + choice add-on toggles). `import type` only above keeps this module
- *  client-safe, so the server-only catalog client (./catalog) is never pulled into the client bundle.
- *  Money stays raw int-VND — formatted by PriceTag/@lumin/core at render, never here. */
+ *  `Product`: it drops categoryId and status. `options[]` IS surfaced (P1-j: engrave field + choice add-on
+ *  toggles) and `model3dUrl` is surfaced (P1-i: on-demand model-viewer). `import type` only above keeps
+ *  this module client-safe, so the server-only catalog client (./catalog) is never pulled into the client
+ *  bundle. Money stays raw int-VND — formatted by PriceTag/@lumin/core at render, never here. */
 export type ProductDetailView = {
   id: string;
   slug: string;
@@ -99,6 +99,11 @@ export type ProductDetailView = {
   /** Starting price, int VND. Formatted downstream by PriceTag/@lumin/core — never pre-formatted. */
   basePrice: number;
   material: string;
+  /** `.glb` URL for the on-demand 3D viewer (P1-i), or undefined when the product has no model yet.
+   *  Empty-string collapses to undefined (same guard as imageSrc) so the "Xem 3D" button never mounts
+   *  model-viewer with an empty src. The sprite-first 360° hover (ADR-007) is deferred — no spriteUrl in
+   *  the contract until the render-worker emits sprite-sheets. */
+  model3dUrl?: string;
   /** Bounding size in mm, shown "w × d × h mm" (spec §02). */
   dimensions: { w: number; d: number; h: number };
   /** Gallery: cover (images[0]) first, then the rest. Empty-string entries dropped; `[]` when the
@@ -122,6 +127,8 @@ export function toProductDetailView(product: components['schemas']['Product']): 
     description: product.description,
     basePrice: product.basePrice,
     material: product.material,
+    // Empty string ⇒ no model → undefined (mirrors imageSrc), so the viewer button never mounts on an empty src.
+    model3dUrl: product.model3dUrl || undefined,
     dimensions: { w: product.dimensions.w, d: product.dimensions.d, h: product.dimensions.h },
     // Drop empty-string URLs (broken src never reaches <img>) AND de-duplicate — the contract makes no
     // uniqueness guarantee, and a repeated photo would produce a duplicate React key / doubled thumbnail

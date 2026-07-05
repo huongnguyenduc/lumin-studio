@@ -130,6 +130,14 @@ describe('toProductDetailView', () => {
     expect(view.options[0].maxChars).toBeNull();
   });
 
+  it('surfaces a non-empty model3dUrl and collapses an empty one to undefined', () => {
+    expect(
+      toProductDetailView(apiProduct({ model3dUrl: 'https://cdn.example/mochi.glb' })).model3dUrl,
+    ).toBe('https://cdn.example/mochi.glb');
+    // Empty string ⇒ no model ⇒ undefined, so the viewer button never mounts model-viewer on an empty src.
+    expect(toProductDetailView(apiProduct({ model3dUrl: '' })).model3dUrl).toBeUndefined();
+  });
+
   it('drops empty-string image URLs so a broken src never reaches <img>', () => {
     expect(toProductDetailView(apiProduct({ images: [] })).images).toEqual([]);
     expect(toProductDetailView(apiProduct({ images: [''] })).images).toEqual([]);

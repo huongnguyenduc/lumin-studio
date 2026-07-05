@@ -12,6 +12,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@google/model-viewer": "^4.3.1",
     "@lumin/api-client": "workspace:*",
     "@lumin/core": "workspace:*",
     "@lumin/ui": "workspace:*",

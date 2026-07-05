@@ -15,14 +15,16 @@ import {
   type ProductDetailView,
 } from '@/lib/product-view';
 import { EngraveField } from './engrave-field';
+import { Model3dViewer } from './model-3d-viewer';
 
 /**
  * Product detail (/san-pham/{slug}). Data is fetched server-side (page.tsx → lib/catalog) and passed in;
  * this is a client component for the local color/gallery selection state only. Scope (P1-h): media +
  * name + price + rating + description + specs + colour swatches, with the "Thêm vào giỏ" CTA LOCKED
- * until an in-stock colour is chosen (spec §03 / plan §3). The cart action, quantity, engrave/option
- * pickers, 360° viewer and the reviews section are later PRs (P1-k / P1-j / P1-i / P1-m) — the CTA's
- * click is intentionally unwired here; P1-k adds `onClick` + the cart Selection.
+ * until an in-stock colour is chosen (spec §03 / plan §3). The on-demand 3D viewer (P1-i) is wired via
+ * Model3dViewer when the product carries a `.glb`; the sprite-first 360° hover (ADR-007) is still
+ * deferred (no spriteUrl in the contract until the render-worker emits sprite-sheets). The reviews
+ * section is P1-m.
  *
  * Money: displays basePrice via PriceTag/@lumin/core only — never sums basePrice + colour/option deltas
  * on the client (conventions §Tiền: tổng tính ở server; the live per-selection total is POST
@@ -98,7 +100,8 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
       </nav>
 
       <div className="flex flex-col gap-8 md:flex-row md:gap-9">
-        {/* Media — static cover + thumbnail gallery. 360°/sprite + model-viewer are P1-i. */}
+        {/* Media — static cover + thumbnail gallery, then the on-demand 3D viewer (P1-i) when present.
+            Sprite-first 360° hover (ADR-007) is deferred (no spriteUrl in the contract yet). */}
         <div className="md:w-[460px] md:shrink-0">
           <div className="aspect-square overflow-hidden rounded-lg bg-surface-sunken">
             {cover ? (
@@ -130,6 +133,12 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
                 </li>
               ))}
             </ul>
+          ) : null}
+
+          {/* On-demand 3D viewer (P1-i). Only rendered when the product has a .glb; the component itself
+              loads model-viewer on click and hides itself when WebGL is unavailable. */}
+          {product.model3dUrl ? (
+            <Model3dViewer src={product.model3dUrl} productName={product.name} />
           ) : null}
         </div>
 
