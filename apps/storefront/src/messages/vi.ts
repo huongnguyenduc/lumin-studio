@@ -208,6 +208,51 @@ export const vi = {
     errorBody: 'Mất kết nối một chút — thử lại giúp mình nhé.',
     retry: 'Thử lại',
   },
+  // Guest order lookup /tra-cuu-don (P1-o). The tracker: a code + phone form → a status timeline with
+  // auto-poll. Status LABELS come from @lumin/core (core.orderStatus.*, shared with the account P1-s);
+  // this is the surrounding screen copy. noindex (private, per-order). Sentence case, warm voice.
+  lookup: {
+    // <title> — kept out of the index (see the route's generateMetadata robots).
+    metaTitle: 'Tra cứu đơn — Lumin Studio',
+    heading: 'Tra cứu đơn',
+    intro: 'Nhập mã đơn và số điện thoại đặt hàng để xem tình trạng đơn nhé.',
+    codeLabel: 'Mã đơn',
+    // A code SAMPLE, not a real total — plain digits, no grouping (messages.test forbids grouped numbers).
+    codePlaceholder: 'VD: #LMN-1000',
+    phoneLabel: 'Số điện thoại',
+    phonePlaceholder: '0912 345 678',
+    submit: 'Tra cứu',
+    // Both fields are required — client guard before the round-trip (and before the rate budget).
+    formError: 'Nhập cả mã đơn và số điện thoại giúp mình nhé.',
+    // Loading (first lookup in flight).
+    searching: 'Đang tìm đơn…',
+    // Result header. {code} is the order code the guest supplied (echoed back, e.g. "#LMN-1000").
+    resultHeading: 'Đơn {code}',
+    timelineHeading: 'Trạng thái',
+    // Visually-hidden marker appended to the current step in the timeline.
+    currentStep: 'bước hiện tại',
+    // Auto-poll affordance: `live` while updating, `paused` after the 10-minute ceiling (with refresh).
+    live: 'Đang tự cập nhật tình trạng…',
+    paused: 'Đã tạm dừng tự cập nhật — bấm làm mới để xem tình trạng mới nhất.',
+    refresh: 'Làm mới',
+    // Carrier waybill — shown once the order is shipping (contract surfaces it from SHIPPING onward).
+    trackingLabel: 'Mã vận đơn',
+    // Close-state notes (the order left the happy path). The status pill carries the name.
+    cancelledNote: 'Đơn này đã huỷ. Cần hỗ trợ thì liên hệ shop giúp mình nhé.',
+    refundedNote: 'Đơn này đã được hoàn tiền. Cần hỗ trợ thì liên hệ shop giúp mình nhé.',
+    // Not found — uniform for an unknown code OR a phone mismatch (no enumeration signal, ADR-032).
+    notFoundTitle: 'Không tìm thấy đơn khớp',
+    notFoundBody:
+      'Kiểm tra lại mã đơn và số điện thoại giúp mình, hoặc liên hệ shop để được hỗ trợ nhé.',
+    contactCta: 'Liên hệ shop',
+    // Rate limited — too many lookups on one code in a short window (server 429).
+    rateLimitedTitle: 'Thử lại sau một chút nhé',
+    rateLimitedBody: 'Mình nhận hơi nhiều lượt tra cho mã này — chờ một lát rồi thử lại giúp mình.',
+    // Generic transient error (network / 5xx). Offers retry.
+    errorTitle: 'Có gì đó chưa ổn',
+    errorBody: 'Mất kết nối một chút — thử lại giúp mình nhé.',
+    retry: 'Thử lại',
+  },
 } as const;
 
 export type StorefrontMessages = typeof vi;
