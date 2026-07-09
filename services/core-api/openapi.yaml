@@ -208,11 +208,11 @@ paths:
               $ref: '#/components/schemas/CreateOrderInput'
       responses:
         '201':
-          description: Order created.
+          description: Order created — the order plus its phone-less tracking token (P2-i).
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Order'
+                $ref: '#/components/schemas/CreateOrderResult'
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/Unprocessable' }
@@ -290,6 +290,49 @@ paths:
       responses:
         '200':
           description: The code + phone matched; the public order timeline is returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicOrderTimeline'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /orders/track:
+    get:
+      tags: [orders]
+      operationId: trackOrder
+      summary: Public phone-less order tracking by code + HMAC capability token.
+      description: >
+        Phone-less order tracking (P2-i, D-P2-8) behind the confirmation-screen link
+        `/o/{code}-{token}`. The token is an HMAC capability the server returned once from POST /orders
+        (CreateOrderResult.trackingToken); it is verified in constant time and IS the authorization — no
+        phone, no account. Returns the SAME minimal PublicOrderTimeline as GET /orders/lookup — NEVER the
+        internal Order (no customer PII, address, line items, money, payment/refund proof, note, or the
+        statusHistory actor/reason; ADR-032). An unknown code and a present-but-wrong token return the
+        SAME 404 NOT_FOUND (no order-existence enumeration); an ABSENT `code`/`token` is a 400 VALIDATION
+        (required param), fired before any DB read so it is uniform regardless of whether the code exists.
+        A per-code token bucket (shared with lookup) throttles token-guessing (the Cloudflare WAF is the
+        per-IP layer). The `token` param carries NO schema pattern on purpose — a present malformed token
+        must funnel to the same 404, not a 400.
+      parameters:
+        - name: code
+          in: query
+          required: true
+          description: The order code shown at checkout (e.g. "#LMN-1000").
+          schema:
+            type: string
+        - name: token
+          in: query
+          required: true
+          description: >
+            The trackingToken returned from the order-create response. A present but mismatched (or
+            malformed) value returns the uniform 404; an ABSENT token is a 400 (required param).
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The code + token matched; the public order timeline is returned.
           content:
             application/json:
               schema:
@@ -1387,6 +1430,23 @@ components:
         createdAt:
           type: string
           format: date-time
+
+    CreateOrderResult:
+      type: object
+      description: >
+        The POST /orders 201 body: the created Order plus its phone-less tracking token (P2-i, D-P2-8).
+        trackingToken is an HMAC capability derived from the order code and is returned ONLY here — never
+        on the Order schema or any read endpoint — so it stays out of every surface that echoes an order.
+        The storefront keeps it from this response to build the confirmation-screen link /o/{code}-{token}
+        that GET /orders/track verifies without a phone. It is NOT stored (recomputed on the read), so no
+        migration is needed and rotating TRACKING_SECRET invalidates every outstanding link.
+      required: [order, trackingToken]
+      properties:
+        order:
+          $ref: '#/components/schemas/Order'
+        trackingToken:
+          type: string
+          description: HMAC capability token for GET /orders/track. Opaque; treat as a bearer secret.
 
     # --- Inputs -----------------------------------------------------------------------------------
     CreateOrderInput:

@@ -6,6 +6,35 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**➡️ PHASE 2 STATUS (2026-07-10):** **P2-a/P2-b/P2-c/P2-h MERGED** (#53/#52/**#55**/#54; `main`=`c44c06c`). **🔨 P2-i
+(`GET /orders/track?code=&token=` phone-less tokenized tracking + `trackingToken` trong order-create 201) — BUILT + FULLY
+VERIFIED + REVIEWED on `feat/phase-2-checkout-p2i` (off `main` `c44c06c`).** Implements D-P2-8: token =
+**`base64url(HMAC-SHA256(TRACKING_SECRET, orderCode))`** — capability deterministic, **KHÔNG migration/KHÔNG cột** (recompute
+lúc đọc). New `internal/httpapi/track.go` (`trackingSigner` HMAC + `TrackOrder` handler) **mirror `LookupOrder` verbatim**:
+reuse `s.lookup` per-code token-bucket (CHUNG với lookup), `publicTimelineDTO` (cùng ADR-032 whitelist), uniform-404
+code-lạ==token-sai (no enumeration), **constant-time `hmac.Equal`**. `POST /orders` 201 → **`CreateOrderResult {order,
+trackingToken}`** (additive; token **chỉ** ở 201, không lộ endpoint đọc nào khác — 1 dòng đổi ở `mustCreateOrder`). Config
+**`TrackingSecret`** + **`UsesForgeableTrackingSecret`** fail-fast (reuse `ALLOW_DEV_JWT_SECRET` opt-in) + main.go
+fail-fast/Warn + `WithTrackingSecret` wiring (BLOCKER-F). `middleware_auth` classify **`TrackOrder=authPublic`** (fail-closed
+default sẽ 401 link công khai — REAL catch: integration test drives no-cookie router → 200). **`ponytail:` base64url thay
+base62** (plan literal) — stdlib/URL-safe, token opaque, FE owns `/o/{code}-{token}` parse. **No new dep · no new ADR**
+(implements D-P2-8; reuse ADR-030 forgeable-secret / ADR-032 whitelist / ADR-034 token-bucket). **Verify (colima up):**
+`make verify-go` ✓ (gofmt·vet·golangci **0**·sqlc vet/diff·oapi stale-check·`go test -race` incl. **real-PG
+`TestTrackOrderEndToEnd`**) · `pnpm verify` 6/6 (schema.gen.ts stale-gate + prettier) · guard **164/0** (**+1 TRK ARM**:
+`hmac.Equal` + `s.lookup.allow` + main `UsesForgeableTrackingSecret` + classify authPublic — **PROVEN binding** mutate
+`hmac.Equal`→`==` → RED → restore → green). Docker-free `TestTrackingSignerRoundTrip` (determinism/tamper/normalize/secret-keyed)
++ `config.TestUsesForgeableTrackingSecret`. Acceptance **`TRK-01`** (Go-gated `[ ]`) + ops `TRACKING_SECRET` doc (§4b). 16 files
+/ +642 (codegen-heavy: api.gen.go/schema.gen.ts). **Review IN-FLIGHT:** spec-guardian + adversarial-security (attack
+enumeration/forgeability/timing/DTO-leak). **Review DONE:** spec-guardian **PASS** (0 BLK / 2 WARN / 3 NOTE); adversarial
+**0 exploitable** (7 angles traced vs audited LookupOrder). **WARN-1 FIXED** (openapi + TRK-01 said absent-token→404, code
+đúng trả 400 required-param → reworded: present-wrong-token→uniform-404, ABSENT code/token→400 pre-DB uniform, không oracle;
+regen'd api.gen.go/schema.gen.ts, stale-check re-clean). Adversarial NOTE-1 addressed: ops note edge access-log KHÔNG giữ
+query-string cho `/orders/track` (token in URL = bearer). WARN-2/3 (base64url plan-drift · no-new-ADR) + NOTE-2/3 (no
+per-token revoke · shared ALLOW_DEV switch) = accepted/informational. **NEXT after P2-i lands = FE journey chain P2-d→e→f→g** (mọi seam BE/infra/content
+`P2-a/b/c/i/h` giờ đủ). **Owner ops trước P2-f go-live:** Garage bucket/key/CORS/lifecycle bootstrap + Caddy handle +
+Cloudflare-Tunnel ingress hostname (home box; infra/README).
+
+**— P2-c/earlier Phase-2 history below (P2-c now MERGED #55, `main`=`c44c06c`) —**
 **➡️ PHASE 2 STATUS (2026-07-09):** **P2-a/P2-b/P2-h MERGED** (#53/#52/#54; `main`=`608ec46`). **🔨 P2-c
 (`POST /checkout/payment-proof-upload` presigned POST + retention) — BUILT + FULLY VERIFIED on `feat/phase-2-checkout-p2c`,
 uncommitted.** A parallel **Codex** session had scaffolded P2-c hand-rolling the SigV4 POST policy; per two owner decisions

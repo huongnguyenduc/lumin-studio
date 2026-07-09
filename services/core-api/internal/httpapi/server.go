@@ -59,6 +59,10 @@ type Server struct {
 	// still the per-IP layer; this in-process bucket keeps a missing/misconfigured edge rule from
 	// turning one unauthenticated endpoint into unlimited valid 10MB upload policies.
 	proofUploadLimiter *paymentProofUploadLimiter
+	// tracking mints/verifies the phone-less order-tracking capability token (P2-i, D-P2-8). Never nil:
+	// NewServer defaults it to a dev-secret signer so unit tests need no wiring, and WithTrackingSecret
+	// (called by main.go with the real TRACKING_SECRET) overrides it. See track.go.
+	tracking *trackingSigner
 }
 
 // ServerOption customizes an optional Server dependency without churning every existing
@@ -81,6 +85,14 @@ func WithPaymentProofUploads(store *proofstore.Store) ServerOption {
 	return func(s *Server) { s.proofUploads = store }
 }
 
+// WithTrackingSecret sets the HMAC key for the phone-less order-tracking token (P2-i, D-P2-8).
+// main.go passes the resolved TRACKING_SECRET (having fail-fasted on the forgeable dev value); unit
+// tests that don't wire it fall back to NewServer's dev-secret default (track.go), so the signer is
+// never nil on either the checkout-201 mint path or the GET /orders/track verify path.
+func WithTrackingSecret(secret string) ServerOption {
+	return func(s *Server) { s.tracking = newTrackingSigner(secret) }
+}
+
 // NewServer builds the handler root. pool/nats may be nil in unit tests that don't
 // exercise those dependencies (readiness then skips the corresponding check); auth may be
 // nil in tests that don't hit the login handler. opts wire optional dependencies (e.g. the
@@ -94,6 +106,7 @@ func NewServer(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus, authIss
 		users:              db.NewIdentity(pool),
 		lookup:             newLookupLimiter(defaultLookupLimits()),
 		proofUploadLimiter: newPaymentProofUploadLimiter(defaultPaymentProofUploadLimits()),
+		tracking:           newTrackingSigner(devTrackingSecret),
 	}
 	for _, opt := range opts {
 		opt(s)

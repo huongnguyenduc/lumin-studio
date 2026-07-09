@@ -77,6 +77,15 @@ type Config struct {
 	// token this slice (ADR-030). Override via CUSTOMER_JWT_TTL (Go duration, e.g. "720h").
 	CustomerJWTTTL time.Duration
 
+	// TrackingSecret is the HMAC key for the phone-less order-tracking capability token (P2-i,
+	// D-P2-8): the token is base64url(HMAC-SHA256(TrackingSecret, orderCode)), returned once from
+	// POST /orders and verified constant-time by GET /orders/track. REQUIRED in production — the
+	// well-known DevTrackingSecret fallback yields FORGEABLE tokens, letting anyone derive any order's
+	// tracking link and read its timeline. main.go fail-fasts on the dev fallback without the
+	// ALLOW_DEV_JWT_SECRET opt-in (the same dev-mode switch that covers the JWT realms). No column is
+	// stored (the token is recomputed on read), so rotating this invalidates every outstanding link.
+	TrackingSecret string
+
 	// PaymentProofUploads configures the presigned POST surface that lets the storefront upload a
 	// receipt image directly to Garage/S3 before POST /orders references the returned finalUrl.
 	PaymentProofUploads PaymentProofUploadConfig
@@ -148,6 +157,21 @@ func (c Config) UsesForgeableCustomerJWTSecret() bool {
 	return c.CustomerJWTSecret == DevCustomerJWTSecret && !c.AllowDevJWTSecret
 }
 
+// DevTrackingSecret is the fallback HMAC key for the phone-less order-tracking token when
+// TRACKING_SECRET is unset. Deliberately NOT a secret — it only keeps local dev + `make verify-go`
+// running with no env. Production MUST set TRACKING_SECRET: a known key lets anyone compute the
+// capability token for any order code and read its timeline via GET /orders/track. main.go refuses to
+// start on it without ALLOW_DEV_JWT_SECRET (P2-i BLOCKER-F).
+const DevTrackingSecret = "lumin-dev-insecure-tracking-secret-do-not-use-in-prod"
+
+// UsesForgeableTrackingSecret reports whether GET /orders/track would verify tokens signed with the
+// public DevTrackingSecret fallback WITHOUT an explicit opt-in (ALLOW_DEV_JWT_SECRET) — a forgeable
+// capability that would let anyone track any order (P2-i, D-P2-8). main.go fail-fasts on it, exactly
+// like the JWT secrets. A real TRACKING_SECRET, or the dev default WITH the opt-in, both return false.
+func (c Config) UsesForgeableTrackingSecret() bool {
+	return c.TrackingSecret == DevTrackingSecret && !c.AllowDevJWTSecret
+}
+
 // RealmSecretsCollide reports whether the admin and customer realms would sign with the SAME secret
 // (PR-P1-r). ADR-030's realm isolation is *cryptographic*: the two secrets must differ, or an admin
 // token could validate as a customer session (and vice versa) and the separation collapses to mere
@@ -179,6 +203,7 @@ func Load() Config {
 		AllowDevJWTSecret: getenvBool("ALLOW_DEV_JWT_SECRET", false),
 		CustomerJWTSecret: getenv("CUSTOMER_JWT_SECRET", DevCustomerJWTSecret),
 		CustomerJWTTTL:    getenvDuration("CUSTOMER_JWT_TTL", 720*time.Hour),
+		TrackingSecret:    getenv("TRACKING_SECRET", DevTrackingSecret),
 		PaymentProofUploads: PaymentProofUploadConfig{
 			S3Endpoint:      getenv("PAYMENT_PROOF_S3_ENDPOINT", "http://127.0.0.1:3900"),
 			S3Region:        getenv("PAYMENT_PROOF_S3_REGION", "garage"),

@@ -166,7 +166,10 @@ func (s *Server) CreateOrder(ctx context.Context, req api.CreateOrderRequestObje
 	if err != nil {
 		return nil, err // domain/db error → mapError (handleResponseError)
 	}
-	return api.CreateOrder201JSONResponse(dto), nil
+	// Mint the phone-less tracking token (P2-i, D-P2-8) from the order code and return it ONLY here
+	// (never on the Order schema or a read endpoint). It is a deterministic HMAC of the code, so the
+	// GET /orders/track read recomputes and constant-time-verifies it — no column, no migration.
+	return api.CreateOrder201JSONResponse{Order: dto, TrackingToken: s.tracking.token(dto.Code)}, nil
 }
 
 const (

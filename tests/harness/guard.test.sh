@@ -655,6 +655,29 @@ if [ -f "$CFG" ]; then
     bad "ARM: httpapi/checkout_config.go LAND nhưng thiếu 1 trong {vietQRImageURL server-build từ STK, classify GetCheckoutConfig=authPublic} -> QR có thể tráo qua input client / config kẹt sau auth (money/QR-integrity — P2-a!)"
   fi
 else ok "ARM: chưa có httpapi/checkout_config.go (checkout config/QR arm khi land — PR-P2-a)"; fi
+# ARM PR-P2-i (phone-less tracking token): khoá 3 bất biến của GET /orders/track + create-201 token —
+#  (a) verify token CONSTANT-TIME (hmac.Equal) — KHÔNG so sánh chuỗi thường (rò byte-position qua timing) →
+#      cùng uniform 404 với code lạ (chống enumerate đơn); bỏ hmac.Equal → RED;
+#  (b) rate-limit per-code (s.lookup.allow trước khi đọc DB) chống dò token của một mã đã biết (reuse bucket
+#      lookup — ADR-034); bỏ → dò không giới hạn → RED;
+#  (c) main.go fail-fast khi TRACKING_SECRET là dev-secret không opt-in (UsesForgeableTrackingSecret) — token
+#      capability giả-mạo-được → theo dõi đơn BẤT KỲ (BLOCKER-F, như JWT_SECRET); bỏ → RED. Thêm: classify
+#      TrackOrder=authPublic (fail-closed default sẽ 401 link theo dõi công khai). Bỏ dòng comment ('//') trước
+#      khi soi để một wiring bị COMMENT-OUT không false-PASS (cùng class lỗ '//' của relay-ARM 3b).
+TRACK="$ROOT/services/core-api/internal/httpapi/track.go"
+if [ -f "$TRACK" ]; then
+  TRACKBODY="$(grep -vE '^[[:space:]]*//' "$TRACK" 2>/dev/null)"
+  MAINBODY3="$(grep -vE '^[[:space:]]*//' "$ROOT/services/core-api/cmd/core-api/main.go" 2>/dev/null)"
+  TRACKMWBODY="$(grep -vE '^[[:space:]]*//' "$ROOT/services/core-api/internal/httpapi/middleware_auth.go" 2>/dev/null)"
+  if printf '%s' "$TRACKBODY" | grep -q 'hmac.Equal' \
+     && printf '%s' "$TRACKBODY" | grep -q 's.lookup.allow' \
+     && printf '%s' "$MAINBODY3" | grep -q 'UsesForgeableTrackingSecret' \
+     && printf '%s' "$TRACKMWBODY" | grep -A2 '"TrackOrder"' | grep -q 'authPublic'; then
+    ok "ARM: có httpapi/track.go -> verify token constant-time (hmac.Equal) + rate-limit per-code (s.lookup.allow) + main.go fail-fast UsesForgeableTrackingSecret + classify TrackOrder=authPublic (token capability không giả/không enumerate/không dò/không kẹt sau auth — D-P2-8/BLOCKER-F)"
+  else
+    bad "ARM: httpapi/track.go LAND nhưng thiếu 1 trong {hmac.Equal constant-time verify, s.lookup.allow rate-limit, main.go UsesForgeableTrackingSecret fail-fast, classify TrackOrder=authPublic} -> token so-sánh rò timing / dò không giới hạn / secret giả-mạo-được → theo dõi đơn bất kỳ / link công khai kẹt sau auth (D-P2-8!)"
+  fi
+else ok "ARM: chưa có httpapi/track.go (phone-less tracking arm khi land — PR-P2-i)"; fi
 # ARM PR-3i (dashboard aggregate): khoá bất biến NET-REVENUE (spec §04) của GET /admin/dashboard —
 #  (a) doanh thu ròng tính theo payment_confirmed_at IS NOT NULL (đã-TỪNG-PAID) + loại REFUNDED, KHÔNG
 #      phải `status IN (PAID,PRINTING,SHIPPING,COMPLETED)` ngây thơ — status-IN sẽ RỚT doanh thu
