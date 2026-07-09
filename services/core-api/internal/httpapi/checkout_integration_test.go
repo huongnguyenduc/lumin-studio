@@ -140,9 +140,14 @@ func mustCreateOrder(t *testing.T, srv *Server, ctx context.Context, raw string)
 	}
 	created, ok := resp.(api.CreateOrder201JSONResponse)
 	if !ok {
-		t.Fatalf("resp = %T (%+v), want 201 Order", resp, resp)
+		t.Fatalf("resp = %T (%+v), want 201 CreateOrderResult", resp, resp)
 	}
-	return api.Order(created)
+	// The 201 body carries the phone-less tracking token (P2-i) alongside the order; every web/inbox
+	// create must mint one so the confirmation screen can build the /o/{code}-{token} link.
+	if created.TrackingToken == "" {
+		t.Fatalf("CreateOrder 201 missing trackingToken (order %s)", created.Order.Code)
+	}
+	return created.Order
 }
 
 // CHK-04 (positive half) + the full guest money path: a guest web order prices every line from

@@ -177,6 +177,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orders/track": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public phone-less order tracking by code + HMAC capability token.
+         * @description Phone-less order tracking (P2-i, D-P2-8) behind the confirmation-screen link `/o/{code}-{token}`. The token is an HMAC capability the server returned once from POST /orders (CreateOrderResult.trackingToken); it is verified in constant time and IS the authorization — no phone, no account. Returns the SAME minimal PublicOrderTimeline as GET /orders/lookup — NEVER the internal Order (no customer PII, address, line items, money, payment/refund proof, note, or the statusHistory actor/reason; ADR-032). An unknown code and a present-but-wrong token return the SAME 404 NOT_FOUND (no order-existence enumeration); an ABSENT `code`/`token` is a 400 VALIDATION (required param), fired before any DB read so it is uniform regardless of whether the code exists. A per-code token bucket (shared with lookup) throttles token-guessing (the Cloudflare WAF is the per-IP layer). The `token` param carries NO schema pattern on purpose — a present malformed token must funnel to the same 404, not a 400.
+         */
+        get: operations["trackOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/products": {
         parameters: {
             query?: never;
@@ -713,6 +733,12 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
+        /** @description The POST /orders 201 body: the created Order plus its phone-less tracking token (P2-i, D-P2-8). trackingToken is an HMAC capability derived from the order code and is returned ONLY here — never on the Order schema or any read endpoint — so it stays out of every surface that echoes an order. The storefront keeps it from this response to build the confirmation-screen link /o/{code}-{token} that GET /orders/track verifies without a phone. It is NOT stored (recomputed on the read), so no migration is needed and rotating TRACKING_SECRET invalidates every outstanding link. */
+        CreateOrderResult: {
+            order: components["schemas"]["Order"];
+            /** @description HMAC capability token for GET /orders/track. Opaque; treat as a bearer secret. */
+            trackingToken: string;
+        };
         /** @description Order intake, discriminated on `channel`: `web` (public → PENDING_CONFIRM) vs `inbox` (staff/owner-only → PAID). This is a NAMED schema, not an inline oneOf, so oapi-codegen (strict-server) emits a usable discriminated union (AsCreateWebOrderInput / ValueByDiscriminator) instead of an opaque raw-message body the handler cannot read. */
         CreateOrderInput: components["schemas"]["CreateWebOrderInput"] | components["schemas"]["CreateInboxOrderInput"];
         /** @description Public web order → PENDING_CONFIRM. `paymentProofUrl` (the CK receipt image) is required. If any item carries `personalization`, both `personalizationAck` and `engraveEchoConfirmed` MUST be true (the no-return acknowledgement + engrave-echo step, ADR-012) — enforced server-side. */
@@ -1157,13 +1183,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Order created. */
+            /** @description Order created — the order plus its phone-less tracking token (P2-i). */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Order"];
+                    "application/json": components["schemas"]["CreateOrderResult"];
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -1218,6 +1244,34 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description The code + phone matched; the public order timeline is returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicOrderTimeline"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    trackOrder: {
+        parameters: {
+            query: {
+                /** @description The order code shown at checkout (e.g. "#LMN-1000"). */
+                code: string;
+                /** @description The trackingToken returned from the order-create response. A present but mismatched (or malformed) value returns the uniform 404; an ABSENT token is a 400 (required param). */
+                token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The code + token matched; the public order timeline is returned. */
             200: {
                 headers: {
                     [name: string]: unknown;

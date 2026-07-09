@@ -186,12 +186,15 @@ func TestLoadFallsBackOnInvalidDuration(t *testing.T) {
 }
 
 func TestLoadAuthDefaults(t *testing.T) {
-	for _, k := range []string{"JWT_SECRET", "JWT_TTL", "COOKIE_SECURE", "ALLOW_DEV_JWT_SECRET"} {
+	for _, k := range []string{"JWT_SECRET", "JWT_TTL", "COOKIE_SECURE", "ALLOW_DEV_JWT_SECRET", "TRACKING_SECRET"} {
 		t.Setenv(k, "")
 	}
 	cfg := Load()
 	if cfg.JWTSecret != DevJWTSecret {
 		t.Fatalf("JWTSecret default = %q, want the dev fallback", cfg.JWTSecret)
+	}
+	if cfg.TrackingSecret != DevTrackingSecret {
+		t.Fatalf("TrackingSecret default = %q, want the dev fallback", cfg.TrackingSecret)
 	}
 	if cfg.JWTTTL != 12*time.Hour {
 		t.Fatalf("JWTTTL default = %v, want 12h", cfg.JWTTTL)
@@ -262,6 +265,31 @@ func TestUsesForgeableCustomerJWTSecret(t *testing.T) {
 			cfg := Config{CustomerJWTSecret: tc.secret, AllowDevJWTSecret: tc.allowDev}
 			if got := cfg.UsesForgeableCustomerJWTSecret(); got != tc.want {
 				t.Fatalf("UsesForgeableCustomerJWTSecret() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// The phone-less tracking token's forgeable-secret guard mirrors the JWT ones (P2-i, D-P2-8): a
+// forgeable TRACKING_SECRET lets anyone derive any order's tracking link and read its timeline, so
+// main.go fail-fasts on it. The same ALLOW_DEV_JWT_SECRET opt-in clears it for local dev.
+func TestUsesForgeableTrackingSecret(t *testing.T) {
+	cases := []struct {
+		name     string
+		secret   string
+		allowDev bool
+		want     bool
+	}{
+		{"dev tracking secret, no opt-in → forgeable (refuse start)", DevTrackingSecret, false, true},
+		{"dev tracking secret WITH opt-in → allowed", DevTrackingSecret, true, false},
+		{"real tracking secret → allowed", "a-real-tracking-secret", false, false},
+		{"real tracking secret + stray opt-in → allowed", "a-real-tracking-secret", true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := Config{TrackingSecret: tc.secret, AllowDevJWTSecret: tc.allowDev}
+			if got := cfg.UsesForgeableTrackingSecret(); got != tc.want {
+				t.Fatalf("UsesForgeableTrackingSecret() = %v, want %v", got, tc.want)
 			}
 		})
 	}

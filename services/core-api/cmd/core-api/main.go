@@ -56,11 +56,21 @@ func main() {
 		logger.Error("refusing to start: JWT_SECRET and CUSTOMER_JWT_SECRET are identical — the admin and customer realms would share a signing key, collapsing realm isolation (ADR-030). Set distinct secrets for the two realms.")
 		os.Exit(1)
 	}
+	// The phone-less order-tracking token (P2-i, D-P2-8) is an HMAC capability under TRACKING_SECRET;
+	// a forgeable key lets anyone derive any order's tracking link and read its timeline. Same fatal
+	// guard as the JWT secrets — the ALLOW_DEV_JWT_SECRET opt-in clears it for local dev (BLOCKER-F).
+	if cfg.UsesForgeableTrackingSecret() {
+		logger.Error("refusing to start: TRACKING_SECRET is unset so order-tracking tokens would be signed with the public dev secret (forgeable → anyone can track any order). Set TRACKING_SECRET (production) or ALLOW_DEV_JWT_SECRET=true (local dev only).")
+		os.Exit(1)
+	}
 	if cfg.JWTSecret == config.DevJWTSecret {
 		logger.Warn("signing session JWTs with the INSECURE dev secret (ALLOW_DEV_JWT_SECRET=true) — never use this in production; the tokens are forgeable")
 	}
 	if cfg.CustomerJWTSecret == config.DevCustomerJWTSecret {
 		logger.Warn("signing customer session JWTs with the INSECURE dev secret (ALLOW_DEV_JWT_SECRET=true) — never use this in production; the tokens are forgeable")
+	}
+	if cfg.TrackingSecret == config.DevTrackingSecret {
+		logger.Warn("signing order-tracking tokens with the INSECURE dev secret (ALLOW_DEV_JWT_SECRET=true) — never use this in production; the tokens are forgeable")
 	}
 
 	// Open the pool before serving. pgxpool connects lazily, so this fails fast only
@@ -150,6 +160,7 @@ func main() {
 		Handler: httpapi.NewRouter(logger, pool, nc, authIssuer,
 			httpapi.WithCustomerAuth(customerAuthIssuer),
 			httpapi.WithPaymentProofUploads(proofStore),
+			httpapi.WithTrackingSecret(cfg.TrackingSecret),
 		),
 		// ReadHeaderTimeout covers the Slowloris header vector. Read/Write/Idle
 		// timeouts are intentionally unset for now — TODO(phase-1): source
