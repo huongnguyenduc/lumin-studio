@@ -6,6 +6,23 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**➡️ P2-e (engrave acks on `/thanh-toan` info step) — BUILT + VERIFIED + REVIEWED on `feat/phase-2-checkout-p2e`
+(off `main` `e1234ab`; P2-d #57 MERGED, local main ff'd).** FE-only, **no BE/contract change** — the two ack fields
+already exist on `CreateWebOrderInput` (openapi.yaml:1490-1493), unlike the `note` gap. ADR-012 dual-ack **add-on that
+stacks ON TOP of** P2-d's đổi-trả disclosure (does NOT replace): cart has engraving (`engrave.text.trim()!==''` — exact
+mirror of server `personalizationFrom` non-blank-text, defends tampered localStorage) → render engrave-echo `<ul>` +
+prepay copy + 2 required `@lumin/ui` Checkbox → `personalizationAck` + `engraveEchoConfirmed`. New pure
+`personalizationAckMet(hasP,ack,echo)=!hasP||(ack&&echo)` in `lib/checkout-form.ts` = exact mirror of `checkout.go:241`
+(`anyPersonalization && (!ack||!echo)`); gates "Tiếp tục" via `continueDisabled` **+ Enter-path early-return + `ackHint`
+nudge (no 400)**. Acks carried in `ValidatedCheckout` (optional, true only when personalized → P2-f maps 1:1); non-engraved
+→ section absent, flags omitted (server ignores). **✅ Review DONE:** spec-guardian **PASS** (0 blk/0 warn/0 note —
+server-mirror·stacking·conventions·P2-f-seam verified, incl stale-acks-on-de-engrave + Enter-path); adversarial **0
+correctness bugs**. **Verify:** `pnpm verify` **6/6** — storefront **153** tests incl `checkout-form` **13** (+2 gate
+truth-table). 4 files/+118. **No new dep · no new ADR · no migration.** **Committed → chờ user push+PR-gate.** **NEXT =
+P2-f** (VietQR + proof upload + submit → `POST /orders`; wires cart→checkout entry + must close the `note`-on-web-input
+contract gap).
+
+**— P2-d now MERGED (#57 → `main` `e1234ab`); the "PR #57 OPEN" note below is superseded —**
 **➡️ P2-d (C1 checkout info step `/thanh-toan`) — BUILT + VERIFIED on `feat/phase-2-checkout-p2d` (off `main` `fff5618`;
 P2-i #56 squash-merged, local main ff'd).** FE-only, **no BE/contract change** (reuses P2-a `/checkout/config` + P2-b
 `/price/quote?province`). New: RSC shell `app/thanh-toan/{page,loading}.tsx` (fetch config server-side, **noindex**) → client
