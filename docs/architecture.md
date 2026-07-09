@@ -20,7 +20,7 @@ Nguyên tắc xuyên suốt: **OrderStatus state machine + tính tiền là củ
    │            OpenAPI · SSE · RBAC  ├─ NATS JetStream ───────── Rust Worker ── Blender (Cycles)  │
    │            outbox · tính tiền    │   (WorkQueue, DLQ,          trimesh · gltf-transform · sharp│
    │                                  │    concurrency=1)                                          │
-   │                                  └─ Garage (S3, replication=1) ◄── presigned multipart PUT    │
+   │                                  └─ Garage (S3, replication=1) ◄── model multipart PUT / receipt POST │
    │  Observability: OTel Collector → OpenObserve/Victoria · Uptime Kuma · GlitchTip               │
    │  Analytics: Umami v3.1   |  Backup: WAL-G + restic → offsite   |  Secrets: SOPS + age          │
    └───────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -64,7 +64,7 @@ services/      (Go/Rust — ngoài workspace JS)
 ### 5.1 Kênh `web` (pay-then-confirm — thủ công, ADR-010)
 1. **Màn checkout (chưa tạo đơn):** khách nhập thông tin; server tính `subtotal/shippingFee/total` (theo vùng) để **hiển thị**. Chưa ghi đơn nào xuống DB.
 2. **Màn QR:** hiện **QR tĩnh** (server render từ STK đã lưu; **nội dung/memo CK không bắt buộc**) + hướng dẫn chuyển khoản.
-3. Khách chuyển khoản → **đính ảnh chụp biên lai + bấm xác nhận**. **Chỉ lúc này** frontend mới `POST /orders` → server **tạo đơn** ở `PENDING_CONFIRM` (kèm ảnh CK). Trả về link+mã đơn (email cho khách).
+3. Khách chuyển khoản → frontend xin presigned **POST** cho ảnh biên lai, upload trực tiếp lên Garage, rồi **đính ảnh chụp biên lai + bấm xác nhận**. **Chỉ lúc này** frontend mới `POST /orders` → server **tạo đơn** ở `PENDING_CONFIRM` (kèm URL ảnh CK host-pinned). Trả về link+mã đơn (email cho khách).
 4. Khách theo **link tra cứu đơn** → **màn "chờ xác nhận"** (timeline + thời gian dự kiến + **auto-poll** trạng thái). Chủ shop đối soát **thủ công** (xem ảnh biên lai, đối chiếu số tiền) → bấm 1 chạm "đã nhận CK" → `PAID` (owner-only). UI khách tự lật sang PAID.
 5. `PAID → PRINTING → SHIPPING → COMPLETED`. Đóng đơn `CANCELLED` (không hoàn) / `REFUNDED` (đã hoàn — owner-only) — bắt buộc `reason`.
 

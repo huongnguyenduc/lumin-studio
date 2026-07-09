@@ -60,6 +60,17 @@ docker compose exec garage /garage layout apply --version 1
 # tạo bucket + key cho app (Phase 0 có thể làm khi core-api cần)
 ```
 
+### Payment-proof bucket (Phase 2 P2-c)
+
+Checkout receipt images use a **dedicated** Garage bucket, not the catalog/model asset bucket. Configure:
+
+- bucket name matching `PAYMENT_PROOF_BUCKET` (default `lumin-payment-proofs`);
+- an S3 key scoped to that bucket, wired as `PAYMENT_PROOF_ACCESS_KEY_ID` / `PAYMENT_PROOF_SECRET_ACCESS_KEY`;
+- bucket CORS allowing the storefront origin to `POST` form uploads with `Content-Type` and `x-amz-*` fields;
+- an object-age **lifecycle rule** as the orphan backstop (abandoned uploads that never became an order). The order-linked deletion — receipt images ~90 days after the order reaches a terminal state — is done by the core-api **retention sweeper** (`PAYMENT_PROOF_RETENTION` / `PAYMENT_PROOF_SWEEP_INTERVAL`), not the lifecycle rule (ADR-035).
+
+The core-api signs a presigned POST policy with MIME + size constraints; it never proxies the image body.
+
 ## Secrets
 
 `.env` thật **bị gitignore** (`!.env.example` là exception). Prod: lưu mã hoá **SOPS + age** trong repo,

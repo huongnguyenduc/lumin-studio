@@ -297,6 +297,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/checkout/payment-proof-upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a presigned POST form for one payment-proof image upload.
+         * @description Public checkout upload bootstrap (P2-c). Returns a browser-ready S3/Garage presigned POST form for exactly one receipt image, plus the host-pinned `finalUrl` the storefront will later send as `paymentProofUrl` to POST /orders. The server generates a random, non-PII object key and signs a POST policy with `content-length-range` (≤10MB by default) and exact `Content-Type` (`image/jpeg`, `image/png`, or `image/webp`). The policy TTL is short (≤5 minutes by default). The browser MUST upload directly to `uploadUrl` with every returned field and the file part; the core-api never proxies the image body through the Cloudflare tunnel. Retention is handled by the dedicated bucket lifecycle / GC runbook (ADR-035): receipt images are kept only long enough for dispute handling, then deleted about 90 days after the order reaches a terminal state.
+         */
+        post: operations["createPaymentProofUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/dashboard": {
         parameters: {
             query?: never;
@@ -801,6 +821,41 @@ export interface components {
             /** @description Refund/return policy text shown before purchase (compliance §3). May be empty if unset. */
             refundPolicy: string;
         };
+        /** @description Browser upload bootstrap for one payment-proof receipt image. The server does not accept a file name or client-declared size here: the object key is generated server-side with no PII, and the actual size/type gate lives in the signed S3 POST policy. */
+        PaymentProofUploadInput: {
+            /**
+             * @description Exact image MIME type the returned POST policy will allow.
+             * @enum {string}
+             */
+            contentType: "image/jpeg" | "image/png" | "image/webp";
+        };
+        /** @description A short-lived, browser-ready S3/Garage POST form. Submit every `fields` entry and the file part to `uploadUrl`; after a successful direct upload, send `finalUrl` as `paymentProofUrl` in POST /orders. `finalUrl` is host-pinned by the server and never derived from browser input. */
+        PaymentProofUpload: {
+            /**
+             * Format: uri
+             * @description S3/Garage form POST target, usually the bucket endpoint.
+             */
+            uploadUrl: string;
+            /** @description Exact form fields to include before the file part. */
+            fields: {
+                [key: string]: string;
+            };
+            /**
+             * Format: uri
+             * @description Host-pinned object URL later passed as `paymentProofUrl` to POST /orders.
+             */
+            finalUrl: string;
+            /**
+             * Format: date-time
+             * @description Policy expiration timestamp.
+             */
+            expiresAt: string;
+            /**
+             * Format: int64
+             * @description Maximum object size enforced by the signed POST policy.
+             */
+            maxBytes: number;
+        };
         /** @description An extension reply template (spec §02). */
         ReplyTemplate: {
             /** Format: uuid */
@@ -926,7 +981,7 @@ export interface components {
                 "application/json": components["schemas"]["ErrorEnvelope"];
             };
         };
-        /** @description Rate limit or lockout tripped (RATE_LIMITED) — too many lookup attempts for this order code. The client should back off (P1-o auto-poll respects this). No Retry-After is exposed so the exact lockout window is not leaked. */
+        /** @description Rate limit tripped (RATE_LIMITED) — too many requests to a public guarded endpoint. The client should back off. No Retry-After is exposed so the exact limiter window is not leaked. */
         TooManyRequests: {
             headers: {
                 [name: string]: unknown;
@@ -1381,6 +1436,32 @@ export interface operations {
                 };
             };
             422: components["responses"]["Unprocessable"];
+        };
+    };
+    createPaymentProofUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentProofUploadInput"];
+            };
+        };
+        responses: {
+            /** @description Browser-ready POST target, form fields, and the host-pinned final object URL. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaymentProofUpload"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            429: components["responses"]["TooManyRequests"];
         };
     };
     getDashboard: {

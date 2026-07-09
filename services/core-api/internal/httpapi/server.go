@@ -13,6 +13,7 @@ import (
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/auth"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/proofstore"
 )
 
 // userReader is the slice of the identity repository the auth layer needs: a by-email lookup
@@ -49,6 +50,15 @@ type Server struct {
 	// param so the existing call sites stay unchanged; tests that exercise the lockout path swap in a
 	// tight limiter directly (same package). See ratelimit.go.
 	lookup *lookupLimiter
+	// proofUploads signs presigned POST policies for payment receipt images (P2-c). Nil means the
+	// environment has not wired S3/Garage credentials; the endpoint then fails closed with a 500 rather
+	// than issuing a spoofable or partial upload contract. Built once in main.go and shared with the
+	// retention sweeper, so the upload host-pin and the delete target share one set of rules.
+	proofUploads *proofstore.Store
+	// proofUploadLimiter is a small global token bucket for the public upload signer. The edge WAF is
+	// still the per-IP layer; this in-process bucket keeps a missing/misconfigured edge rule from
+	// turning one unauthenticated endpoint into unlimited valid 10MB upload policies.
+	proofUploadLimiter *paymentProofUploadLimiter
 }
 
 // ServerOption customizes an optional Server dependency without churning every existing
@@ -63,18 +73,27 @@ func WithCustomerAuth(issuer *auth.Issuer) ServerOption {
 	return func(s *Server) { s.customerAuth = issuer }
 }
 
+// WithPaymentProofUploads wires the Garage/S3 signer used by POST /checkout/payment-proof-upload.
+// main.go builds the store once (sharing it with the retention sweeper) and passes it here; a nil
+// store — invalid/absent S3 config — makes the public endpoint fail closed at request time, while
+// main.go still boots because local development may not exercise checkout uploads.
+func WithPaymentProofUploads(store *proofstore.Store) ServerOption {
+	return func(s *Server) { s.proofUploads = store }
+}
+
 // NewServer builds the handler root. pool/nats may be nil in unit tests that don't
 // exercise those dependencies (readiness then skips the corresponding check); auth may be
 // nil in tests that don't hit the login handler. opts wire optional dependencies (e.g. the
 // customer realm via WithCustomerAuth) without changing the base signature.
 func NewServer(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus, authIssuer *auth.Issuer, opts ...ServerOption) *Server {
 	s := &Server{
-		logger: logger,
-		pool:   pool,
-		nats:   nats,
-		auth:   authIssuer,
-		users:  db.NewIdentity(pool),
-		lookup: newLookupLimiter(defaultLookupLimits()),
+		logger:             logger,
+		pool:               pool,
+		nats:               nats,
+		auth:               authIssuer,
+		users:              db.NewIdentity(pool),
+		lookup:             newLookupLimiter(defaultLookupLimits()),
+		proofUploadLimiter: newPaymentProofUploadLimiter(defaultPaymentProofUploadLimits()),
 	}
 	for _, opt := range opts {
 		opt(s)

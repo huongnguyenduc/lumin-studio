@@ -80,6 +80,10 @@ var reasonRequired = map[Status]bool{Cancelled: true, Refunded: true}
 // IsTerminal reports whether s is a close state with no outgoing edge.
 func IsTerminal(s Status) bool { return terminalStatuses[s] }
 
+// TerminalStatuses returns the close states (no outgoing edge), in a stable order. It is the single
+// source the payment-proof retention sweep (ADR-035) filters on, so the SQL never hardcodes the set.
+func TerminalStatuses() []Status { return []Status{Completed, Cancelled, Refunded} }
+
 // StatusEvent is one appended statusHistory record (spec.md §02 / §04). From is
 // nil only for the creation event.
 type StatusEvent struct {

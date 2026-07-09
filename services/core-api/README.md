@@ -55,3 +55,15 @@ DATABASE_URL=... make migrate        # apply pending up migrations (golang-migra
 Listens on `:8080` by default (override with `PORT`), matching the Caddy
 reverse-proxy and the `core-api` compose service. `DATABASE_URL` defaults to a
 localhost Postgres so build/test stay green with no env set.
+
+## Payment-proof uploads
+
+`POST /checkout/payment-proof-upload` signs a browser direct-upload form for receipt images. Configure:
+
+- `PAYMENT_PROOF_S3_ENDPOINT`, `PAYMENT_PROOF_S3_REGION`, `PAYMENT_PROOF_BUCKET`
+- `PAYMENT_PROOF_PUBLIC_BASE_URL`
+- `PAYMENT_PROOF_ACCESS_KEY_ID`, `PAYMENT_PROOF_SECRET_ACCESS_KEY`
+- optional `PAYMENT_PROOF_KEY_PREFIX`, `PAYMENT_PROOF_POST_TTL`, `PAYMENT_PROOF_MAX_BYTES`
+- retention: `PAYMENT_PROOF_RETENTION` (default `2160h` = 90d) and `PAYMENT_PROOF_SWEEP_INTERVAL` (default `6h`)
+
+Missing or invalid signing config fails the endpoint closed with a generic 500; the server does not issue partial upload URLs. When uploads are configured, a background sweeper deletes each receipt object ~90 days after its order reaches a terminal state and clears the stored URL (ADR-035, PDPL); abandoned uploads are reaped by the bucket lifecycle rule (see `infra/README.md`).

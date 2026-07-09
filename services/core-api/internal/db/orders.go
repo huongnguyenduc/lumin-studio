@@ -64,6 +64,30 @@ func (o *Orders) Items(ctx context.Context, orderID uuid.UUID) ([]sqlc.OrderItem
 	return o.q.ListOrderItems(ctx, orderID)
 }
 
+// PurgeableProofOrders returns terminal orders whose receipt image has outlived the retention window
+// (ADR-035): the terminal-transition time (orders.updated_at) is older than `before` and the proof is
+// still attached. Bounded by limit, oldest-first. The terminal set comes from order.TerminalStatuses()
+// (single source), so the SQL never hardcodes it. The retention sweeper deletes each Garage object,
+// then clears the reference via ClearPaymentProof.
+func (o *Orders) PurgeableProofOrders(ctx context.Context, before time.Time, limit int32) ([]sqlc.ListPurgeableProofOrdersRow, error) {
+	statuses := order.TerminalStatuses()
+	terminal := make([]string, 0, len(statuses))
+	for _, s := range statuses {
+		terminal = append(terminal, string(s))
+	}
+	return o.q.ListPurgeableProofOrders(ctx, sqlc.ListPurgeableProofOrdersParams{
+		Terminal:    terminal,
+		PurgeBefore: pgtype.Timestamptz{Time: before, Valid: true},
+		RowLimit:    limit,
+	})
+}
+
+// ClearPaymentProof nulls an order's payment_proof_url after its Garage object is deleted (ADR-035
+// retention). Idempotent: a re-run on an already-cleared row is a no-op.
+func (o *Orders) ClearPaymentProof(ctx context.Context, id uuid.UUID) error {
+	return o.q.ClearOrderPaymentProof(ctx, id)
+}
+
 // NextOrderCode mints the next order display code (`#LMN-1000`, `#LMN-1001`, …) from the
 // order_code_seq sequence (migration 000010). Call it on an Orders built over the create tx so the
 // code is minted inside the same transaction as CreateOrder; nextval is atomic, so concurrent

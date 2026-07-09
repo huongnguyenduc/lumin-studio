@@ -26,8 +26,10 @@ import (
 // read, these would panic on the nil pool instead of returning the expected rejection.
 
 func testCheckoutServer() *Server {
-	return NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
+	return NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, WithPaymentProofUploads(newTestProofStore()))
 }
+
+const testPaymentProofURL = "https://assets.example.test/private/receipts/proofs/2026/07/06/11111111-2222-3333-4444-555555555555.jpg"
 
 // mkCreateOrderBody decodes a raw JSON body through the same union path the wire uses.
 func mkCreateOrderBody(t *testing.T, raw string) *api.CreateOrderInput {
@@ -46,7 +48,7 @@ func webBody(overrides map[string]any) string {
 		"customer":        map[string]any{"name": "Nguyễn An", "phone": "0901234567"},
 		"shippingAddress": map[string]any{"province": "Hà Nội", "ward": "Cửa Nam", "street": "12 Lý Thường Kiệt"},
 		"items":           []any{map[string]any{"productId": uuid.NewString(), "quantity": 1}},
-		"paymentProofUrl": "https://cdn.example.com/receipt.jpg",
+		"paymentProofUrl": testPaymentProofURL,
 	}
 	for k, v := range overrides {
 		if v == nil {
@@ -195,6 +197,35 @@ func TestCreateOrderWebRequiresPaymentProof(t *testing.T) {
 				t.Fatalf("mapError = %d/%s, want 422/%s", status, env.Code, order.ErrProofRequired)
 			}
 		})
+	}
+}
+
+// P2-c: the web order boundary accepts only finalUrl values under the server-owned proof bucket
+// URL/prefix. A random http(s) URL can no longer bypass the presigned-POST bootstrap.
+func TestCreateOrderWebRequiresHostPinnedPaymentProof(t *testing.T) {
+	srv := testCheckoutServer()
+	for name, proof := range map[string]string{
+		"foreign-host": "https://cdn.example.com/private/receipts/proofs/2026/07/06/11111111-2222-3333-4444-555555555555.jpg",
+		"wrong-path":   "https://assets.example.test/private/other/proofs/2026/07/06/11111111-2222-3333-4444-555555555555.jpg",
+		"wrong-prefix": "https://assets.example.test/private/receipts/avatars/2026/07/06/11111111-2222-3333-4444-555555555555.jpg",
+		"query":        testPaymentProofURL + "?download=1",
+		"bad-key":      "https://assets.example.test/private/receipts/proofs/2026/07/06/not-a-uuid.jpg",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := srv.CreateOrder(context.Background(), api.CreateOrderRequestObject{
+				Body: mkCreateOrderBody(t, webBody(map[string]any{"paymentProofUrl": proof})),
+			})
+			if !errors.Is(err, errPaymentProofRequired) {
+				t.Fatalf("err = %v, want errPaymentProofRequired", err)
+			}
+		})
+	}
+
+	// The pin is not over-strict: the configured store recognises a URL it would itself have minted.
+	// (The uploads-unconfigured path skips the host-pin and lets the STK/shape gates decide — proven by
+	// TestCreateOrderWebRequiresSTK, which reaches the STK gate with no uploads wired.)
+	if !srv.proofUploads.OwnsURL(testPaymentProofURL) {
+		t.Fatalf("testPaymentProofURL must be recognised by the configured store")
 	}
 }
 

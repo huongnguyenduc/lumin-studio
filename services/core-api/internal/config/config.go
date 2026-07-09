@@ -76,6 +76,45 @@ type Config struct {
 	// should not be logged out mid-browse); on expiry the customer simply logs in again — no refresh
 	// token this slice (ADR-030). Override via CUSTOMER_JWT_TTL (Go duration, e.g. "720h").
 	CustomerJWTTTL time.Duration
+
+	// PaymentProofUploads configures the presigned POST surface that lets the storefront upload a
+	// receipt image directly to Garage/S3 before POST /orders references the returned finalUrl.
+	PaymentProofUploads PaymentProofUploadConfig
+	// PaymentProofRetention is how long a receipt image is kept AFTER its order reaches a terminal
+	// status before the retention sweeper deletes it from Garage and clears the DB reference (ADR-035,
+	// PDPL data-minimization — 90 days covers a dispute/chargeback window). Anchored to the terminal
+	// transition (orders.updated_at), NOT to upload time, so a long-running order keeps its proof.
+	PaymentProofRetention time.Duration
+	// PaymentProofSweepInterval is how often the retention sweeper scans for expired receipts. The
+	// scan is cheap (status filter + updated_at bound + LIMIT), so a slow cadence keeps it off the
+	// hot path; a receipt outliving retention by up to one interval is harmless.
+	PaymentProofSweepInterval time.Duration
+}
+
+// PaymentProofUploadConfig holds the S3/Garage signing inputs for checkout receipt images.
+type PaymentProofUploadConfig struct {
+	// S3Endpoint is the internal S3 API endpoint used as the browser POST target, e.g.
+	// http://127.0.0.1:3900 for local Garage or the public S3 endpoint in production.
+	S3Endpoint string
+	// S3Region is the SigV4 credential-scope region. Garage accepts its configured region
+	// string; infra/garage/garage.toml uses "garage".
+	S3Region string
+	// Bucket is the dedicated payment-proof bucket. Keep it separate from public catalog/model
+	// assets because receipt images are PDPL-bearing evidence with a different retention policy.
+	Bucket string
+	// PublicBaseURL is the host-pinned base URL that will later be sent as paymentProofUrl.
+	// It should point at the same bucket through the CDN/Garage web endpoint.
+	PublicBaseURL string
+	// AccessKeyID and SecretAccessKey sign the browser POST policy. They must belong to a key
+	// scoped to the payment-proof bucket in production.
+	AccessKeyID     string
+	SecretAccessKey string
+	// KeyPrefix namespaces generated receipt object keys. It must not include PII.
+	KeyPrefix string
+	// PostTTL is how long the browser form policy is valid.
+	PostTTL time.Duration
+	// MaxBytes is the S3 POST content-length-range upper bound.
+	MaxBytes int64
 }
 
 // DevJWTSecret is the fallback signing secret used when JWT_SECRET is unset. It is
@@ -140,6 +179,19 @@ func Load() Config {
 		AllowDevJWTSecret: getenvBool("ALLOW_DEV_JWT_SECRET", false),
 		CustomerJWTSecret: getenv("CUSTOMER_JWT_SECRET", DevCustomerJWTSecret),
 		CustomerJWTTTL:    getenvDuration("CUSTOMER_JWT_TTL", 720*time.Hour),
+		PaymentProofUploads: PaymentProofUploadConfig{
+			S3Endpoint:      getenv("PAYMENT_PROOF_S3_ENDPOINT", "http://127.0.0.1:3900"),
+			S3Region:        getenv("PAYMENT_PROOF_S3_REGION", "garage"),
+			Bucket:          getenv("PAYMENT_PROOF_BUCKET", "lumin-payment-proofs"),
+			PublicBaseURL:   getenv("PAYMENT_PROOF_PUBLIC_BASE_URL", "http://127.0.0.1:3900/lumin-payment-proofs"),
+			AccessKeyID:     getenv("PAYMENT_PROOF_ACCESS_KEY_ID", ""),
+			SecretAccessKey: getenv("PAYMENT_PROOF_SECRET_ACCESS_KEY", ""),
+			KeyPrefix:       getenv("PAYMENT_PROOF_KEY_PREFIX", "payment-proofs"),
+			PostTTL:         getenvDuration("PAYMENT_PROOF_POST_TTL", 5*time.Minute),
+			MaxBytes:        int64(getenvInt("PAYMENT_PROOF_MAX_BYTES", 10*1024*1024)),
+		},
+		PaymentProofRetention:     getenvDuration("PAYMENT_PROOF_RETENTION", 90*24*time.Hour),
+		PaymentProofSweepInterval: getenvDuration("PAYMENT_PROOF_SWEEP_INTERVAL", 6*time.Hour),
 	}
 }
 

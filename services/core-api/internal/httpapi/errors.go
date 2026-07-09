@@ -130,8 +130,8 @@ func mapError(err error) (int, api.ErrorEnvelope) {
 	case errors.Is(err, errNotImplemented):
 		return http.StatusNotImplemented, envelope(codeNotImplemented)
 	case errors.Is(err, errRateLimited):
-		// Guest order-lookup rate-limit / lockout tripped (PR-P1-n). 429 with no Retry-After so the
-		// exact lockout window is not leaked; the client backs off (P1-o auto-poll respects this).
+		// Public endpoint token-bucket tripped. 429 with no Retry-After so the exact limiter window
+		// is not leaked; clients back off and retry later.
 		return http.StatusTooManyRequests, envelope(codeRateLimited)
 	case errors.Is(err, errTrackingCodeRequired):
 		// SHIPPING with no tracking code — well-formed request, unprocessable per spec §04.

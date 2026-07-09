@@ -55,6 +55,13 @@ const (
 	SHIPPING       OrderStatus = "SHIPPING"
 )
 
+// Defines values for PaymentProofUploadInputContentType.
+const (
+	Imagejpeg PaymentProofUploadInputContentType = "image/jpeg"
+	Imagepng  PaymentProofUploadInputContentType = "image/png"
+	Imagewebp PaymentProofUploadInputContentType = "image/webp"
+)
+
 // Defines values for ProductStatus.
 const (
 	Active   ProductStatus = "active"
@@ -351,6 +358,33 @@ type OrderMilestone struct {
 
 // OrderStatus Order lifecycle status (spec §04). 5 progress milestones + 2 close states.
 type OrderStatus string
+
+// PaymentProofUpload A short-lived, browser-ready S3/Garage POST form. Submit every `fields` entry and the file part to `uploadUrl`; after a successful direct upload, send `finalUrl` as `paymentProofUrl` in POST /orders. `finalUrl` is host-pinned by the server and never derived from browser input.
+type PaymentProofUpload struct {
+	// ExpiresAt Policy expiration timestamp.
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// Fields Exact form fields to include before the file part.
+	Fields map[string]string `json:"fields"`
+
+	// FinalUrl Host-pinned object URL later passed as `paymentProofUrl` to POST /orders.
+	FinalUrl string `json:"finalUrl"`
+
+	// MaxBytes Maximum object size enforced by the signed POST policy.
+	MaxBytes int64 `json:"maxBytes"`
+
+	// UploadUrl S3/Garage form POST target, usually the bucket endpoint.
+	UploadUrl string `json:"uploadUrl"`
+}
+
+// PaymentProofUploadInput Browser upload bootstrap for one payment-proof receipt image. The server does not accept a file name or client-declared size here: the object key is generated server-side with no PII, and the actual size/type gate lives in the signed S3 POST policy.
+type PaymentProofUploadInput struct {
+	// ContentType Exact image MIME type the returned POST policy will allow.
+	ContentType PaymentProofUploadInputContentType `json:"contentType"`
+}
+
+// PaymentProofUploadInputContentType Exact image MIME type the returned POST policy will allow.
+type PaymentProofUploadInputContentType string
 
 // Personalization Per-item engraving (distinct from a Review's text — that field is `body`).
 type Personalization struct {
@@ -669,6 +703,9 @@ type UpdateBankAccountJSONRequestBody = BankAccountUpdate
 // LoginUserJSONRequestBody defines body for LoginUser for application/json ContentType.
 type LoginUserJSONRequestBody = LoginRequest
 
+// CreatePaymentProofUploadJSONRequestBody defines body for CreatePaymentProofUpload for application/json ContentType.
+type CreatePaymentProofUploadJSONRequestBody = PaymentProofUploadInput
+
 // LoginCustomerJSONRequestBody defines body for LoginCustomer for application/json ContentType.
 type LoginCustomerJSONRequestBody = LoginRequest
 
@@ -799,6 +836,9 @@ type ServerInterface interface {
 	// Public checkout config — STK + server-built VietQR image URL + shippable provinces + refund policy.
 	// (GET /checkout/config)
 	GetCheckoutConfig(w http.ResponseWriter, r *http.Request)
+	// Create a presigned POST form for one payment-proof image upload.
+	// (POST /checkout/payment-proof-upload)
+	CreatePaymentProofUpload(w http.ResponseWriter, r *http.Request)
 	// Email + password login for a storefront customer; sets the customer session cookie.
 	// (POST /customer/login)
 	LoginCustomer(w http.ResponseWriter, r *http.Request)
@@ -883,6 +923,12 @@ func (_ Unimplemented) GetCategories(w http.ResponseWriter, r *http.Request, par
 // Public checkout config — STK + server-built VietQR image URL + shippable provinces + refund policy.
 // (GET /checkout/config)
 func (_ Unimplemented) GetCheckoutConfig(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Create a presigned POST form for one payment-proof image upload.
+// (POST /checkout/payment-proof-upload)
+func (_ Unimplemented) CreatePaymentProofUpload(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1120,6 +1166,20 @@ func (siw *ServerInterfaceWrapper) GetCheckoutConfig(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCheckoutConfig(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreatePaymentProofUpload operation middleware
+func (siw *ServerInterfaceWrapper) CreatePaymentProofUpload(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreatePaymentProofUpload(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1613,6 +1673,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/checkout/config", wrapper.GetCheckoutConfig)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/checkout/payment-proof-upload", wrapper.CreatePaymentProofUpload)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/customer/login", wrapper.LoginCustomer)
 	})
 	r.Group(func(r chi.Router) {
@@ -1919,6 +1982,41 @@ type GetCheckoutConfig422JSONResponse struct{ UnprocessableJSONResponse }
 func (response GetCheckoutConfig422JSONResponse) VisitGetCheckoutConfigResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(422)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreatePaymentProofUploadRequestObject struct {
+	Body *CreatePaymentProofUploadJSONRequestBody
+}
+
+type CreatePaymentProofUploadResponseObject interface {
+	VisitCreatePaymentProofUploadResponse(w http.ResponseWriter) error
+}
+
+type CreatePaymentProofUpload200JSONResponse PaymentProofUpload
+
+func (response CreatePaymentProofUpload200JSONResponse) VisitCreatePaymentProofUploadResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreatePaymentProofUpload400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreatePaymentProofUpload400JSONResponse) VisitCreatePaymentProofUploadResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreatePaymentProofUpload429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response CreatePaymentProofUpload429JSONResponse) VisitCreatePaymentProofUploadResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(429)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -2416,6 +2514,9 @@ type StrictServerInterface interface {
 	// Public checkout config — STK + server-built VietQR image URL + shippable provinces + refund policy.
 	// (GET /checkout/config)
 	GetCheckoutConfig(ctx context.Context, request GetCheckoutConfigRequestObject) (GetCheckoutConfigResponseObject, error)
+	// Create a presigned POST form for one payment-proof image upload.
+	// (POST /checkout/payment-proof-upload)
+	CreatePaymentProofUpload(ctx context.Context, request CreatePaymentProofUploadRequestObject) (CreatePaymentProofUploadResponseObject, error)
 	// Email + password login for a storefront customer; sets the customer session cookie.
 	// (POST /customer/login)
 	LoginCustomer(ctx context.Context, request LoginCustomerRequestObject) (LoginCustomerResponseObject, error)
@@ -2681,6 +2782,37 @@ func (sh *strictHandler) GetCheckoutConfig(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCheckoutConfigResponseObject); ok {
 		if err := validResponse.VisitGetCheckoutConfigResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreatePaymentProofUpload operation middleware
+func (sh *strictHandler) CreatePaymentProofUpload(w http.ResponseWriter, r *http.Request) {
+	var request CreatePaymentProofUploadRequestObject
+
+	var body CreatePaymentProofUploadJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreatePaymentProofUpload(ctx, request.(CreatePaymentProofUploadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreatePaymentProofUpload")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreatePaymentProofUploadResponseObject); ok {
+		if err := validResponse.VisitCreatePaymentProofUploadResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

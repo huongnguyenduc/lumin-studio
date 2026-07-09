@@ -75,3 +75,26 @@ SELECT * FROM order_items WHERE order_id = $1;
 -- display handles, not counts).
 -- name: NextOrderCode :one
 SELECT nextval('order_code_seq')::bigint AS n;
+
+-- ListPurgeableProofOrders returns orders whose receipt image has outlived the retention window
+-- (ADR-035): the order is in a terminal status AND its last transition (orders.updated_at, set by
+-- UpdateOrderStatus and never touched again after a close state) is older than the cutoff. The
+-- terminal set is passed in from order.TerminalStatuses() so the SQL never hardcodes it. Oldest-first
+-- + LIMIT bounds one sweep; a nulled row drops out of the payment_proof_url IS NOT NULL filter next
+-- pass. The retention sweeper deletes each Garage object, then clears the reference.
+-- name: ListPurgeableProofOrders :many
+SELECT id, payment_proof_url
+FROM orders
+WHERE payment_proof_url IS NOT NULL
+  AND status::text = ANY(sqlc.arg('terminal')::text[])
+  AND updated_at < sqlc.arg('purge_before')
+ORDER BY updated_at
+LIMIT sqlc.arg('row_limit');
+
+-- ClearOrderPaymentProof nulls the receipt reference after its Garage object has been deleted
+-- (ADR-035 retention). The payment_proof_url IS NOT NULL guard makes a re-run a no-op, so a sweep
+-- that deletes the object but crashes before clearing simply retries idempotently next pass.
+-- name: ClearOrderPaymentProof :exec
+UPDATE orders
+SET payment_proof_url = NULL, updated_at = now()
+WHERE id = sqlc.arg('id') AND payment_proof_url IS NOT NULL;

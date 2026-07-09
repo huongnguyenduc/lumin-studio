@@ -23,7 +23,9 @@ import (
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/httpapi"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/natsx"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/proofstore"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/relay"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/retention"
 )
 
 func main() {
@@ -114,9 +116,41 @@ func main() {
 		<-relayDone
 	}
 
+	// Build the payment-proof upload signer once (P2-c, ADR-035) and share it between the HTTP upload
+	// endpoint and the retention sweeper, so the host-pin and the delete target obey one set of rules.
+	// Invalid/absent S3 config disables both (uploads then fail closed at request time); main.go still
+	// boots so local dev without Garage works.
+	proofStore, err := proofstore.New(cfg.PaymentProofUploads)
+	if err != nil {
+		logger.Warn("payment proof uploads disabled (invalid or absent S3/Garage config)", "err", err)
+		proofStore = nil
+	}
+
+	// Start the payment-proof retention sweeper: one goroutine deleting receipts ~90 days after their
+	// order reaches a terminal status (ADR-035, PDPL). It only runs when uploads are configured (there
+	// is nothing to delete otherwise) and is joined on shutdown BEFORE pool.Close()/proofStore go away,
+	// since it reads the pool and the object client.
+	stopSweeper := func() {}
+	if proofStore != nil {
+		sweepCtx, sweepCancel := context.WithCancel(context.Background())
+		sweepDone := make(chan struct{})
+		sweeper := retention.New(db.NewOrders(pool), proofStore, cfg.PaymentProofRetention, cfg.PaymentProofSweepInterval, logger)
+		go func() {
+			defer close(sweepDone)
+			sweeper.Run(sweepCtx)
+		}()
+		stopSweeper = func() {
+			sweepCancel()
+			<-sweepDone
+		}
+	}
+
 	srv := &http.Server{
-		Addr:    cfg.Addr,
-		Handler: httpapi.NewRouter(logger, pool, nc, authIssuer, httpapi.WithCustomerAuth(customerAuthIssuer)),
+		Addr: cfg.Addr,
+		Handler: httpapi.NewRouter(logger, pool, nc, authIssuer,
+			httpapi.WithCustomerAuth(customerAuthIssuer),
+			httpapi.WithPaymentProofUploads(proofStore),
+		),
 		// ReadHeaderTimeout covers the Slowloris header vector. Read/Write/Idle
 		// timeouts are intentionally unset for now — TODO(phase-1): source
 		// IdleTimeout + Read/WriteTimeout from config once real request bodies land
@@ -142,6 +176,7 @@ func main() {
 	case err := <-errCh:
 		logger.Error("server failed", "err", err)
 		stopRelay()
+		stopSweeper()
 		nc.Close()
 		pool.Close()
 		os.Exit(1)
@@ -156,6 +191,7 @@ func main() {
 	// publishes) and the pool — AFTER the HTTP server drains so in-flight requests release
 	// their handles first. The relay holds both DB + NATS, so it must exit before either closes.
 	stopRelay()
+	stopSweeper()
 	nc.Close()
 	pool.Close()
 	if shutdownErr != nil {

@@ -106,3 +106,40 @@ func (l *lookupLimiter) sweepLocked(now time.Time) {
 		}
 	}
 }
+
+// paymentProofUploadLimits configures the public presigned-POST bootstrap limiter.
+type paymentProofUploadLimits struct {
+	rate  rate.Limit
+	burst int
+}
+
+const (
+	defaultPaymentProofUploadRate  = rate.Limit(0.2) // 12 sustained policies/minute process-wide
+	defaultPaymentProofUploadBurst = 12
+)
+
+func defaultPaymentProofUploadLimits() paymentProofUploadLimits {
+	return paymentProofUploadLimits{rate: defaultPaymentProofUploadRate, burst: defaultPaymentProofUploadBurst}
+}
+
+// paymentProofUploadLimiter is intentionally global, not per-IP: core-api still does not have a
+// trusted client-IP signal in-process. Cloudflare WAF remains the per-IP sweep layer; this process
+// bucket is the local backstop for the unauthenticated signer.
+type paymentProofUploadLimiter struct {
+	lim *rate.Limiter
+	now func() time.Time
+}
+
+func newPaymentProofUploadLimiter(l paymentProofUploadLimits) *paymentProofUploadLimiter {
+	return &paymentProofUploadLimiter{
+		lim: rate.NewLimiter(l.rate, l.burst),
+		now: func() time.Time { return time.Now() },
+	}
+}
+
+func (l *paymentProofUploadLimiter) allow() bool {
+	if l == nil {
+		return true
+	}
+	return l.lim.AllowN(l.now(), 1)
+}
