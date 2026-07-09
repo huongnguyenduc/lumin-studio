@@ -17,7 +17,7 @@ district** ADR-017 · maps `{customer,shippingAddress,note?}`, email/note omit-w
 `/price/quote` kèm province** (extended `lib/quote.ts`: optional province → `shippingFee`/`total` + new `no_shipping_rule` code;
 ZERO client-math; quote gates "Tiếp tục"). **đổi-trả disclosure (refundPolicy inline + link `/chinh-sach#doi-tra`) cho MỌI
 giỏ** + **PDPL privacy notice unbundled, KHÔNG marketing-tick** (contract-basis order_fulfillment granted server-side; compliance
-§2/§3). **⚠ Contract gap for P2-f:** `CreateWebOrderInput` has **no `note`** field (only inbox DTO) → P2-f must add additive
+§2/§3). **✅ Review DONE:** spec-guardian **PASS** (0 blk/0 warn/2 note — note-1 note-defer accepted, note-2 anchors verified present on /chinh-sach); adversarial **0 correctness bugs** (8 vectors refuted). **Committed `fc8287c` → PR #57 OPEN → main (chờ user merge-gate).** **⚠ Contract gap for P2-f:** `CreateWebOrderInput` has **no `note`** field (only inbox DTO) → P2-f must add additive
 `note?` to the web input or render display-only (P2-d only COLLECTS note). **Decision:** cart→checkout entry NOT wired
 (deferred to P2-f flow-completion; `/thanh-toan` reachable by URL only for now). **Verify:** `pnpm verify` **6/6** (lint·typecheck·
 test all pkgs·prettier) — storefront **151** tests incl. new `checkout-form.test.ts` (**11**) · api-client `schema.stale` green
