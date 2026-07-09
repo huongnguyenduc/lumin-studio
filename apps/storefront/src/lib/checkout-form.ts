@@ -51,6 +51,11 @@ export type ValidatedCheckout = {
    *  — only the inbox DTO does. P2-f (the step that actually POSTs /orders) must add an additive
    *  `note?` to the web input or render this display-only. P2-d only collects it. */
   note?: string;
+  /** ADR-012 dual-ack — set ONLY when the cart has engraving (the server, checkout.go:241, ignores both
+   *  otherwise). Both are true whenever present: the info step cannot advance unless personalizationAckMet
+   *  holds. Unlike `note`, these fields DO exist on CreateWebOrderInput today, so P2-f maps them 1:1. */
+  personalizationAck?: boolean;
+  engraveEchoConfirmed?: boolean;
 };
 
 const NAME_MIN = 2;
@@ -112,4 +117,18 @@ export function validateCheckoutForm(
       ...(note !== '' ? { note } : {}),
     },
   };
+}
+
+/**
+ * ADR-012 dual-ack gate, mirroring the server (checkout.go:241 — `anyPersonalization && both acks`). A
+ * cart with engraving may advance to payment only once the shopper has BOTH acknowledged the no-return
+ * policy AND confirmed the engrave content is correct. A cart with no engraving is never gated: the
+ * server ignores the flags there, so the view hides the section and never sends them true.
+ */
+export function personalizationAckMet(
+  hasPersonalization: boolean,
+  personalizationAck: boolean,
+  engraveEchoConfirmed: boolean,
+): boolean {
+  return !hasPersonalization || (personalizationAck && engraveEchoConfirmed);
 }

@@ -4,12 +4,13 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
-import { Button, Input, PriceTag, cn } from '@lumin/ui';
+import { Button, Checkbox, Input, PriceTag, cn } from '@lumin/ui';
 import { cartCount, cartQuoteItems, cartSignature } from '@/lib/cart';
 import { useCart } from '@/lib/cart-store';
 import { quoteCart } from '@/lib/quote';
 import {
   EMPTY_CHECKOUT_FORM,
+  personalizationAckMet,
   validateCheckoutForm,
   type CheckoutErrors,
   type CheckoutField,
@@ -70,14 +71,34 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
   const [formError, setFormError] = useState(false);
   const [step, setStep] = useState<'info' | 'payment'>('info');
   const [validated, setValidated] = useState<ValidatedCheckout | null>(null);
+  // ADR-012 dual-ack, gated only when the cart has engraving (see hasPersonalization below).
+  const [personalizationAck, setPersonalizationAck] = useState(false);
+  const [engraveEchoConfirmed, setEngraveEchoConfirmed] = useState(false);
 
   const [quote, setQuote] = useState<QuoteState>({ status: 'idle' });
   const [retryNonce, setRetryNonce] = useState(0);
 
   const refundHeadingId = useId();
+  const engraveHeadingId = useId();
   const provinceFieldId = useId();
   const signature = cartSignature(items);
   const province = form.province.trim();
+
+  // A cart line is "personalized" iff it carries non-blank engraving — the exact predicate the server
+  // uses (checkout.go personalizationFrom: a personalization whose TrimSpace(text) != ""). Mirroring the
+  // trim keeps the client from over-gating a tampered cart the server would accept without acks. flatMap
+  // narrows engrave to non-null so the echo below can read .text without a non-null assertion.
+  const engravedLines = items.flatMap((i) =>
+    i.engrave && i.engrave.text.trim() !== ''
+      ? [{ key: i.key, name: i.name, text: i.engrave.text }]
+      : [],
+  );
+  const hasPersonalization = engravedLines.length > 0;
+  const acksMet = personalizationAckMet(
+    hasPersonalization,
+    personalizationAck,
+    engraveEchoConfirmed,
+  );
 
   useEffect(() => {
     if (items.length === 0) {
@@ -144,9 +165,21 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
     if (okQuote?.total === undefined) {
       return;
     }
+    // ADR-012 dual-ack (checkout.go:241): an engraved cart can't advance until both boxes are ticked.
+    // The button is already disabled while unmet; this guards the Enter-key path, mirroring the quote
+    // gate above (silent no-op — the unchecked required checkboxes are the visible nudge).
+    if (!acksMet) {
+      return;
+    }
     setErrors({});
     setFormError(false);
-    setValidated(result.value);
+    // Carry the acks only for an engraved cart (both true, since acksMet just passed); the server
+    // ignores them otherwise, so a non-engraved order omits them like a blank email/note.
+    setValidated(
+      hasPersonalization
+        ? { ...result.value, personalizationAck, engraveEchoConfirmed }
+        : result.value,
+    );
     setStep('payment');
   };
 
@@ -193,8 +226,9 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
   const total = okQuote?.total;
   const quotePending = provinceChosen && !okQuote && !errQuote;
   // Can't advance to payment without a server-computed total for the chosen province (still quoting,
-  // unshippable, or a transient quote error) — the summary shows why.
-  const continueDisabled = provinceChosen && total === undefined;
+  // unshippable, or a transient quote error) — the summary shows why — nor while the ADR-012 engrave
+  // acks are unmet (a non-engraved cart is never gated: acksMet is true).
+  const continueDisabled = (provinceChosen && total === undefined) || !acksMet;
 
   const fieldError = (field: CheckoutField): string | undefined =>
     errors[field] ? t(`errors.${errors[field]}`) : undefined;
@@ -413,6 +447,42 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
           </Link>
         </section>
 
+        {/* Engrave add-on (ADR-012) — ONLY when the cart is personalized. Stacks ON TOP of the đổi-trả
+            disclosure above (does not replace it): echoes the engraved text for a last check, states the
+            prepay rule, and gates "continue" on the two required acks (personalizationAck + the
+            engrave-echo confirmation) mirrored server-side at checkout.go:241. */}
+        {hasPersonalization ? (
+          <section
+            aria-labelledby={engraveHeadingId}
+            className="rounded-lg border-2 border-border-strong bg-surface-card p-4"
+          >
+            <h2 id={engraveHeadingId} className="font-display text-sm font-bold text-text-strong">
+              {t('engraveHeading')}
+            </h2>
+            <p className="mt-1 text-sm text-text-body">{t('engraveEchoIntro')}</p>
+            <ul className="mt-1.5 flex flex-col gap-1">
+              {engravedLines.map((l) => (
+                <li key={l.key} className="text-sm font-medium text-text-strong">
+                  {t('engraveEchoLine', { name: l.name, text: l.text })}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 text-sm text-text-muted">{t('prepayNote')}</p>
+            <div className="mt-3 flex flex-col gap-1">
+              <Checkbox
+                checked={personalizationAck}
+                onChange={(e) => setPersonalizationAck(e.target.checked)}
+                label={t('ackNoReturn')}
+              />
+              <Checkbox
+                checked={engraveEchoConfirmed}
+                onChange={(e) => setEngraveEchoConfirmed(e.target.checked)}
+                label={t('ackEcho')}
+              />
+            </div>
+          </section>
+        ) : null}
+
         {/* PDPL privacy notice — informational, unbundled, no marketing tick (compliance §2). */}
         <p className="text-sm text-text-muted">
           {t('privacyNotice')}{' '}
@@ -425,6 +495,11 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
           <p role="alert" className="text-sm font-semibold text-danger">
             {t('errors.formError')}
           </p>
+        ) : null}
+
+        {/* Nudge (not a 400): the button is disabled until both engrave acks are ticked (ADR-012). */}
+        {hasPersonalization && !acksMet ? (
+          <p className="text-sm text-text-muted">{t('ackHint')}</p>
         ) : null}
 
         <Button
