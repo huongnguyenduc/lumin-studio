@@ -113,6 +113,71 @@ func TestLoadHonoursNATSEnv(t *testing.T) {
 	}
 }
 
+func TestLoadPaymentProofUploadDefaults(t *testing.T) {
+	for _, k := range []string{
+		"PAYMENT_PROOF_S3_ENDPOINT",
+		"PAYMENT_PROOF_S3_REGION",
+		"PAYMENT_PROOF_BUCKET",
+		"PAYMENT_PROOF_PUBLIC_BASE_URL",
+		"PAYMENT_PROOF_ACCESS_KEY_ID",
+		"PAYMENT_PROOF_SECRET_ACCESS_KEY",
+		"PAYMENT_PROOF_KEY_PREFIX",
+		"PAYMENT_PROOF_POST_TTL",
+		"PAYMENT_PROOF_MAX_BYTES",
+	} {
+		t.Setenv(k, "")
+	}
+	cfg := Load().PaymentProofUploads
+	if cfg.S3Endpoint != "http://127.0.0.1:3900" {
+		t.Fatalf("S3Endpoint default = %q, want local Garage", cfg.S3Endpoint)
+	}
+	if cfg.S3Region != "garage" {
+		t.Fatalf("S3Region default = %q, want garage", cfg.S3Region)
+	}
+	if cfg.Bucket != "lumin-payment-proofs" {
+		t.Fatalf("Bucket default = %q, want lumin-payment-proofs", cfg.Bucket)
+	}
+	if cfg.PublicBaseURL != "http://127.0.0.1:3900/lumin-payment-proofs" {
+		t.Fatalf("PublicBaseURL default = %q, want local bucket URL", cfg.PublicBaseURL)
+	}
+	if cfg.AccessKeyID != "" || cfg.SecretAccessKey != "" {
+		t.Fatal("payment-proof S3 credentials must default blank, never a weak committed secret")
+	}
+	if cfg.KeyPrefix != "payment-proofs" {
+		t.Fatalf("KeyPrefix default = %q, want payment-proofs", cfg.KeyPrefix)
+	}
+	if cfg.PostTTL != 5*time.Minute {
+		t.Fatalf("PostTTL default = %v, want 5m", cfg.PostTTL)
+	}
+	if cfg.MaxBytes != 10*1024*1024 {
+		t.Fatalf("MaxBytes default = %d, want 10MiB", cfg.MaxBytes)
+	}
+}
+
+func TestLoadHonoursPaymentProofUploadEnv(t *testing.T) {
+	t.Setenv("PAYMENT_PROOF_S3_ENDPOINT", "https://s3.example.test")
+	t.Setenv("PAYMENT_PROOF_S3_REGION", "garage-prod")
+	t.Setenv("PAYMENT_PROOF_BUCKET", "receipts")
+	t.Setenv("PAYMENT_PROOF_PUBLIC_BASE_URL", "https://assets.example.test/receipts")
+	t.Setenv("PAYMENT_PROOF_ACCESS_KEY_ID", "key-id")
+	t.Setenv("PAYMENT_PROOF_SECRET_ACCESS_KEY", "secret")
+	t.Setenv("PAYMENT_PROOF_KEY_PREFIX", "proofs")
+	t.Setenv("PAYMENT_PROOF_POST_TTL", "2m")
+	t.Setenv("PAYMENT_PROOF_MAX_BYTES", "1048576")
+	cfg := Load().PaymentProofUploads
+	if cfg.S3Endpoint != "https://s3.example.test" ||
+		cfg.S3Region != "garage-prod" ||
+		cfg.Bucket != "receipts" ||
+		cfg.PublicBaseURL != "https://assets.example.test/receipts" ||
+		cfg.AccessKeyID != "key-id" ||
+		cfg.SecretAccessKey != "secret" ||
+		cfg.KeyPrefix != "proofs" ||
+		cfg.PostTTL != 2*time.Minute ||
+		cfg.MaxBytes != 1048576 {
+		t.Fatalf("PaymentProofUploads did not honour env: %+v", cfg)
+	}
+}
+
 func TestLoadFallsBackOnInvalidDuration(t *testing.T) {
 	t.Setenv("RELAY_DUP_WINDOW", "not-a-duration")
 	if got := Load().RelayDupWindow; got != 2*time.Minute {

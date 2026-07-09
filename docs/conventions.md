@@ -38,6 +38,7 @@
 
 ## §3D-upload (asset pipeline)
 - Upload model: **S3 multipart presigned-PUT, mỗi part < 100MB** (Cloudflare Tunnel chặn body >100MB). Không POST proxy qua tunnel.
+- Upload biên lai checkout: **S3 presigned-POST** vào bucket riêng, policy chặn `content-length-range` ≤10MB + `Content-Type` `image/jpeg|png|webp`, `finalUrl` host-pinned từ server; không proxy ảnh qua core-api (ADR-035).
 - Render Blender: **Cycles + CUDA** only. **KHÔNG OptiX** (Pascal không RT core), **KHÔNG EEVEE** (chết headless). Denoise **OpenImageDenoise CPU** (CC 6.1). Chạy Blender dạng **subprocess** (không bpy) để crash-isolation + retry. **concurrency=1**, off-peak; decimate + ≤1080p + sample vừa (6GB VRAM).
 - Prefill Product từ trimesh **ngay** khi đọc xong metadata; render (**360° sprite — KHÔNG poster**) gắn sau khi AssetJob `ready`. AssetJob **idempotent**, tái tạo được từ model gốc.
 - **Preview khắc tên: client-side** (canvas/CSS), **không** render server-side mỗi phím.

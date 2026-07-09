@@ -50,6 +50,10 @@ CLAUDE.local.md
 .claude/.repair-event
 .claude/.review-diff
 
+# External agent tooling (Codex/other CLIs) — not part of this repo
+.agents/
+.codex/
+
 # OS / editor
 .DS_Store
 *.log

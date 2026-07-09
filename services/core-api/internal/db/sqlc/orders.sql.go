@@ -13,6 +13,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearOrderPaymentProof = `-- name: ClearOrderPaymentProof :exec
+UPDATE orders
+SET payment_proof_url = NULL, updated_at = now()
+WHERE id = $1 AND payment_proof_url IS NOT NULL
+`
+
+// ClearOrderPaymentProof nulls the receipt reference after its Garage object has been deleted
+// (ADR-035 retention). The payment_proof_url IS NOT NULL guard makes a re-run a no-op, so a sweep
+// that deletes the object but crashes before clearing simply retries idempotently next pass.
+func (q *Queries) ClearOrderPaymentProof(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, clearOrderPaymentProof, id)
+	return err
+}
+
 const createOrder = `-- name: CreateOrder :one
 
 INSERT INTO orders (
@@ -332,6 +346,53 @@ func (q *Queries) ListOrdersByStatus(ctx context.Context, status order.Status) (
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPurgeableProofOrders = `-- name: ListPurgeableProofOrders :many
+SELECT id, payment_proof_url
+FROM orders
+WHERE payment_proof_url IS NOT NULL
+  AND status::text = ANY($1::text[])
+  AND updated_at < $2
+ORDER BY updated_at
+LIMIT $3
+`
+
+type ListPurgeableProofOrdersParams struct {
+	Terminal    []string           `json:"terminal"`
+	PurgeBefore pgtype.Timestamptz `json:"purgeBefore"`
+	RowLimit    int32              `json:"rowLimit"`
+}
+
+type ListPurgeableProofOrdersRow struct {
+	ID              uuid.UUID `json:"id"`
+	PaymentProofUrl *string   `json:"paymentProofUrl"`
+}
+
+// ListPurgeableProofOrders returns orders whose receipt image has outlived the retention window
+// (ADR-035): the order is in a terminal status AND its last transition (orders.updated_at, set by
+// UpdateOrderStatus and never touched again after a close state) is older than the cutoff. The
+// terminal set is passed in from order.TerminalStatuses() so the SQL never hardcodes it. Oldest-first
+// + LIMIT bounds one sweep; a nulled row drops out of the payment_proof_url IS NOT NULL filter next
+// pass. The retention sweeper deletes each Garage object, then clears the reference.
+func (q *Queries) ListPurgeableProofOrders(ctx context.Context, arg ListPurgeableProofOrdersParams) ([]ListPurgeableProofOrdersRow, error) {
+	rows, err := q.db.Query(ctx, listPurgeableProofOrders, arg.Terminal, arg.PurgeBefore, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPurgeableProofOrdersRow
+	for rows.Next() {
+		var i ListPurgeableProofOrdersRow
+		if err := rows.Scan(&i.ID, &i.PaymentProofUrl); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

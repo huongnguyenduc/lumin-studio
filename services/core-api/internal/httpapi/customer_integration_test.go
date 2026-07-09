@@ -129,7 +129,7 @@ func TestGetCustomerOrdersScoped(t *testing.T) {
 	setShippingRules(t, ctx, pool, `[{"province":"*","fee":45000}]`)
 	setBankAccount(t, ctx, pool) // P2-a: web orders need a configured STK
 	issuer := auth.NewIssuer("test-customer-secret", time.Hour, true, auth.CustomerCookieName)
-	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil, WithCustomerAuth(issuer))
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil, WithCustomerAuth(issuer), WithPaymentProofUploads(newTestProofStore()))
 
 	placeOrder := func(phone string) api.Order {
 		return mustCreateOrder(t, srv, ctx, webBody(map[string]any{

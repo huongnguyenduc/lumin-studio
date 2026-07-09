@@ -89,6 +89,11 @@ func classify(operationID string) authClass {
 		// provinces + refund policy the payment step needs. A whitelist read that persists nothing and
 		// leaks no PII; keeping it public avoids gating the checkout screen behind auth (guests check out).
 		return authPublic
+	case "CreatePaymentProofUpload":
+		// Public checkout receipt-upload bootstrap (P2-c) — no session; it signs a one-object POST
+		// policy with a random server-generated key and persists nothing. The resulting finalUrl is
+		// later consumed by the public web POST /orders path.
+		return authPublic
 	case "CreateOrder":
 		return authOptional
 	case "UpdateBankAccount":

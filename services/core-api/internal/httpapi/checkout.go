@@ -60,6 +60,14 @@ func (s *Server) CreateOrder(ctx context.Context, req api.CreateOrderRequestObje
 		// The boundary sentinels: inbox-forbidden / proof-required / ack-required / no-items.
 		return nil, err
 	}
+	// Host-pin the receipt URL to a Garage object THIS server issued (P2-c, ADR-035), but only when
+	// uploads are wired. If they are not (dev/test, or a shop that has not configured S3), the
+	// storefront could not have produced a proof URL at all, so fall back to the boundary shape check
+	// (intakeFrom, CHK-04) and let the STK/other gates decide — the owner still eyeballs the receipt
+	// before reconciling → PAID, so no path a real web order can take silently accepts a spoofed proof.
+	if in.channel == order.ChannelWeb && s.proofUploads != nil && !s.proofUploads.OwnsURL(in.proofURL) {
+		return nil, errPaymentProofRequired
+	}
 
 	// Derive every line's server-authoritative price from the catalog (reads on the pool, before
 	// the tx opens, so the catalog lookups don't hold the write tx open).
@@ -218,9 +226,9 @@ func intakeFrom(ctx context.Context, body api.CreateOrderInput) (intake, error) 
 		if aerr != nil {
 			return intake{}, &validationError{fields: map[string]string{"body": msgKey(codeValidation)}}
 		}
-		// CHK-04: the CK receipt must be a usable http(s) URL at the boundary. Host-pinning to
-		// the Garage/CDN host lands with the presigned-upload surface (§0, ADR-005) — until
-		// then the shape check mirrors the domain's isHTTPURL (scheme + non-empty host).
+		// CHK-04: the CK receipt must be a usable http(s) URL at the boundary. The host/path pin
+		// depends on server upload config, so CreateOrder applies that check after this pure
+		// union decode and before the first DB read.
 		proof := strings.TrimSpace(w.PaymentProofUrl)
 		if !isHTTPProofURL(proof) {
 			return intake{}, errPaymentProofRequired

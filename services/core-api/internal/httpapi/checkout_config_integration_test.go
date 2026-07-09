@@ -59,7 +59,7 @@ func TestGetCheckoutConfigNoSTKConfigured(t *testing.T) {
 	// Fresh seed leaves bank_account `{}` — no STK. Shipping rules present, but there is still no way
 	// to take a web payment, so the config is 422, not a half-config with an unrenderable QR.
 	setShippingRules(t, ctx, pool, `[{"province":"*","fee":45000}]`)
-	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil, WithPaymentProofUploads(newTestProofStore()))
 
 	_, err := srv.GetCheckoutConfig(ctx, api.GetCheckoutConfigRequestObject{})
 	if err == nil {

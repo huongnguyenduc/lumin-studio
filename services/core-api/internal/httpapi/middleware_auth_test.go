@@ -258,19 +258,20 @@ func TestClassifyFailsClosed(t *testing.T) {
 		t.Errorf("unlisted op must default to authRequired (fail-closed), got %d", got)
 	}
 	cases := map[string]authClass{
-		"LoginUser":          authPublic,
-		"LogoutUser":         authPublic,
-		"GetProductBySlug":   authPublic,
-		"GetProducts":        authPublic,
-		"QuotePrice":         authPublic,
-		"LookupOrder":        authPublic,
-		"GetCheckoutConfig":  authPublic,
-		"CreateOrder":        authOptional,
-		"UpdateBankAccount":  authOwnerOnly,
-		"GetDashboard":       authRequired,
-		"GetSettings":        authRequired,
-		"ListReplyTemplates": authRequired,
-		"TransitionOrder":    authRequired,
+		"LoginUser":                authPublic,
+		"LogoutUser":               authPublic,
+		"GetProductBySlug":         authPublic,
+		"GetProducts":              authPublic,
+		"QuotePrice":               authPublic,
+		"LookupOrder":              authPublic,
+		"GetCheckoutConfig":        authPublic,
+		"CreatePaymentProofUpload": authPublic,
+		"CreateOrder":              authOptional,
+		"UpdateBankAccount":        authOwnerOnly,
+		"GetDashboard":             authRequired,
+		"GetSettings":              authRequired,
+		"ListReplyTemplates":       authRequired,
+		"TransitionOrder":          authRequired,
 	}
 	for op, want := range cases {
 		if got := classify(op); got != want {

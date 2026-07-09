@@ -13,11 +13,11 @@ import (
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
 )
 
-// errRateLimited is the guest-lookup rate-limit / lockout sentinel. mapError renders it as a 429
-// RATE_LIMITED ErrorEnvelope (ADR-032) — no Retry-After, so the exact lockout window never leaks.
-// It lives here so the lookup handler owns its own boundary sentinel (mirrors middleware_auth.go's
-// errUnauthenticated/errForbidden).
-var errRateLimited = errors.New("httpapi: order lookup rate limited")
+// errRateLimited is the public-endpoint rate-limit sentinel. mapError renders it as a 429
+// RATE_LIMITED ErrorEnvelope (ADR-032) — no Retry-After, so the exact limiter window never leaks.
+// It lives here because guest lookup introduced the first public token bucket; later public surfaces
+// reuse the same wire code.
+var errRateLimited = errors.New("httpapi: public endpoint rate limited")
 
 // dummyPhone is compared in constant time on the code-not-found path so an unknown code takes the
 // same compare time as a known-code-wrong-phone (the AUTH-01 always-run-bcrypt pattern). It is a

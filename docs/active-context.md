@@ -6,21 +6,38 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
-**➡️ PHASE 2 STATUS (2026-07-05 late PM):** **P2-a MERGED** (PR #53 → `origin/main` `3e62468`; local `main` ff'd).
-**P2-b MERGED** (#52 `b8af772`). **3 of 9 sub-PRs done.** **🔨 P2-h (`/chinh-sach` legal page — return/exchange
-policy [Luật BVNTD 19/2023, ADR-012] + PDPL privacy notice [thu gì/mục đích/lưu/quyền, compliance §2]) — BUILT on
-branch `feat/phase-2-checkout-p2h` (off `main` `3e62468`).** Static i18n prose (NO runtime fetch — legal page must
-render even if API down; the `settings.refund_policy` blurb is the separate inline checkout summary, this is the full
-policy). 5 source files: new `chinhSach` namespace in `messages/vi.ts` (lists as keyed objects — next-intl rejects
-arrays) + `app/chinh-sach/page.tsx` (server component, 2 deep-linkable sections `#doi-tra`/`#quyen-rieng-tu`,
-indexable + canonical `/chinh-sach`) + footer link repoint `/doi-tra`→`/chinh-sach#doi-tra` + `sitemap.ts` (+`/chinh-sach`)
-+ `messages.test.ts` (+2: version==`2026-01` sync w/ `consentPolicyVersion` checkout.go + both-surfaces content).
-**spec-guardian PASS (0 BLK / 1 WARN / 1 NOTE → both fixed):** WARN missing `alternates.canonical` + NOTE missing
-sitemap entry — both were consistency gaps vs the sibling indexable-page pattern, added. **`pnpm verify` 6/6 green**
-(typecheck rc=0 · lint 0 · 140 storefront tests · format clean). No new dep · no new ADR · no migration · no guard ARM
-(static content, no binding mutation). Unblocks
-FE checkout chain P2-d (last of its `dependsOn=[P2-a,P2-b,P2-h]`). **NEXT after P2-h = P2-i or P2-c (BE foundation,
-`dependsOn=[]`), then FE chain P2-d→e→f→g.**
+**➡️ PHASE 2 STATUS (2026-07-09):** **P2-a/P2-b/P2-h MERGED** (#53/#52/#54; `main`=`608ec46`). **🔨 P2-c
+(`POST /checkout/payment-proof-upload` presigned POST + retention) — BUILT + FULLY VERIFIED on `feat/phase-2-checkout-p2c`,
+uncommitted.** A parallel **Codex** session had scaffolded P2-c hand-rolling the SigV4 POST policy; per two owner decisions
+this session **(1) swapped signing → `minio-go/v7` (`@v7.0.77`, go directive HELD 1.23.6)** — new `internal/proofstore` is the
+ONE home for presign + `OwnsURL` host-pin + `Delete`, shared by the upload handler + `CreateOrder` gate + the sweeper — and
+**(2) added a cron-GC retention sweeper `internal/retention`** (owner chose delete-90d-**after-terminal** over object-age
+lifecycle): anchor = `orders.updated_at` (set by every transition, never touched after a close state), single-source terminal
+set `order.TerminalStatuses()`, **object-delete-then-null-ref** (idempotent: crash mid-way → next sweep re-selects, S3 delete
+idempotent); the bucket **lifecycle rule stays the ORPHAN backstop** (infra/README). PDPL notice + `consentPolicyVersion` bump
+**deferred to P2-f** (dormant endpoint collects no PII until the FE wires it — tracked hard gate). **Real bug caught + fixed
+(parallel tool shipped it, masked because its `verify-go` ran without Docker so the integration test skipped):** the host-pin
+gate pre-empted the P2-a STK gate → `TestCreateOrderWebRequiresSTK` got `PROOF_REQUIRED` not `NO_STK_CONFIGURED`; fix = host-pin
+fires **only when uploads are configured** (`s.proofUploads != nil`), keeping the STK gate testable in isolation with no prod
+hole (a real web order cannot exist without uploads → storefront needs the presigned endpoint to make a proof URL). The
+Docker-free `checkout_test.go` uses a nil pool, so every gate must fire before any DB read — host-pin stays early. **Verification
+(colima up):** `make verify-go` ✓ (gofmt·vet·golangci **0 issues**·sqlc vet/diff·oapi stale-check·`go test -race` incl. new
+`db.TestPurgeableProofOrders` integration vs real PG) · guard **163/0** (**+1 host-pin ARM PR-P2-c**: checkout `OwnsURL` +
+`SetContentLengthRange`/`SetContentType` + `proofUploadLimiter.allow` + classify authPublic — **PROVEN binding** mutate→RED→
+restore) · `pnpm verify` 6/6 + `format:check` ✓ (**`.agents/`+`.codex/` gitignored** — external Codex tooling, out of the PR).
+**+1 dep** minio-go/v7 (+md5-simd/rs-xid/go-humanize/go-ini indirects). **No new ADR** (implements ADR-035; its "lifecycle/GC"
+wording already covers cron-GC + lifecycle backstop). Acceptance: `CHK-08` refs fixed (signer tests → `proofstore.*`) + new
+**`CHK-09`** retention (Go-gated `[ ]`). **Review DONE:** spec-guardian **PASS** (1 NOTE = host-pin-when-`nil`, accepted); adversarial **0 BLOCKER / 0
+exploitable** (traced minio source: offline-sign confirmed via `getBucketLocation` region short-circuit, no secret leak,
+`updated_at` anchor sound, list→delete→clear crash-consistent) — **1 NOTE FIXED** (`OwnsURL`/`ownsObjectKey` now round-trips
+to the canonical `uuid.New().String()` shape → rejects `urn:uuid:`/brace/uppercase variants the signer never mints;
++`proofstore_bypass_test.go` 3 tests), 2 NOTEs ACCEPTED (foreign-URL null-ref + global rate-limit DoS-lever = deliberate
+single-shop). Re-verified post-fix: guard **163/0**, `make verify-go` green. **NEXT after P2-c lands = P2-i**
+(tokenized phone-less tracking, `dependsOn=[]`), then FE chain P2-d→e→f→g. **Owner ops step before P2-f goes live:** Garage
+bucket/key/CORS/lifecycle bootstrap + a Caddy handle + Cloudflare-Tunnel ingress hostname (home box; runbook in infra/README).
+
+**— parallel-tool P2-c BUILT note (2026-07-06) superseded by the entry above: hand-rolled SigV4 signer swapped to minio-go,
+cron-GC retention added, host-pin/STK ordering bug fixed, guard 162→163, format:check fixed —**
 
 **— earlier P2-a/P2-b history below (P2-a now merged; the "🔨 BUILT … PR #53 OPEN" note is superseded) —**
 **➡️ PHASE 2 STATUS (2026-07-05 PM):** **P2-b MERGED** (PR #52 → `origin/main` `b8af772`, 13:47Z; local `main` ff'd —

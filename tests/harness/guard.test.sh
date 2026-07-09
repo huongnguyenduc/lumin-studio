@@ -832,6 +832,32 @@ if [ -f "$REVIEWS" ]; then
     bad "ARM: reviews.go LAND nhưng thiếu 1 trong {ListReviewsByProduct status='published' filter, ProductStatusActive→db.ErrNotFound non-leak, classify GetProductReviews authPublic} -> review ẩn rò ra list / probe tồn-tại sản phẩm / list kẹt sau tường auth (REV-01!)"
   fi
 else ok "ARM: chưa có httpapi/reviews.go (review list published-only/active-only/public arm khi land — PR-P1-l)"; fi
+# ARM PR-P2-c (payment-proof upload + host-pin, ADR-035): khoá 4 bất biến money/abuse của luồng biên lai CK —
+#  (a) HOST-PIN tại checkout.go: CreateOrder gate web paymentProofUrl qua s.proofUploads.OwnsURL (chỉ nhận
+#      finalUrl do server-signer cấp) — bỏ → khách đính URL biên lai bất kỳ (spoofed/attacker host), owner
+#      reconcile ảnh giả → RED;
+#  (b) POLICY size+mime tại proofstore.go: presigned POST pin content-length-range + exact Content-Type (S3
+#      enforce, KHÔNG tin client khai size) — bỏ SetContentLengthRange/SetContentType → oversize/wrong-mime lọt;
+#  (c) RATE-LIMIT public signer: handler gọi proofUploadLimiter.allow TRƯỚC khi ký (backstop abuse khi WAF hụt);
+#  (d) classify() gán CreatePaymentProofUpload = authPublic (guest checkout; regress fail-closed → 401 khách).
+# Bỏ comment ('//') trước khi soi để một token bị COMMENT-OUT không false-PASS (class lỗ '//' 3b).
+PROOFSTORE="$ROOT/services/core-api/internal/proofstore/proofstore.go"
+if [ -f "$PROOFSTORE" ]; then
+  PSBODY="$(grep -vE '^[[:space:]]*//' "$PROOFSTORE" 2>/dev/null)"
+  CHKBODY="$(grep -vE '^[[:space:]]*//' "$ROOT/services/core-api/internal/httpapi/checkout.go" 2>/dev/null)"
+  PPUBODY="$(grep -vE '^[[:space:]]*//' "$ROOT/services/core-api/internal/httpapi/payment_proof_upload.go" 2>/dev/null)"
+  PPMW="$(grep -vE '^[[:space:]]*//' "$ROOT/services/core-api/internal/httpapi/middleware_auth.go" 2>/dev/null)"
+  if printf '%s' "$CHKBODY" | grep -qE 's\.proofUploads' \
+     && printf '%s' "$CHKBODY" | grep -q 'OwnsURL' \
+     && printf '%s' "$PSBODY" | grep -q 'SetContentLengthRange' \
+     && printf '%s' "$PSBODY" | grep -q 'SetContentType' \
+     && printf '%s' "$PPUBODY" | grep -qE 'proofUploadLimiter\.allow' \
+     && printf '%s' "$PPMW" | grep -A2 '"CreatePaymentProofUpload"' | grep -q 'authPublic'; then
+    ok "ARM: có proofstore.go -> host-pin checkout paymentProofUrl (s.proofUploads.OwnsURL) + presigned policy pin content-length-range+Content-Type (S3 enforce size/mime) + public signer rate-limit (proofUploadLimiter.allow) + classify CreatePaymentProofUpload=authPublic (CHK-08/CHK-04 host-pin)"
+  else
+    bad "ARM: proofstore.go LAND nhưng thiếu 1 trong {checkout OwnsURL host-pin, SetContentLengthRange, SetContentType, proofUploadLimiter.allow, classify CreatePaymentProofUpload authPublic} -> proof URL giả mạo / oversize-mime lọt / signer bị abuse / upload kẹt sau auth (CHK-08!)"
+  fi
+else ok "ARM: chưa có proofstore.go (payment-proof host-pin/policy/rate-limit/public arm khi land — PR-P2-c)"; fi
 if find "$ROOT/services" -name '*.rs' 2>/dev/null | grep -q .; then
   { [ -f "$ROOT/Makefile" ] && grep -Eq '^verify-rs:' "$ROOT/Makefile"; } \
     && ok "ARM: có .rs -> Makefile verify-rs" || bad "ARM: .rs LAND nhưng thiếu Makefile verify-rs"

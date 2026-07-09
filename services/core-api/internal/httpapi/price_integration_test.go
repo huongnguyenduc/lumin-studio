@@ -164,7 +164,7 @@ func TestQuotePriceParityWithOrder(t *testing.T) {
 	fx := seedCheckoutCatalog(t, ctx, pool)
 	setShippingRules(t, ctx, pool, `[{"province":"Hà Nội","fee":30000},{"province":"*","fee":45000}]`)
 	setBankAccount(t, ctx, pool) // P2-a: the parity order is a web create, which needs a configured STK
-	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil, WithPaymentProofUploads(newTestProofStore()))
 	router := testAuthedRouter(srv)
 
 	// One engraved line: 390k base + 20k color + 90k dimmer + 50k engrave = 550k, ×2.

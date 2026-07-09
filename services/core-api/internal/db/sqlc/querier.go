@@ -12,6 +12,10 @@ import (
 )
 
 type Querier interface {
+	// ClearOrderPaymentProof nulls the receipt reference after its Garage object has been deleted
+	// (ADR-035 retention). The payment_proof_url IS NOT NULL guard makes a re-run a no-op, so a sweep
+	// that deletes the object but crashes before clearing simply retries idempotently next pass.
+	ClearOrderPaymentProof(ctx context.Context, id uuid.UUID) error
 	// CountActiveProducts is the total for the list envelope — the SAME WHERE as ListActiveProducts (including
 	// the P1-e @search filter, so the envelope total reflects the SEARCHED set, not the whole catalog), with no
 	// sort/limit. It runs alongside the list as a second autocommit read; a concurrent catalog write landing
@@ -190,6 +194,13 @@ type Querier interface {
 	ListOrdersByStatus(ctx context.Context, status order.Status) ([]Order, error)
 	ListPrintJobsByStage(ctx context.Context, stage PrintStage) ([]PrintJob, error)
 	ListProductsByStatus(ctx context.Context, status ProductStatus) ([]Product, error)
+	// ListPurgeableProofOrders returns orders whose receipt image has outlived the retention window
+	// (ADR-035): the order is in a terminal status AND its last transition (orders.updated_at, set by
+	// UpdateOrderStatus and never touched again after a close state) is older than the cutoff. The
+	// terminal set is passed in from order.TerminalStatuses() so the SQL never hardcodes it. Oldest-first
+	// + LIMIT bounds one sweep; a nulled row drops out of the payment_proof_url IS NOT NULL filter next
+	// pass. The retention sweeper deletes each Garage object, then clears the reference.
+	ListPurgeableProofOrders(ctx context.Context, arg ListPurgeableProofOrdersParams) ([]ListPurgeableProofOrdersRow, error)
 	ListReplyTemplates(ctx context.Context) ([]ReplyTemplate, error)
 	// ListReviewsByProduct is the storefront product-review list (PR-P1-l). It returns PUBLISHED reviews
 	// ONLY — the status='published' predicate lives HERE at the SQL source, the same non-leak discipline as

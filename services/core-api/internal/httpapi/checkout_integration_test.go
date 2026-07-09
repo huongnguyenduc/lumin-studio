@@ -155,7 +155,7 @@ func TestCreateOrderWebEndToEnd(t *testing.T) {
 	fx := seedCheckoutCatalog(t, ctx, pool)
 	setShippingRules(t, ctx, pool, `[{"province":"Hà Nội","fee":30000},{"province":"*","fee":45000}]`)
 	setBankAccount(t, ctx, pool) // P2-a: a web create needs a configured STK
-	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil, WithPaymentProofUploads(newTestProofStore()))
 
 	raw := webBody(map[string]any{
 		"items": []any{map[string]any{
@@ -300,7 +300,7 @@ func TestCreateOrderPricingRejectionsIntegration(t *testing.T) {
 	// Deliberately NO wildcard: an unlisted province must 422, never ₫0.
 	setShippingRules(t, ctx, pool, `[{"province":"Hà Nội","fee":30000}]`)
 	setBankAccount(t, ctx, pool) // P2-a: STK configured so the NO_SHIPPING_RULE case isn't masked by the STK gate
-	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil, WithPaymentProofUploads(newTestProofStore()))
 
 	item := func(productID string, patch map[string]any) []any {
 		m := map[string]any{"productId": productID, "quantity": 1}

@@ -9,8 +9,8 @@
 #
 # Scope = slice-3 surfaces + Phase-1 storefront catalog reads (ADR-003/031) + the public guest order
 # lookup (P1-n: GET /orders/lookup — code + phone → a minimal, non-leaking timeline). Phase-1 opens the
-# public catalog GETs (P1-a: GET /products/{slug} detail — product + colors + options); checkout, payment,
-# and address (POST /orders / QR / receipt) stay OUT (Phase-2). Money crosses the wire as int VND
+# public catalog GETs (P1-a: GET /products/{slug} detail — product + colors + options) and Phase-2
+# checkout seams (config, quote shipping, receipt upload). Money crosses the wire as int VND
 # (`integer, format: int64`) — the single display formatter stays in packages/core (no Go formatVnd;
 # ADR-031/§6 D6). Property names are camelCase (matches sqlc json_tags_case_style:camel + hand DTOs).
 openapi: 3.0.3
@@ -605,6 +605,37 @@ paths:
                 $ref: '#/components/schemas/CheckoutConfig'
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /checkout/payment-proof-upload:
+    post:
+      tags: [checkout]
+      operationId: createPaymentProofUpload
+      summary: Create a presigned POST form for one payment-proof image upload.
+      description: >
+        Public checkout upload bootstrap (P2-c). Returns a browser-ready S3/Garage presigned POST form
+        for exactly one receipt image, plus the host-pinned `finalUrl` the storefront will later send as
+        `paymentProofUrl` to POST /orders. The server generates a random, non-PII object key and signs a
+        POST policy with `content-length-range` (≤10MB by default) and exact `Content-Type`
+        (`image/jpeg`, `image/png`, or `image/webp`). The policy TTL is short (≤5 minutes by default).
+        The browser MUST upload directly to `uploadUrl` with every returned field and the file part; the
+        core-api never proxies the image body through the Cloudflare tunnel. Retention is handled by the
+        dedicated bucket lifecycle / GC runbook (ADR-035): receipt images are kept only long enough for
+        dispute handling, then deleted about 90 days after the order reaches a terminal state.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentProofUploadInput'
+      responses:
+        '200':
+          description: Browser-ready POST target, form fields, and the host-pinned final object URL.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentProofUpload'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
   /admin/dashboard:
     get:
       tags: [admin]
@@ -741,9 +772,8 @@ components:
             $ref: '#/components/schemas/ErrorEnvelope'
     TooManyRequests:
       description: >
-        Rate limit or lockout tripped (RATE_LIMITED) — too many lookup attempts for this order code.
-        The client should back off (P1-o auto-poll respects this). No Retry-After is exposed so the
-        exact lockout window is not leaked.
+        Rate limit tripped (RATE_LIMITED) — too many requests to a public guarded endpoint.
+        The client should back off. No Retry-After is exposed so the exact limiter window is not leaked.
       content:
         application/json:
           schema:
@@ -1589,6 +1619,49 @@ components:
         refundPolicy:
           type: string
           description: Refund/return policy text shown before purchase (compliance §3). May be empty if unset.
+
+    PaymentProofUploadInput:
+      type: object
+      description: >
+        Browser upload bootstrap for one payment-proof receipt image. The server does not accept a file
+        name or client-declared size here: the object key is generated server-side with no PII, and the
+        actual size/type gate lives in the signed S3 POST policy.
+      required: [contentType]
+      properties:
+        contentType:
+          type: string
+          enum: [image/jpeg, image/png, image/webp]
+          description: Exact image MIME type the returned POST policy will allow.
+
+    PaymentProofUpload:
+      type: object
+      description: >
+        A short-lived, browser-ready S3/Garage POST form. Submit every `fields` entry and the file part
+        to `uploadUrl`; after a successful direct upload, send `finalUrl` as `paymentProofUrl` in
+        POST /orders. `finalUrl` is host-pinned by the server and never derived from browser input.
+      required: [uploadUrl, fields, finalUrl, expiresAt, maxBytes]
+      properties:
+        uploadUrl:
+          type: string
+          format: uri
+          description: S3/Garage form POST target, usually the bucket endpoint.
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+          description: Exact form fields to include before the file part.
+        finalUrl:
+          type: string
+          format: uri
+          description: Host-pinned object URL later passed as `paymentProofUrl` to POST /orders.
+        expiresAt:
+          type: string
+          format: date-time
+          description: Policy expiration timestamp.
+        maxBytes:
+          type: integer
+          format: int64
+          description: Maximum object size enforced by the signed POST policy.
 
     ReplyTemplate:
       type: object
