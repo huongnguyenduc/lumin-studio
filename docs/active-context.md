@@ -6,6 +6,26 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**➡️ P2-d (C1 checkout info step `/thanh-toan`) — BUILT + VERIFIED on `feat/phase-2-checkout-p2d` (off `main` `fff5618`;
+P2-i #56 squash-merged, local main ff'd).** FE-only, **no BE/contract change** (reuses P2-a `/checkout/config` + P2-b
+`/price/quote?province`). New: RSC shell `app/thanh-toan/{page,loading}.tsx` (fetch config server-side, **noindex**) → client
+`components/checkout-view.tsx` (mount/cart-guard · config-error retry · empty-CTA · C1 form · **step machine info→payment**:
+C2 "Giao cho"+totals header rendered, QR/proof/submit = **P2-f seam**). Form mirrors server `checkout.go intake.validate` via
+pure `lib/checkout-form.ts` (name 2–60 **rune** trim · phone `^(0|\+84)\d{9}$` **whitespace-stripped** `normalizePhone` · email
+optional "@"-check · province[native `<select>` from `shippableProvinces`, no @lumin/ui Select]/ward/street non-blank, **NO
+district** ADR-017 · maps `{customer,shippingAddress,note?}`, email/note omit-when-blank). Live **Tạm tính/Phí ship/Tổng CHỈ từ
+`/price/quote` kèm province** (extended `lib/quote.ts`: optional province → `shippingFee`/`total` + new `no_shipping_rule` code;
+ZERO client-math; quote gates "Tiếp tục"). **đổi-trả disclosure (refundPolicy inline + link `/chinh-sach#doi-tra`) cho MỌI
+giỏ** + **PDPL privacy notice unbundled, KHÔNG marketing-tick** (contract-basis order_fulfillment granted server-side; compliance
+§2/§3). **✅ Review DONE:** spec-guardian **PASS** (0 blk/0 warn/2 note — note-1 note-defer accepted, note-2 anchors verified present on /chinh-sach); adversarial **0 correctness bugs** (8 vectors refuted). **Committed `fc8287c` → PR #57 OPEN → main (chờ user merge-gate).** **⚠ Contract gap for P2-f:** `CreateWebOrderInput` has **no `note`** field (only inbox DTO) → P2-f must add additive
+`note?` to the web input or render display-only (P2-d only COLLECTS note). **Decision:** cart→checkout entry NOT wired
+(deferred to P2-f flow-completion; `/thanh-toan` reachable by URL only for now). **Verify:** `pnpm verify` **6/6** (lint·typecheck·
+test all pkgs·prettier) — storefront **151** tests incl. new `checkout-form.test.ts` (**11**) · api-client `schema.stale` green
+(no codegen drift) · core `acceptance.ledger` **52** green. Acceptance **Cụm 24 `CHK-10`** (FE, `[ ]` by convention — TS gate in
+app-gates, not the packages-only parser). **No new dep · no new ADR · no migration.** **Review IN-FLIGHT: spec-guardian +
+adversarial. NEXT after P2-d lands = P2-e (engrave acks) then P2-f (VietQR+proof+submit, wires cart entry + note).**
+
+**— P2-i/earlier Phase-2 history below (P2-i now MERGED #56, `main`=`fff5618`) —**
 **➡️ PHASE 2 STATUS (2026-07-10):** **P2-a/P2-b/P2-c/P2-h MERGED** (#53/#52/**#55**/#54; `main`=`c44c06c`). **🔨 P2-i
 (`GET /orders/track?code=&token=` phone-less tokenized tracking + `trackingToken` trong order-create 201) — BUILT + FULLY
 VERIFIED + REVIEWED on `feat/phase-2-checkout-p2i` (off `main` `c44c06c`).** Implements D-P2-8: token =

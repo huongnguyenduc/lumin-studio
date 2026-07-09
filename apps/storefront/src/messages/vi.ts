@@ -179,6 +179,83 @@ export const vi = {
     pricingError: 'Chưa tính được tạm tính — thử lại giúp mình nhé.',
     retry: 'Thử lại',
   },
+  // Checkout info step /thanh-toan (C1, P2-d). Guest-first: reads the cart, collects contact + shipping
+  // address (province → ward → street, NO district per ADR-017), prices it server-side with the chosen
+  // province (shipping + total, never client math), and discloses the đổi-trả policy + a PDPL privacy
+  // notice BEFORE purchase (compliance §2/§3). Field errors mirror the server validate() codes
+  // (lib/checkout-form.ts). noindex (private). No prices baked in — formatVnd renders every total. The
+  // payment step (QR + biên lai + submit) is P2-f; this owns the info step + the C2 header it hands off.
+  checkout: {
+    metaTitle: 'Đặt hàng — Lumin Studio',
+    heading: 'Đặt hàng',
+    // Empty cart → nothing to check out; send them back to the catalog.
+    emptyTitle: 'Chưa có gì để đặt',
+    emptyBody: 'Thêm một món vào giỏ rồi quay lại đặt hàng nhé.',
+    emptyCta: 'Khám phá bộ sưu tập',
+    // Order summary (top of C1 + header of C2). Vietnamese has one plural form.
+    summaryItemCount: '{count} món',
+    subtotalLabel: 'Tạm tính',
+    shippingLabel: 'Phí ship',
+    totalLabel: 'Tổng cộng',
+    // Before a province is chosen the fee is unknown — the server, not the client, computes it.
+    shippingPending: 'Chọn tỉnh/thành để tính phí ship',
+    contactHeading: 'Thông tin liên hệ',
+    emailLabel: 'Email',
+    optional: '(tuỳ chọn)',
+    emailPlaceholder: 'email của bạn',
+    nameLabel: 'Họ tên',
+    namePlaceholder: 'tên của bạn',
+    phoneLabel: 'Số điện thoại',
+    phonePlaceholder: '0912 345 678',
+    addressHeading: 'Địa chỉ giao hàng',
+    provinceLabel: 'Tỉnh / thành',
+    provincePlaceholder: 'Chọn tỉnh/thành',
+    wardLabel: 'Phường / xã',
+    wardPlaceholder: 'phường/xã của bạn',
+    streetLabel: 'Địa chỉ',
+    streetPlaceholder: 'số nhà, tên đường…',
+    noteLabel: 'Ghi chú',
+    notePlaceholder: 'VD: giao giờ hành chính…',
+    // Đổi-trả disclosure — shown for EVERY cart before purchase (compliance §3, Luật BVNTD 19/2023). The
+    // short blurb comes from settings.refund_policy (config); `refundFallback` covers a shop that left it
+    // blank so the section is never empty. The link opens the full policy page.
+    refundHeading: 'Đổi trả & huỷ đơn',
+    refundFallback:
+      'Hàng in theo đơn, có khắc tên hoặc làm riêng, không đổi trả vì đổi ý. Lỗi do shop thì chúng mình in lại hoặc hoàn tiền cho bạn.',
+    refundLink: 'Xem chính sách đổi trả đầy đủ',
+    // PDPL privacy notice — informational, unbundled, no marketing tick (compliance §2). Consent to
+    // process the order is contract-basis (granted server-side at order creation), not a gate here.
+    privacyNotice:
+      'Chúng mình dùng tên, số điện thoại và địa chỉ của bạn chỉ để xử lý và giao đơn.',
+    privacyLink: 'Thông báo quyền riêng tư',
+    continueCta: 'Tiếp tục thanh toán',
+    // Payment step (C2) header rendered by this PR; P2-f adds QR + biên lai + submit below. Composed
+    // lines are ICU (not literal JSX separators) so no-literal-string stays clean and word order stays
+    // translatable. Address order = street → ward → province (specific → general, ADR-017 no district).
+    deliverToLabel: 'Giao cho',
+    recipientLine: '{name} · {phone}',
+    addressLine: '{street}, {ward}, {province}',
+    noteSummaryLine: 'Ghi chú: {note}',
+    editLabel: 'Sửa',
+    backToInfo: 'Quay lại',
+    paymentPending: 'Bước thanh toán (QR chuyển khoản + gửi biên lai) sắp có ở đây.',
+    // Field errors — mirror lib/checkout-form.ts codes. Surfaced under each input on submit.
+    errors: {
+      nameInvalid: 'Họ tên cần từ 2 đến 60 ký tự.',
+      phoneInvalid: 'Số điện thoại chưa đúng — dùng số di động Việt Nam nhé.',
+      emailInvalid: 'Email chưa đúng — kiểm tra lại giúp mình nhé.',
+      provinceRequired: 'Chọn tỉnh/thành giúp mình nhé.',
+      wardRequired: 'Nhập phường/xã giúp mình nhé.',
+      streetRequired: 'Nhập địa chỉ giao hàng giúp mình nhé.',
+      // Form-level: shown when submit is blocked by one or more field errors.
+      formError: 'Kiểm tra lại thông tin giúp mình nhé.',
+    },
+    // Shipping/total quote states once a province is chosen.
+    noShippingRule: 'Chúng mình chưa giao tới tỉnh/thành này — chọn nơi khác giúp mình nhé.',
+    unavailableError: 'Một món trong giỏ không còn khả dụng — thử xoá rồi thêm lại nhé.',
+    pricingError: 'Chưa tính được phí ship — thử lại giúp mình nhé.',
+    retry: 'Thử lại',
+  },
   badge: {
     featured: 'Nổi bật',
     new: 'Mới',
