@@ -22,7 +22,9 @@ type QuoteState =
   // still holds the pre-edit result, which would otherwise paint a neighbouring line's total / a stale
   // subtotal (positional misalignment). A mismatched (superseded) quote falls through to the skeleton.
   | { status: 'ok'; signature: string; lines: QuoteLine[]; subtotal: number }
-  | { status: 'error'; signature: string; code: 'unavailable' | 'error' };
+  // `no_shipping_rule` is unreachable here (the cart sends no province) but is part of quoteCart's union
+  // now (P2-b/P2-d); it degrades into the generic pricing-error copy below.
+  | { status: 'error'; signature: string; code: 'unavailable' | 'no_shipping_rule' | 'error' };
 
 /**
  * The cart page (/gio-hang). Reads the persisted cart (useCart), then prices it server-side via the
