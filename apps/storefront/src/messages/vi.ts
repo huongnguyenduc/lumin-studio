@@ -281,11 +281,7 @@ export const vi = {
     // C2½ full-screen loading while the order is being created.
     submittingTitle: 'Đang gửi đơn cho shop…',
     submittingBody: 'Chờ xíu nha, chúng mình đang lưu thông tin và ảnh chuyển khoản.',
-    // Minimal order-placed confirmation (P2-f). The full wait-screen + tracking link land in P2-g.
-    doneTitle: 'Đơn đã đặt rồi 🧡',
-    donePendingBadge: 'Đã báo chuyển khoản · chờ shop xác nhận',
-    doneBody:
-      'Đơn {code} đã lưu. Shop sẽ đối chiếu chuyển khoản rồi bắt đầu in. Chúng mình sẽ báo bạn khi đơn được xác nhận nhé.',
+    // (The order-placed confirmation is now the C3 wait-screen — see the `track` namespace, P2-g.)
     // Field errors — mirror lib/checkout-form.ts codes. Surfaced under each input on submit.
     errors: {
       nameInvalid: 'Họ tên cần từ 2 đến 60 ký tự.',
@@ -382,6 +378,36 @@ export const vi = {
     errorTitle: 'Có gì đó chưa ổn',
     errorBody: 'Mất kết nối một chút — thử lại giúp mình nhé.',
     retry: 'Thử lại',
+  },
+  // Post-checkout wait-screen + confirmation (C3, P2-g) and the phone-less deep link /o/{code}-{token}.
+  // Reuses lookup.* for the shared timeline affordance (live/paused/refresh/rate-limited/error/retry).
+  track: {
+    // <title> for /o/{code}-{token} — kept out of the index (route generateMetadata robots).
+    metaTitle: 'Theo dõi đơn — Lumin Studio',
+    // Celebratory line, shown only right after placing the order (justPlaced).
+    placedThanks: 'Đơn đã đặt rồi 🧡 Cảm ơn bạn đã tin tưởng Lumin nhé.',
+    // Result header — the order code, echoed (e.g. mã đơn của bạn).
+    heading: 'Đơn {code}',
+    // Reassurance under the header while the shop confirms the transfer (PENDING_CONFIRM).
+    pendingNote:
+      'Chúng mình đã nhận báo chuyển khoản, đang chờ shop đối chiếu rồi bắt đầu in. Trang này tự cập nhật khi đơn đổi trạng thái nhé.',
+    // Phone-less tracking deep link the guest can save or share.
+    linkLabel: 'Link theo dõi đơn',
+    linkHint: 'Lưu link này để xem tình trạng đơn bất cứ lúc nào, không cần đăng nhập.',
+    copy: 'Sao chép',
+    copied: 'Đã sao chép',
+    // Message-shop button (same contact target as the tracker + footer).
+    contactShop: 'Nhắn shop',
+    // Loading (first track poll in flight).
+    loading: 'Đang tải tình trạng đơn…',
+    // CANCELLED branch — the shop rejected the transfer proof (spec §04). Distinct, friendly, terminal.
+    cancelledTitle: 'Đơn này đã huỷ',
+    cancelledBody:
+      'Shop chưa nhận được chuyển khoản khớp với đơn nên đã huỷ đơn này. Nếu bạn đã chuyển rồi, nhắn shop kèm ảnh biên lai giúp mình nhé — chúng mình sẽ kiểm tra lại.',
+    // Invalid / expired deep link (a malformed /o/ handle, or a wrong/expired token → uniform 404).
+    invalidTitle: 'Link theo dõi không dùng được',
+    invalidBody:
+      'Link theo dõi sai hoặc đã hết hạn. Bạn kiểm tra lại link, hoặc nhắn shop kèm mã đơn để được hỗ trợ nhé.',
   },
   // Analytics consent banner (P1-p, PDPL / ADR-015). Umami loads ONLY after "Đồng ý"; refusing is one
   // equal-weight click and never blocks shopping (compliance §Consent). Body names what we do NOT do

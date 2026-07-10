@@ -107,6 +107,30 @@ export function isPollableStatus(status: OrderStatus): boolean {
 }
 
 /**
+ * The post-checkout confirmation / wait-screen deep link is `/o/{code}-{token}` (P2-g, D-P2-8) — the
+ * phone-less HMAC capability a guest can bookmark or share (the storefront owns this parse; see
+ * track.go). The order code is `#LMN-<n>`; the leading `#` is a URL-fragment delimiter, so it's dropped
+ * from the path here and re-added on parse. The token is base64url (`A–Z a–z 0–9 - _`), which also
+ * contains `-`, so the split point is the `-` that follows the fixed `LMN-<digits>` code: a greedy
+ * `\d+` stops at it and everything after is the token (its own `-`/`_` are irrelevant to the split).
+ */
+export function buildTrackHandle(code: string, token: string): string {
+  return `${code.replace(/^#/, '')}-${token}`;
+}
+
+const TRACK_HANDLE = /^(LMN-\d+)-(.+)$/i;
+
+/** Inverse of buildTrackHandle: split a `/o/{handle}` path segment back into the code (with its `#`
+ *  re-added, upper-cased to match the server's normalizeLookupCode) and the verbatim token. Returns null
+ *  for a malformed handle → the route renders the "link sai/hết hạn" state without a round-trip. The
+ *  token case is preserved (base64url is case-sensitive); only the `LMN` code body is upper-cased. */
+export function parseTrackHandle(handle: string): { code: string; token: string } | null {
+  const m = TRACK_HANDLE.exec(handle.trim());
+  if (!m) return null;
+  return { code: `#${m[1].toUpperCase()}`, token: m[2] };
+}
+
+/**
  * Trim + normalize the lookup form inputs. Returns null when either field is blank (nothing to look
  * up → skip the round-trip and the rate budget). The order code is upper-cased to match the server's
  * case-folding (lookup.go normalizes code to upper); the phone is passed through verbatim (the server

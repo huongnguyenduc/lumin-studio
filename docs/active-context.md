@@ -6,7 +6,38 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
-**➡️ P2-f (payment step C2 on `/thanh-toan`: VietQR + proof upload + submit → `POST /orders`) — BUILT + VERIFIED on
+**➡️ P2-g (C3 wait-screen + confirmation) — BUILT + VERIFIED + REVIEWED on `feat/phase-2-checkout-p2g` (off `main`
+`e94b658`); staged, chờ user commit+push+PR-gate.** **✅ Review DONE:** spec-guardian **PASS** (0 BLK/0 WARN/3 NOTE —
+NOTE-1 no-render-test = **deliberate skip** [storefront has NO jsdom/testing-library, pure-logic-only convention like
+P2-d/e/f; the risky parser IS unit-tested]; NOTE-2 emoji-🧡 precedent + NOTE-3 `createdAt` mapping-parity = no-action);
+adversarial **0 correctness bugs** (7 risk-vectors refuted: `#`-in-code query-encode → `%23` via openapi-fetch serializer,
+server no-strip → matches stored `#LMN-…`; handle round-trip for leading-digit/embedded-`-`/`_` tokens; byte-identical hook
+fidelity vs original P1-o loop; SSR/hydration seed; cart-clear guard-order; `fetcherRef.current!` safety). 2 adversarial
+non-bug notes: REFUNDED via generic branch (intentional, matches P1-o) + `idle` unreachable in wait-screen (harmless). FE-only, **no BE/contract/codegen/migration**. **FINAL sub-PR of the
+Phase-2 checkout journey (P2-d→e→f→g)** — after it lands, Phase-2 checkout is complete. Replaces P2-f's minimal `OrderPlaced`
+with a full wait-screen reached TWO ways, identical behavior: post-checkout (`checkout-view` renders `<WaitScreen
+code={placed.order.code} token={placed.trackingToken} justPlaced />`) and the phone-less deep link `/o/{code}-{token}` (NEW
+route `app/o/[handle]/page.tsx`, noindex + robots-disallow). **Reuse-P1-o-verbatim (plan §5) = extract the P1-o poll
+`useEffect` into shared hook `lib/use-order-poll.ts`** (cadence 15s · 10-min ceiling · hidden-tab pause+deadline · exp backoff ·
+terminal-stop) now used by BOTH `order-lookup.tsx` (P1-o, behavior UNCHANGED — proves the extraction) and `wait-screen.tsx`;
+the ONLY difference is the fetcher: NEW Server Action `lib/order-track.ts` → `GET /orders/track?code=&token=` (mirrors
+`order-lookup.ts` DTO→TimelineData map + uniform-404 no-leak, ADR-032). Poll flips PENDING_CONFIRM→PAID **without refresh**.
+**CANCELLED branch** (receipt rejected, spec §04) = distinct terminal copy + nhắn-shop; poll already stopped (`isPollableStatus`
+terminal). Confirmation = code + status badge + **copy-link** (`window.location.origin` + `buildTrackHandle`, no server env
+needed) + nhắn-shop (`/lien-he`, same target as tracker+footer). **`/o/` URL parse — storefront owns it (track.go):** strip
+code `#` (URL-fragment-unsafe) → split `^(LMN-\d+)-(.+)$` (token base64url may contain `-`/`_`; greedy `\d+` stops at the
+boundary `-` → unambiguous) → re-add `#` + upper-case code, token verbatim (base64url case-sensitive). Pure
+`buildTrackHandle`/`parseTrackHandle` in `order-lookup-view.ts`, unit-tested (+4). Malformed handle / wrong-expired token →
+uniform "link sai/hết hạn" state (hi-fi C3 line 1179). **Poll-Q1 (plan §6 open-q): kept P1-o 15s, NO Phase-2 override** (the
+point of reuse-verbatim). NEW `track` i18n namespace (reuses `lookup.*` for shared live/paused/refresh/rate/error affordance);
+dropped dead `checkout.done*`. robots.ts disallow += `/o/` + overdue `/thanh-toan` (comment promised it "when checkout lands";
+P2-d/f missed it — both already per-page noindex, this is the crawl backstop). **Verify:** `pnpm verify` **6/6** — storefront
+**161** tests (order-lookup-view **16**, +4 handle round-trip/split/case/malformed). **9 files (+513/−136;** order-lookup.tsx −90
+net as the loop moved to the hook). **NEXT: review outcomes → user push+PR-gate. After P2-g merges = ✅ PHASE 2 CHECKOUT
+COMPLETE.**
+
+**— P2-f history below (now MERGED via PR #59 → `main` `e94b658`; P2-g branched off it) —**
+**P2-f (payment step C2 on `/thanh-toan`: VietQR + proof upload + submit → `POST /orders`) — BUILT + VERIFIED on
 `feat/phase-2-checkout-p2f` (off `feat/phase-2-checkout-p2e`; P2-f STACKS on P2-e — merge P2-e first).** `note` handling
 (owner-chosen "hide it on review" after adversarial flag): collected on C1 but **neither echoed on the C2 review nor sent** —
 `CreateWebOrderInput` has no `note` field (only the inbox DTO), and echoing it on the confirm screen would imply it was saved;

@@ -12,9 +12,10 @@ export default function robots(): MetadataRoute.Robots {
       allow: '/',
       // Private per-visitor / internal paths that exist today. Admin is a SEPARATE app (not this origin).
       // `/tai-khoan` (+ its /dang-nhap, /dang-ky sub-routes) is the customer account (P1-s) — private, per
-      // customer; a prefix disallow covers the whole subtree. Each of these also carries its own per-page
-      // noindex (belt + suspenders). Checkout (Phase 2) will add its path here when it lands.
-      disallow: ['/gio-hang', '/tra-cuu-don', '/tai-khoan', '/api/'],
+      // customer; a prefix disallow covers the whole subtree. `/thanh-toan` is checkout (Phase 2) and `/o/`
+      // is the phone-less order-tracking deep link `/o/{code}-{token}` (P2-g) — both private, per-order.
+      // Each of these also carries its own per-page noindex (belt + suspenders).
+      disallow: ['/thanh-toan', '/gio-hang', '/tra-cuu-don', '/o/', '/tai-khoan', '/api/'],
     },
     sitemap: `${base}/sitemap.xml`,
     host: base,
