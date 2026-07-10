@@ -26,6 +26,7 @@ import {
 } from '@/lib/order-submit';
 import type { CheckoutConfigResult } from '@/lib/checkout-config';
 import { CtaLink } from './cta-link';
+import { WaitScreen } from './wait-screen';
 
 /** MIME types the receipt upload accepts — exactly the set the presigned-POST policy allows (P2-c). */
 const PROOF_TYPES: readonly ProofUploadContentType[] = ['image/jpeg', 'image/png', 'image/webp'];
@@ -309,12 +310,11 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
     );
   }
 
-  // Order placed (checked BEFORE the empty-cart guard, because submitting cleared the cart): a minimal
-  // confirmation that holds the trackingToken. ponytail: P2-g seam — the full wait-screen (auto-poll,
-  // OrderTimeline, the phone-less /o/{code}-{token} copy link built from placed.trackingToken, and the
-  // message-shop links) lands in P2-g; this only proves the order was created and shows its code.
+  // Order placed (checked BEFORE the empty-cart guard, because submitting cleared the cart): the C3
+  // wait-screen (P2-g) takes over — auto-polls GET /orders/track with the 201 trackingToken, shows the
+  // live OrderTimeline + the phone-less /o/{code}-{token} copy link, and handles the CANCELLED branch.
   if (placed) {
-    return <OrderPlaced heading={t('heading')} code={placed.order.code} />;
+    return <WaitScreen code={placed.order.code} token={placed.trackingToken} justPlaced />;
   }
 
   // C2½ full-screen "sending your order" while POST /orders is in flight (design C2½ — a dedicated
@@ -784,25 +784,6 @@ function SubmittingScreen({ title, body }: { title: string; body: string }) {
           className="h-12 w-12 animate-spin rounded-full border-4 border-surface-sunken border-t-primary motion-reduce:animate-none"
         />
         <p className="text-text-body">{body}</p>
-      </div>
-    </Shell>
-  );
-}
-
-/**
- * Minimal order-placed confirmation (P2-f). ponytail: P2-g seam — the full C3 wait-screen (auto-poll of
- * GET /orders/track, OrderTimeline, the phone-less /o/{code}-{token} copy link built from the held
- * trackingToken, and the message-shop links) replaces this in P2-g; here it only confirms the order was
- * created and shows its code, so P2-f is a self-contained, mergeable step.
- */
-function OrderPlaced({ heading, code }: { heading: string; code: string }) {
-  const t = useTranslations('checkout');
-  return (
-    <Shell heading={heading}>
-      <div className="mt-6 rounded-lg border-2 border-border-strong bg-surface-card p-8 text-center">
-        <h2 className="font-display text-xl font-bold text-text-strong">{t('doneTitle')}</h2>
-        <p className="mt-1 text-sm font-semibold text-accent-flame">{t('donePendingBadge')}</p>
-        <p className="mt-3 text-text-body">{t('doneBody', { code })}</p>
       </div>
     </Shell>
   );

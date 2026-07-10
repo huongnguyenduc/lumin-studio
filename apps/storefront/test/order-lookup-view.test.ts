@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildTimeline,
+  buildTrackHandle,
   isPollableStatus,
   normalizeLookupInput,
+  parseTrackHandle,
   PROGRESS_STATUSES,
   type TimelineData,
 } from '../src/lib/order-lookup-view';
@@ -164,5 +166,32 @@ describe('normalizeLookupInput', () => {
     expect(normalizeLookupInput('', '0912345678')).toBeNull();
     expect(normalizeLookupInput('#LMN-1000', '   ')).toBeNull();
     expect(normalizeLookupInput('  ', '  ')).toBeNull();
+  });
+});
+
+describe('buildTrackHandle / parseTrackHandle', () => {
+  // A realistic base64url token — contains BOTH '-' and '_', the chars that make a naive split ambiguous.
+  const token = 'aB3-x9Z_q7';
+
+  it('strips the code # for the URL path and re-adds it on parse (round-trips)', () => {
+    const handle = buildTrackHandle('#LMN-1000', token);
+    expect(handle).toBe(`LMN-1000-${token}`);
+    expect(parseTrackHandle(handle)).toEqual({ code: '#LMN-1000', token });
+  });
+
+  it('splits at the code/token boundary even when the token contains "-" and "_"', () => {
+    // The code body is a fixed LMN-<digits>; everything after the following '-' is the token verbatim.
+    expect(parseTrackHandle(`LMN-2261-${token}`)).toEqual({ code: '#LMN-2261', token });
+  });
+
+  it('preserves token case (base64url is case-sensitive) and upper-cases only the code', () => {
+    expect(parseTrackHandle('lmn-42-AbC_dEf')).toEqual({ code: '#LMN-42', token: 'AbC_dEf' });
+  });
+
+  it('returns null for a malformed handle (no code body, or no token part)', () => {
+    expect(parseTrackHandle('')).toBeNull();
+    expect(parseTrackHandle('LMN-1000')).toBeNull(); // code only, no token
+    expect(parseTrackHandle('not-a-code-token')).toBeNull();
+    expect(parseTrackHandle('LMN-abc-token')).toBeNull(); // non-numeric code body
   });
 });

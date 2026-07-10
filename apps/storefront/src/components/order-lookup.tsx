@@ -1,36 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Input } from '@lumin/ui';
 import { lookupOrder } from '@/lib/order-lookup';
-import {
-  buildTimeline,
-  isPollableStatus,
-  normalizeLookupInput,
-  type TimelineData,
-} from '@/lib/order-lookup-view';
+import { buildTimeline, isPollableStatus, normalizeLookupInput } from '@/lib/order-lookup-view';
+import { useOrderPoll } from '@/lib/use-order-poll';
 import { CtaLink } from './cta-link';
 import { SearchIcon } from './icons';
 import { OrderStatusBadge, OrderTimeline } from './order-timeline';
-
-// Auto-poll cadence (open-question #6, bounded by the P1-n per-code token bucket: 0.5 req/s sustained,
-// burst 15 — a 15s interval is ~0.07 req/s, comfortably inside budget). Polling runs ONLY while the
-// order is non-terminal, PAUSES while the tab is hidden (don't burn the budget on an unseen page),
-// backs off exponentially on transient failure, and stops after a hard ceiling so a stuck order can't
-// poll forever. prefers-reduced-motion only affects the spinner animation, not the polling itself.
-const POLL_INTERVAL_MS = 15_000;
-const MAX_POLL_MS = 10 * 60_000; // stop auto-updating after 10 minutes; offer a manual refresh
-const MAX_BACKOFF_MS = 60_000;
-const HIDDEN_RECHECK_MS = 3_000; // while hidden, re-check visibility this often (no network)
-
-type ViewState =
-  | { kind: 'idle' }
-  | { kind: 'loading' }
-  | { kind: 'found'; order: TimelineData; live: boolean }
-  | { kind: 'not_found' }
-  | { kind: 'rate_limited' }
-  | { kind: 'error' };
 
 /**
  * Guest order tracker (/tra-cuu-don, P1-o). A code + phone form → a live status timeline. The lookup
@@ -45,10 +23,15 @@ export function OrderLookup() {
   const [code, setCode] = useState('');
   const [phone, setPhone] = useState('');
   const [formError, setFormError] = useState(false);
-  // The submitted query. A fresh object identity (re)starts the poll effect — resubmitting the same
-  // code/phone (retry / manual refresh) still re-runs because we always allocate a new object.
+  // The submitted query; a fresh object identity (re)starts the shared poll loop. Null until the form is
+  // submitted → the loop stays idle.
   const [query, setQuery] = useState<{ code: string; phone: string } | null>(null);
-  const [state, setState] = useState<ViewState>({ kind: 'idle' });
+  // The poll loop is shared with the P2-g wait-screen (lib/use-order-poll); here the fetcher is the
+  // phone lookup. `retry` re-runs it (the paused-refresh + error-state buttons).
+  const { state, retry } = useOrderPoll(
+    query ? () => lookupOrder(query.code, query.phone) : null,
+    query,
+  );
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,82 +42,6 @@ export function OrderLookup() {
     }
     setFormError(false);
     setQuery({ ...normalized });
-  };
-
-  useEffect(() => {
-    if (!query) return;
-
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const deadline = Date.now() + MAX_POLL_MS;
-    let backoff = POLL_INTERVAL_MS;
-    let shownOrder = false; // once an order has been rendered, transient failures keep it on screen
-
-    const run = async () => {
-      if (cancelled) return;
-      // Pause polling while the tab is hidden — cheap visibility re-check, no request spent. Honor the
-      // deadline even here: without this, the 3s re-check would reschedule past MAX_POLL_MS and leave a
-      // stale "live" indicator showing on return (the ceiling is otherwise only checked on a fetch).
-      if (typeof document !== 'undefined' && document.hidden) {
-        if (Date.now() >= deadline) {
-          setState((prev) =>
-            prev.kind === 'found' ? { kind: 'found', order: prev.order, live: false } : prev,
-          );
-          return;
-        }
-        timer = setTimeout(run, HIDDEN_RECHECK_MS);
-        return;
-      }
-
-      const res = await lookupOrder(query.code, query.phone);
-      if (cancelled) return;
-
-      if (res.ok) {
-        shownOrder = true;
-        backoff = POLL_INTERVAL_MS;
-        const keepPolling = isPollableStatus(res.order.status) && Date.now() < deadline;
-        setState({ kind: 'found', order: res.order, live: keepPolling });
-        if (keepPolling) timer = setTimeout(run, POLL_INTERVAL_MS);
-        return;
-      }
-
-      if (!shownOrder) {
-        // First lookup failed — surface why. `not_found` is terminal (nothing to poll); `rate_limited`
-        // / `error` are recoverable by resubmitting the form.
-        setState(
-          res.code === 'not_found'
-            ? { kind: 'not_found' }
-            : res.code === 'rate_limited'
-              ? { kind: 'rate_limited' }
-              : { kind: 'error' },
-        );
-        return;
-      }
-
-      // A transient failure DURING polling: keep the last order on screen, back off, keep trying until
-      // the deadline. When we give up, the last render already carries live=false (deadline passed) or
-      // flips to a paused state on the next successful poll.
-      if (Date.now() < deadline) {
-        backoff = Math.min(backoff * 2, MAX_BACKOFF_MS);
-        timer = setTimeout(run, backoff);
-      } else {
-        setState((prev) =>
-          prev.kind === 'found' ? { kind: 'found', order: prev.order, live: false } : prev,
-        );
-      }
-    };
-
-    setState({ kind: 'loading' });
-    void run();
-
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, [query]);
-
-  const retry = () => {
-    if (query) setQuery({ ...query });
   };
 
   return (
