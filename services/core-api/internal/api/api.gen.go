@@ -881,6 +881,9 @@ type ServerInterface interface {
 	// Admin orders list — paginated, optionally filtered by status (admin-gated).
 	// (GET /admin/orders)
 	GetAdminOrders(w http.ResponseWriter, r *http.Request, params GetAdminOrdersParams)
+	// Admin order detail by id — the full internal order (admin-gated).
+	// (GET /admin/orders/{id})
+	GetAdminOrder(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// List the extension reply templates (admin-gated read).
 	// (GET /admin/reply-templates)
 	ListReplyTemplates(w http.ResponseWriter, r *http.Request)
@@ -956,6 +959,12 @@ func (_ Unimplemented) GetDashboard(w http.ResponseWriter, r *http.Request) {
 // Admin orders list — paginated, optionally filtered by status (admin-gated).
 // (GET /admin/orders)
 func (_ Unimplemented) GetAdminOrders(w http.ResponseWriter, r *http.Request, params GetAdminOrdersParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Admin order detail by id — the full internal order (admin-gated).
+// (GET /admin/orders/{id})
+func (_ Unimplemented) GetAdminOrder(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1148,6 +1157,37 @@ func (siw *ServerInterfaceWrapper) GetAdminOrders(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAdminOrders(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAdminOrder operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminOrder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAdminOrder(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1834,6 +1874,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/admin/orders", wrapper.GetAdminOrders)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/orders/{id}", wrapper.GetAdminOrder)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/reply-templates", wrapper.ListReplyTemplates)
 	})
 	r.Group(func(r chi.Router) {
@@ -1967,6 +2010,50 @@ type GetAdminOrders401JSONResponse struct{ UnauthorizedJSONResponse }
 func (response GetAdminOrders401JSONResponse) VisitGetAdminOrdersResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminOrderRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type GetAdminOrderResponseObject interface {
+	VisitGetAdminOrderResponse(w http.ResponseWriter) error
+}
+
+type GetAdminOrder200JSONResponse Order
+
+func (response GetAdminOrder200JSONResponse) VisitGetAdminOrderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminOrder400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetAdminOrder400JSONResponse) VisitGetAdminOrderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminOrder401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetAdminOrder401JSONResponse) VisitGetAdminOrderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminOrder404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetAdminOrder404JSONResponse) VisitGetAdminOrderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -2760,6 +2847,9 @@ type StrictServerInterface interface {
 	// Admin orders list — paginated, optionally filtered by status (admin-gated).
 	// (GET /admin/orders)
 	GetAdminOrders(ctx context.Context, request GetAdminOrdersRequestObject) (GetAdminOrdersResponseObject, error)
+	// Admin order detail by id — the full internal order (admin-gated).
+	// (GET /admin/orders/{id})
+	GetAdminOrder(ctx context.Context, request GetAdminOrderRequestObject) (GetAdminOrderResponseObject, error)
 	// List the extension reply templates (admin-gated read).
 	// (GET /admin/reply-templates)
 	ListReplyTemplates(ctx context.Context, request ListReplyTemplatesRequestObject) (ListReplyTemplatesResponseObject, error)
@@ -2894,6 +2984,32 @@ func (sh *strictHandler) GetAdminOrders(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAdminOrdersResponseObject); ok {
 		if err := validResponse.VisitGetAdminOrdersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAdminOrder operation middleware
+func (sh *strictHandler) GetAdminOrder(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request GetAdminOrderRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAdminOrder(ctx, request.(GetAdminOrderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAdminOrder")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAdminOrderResponseObject); ok {
+		if err := validResponse.VisitGetAdminOrderResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

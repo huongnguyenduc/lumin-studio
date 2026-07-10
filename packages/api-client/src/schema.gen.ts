@@ -377,6 +377,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/orders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin order detail by id — the full internal order (admin-gated).
+         * @description Returns one order as the full INTERNAL Order projection: customer PII (name, phone, social handle, email), the line items, shipping address, money (subtotal/shippingFee/total, raw int-VND), the payment/refund proof URLs, the internal note, the tracking code, and the complete statusHistory (actor + reason). This is the admin detail read behind the orders table (P3-d) — admin-gated (cookieAuth; owner AND staff read), NOT the public PublicOrderTimeline whitelist, which omits every one of those fields (ADR-032). Read-only; status changes go through POST /orders/{id}/transitions (RBAC-gated). An unknown id → 404 NOT_FOUND.
+         */
+        get: operations["getAdminOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/settings": {
         parameters: {
             query?: never;
@@ -1613,6 +1633,31 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    getAdminOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The full internal order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     getSettings: {

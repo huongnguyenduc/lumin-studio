@@ -70,6 +70,28 @@ func (s *Server) GetAdminOrders(ctx context.Context, request api.GetAdminOrdersR
 	}), nil
 }
 
+// GetAdminOrder handles GET /admin/orders/{id} (P3-d): the order-detail read behind the admin orders
+// table. It is authRequired (classify default — owner AND staff view), so the middleware guarantees a
+// resolved actor; the read is actor-independent (any admin sees any order). It returns the FULL internal
+// Order — customer PII, line items, shipping address, money, payment/refund proof, internal note, tracking
+// code, and the complete statusHistory (actor + reason) — the projection the public PublicOrderTimeline
+// whitelist deliberately omits (ADR-032). An unknown id is db.ErrNotFound → 404 (mapError, no leak). Status
+// changes are NOT made here; they go through POST /orders/{id}/transitions (RBAC-gated). r.Context()
+// propagates into both reads so a client disconnect / timeout cancels them.
+func (s *Server) GetAdminOrder(ctx context.Context, request api.GetAdminOrderRequestObject) (api.GetAdminOrderResponseObject, error) {
+	row, err := db.NewOrders(s.pool).ByID(ctx, request.Id)
+	if err != nil {
+		return nil, err // ErrNotFound → 404; any other db fault → 500 (mapError, no leak)
+	}
+	// assembleOrderDTO reads the items + customer and builds the same nested Order every order-returning
+	// endpoint responds with — the internal detail (PII/items/proof/note/statusHistory), not a new shape.
+	dto, err := assembleOrderDTO(ctx, s.pool, row)
+	if err != nil {
+		return nil, err // malformed stored `at` (never written by the seams) → 500 (logged)
+	}
+	return api.GetAdminOrder200JSONResponse(dto), nil
+}
+
 // adminOrdersPageParams applies the defaults for the omitted (nil) page/pageSize params and validates them
 // against the admin bounds — the runtime enforcement oapi-codegen skips. It returns ok=false for page < 1,
 // pageSize < 1, or pageSize > adminOrdersMaxPageSize (all 400 VALIDATION at the call site).

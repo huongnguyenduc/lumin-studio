@@ -6,6 +6,38 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**🔨 PHASE 3 · P3-d (BE `GET /admin/orders/{id}` order detail) — BUILT + VERIFIED + REVIEWED on `feat/phase-3-admin-p3d-order-detail`**
+(off `main` `59b4601` after rebase; P3-b MERGED #64, **P3-c MERGED #65**. **Independent of P3-c** [FE `/don-hang` list] — disjoint
+files [`services/core-api/**` vs `apps/admin/**`], plan `dependsOn: —`; rebased onto main after P3-c landed, only the 2 shared docs
+[`acceptance.md`/`active-context.md`] conflicted — all code applied clean). **BE-only, READ-ONLY** — the detail read behind the P3-b
+orders table. **Maximally lazy (ponytail):** the endpoint returns the **EXISTING `Order` schema** — the full internal DTO that
+`assembleOrderDTO`/`toOrderDTO` (`dto.go`) already builds: customer PII (name/phone/socialHandle/email) + line items + shippingAddress
+(no district, ADR-017) + `subtotal`/`shippingFee`/`total` **raw-int-VND** + `paymentProofUrl`/`refundProofUrl` + internal `note` +
+`trackingCode` + **full `statusHistory`** (with `byUser`/`reason`) = **exactly** P3-d's required detail. **NO new schema · NO new SQL**
+(reuse `Orders.ByID` + `Items` + `Identity.CustomerByID`) · **NO migration · NO new dep · NO new ADR · NO middleware change** (classify
+**DEFAULT → `authRequired`** = owner+staff read, for free). **Files (8, +317, purely additive):** `openapi.yaml` (+33:
+`/admin/orders/{id}` GET → `Order`; mirrors transition's `{id}` uuid param + list's admin-gating; 200/400/401/404) · regen
+`internal/api/api.gen.go`(+116) + `packages/api-client/src/schema.gen.ts`(+45) **staged** · `admin_orders.go` (+22: `GetAdminOrder`
+handler = `ByID`→`ErrNotFound`-passes-through→`assembleOrderDTO`→200; ~10 real LOC) · `admin_orders_integration_test.go` (+76:
+`TestGetAdminOrderEndToEnd` real-PG — seed 2-item web order → read-by-id → assert full detail [PII · items=2 · money 510k/30k/540k ·
+proofUrl set · statusHistory=born-PENDING_CONFIRM w/ `byUser`] + unknown-id→`ErrNotFound`; `getAdminOrder` helper) · `admin_orders_test.go`
+(+14: `TestGetAdminOrderRequiresAuth` Docker-free — no-cookie→401, **valid-uuid path** so binding passes before the strict auth mw) ·
+`middleware_auth_test.go` (+1: classify table `GetAdminOrder`→`authRequired`) · `docs/acceptance.md` (+10: **Cụm 29 `ADM-04`** Go-gated
+`[ ]`; **Cụm 28/`ADM-03` = P3-c #65 ngay trên — Cụm 29 nối tiếp**). **Money** raw-int-VND passthrough, ZERO server-format (#2).
+**ADR-032:** returns the **internal `Order` projection** (admin MAY see PII/money/proof/note/statusHistory-actor) — deliberately **NOT**
+the public `PublicOrderTimeline` whitelist (guest-lookup only). Not-found → uniform **404 NOT_FOUND** (no existence leak). **Reuse:**
+`Order` schema + `assembleOrderDTO`/`toOrderDTO`/`statusHistoryDTO`/`orderItemsDTO`/`customerDTO` + `Orders.ByID` +
+`mapError(ErrNotFound)`→404 + P3-b integration seed helpers. **Verify:** `make verify-go` ✓ (gofmt · vet · golangci **0** · sqlc
+vet/diff · oapi stale-check staged · `go test -race` incl real-PG `TestGetAdminOrderEndToEnd`; httpapi 37s / db 49s) · `pnpm verify`
+**6/6** (schema.gen.ts stale-gate ✓ + prettier). Pure row→DTO mapping already pinned by `TestToOrderDTOFullMapping` (`dto_test.go`) →
+not duplicated (ponytail). **✅ Review DONE:** spec-guardian **PASS** (0 BLK / 0 WARN / 0 NOTE — RBAC authRequired · ADR-032 internal
+projection · money raw-int-VND · uniform-404 · clean-reuse · test-integrity · acceptance · spec-sync all confirmed). BE read-only, owns
+no money-mutation/transition/auth-decision → no separate adversarial pass. **✅ Committed `7c718a7` → PR #66 (rebased onto `main`
+`59b4601` after P3-c #65 landed; docs-only conflict resolved).** **NEXT after P3-d land = P3-e** (FE `/don-hang/{id}` detail +
+**transition UI** + QC-photo gate [migration 000014] — consumes THIS endpoint + wires the P3-c seams: row→detail link, inline + bulk
+transitions, mobile action-row).
+
+**— P3-c history (MERGED #65 → `main` `59b4601`) —**
 **🔨 PHASE 3 · P3-c (FE `/don-hang` admin orders list) — BUILT + VERIFIED + REVIEWED on `feat/phase-3-admin-p3c-orders-list`**
 (off `main` `b2e68c1`; P3-b MERGED #64). **FE-only, READ-ONLY** — consumes the merged `GET /admin/orders` (P3-b). **Architecture** =
 RSC page + **URL-searchParams filter/pagination** + server-fetch (cookie-forward, mirrors `dashboard-fetch`) + pure adapters + 2 client
