@@ -104,6 +104,47 @@ func (q *Queries) GetPrintJobByID(ctx context.Context, id uuid.UUID) (PrintJob, 
 	return i, err
 }
 
+const getPrintQueueEntry = `-- name: GetPrintQueueEntry :one
+SELECT pj.id, pj.stage, pj.printer, pj.color_name, pj.eta,
+  o.code AS order_code,
+  p.name AS product_name,
+  oi.quantity AS quantity
+FROM print_jobs pj
+JOIN order_items oi ON oi.id = pj.order_item_id
+JOIN orders o ON o.id = oi.order_id
+JOIN products p ON p.id = oi.product_id
+WHERE pj.id = $1
+`
+
+type GetPrintQueueEntryRow struct {
+	ID          uuid.UUID          `json:"id"`
+	Stage       PrintStage         `json:"stage"`
+	Printer     *string            `json:"printer"`
+	ColorName   *string            `json:"colorName"`
+	Eta         pgtype.Timestamptz `json:"eta"`
+	OrderCode   string             `json:"orderCode"`
+	ProductName string             `json:"productName"`
+	Quantity    int32              `json:"quantity"`
+}
+
+// GetPrintQueueEntry is the single-card read behind the stage PATCH (P3-f): the same enriched shape as
+// ListPrintQueue for one job, so the mutate response and the board list carry one identical card shape.
+func (q *Queries) GetPrintQueueEntry(ctx context.Context, id uuid.UUID) (GetPrintQueueEntryRow, error) {
+	row := q.db.QueryRow(ctx, getPrintQueueEntry, id)
+	var i GetPrintQueueEntryRow
+	err := row.Scan(
+		&i.ID,
+		&i.Stage,
+		&i.Printer,
+		&i.ColorName,
+		&i.Eta,
+		&i.OrderCode,
+		&i.ProductName,
+		&i.Quantity,
+	)
+	return i, err
+}
+
 const insertPrintJob = `-- name: InsertPrintJob :one
 INSERT INTO print_jobs (
   id, order_item_id, stage, printer, color_name, eta
@@ -201,6 +242,67 @@ func (q *Queries) ListPrintJobsByStage(ctx context.Context, stage PrintStage) ([
 			&i.Eta,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPrintQueue = `-- name: ListPrintQueue :many
+SELECT pj.id, pj.stage, pj.printer, pj.color_name, pj.eta,
+  o.code AS order_code,
+  p.name AS product_name,
+  oi.quantity AS quantity
+FROM print_jobs pj
+JOIN order_items oi ON oi.id = pj.order_item_id
+JOIN orders o ON o.id = oi.order_id
+JOIN products p ON p.id = oi.product_id
+ORDER BY pj.stage, pj.created_at
+`
+
+type ListPrintQueueRow struct {
+	ID          uuid.UUID          `json:"id"`
+	Stage       PrintStage         `json:"stage"`
+	Printer     *string            `json:"printer"`
+	ColorName   *string            `json:"colorName"`
+	Eta         pgtype.Timestamptz `json:"eta"`
+	OrderCode   string             `json:"orderCode"`
+	ProductName string             `json:"productName"`
+	Quantity    int32              `json:"quantity"`
+}
+
+// ListPrintQueue is the admin kanban board read (P3-f): every print job across all stages, joined to
+// the human-readable order code + product name + quantity so a queue card says WHAT TO MAKE for WHICH
+// order (the bare print_jobs row carries ids only, useless at the printer). color_name is denormalized
+// on print_jobs (queue-card field, spec §02) so no colors join is needed; printer/eta/color_name are
+// nullable. All joins are INNER: a print job's order_item FK is ON DELETE CASCADE and its product FK is
+// RESTRICT, so every job has exactly one live item → order + product. Ordered by stage (enum definition
+// order NEED_PRINT→SHIPPED) then created_at, so each column is stable FIFO; the client groups by stage.
+// ponytail: no pagination — the active print queue on a one-shop box is small; SHIPPED accretes, so add
+// a "recent N" / archive filter here if that column ever grows unbounded.
+func (q *Queries) ListPrintQueue(ctx context.Context) ([]ListPrintQueueRow, error) {
+	rows, err := q.db.Query(ctx, listPrintQueue)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPrintQueueRow
+	for rows.Next() {
+		var i ListPrintQueueRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Stage,
+			&i.Printer,
+			&i.ColorName,
+			&i.Eta,
+			&i.OrderCode,
+			&i.ProductName,
+			&i.Quantity,
 		); err != nil {
 			return nil, err
 		}

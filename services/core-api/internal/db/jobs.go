@@ -83,6 +83,23 @@ func (j *Jobs) AdvancePrintStage(ctx context.Context, id uuid.UUID, stage sqlc.P
 	return row, err
 }
 
+// PrintQueue is the admin kanban read (P3-f): every print job across all stages, joined to the order
+// code + product name + quantity so a card says what to make for which order. Ordered stage then
+// created_at (FIFO per column); the caller groups by stage into the board columns.
+func (j *Jobs) PrintQueue(ctx context.Context) ([]sqlc.ListPrintQueueRow, error) {
+	return j.q.ListPrintQueue(ctx)
+}
+
+// PrintQueueEntry returns one enriched print-queue card by id (the stage-PATCH response, same shape as
+// PrintQueue), or ErrNotFound.
+func (j *Jobs) PrintQueueEntry(ctx context.Context, id uuid.UUID) (sqlc.GetPrintQueueEntryRow, error) {
+	row, err := j.q.GetPrintQueueEntry(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.GetPrintQueueEntryRow{}, ErrNotFound
+	}
+	return row, err
+}
+
 // ErrInvalidAssetJob is returned for a structurally invalid CreateAssetJobInput, before any write.
 var ErrInvalidAssetJob = errors.New("asset job: invalid input")
 

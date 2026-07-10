@@ -271,6 +271,8 @@ func TestClassifyFailsClosed(t *testing.T) {
 		"GetDashboard":             authRequired,
 		"GetAdminOrders":           authRequired,
 		"GetAdminOrder":            authRequired,
+		"GetPrintQueue":            authRequired,
+		"AdvancePrintJobStage":     authRequired,
 		"GetSettings":              authRequired,
 		"ListReplyTemplates":       authRequired,
 		"TransitionOrder":          authRequired,
