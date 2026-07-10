@@ -6,6 +6,35 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**🔨 PHASE 3 · P3-c (FE `/don-hang` admin orders list) — BUILT + VERIFIED + REVIEWED on `feat/phase-3-admin-p3c-orders-list`**
+(off `main` `b2e68c1`; P3-b MERGED #64). **FE-only, READ-ONLY** — consumes the merged `GET /admin/orders` (P3-b). **Architecture** =
+RSC page + **URL-searchParams filter/pagination** + server-fetch (cookie-forward, mirrors `dashboard-fetch`) + pure adapters + 2 client
+islands (filter `<select>`, table multi-select). **Files (9, +588):** `lib/orders.ts` (pure adapters: `parseStatusFilter` [junk/case→"Tất
+cả", no 400] · `productLabel` [firstItemName + "+N" = itemCount−1] · `toOrderRows` [rename customerName→customer, keep enums] · `pageCount`
+[ceil, floor-1] · `buildOrdersHref` [omit page-1/no-status]) · `test/orders.test.ts` **+9** (Docker-free; **NB colocated `src/**` test was
+silently NOT matched — admin vitest `include:['test/**']` → moved to `test/`**) · `lib/orders-fetch.ts` (server-only, forwards httpOnly
+`lumin_session`, `no-store`, throw→`(app)/error.tsx`) · `components/orders-filter.tsx` (client, native `<select>` all-7-status + "Tất cả",
+onChange→router.push reset page-1) · `components/orders-table.tsx` (client; **desktop table** Mã/Khách/Sản phẩm/Tổng/Kênh/Trạng thái/Ngày +
+**mobile card-stack**, same rows; **multi-select scaffold** = checkbox+select-all+"Đã chọn N"bar+Bỏ chọn, bulk "Đổi trạng thái" **inert seam→
+P3-e**) · `app/(app)/don-hang/{page,loading}.tsx` (RSC reads searchParams+fetch+map+pager prev/next; route skeleton) · `messages/vi.ts`
+(**+`orders.*`+`channel.*`** namespaces) · `docs/acceptance.md` (**Cụm 28 `ADM-03`** FE `[ ]`). **Money** `formatVnd` only raw-int-VND ZERO
+client-math (#2); **status→`OrderStatusBadge`** + channel/status enum→i18n label (#3); **date→`formatVnDate`** (dd/MM/yyyy). **Reuse:**
+`OrderStatusBadge`+`order-status.ts` + `dashboard-fetch` pattern + `(app)/error.tsx` retry + core `formatVnd`/`formatVnDate`/`ORDER_STATUSES`.
+**Hardening:** `?status=` lạ→Tất cả · `?page=` lẻ/≤0/junk→`Math.floor`+clamp≥1 (no non-int→endpoint-400). **Deliberate scope cuts** (design
+shows, endpoint/phase KHÔNG hỗ trợ): per-status **pill-counts** + **search** + **Xuất CSV** dropped (no endpoint field); inline per-row
+**transition controls** + mobile **action-row** → **P3-e** (transitions own that); filter = native `<select>` all-7 (KHÔNG design's grouped
+"Huỷ/Hoàn" pill — endpoint filters single-status); channel `web`→"Web"/`inbox`→"Inbox" (design IG/Mess sub-channels KHÔNG trong data model);
+money `formatVnd` not "₫445k", date với năm. **Verify:** `pnpm verify` **6/6** (lint·typecheck·test·format:check) · admin **33** tests (auth 10
++ dashboard 10 + messages 4 + **orders 9**) · `next build` xanh (`/don-hang` = `ƒ` dynamic 1.86kB / 146kB FLJS; reads cookie/searchParams).
+**No new dep · no new ADR · no migration · no contract/codegen change** (additive i18n + docs only). **✅ Review DONE:** spec-guardian **PASS**
+(0 BLK / 0 WARN / 2 NOTE — both informational no-action: FE has no page-size control by design [YAGNI] · dynamic-route `no-store` re-fetch is
+intended live-admin behavior; independently re-confirmed money-via-formatter · no i18n literals · read-only-no-transition · RBAC-cookie-only ·
+empty/loading/error all present · reduced-motion honored · `acceptance.md` synced in-PR correctly `[ ]` · ADR-032 admin projection). FE
+read-only, no money-mutation/transition/auth-decision owned here → no separate adversarial pass. **NEXT after P3-c land = P3-d** (BE
+order-detail data) → **P3-e** (FE `/don-hang/{id}` detail + transition UI, wires the P3-c seams: row→detail link, inline + bulk transitions,
+mobile action-row). **Commit → user gate.**
+
+**— P3-b history (MERGED #64 → `main` `b2e68c1`) —**
 **🔨 PHASE 3 · P3-b (BE `GET /admin/orders` — list · status-filter · paginate) — BUILT + VERIFIED + REVIEWED on `feat/phase-3-admin-p3b-orders-list`**
 (off `main` `edcb5fe`; P3-a MERGED #63). **BE-only** — mirrors catalog-list (`products.go GetProducts`) + dashboard patterns. **DTO** =
 INTERNAL admin projection (`AdminOrderSummary`: id/code/customerName/**firstItemName+itemCount** cho cột "sản phẩm"/channel/status/
