@@ -1,11 +1,12 @@
 import type { components } from '@lumin/api-client';
+import { cartQuoteItems, type CartItem } from './cart';
 
 // Pure, client-safe validation + mapping for the C1 checkout info step (/thanh-toan, P2-d). No network,
 // no 'server-only' — the view (components/checkout-view.tsx) holds the raw form state and calls this to
 // gate the "continue to payment" step; the payment step (P2-f) maps a ValidatedCheckout into the
-// POST /orders body. Every rule below MIRRORS the server's authoritative validate() (checkout.go
-// intake.validate, spec §05) so the client never rejects what the server accepts nor advances a payload
-// the server would 400 on. Unit-tested (test/checkout-form.test.ts).
+// POST /orders body (buildWebOrderInput below). Every rule below MIRRORS the server's authoritative
+// validate() (checkout.go intake.validate, spec §05) so the client never rejects what the server accepts
+// nor advances a payload the server would 400 on. Unit-tested (test/checkout-form.test.ts).
 
 export type CheckoutAddress = components['schemas']['Address']; // { province, ward, street }
 export type CheckoutCustomer = components['schemas']['Customer']; // { name, phone, email? }
@@ -47,9 +48,10 @@ export type CheckoutErrors = Partial<Record<CheckoutField, CheckoutFieldError>>;
 export type ValidatedCheckout = {
   customer: CheckoutCustomer;
   shippingAddress: CheckoutAddress;
-  /** Optional customer note. NOTE (contract gap for P2-f): CreateWebOrderInput has NO `note` field today
-   *  — only the inbox DTO does. P2-f (the step that actually POSTs /orders) must add an additive
-   *  `note?` to the web input or render this display-only. P2-d only collects it. */
+  /** Optional customer note, collected on C1. CONTRACT GAP: CreateWebOrderInput has NO `note` field today
+   *  (only the inbox DTO does), so P2-f neither sends it nor echoes it on the payment review (showing it
+   *  there would imply it was saved). It stays here, ready to wire once the web input gains an additive
+   *  `note?` and buildWebOrderInput maps it — deferred follow-up. */
   note?: string;
   /** ADR-012 dual-ack — set ONLY when the cart has engraving (the server, checkout.go:241, ignores both
    *  otherwise). Both are true whenever present: the info step cannot advance unless personalizationAckMet
@@ -131,4 +133,49 @@ export function personalizationAckMet(
   engraveEchoConfirmed: boolean,
 ): boolean {
   return !hasPersonalization || (personalizationAck && engraveEchoConfirmed);
+}
+
+export type CreateWebOrderInput = components['schemas']['CreateWebOrderInput'];
+
+/**
+ * Assemble the POST /orders body for a web order (P2-f). The priced fields (productId, colorId, optionIds,
+ * quantity) come STRAIGHT from cartQuoteItems — the exact mapping the info step quoted — so the order can
+ * never be priced differently from the total the shopper just saw (parity by construction; the server
+ * re-derives every price regardless, always-must #2). Engraved lines additionally carry the content the
+ * quote omits: `personalization {text, zoneId}`, where zoneId is the engrave option's id — a stable,
+ * non-blank value (the server only requires zoneId non-blank; §5 leaves it free-form). Text is trimmed to
+ * mirror the server's personalizationFrom (blank text ⇒ no personalization), so a tampered blank-engrave
+ * line sends none, exactly as the server would treat it.
+ *
+ * `paymentProofUrl` is the host-pinned finalUrl from the P2-c upload (required by the contract). The
+ * ADR-012 acks are forwarded 1:1 when the cart is engraved (validated carries them only then). NOTE: the
+ * customer `note` is deliberately NOT sent — CreateWebOrderInput has no `note` field (only the inbox DTO
+ * does) — and P2-f also doesn't echo it on the review screen, so nothing implies it was saved. Wiring it
+ * is a deferred follow-up (additive `note?` on the web input); see ValidatedCheckout.note.
+ */
+export function buildWebOrderInput(
+  validated: ValidatedCheckout,
+  items: readonly CartItem[],
+  paymentProofUrl: string,
+): CreateWebOrderInput {
+  const priced = cartQuoteItems(items);
+  const orderItems = priced.map((line, i) => {
+    const engrave = items[i].engrave;
+    return engrave && engrave.text.trim() !== ''
+      ? { ...line, personalization: { text: engrave.text, zoneId: engrave.optionId } }
+      : line;
+  });
+  return {
+    channel: 'web',
+    customer: validated.customer,
+    shippingAddress: validated.shippingAddress,
+    items: orderItems,
+    paymentProofUrl,
+    ...(validated.personalizationAck !== undefined
+      ? {
+          personalizationAck: validated.personalizationAck,
+          engraveEchoConfirmed: validated.engraveEchoConfirmed,
+        }
+      : {}),
+  };
 }

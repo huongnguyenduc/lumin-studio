@@ -2,13 +2,14 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Checkbox, Input, PriceTag, cn } from '@lumin/ui';
 import { cartCount, cartQuoteItems, cartSignature } from '@/lib/cart';
 import { useCart } from '@/lib/cart-store';
 import { quoteCart } from '@/lib/quote';
 import {
+  buildWebOrderInput,
   EMPTY_CHECKOUT_FORM,
   personalizationAckMet,
   validateCheckoutForm,
@@ -17,8 +18,25 @@ import {
   type CheckoutFormState,
   type ValidatedCheckout,
 } from '@/lib/checkout-form';
+import {
+  createPaymentProofUpload,
+  placeOrder,
+  type CreateOrderResult,
+  type ProofUploadContentType,
+} from '@/lib/order-submit';
 import type { CheckoutConfigResult } from '@/lib/checkout-config';
 import { CtaLink } from './cta-link';
+
+/** MIME types the receipt upload accepts — exactly the set the presigned-POST policy allows (P2-c). */
+const PROOF_TYPES: readonly ProofUploadContentType[] = ['image/jpeg', 'image/png', 'image/webp'];
+
+/** Receipt-image upload progress (browser → Garage via the P2-c presigned POST). `done` carries the
+ *  host-pinned finalUrl submitted as paymentProofUrl. `error` codes tell the shopper what to fix. */
+type ProofState =
+  | { status: 'idle' }
+  | { status: 'uploading' }
+  | { status: 'done'; finalUrl: string; fileName: string }
+  | { status: 'error'; code: 'type' | 'size' | 'upload' };
 
 /** Debounce before (re-)quoting: coalesces province edits / cart changes into one server round-trip. */
 const QUOTE_DEBOUNCE_MS = 350;
@@ -59,7 +77,7 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
   const t = useTranslations('checkout');
   const tStates = useTranslations('states');
   const router = useRouter();
-  const { items } = useCart();
+  const { items, clear } = useCart();
 
   // localStorage is unreadable during SSR/first paint → gate on mount so we show a skeleton instead of
   // flashing the empty state before the persisted cart loads.
@@ -77,6 +95,21 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
 
   const [quote, setQuote] = useState<QuoteState>({ status: 'idle' });
   const [retryNonce, setRetryNonce] = useState(0);
+
+  // Payment step (C2, P2-f): receipt upload progress, in-flight submit, the mapped submit error, and the
+  // created-order result (which switches the view to the done screen).
+  const [proof, setProof] = useState<ProofState>({ status: 'idle' });
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<'no_stk' | 'no_shipping_rule' | 'error' | null>(
+    null,
+  );
+  const [placed, setPlaced] = useState<CreateOrderResult | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Synchronous double-submit latch (see onSubmitOrder). A ref, NOT the `submitting` state: setSubmitting
+  // is async, so a second click fired before React commits the re-render would read the same stale closure
+  // and pass a state-only guard, minting a duplicate order (the server has no idempotency yet — ADR-033
+  // parked it for exactly this slice). A ref flips within the same tick, closing that window.
+  const submitLatch = useRef(false);
 
   const refundHeadingId = useId();
   const engraveHeadingId = useId();
@@ -183,6 +216,75 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
     setStep('payment');
   };
 
+  // Receipt upload: pick → get a presigned POST for the file's type (P2-c) → upload the bytes STRAIGHT to
+  // Garage (not through core-api) → keep the host-pinned finalUrl for the order. Errors map to a code the
+  // status line translates. Size is checked against the policy's own maxBytes so we fail fast with a
+  // friendly message instead of letting Garage 400 the oversize part.
+  const onPickFile = async (file: File | undefined) => {
+    if (!file) return;
+    // ponytail: trust the browser's file.type — reliable for phone screenshots (the 99% receipt case). A
+    // file whose MIME the OS reports empty/wrong is rejected with a clear "only JPG/PNG/WebP" nudge and the
+    // shopper re-picks; add extension-sniffing + a retyped Blob only if real devices show false rejects.
+    const contentType = PROOF_TYPES.find((type) => type === file.type);
+    if (!contentType) {
+      setProof({ status: 'error', code: 'type' });
+      return;
+    }
+    setProof({ status: 'uploading' });
+    const bootstrap = await createPaymentProofUpload(contentType);
+    if (!bootstrap.ok) {
+      setProof({ status: 'error', code: 'upload' });
+      return;
+    }
+    const { uploadUrl, fields, finalUrl, maxBytes } = bootstrap.upload;
+    if (file.size > maxBytes) {
+      setProof({ status: 'error', code: 'size' });
+      return;
+    }
+    // S3/Garage presigned POST: every policy field first, the file part LAST.
+    const body = new FormData();
+    for (const [key, value] of Object.entries(fields)) body.append(key, value);
+    body.append('file', file);
+    try {
+      const res = await fetch(uploadUrl, { method: 'POST', body });
+      if (!res.ok) {
+        setProof({ status: 'error', code: 'upload' });
+        return;
+      }
+      setProof({ status: 'done', finalUrl, fileName: file.name });
+    } catch {
+      setProof({ status: 'error', code: 'upload' });
+    }
+  };
+
+  // Submit the order. The double-submit guard is the synchronous `submitLatch` ref (see its declaration) —
+  // it closes the window that async setState leaves open. On 201 the cart is emptied (a placed order's
+  // items must not linger) and the done view takes over; a mapped failure re-enables the form (latch reset)
+  // with a loud message (never silent).
+  const onSubmitOrder = async () => {
+    if (
+      !validated ||
+      proof.status !== 'done' ||
+      okQuote?.total === undefined ||
+      submitLatch.current
+    ) {
+      return;
+    }
+    submitLatch.current = true;
+    setSubmitError(null);
+    setSubmitting(true);
+    const result = await placeOrder(buildWebOrderInput(validated, items, proof.finalUrl));
+    if (result.ok) {
+      // Leave the latch set — the done view replaces this screen, so no further submit is possible.
+      clear();
+      setPlaced(result.result);
+      return;
+    }
+    submitLatch.current = false;
+    setSubmitting(false);
+    setSubmitError(result.code);
+  };
+
   if (!mounted) {
     return <CheckoutSkeleton heading={t('heading')} />;
   }
@@ -207,6 +309,20 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
     );
   }
 
+  // Order placed (checked BEFORE the empty-cart guard, because submitting cleared the cart): a minimal
+  // confirmation that holds the trackingToken. ponytail: P2-g seam — the full wait-screen (auto-poll,
+  // OrderTimeline, the phone-less /o/{code}-{token} copy link built from placed.trackingToken, and the
+  // message-shop links) lands in P2-g; this only proves the order was created and shows its code.
+  if (placed) {
+    return <OrderPlaced heading={t('heading')} code={placed.order.code} />;
+  }
+
+  // C2½ full-screen "sending your order" while POST /orders is in flight (design C2½ — a dedicated
+  // screen, not just a disabled button). prefers-reduced-motion stops the spinner.
+  if (submitting) {
+    return <SubmittingScreen title={t('submittingTitle')} body={t('submittingBody')} />;
+  }
+
   if (items.length === 0) {
     return (
       <Shell heading={t('heading')}>
@@ -221,7 +337,7 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
     );
   }
 
-  const { shippableProvinces, refundPolicy } = config.config;
+  const { shippableProvinces, refundPolicy, bankAccount, vietqrUrl } = config.config;
   const provinceChosen = province !== '';
   const total = okQuote?.total;
   const quotePending = provinceChosen && !okQuote && !errQuote;
@@ -286,8 +402,13 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
     </div>
   );
 
-  // Payment step (C2). This PR renders the recipient + totals header; P2-f adds QR + biên lai + submit.
+  // Payment step (C2, P2-f): recipient + totals header, the VietQR panel, the receipt upload and submit.
   if (step === 'payment' && validated) {
+    // A shop with no STK configured cannot take a web payment (mirrors the server's NO_STK_CONFIGURED,
+    // P2-a) — show a friendly closed-notice instead of a broken QR. Submit additionally needs an uploaded
+    // receipt and a settled server total (carried from C1).
+    const stkConfigured = Boolean(bankAccount.accountNumber);
+    const canSubmit = stkConfigured && proof.status === 'done' && okQuote?.total !== undefined;
     return (
       <Shell heading={t('heading')}>
         <div className="mt-4 rounded-lg border-2 border-border-strong bg-surface-card p-4">
@@ -316,15 +437,113 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
               province: validated.shippingAddress.province,
             })}
           </p>
-          {validated.note ? (
-            <p className="mt-1 text-sm text-text-muted">
-              {t('noteSummaryLine', { note: validated.note })}
-            </p>
-          ) : null}
+          {/* The customer note is collected on C1 (validated.note) but deliberately NOT echoed here: the
+              web order contract has no `note` field yet, so the note isn't sent — showing it on the review
+              screen would imply it was saved. It re-appears once CreateWebOrderInput gains an additive
+              `note?` and buildWebOrderInput maps it (deferred follow-up; see lib/checkout-form.ts). */}
         </div>
         <div className="mt-4">{summary}</div>
-        {/* ponytail: P2-f seam — replaces this line with the VietQR panel, proof upload and submit. */}
-        <p className="mt-6 text-center text-sm text-text-muted">{t('paymentPending')}</p>
+
+        {stkConfigured ? (
+          <>
+            {/* VietQR panel — the server-built img.vietqr.io QR + the STK. The bank name is intentionally
+                not shown (config carries only the bin, not a human name); the QR image renders it, and we
+                show account number + holder. ponytail: bin→name map deferred until the shop asks. */}
+            <section className="mt-4 rounded-lg border-2 border-border-strong bg-surface-card p-4">
+              <h2 className="font-display text-base font-bold text-text-strong">
+                {t('payHeading')}
+              </h2>
+              <p className="mt-1 text-sm text-text-body">{t('payIntro')}</p>
+              <div className="mt-3 flex items-center gap-4">
+                {/* Plain <img> for the remote QR host (matches product-detail / cart-line — no next/image
+                    remotePatterns to maintain). */}
+                <img
+                  src={vietqrUrl}
+                  alt={t('qrAlt')}
+                  width={160}
+                  height={160}
+                  className="h-40 w-40 flex-none rounded-md border border-border-subtle bg-white object-contain"
+                />
+                <dl className="min-w-0 flex-1 text-sm">
+                  <dt className="text-text-muted">{t('accountNumberLabel')}</dt>
+                  <dd className="font-mono font-semibold text-text-strong">
+                    {bankAccount.accountNumber}
+                  </dd>
+                  <dt className="mt-2 text-text-muted">{t('accountNameLabel')}</dt>
+                  <dd className="font-semibold text-text-strong">{bankAccount.accountName}</dd>
+                </dl>
+              </div>
+            </section>
+
+            {/* Receipt upload (P2-c). The proof is REQUIRED (contract) — the submit button stays disabled
+                until an upload finishes, so the warm copy doesn't imply it's optional. */}
+            <section className="mt-4 rounded-lg border-2 border-border-strong bg-surface-card p-4">
+              <h2 className="font-display text-base font-bold text-text-strong">
+                {t('proofHeading')}
+              </h2>
+              <p className="mt-1 text-sm text-text-body">{t('proofIntro')}</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={PROOF_TYPES.join(',')}
+                className="sr-only"
+                onChange={(e) => {
+                  onPickFile(e.target.files?.[0]);
+                  // Reset so re-picking the SAME file after an error still fires onChange.
+                  e.target.value = '';
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="md"
+                className="mt-3"
+                disabled={proof.status === 'uploading'}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {proof.status === 'done' ? t('proofChange') : t('proofPick')}
+              </Button>
+              {/* aria-live so assistive tech announces the upload result. */}
+              <p className="mt-2 text-sm" aria-live="polite">
+                {proof.status === 'uploading' ? (
+                  <span className="text-text-muted">{t('proofUploading')}</span>
+                ) : proof.status === 'done' ? (
+                  <span className="font-semibold text-primary">
+                    {t('proofDone', { name: proof.fileName })}
+                  </span>
+                ) : proof.status === 'error' ? (
+                  <span role="alert" className="font-semibold text-danger">
+                    {t(`proofErrors.${proof.code}`)}
+                  </span>
+                ) : null}
+              </p>
+            </section>
+
+            {submitError ? (
+              <p role="alert" className="mt-4 text-sm font-semibold text-danger">
+                {t(`submitErrors.${submitError}`)}
+              </p>
+            ) : null}
+
+            <Button
+              type="button"
+              variant="pop"
+              size="lg"
+              className="mt-4 w-full"
+              disabled={!canSubmit}
+              onClick={onSubmitOrder}
+            >
+              {t('submitCta')}
+            </Button>
+          </>
+        ) : (
+          <p
+            role="alert"
+            className="mt-6 rounded-lg border-2 border-border-strong bg-surface-sunken p-6 text-center text-sm text-text-body"
+          >
+            {t('noStk')}
+          </p>
+        )}
       </Shell>
     );
   }
@@ -551,5 +770,40 @@ function SummarySkeleton() {
       aria-hidden="true"
       className="inline-block h-5 w-20 animate-pulse rounded bg-surface-sunken motion-reduce:animate-none"
     />
+  );
+}
+
+/** C2½ full-screen "sending your order" state while POST /orders is in flight (design C2½ — a dedicated
+ *  screen, not just a disabled button). The spinner is paused under prefers-reduced-motion. */
+function SubmittingScreen({ title, body }: { title: string; body: string }) {
+  return (
+    <Shell heading={title}>
+      <div role="status" className="mt-10 flex flex-col items-center gap-4 text-center">
+        <span
+          aria-hidden="true"
+          className="h-12 w-12 animate-spin rounded-full border-4 border-surface-sunken border-t-primary motion-reduce:animate-none"
+        />
+        <p className="text-text-body">{body}</p>
+      </div>
+    </Shell>
+  );
+}
+
+/**
+ * Minimal order-placed confirmation (P2-f). ponytail: P2-g seam — the full C3 wait-screen (auto-poll of
+ * GET /orders/track, OrderTimeline, the phone-less /o/{code}-{token} copy link built from the held
+ * trackingToken, and the message-shop links) replaces this in P2-g; here it only confirms the order was
+ * created and shows its code, so P2-f is a self-contained, mergeable step.
+ */
+function OrderPlaced({ heading, code }: { heading: string; code: string }) {
+  const t = useTranslations('checkout');
+  return (
+    <Shell heading={heading}>
+      <div className="mt-6 rounded-lg border-2 border-border-strong bg-surface-card p-8 text-center">
+        <h2 className="font-display text-xl font-bold text-text-strong">{t('doneTitle')}</h2>
+        <p className="mt-1 text-sm font-semibold text-accent-flame">{t('donePendingBadge')}</p>
+        <p className="mt-3 text-text-body">{t('doneBody', { code })}</p>
+      </div>
+    </Shell>
   );
 }
