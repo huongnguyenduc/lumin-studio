@@ -9,7 +9,7 @@ paths:
 > Vì sao: [`/docs/decisions.md`](../../docs/decisions.md) ADR-009/010 · [`/docs/conventions.md`](../../docs/conventions.md) · [`/spec.md`](../../spec.md) §08.
 
 - **Admin Mobile KHÔNG tách codebase** — là chính app admin responsive (ADR-002).
-- **Cloudflare Access** trùm toàn bộ Admin + API admin (cổng danh tính trước box nhà). Đừng tự dựng auth lộ ra ngoài.
+- **Auth = self-issued JWT (ADR-030)**, KHÔNG Cloudflare Access: core-api `POST /auth/login` → cookie httpOnly+SameSite=Strict `lumin_session`; middleware verify trên `/admin/*` + RBAC owner/staff. Màn login mỏng ở apps/admin (P3-a). CF Access/WAF nếu bật = lớp edge bổ sung, không bắt buộc.
 - **STK/bank-account:** chỉ **owner** sửa + **audit log append-only**; QR render **server-side** từ STK đã lưu (chống tráo STK).
 - **Nút 1-chạm → PAID:** owner-only (staff không được), ghi `statusHistory`. Có trên cả Admin và Admin Mobile.
 - **Hàng đợi in:** kéo-thả ↔ status, cập nhật **SSE**. Có view "AssetJob failed" (DLQ).

@@ -33,7 +33,7 @@ Chấp nhận downtime (xem ADR-009). Read-path dựa vào **Cloudflare cache + 
 | Thành phần | Công nghệ | Trách nhiệm |
 |---|---|---|
 | **Storefront** | Next.js (App Router) | Catalog, chi tiết SP, cá nhân hoá, giỏ, checkout→QR tĩnh (đơn tạo **sau khi** khách gửi ảnh CK + xác nhận), tra cứu đơn, tài khoản khách. Mobile-first. SSG/ISR + cache edge. |
-| **Admin / Admin Mobile** | Next.js (responsive) | Dashboard, đơn, hàng đợi in, sản phẩm (upload model), đánh giá, cài đặt. Sau Cloudflare Access. |
+| **Admin / Admin Mobile** | Next.js (responsive) | Dashboard, đơn, hàng đợi in, sản phẩm (upload model), đánh giá, cài đặt. Auth JWT tự-phát (ADR-030; CF Access tuỳ-chọn). |
 | **Extension** | Manifest V3 | **Assistive-only** (ADR-011): tra đơn, form tạo đơn, copy mẫu trả lời, quét mã — chỉ gọi BFF, **không** đụng DOM Messenger/IG. |
 | **Core API (BFF)** | Go + Chi v5, pgx, sqlc, jwtauth | Auth + RBAC (owner/staff), domain đơn/sản phẩm/cài đặt, **state machine**, **tính tiền server**, phát job qua outbox→NATS, SSE tiến độ. Hợp đồng OpenAPI→codegen cho client TS. |
 | **Asset Worker** | Rust (async-nats, tokio) + Blender | Tiêu thụ AssetJob: chuẩn hoá model, trích kích thước/material (prefill Product), tạo LOD .glb, **render 360° sprite** (KHÔNG render poster), tạo derivative ảnh **shop chụp**. Ghi Garage. |

@@ -54,7 +54,7 @@
 - Consumer GPU: WorkQueue, ack-wait dài + **InProgress heartbeat** cho render lâu, MaxDeliver + republish sang stream **DLQ**; có view "AssetJob failed" trong Admin.
 
 ## §Bảo mật
-- **Cloudflare Access** trùm Admin + API admin/extension (cổng danh tính trước box nhà).
+- **Auth admin/staff = self-issued JWT (ADR-030)**, KHÔNG Cloudflare Access (đã cân nhắc → chọn tự-chủ): core-api `POST /auth/login` (bcrypt) → cookie httpOnly+Secure+SameSite=Strict `lumin_session`; middleware verify JWT trên `/admin/*` map role owner/staff. CF Access/WAF (nếu bật) = lớp edge phòng-thủ-bổ-sung, KHÔNG phải cổng danh tính bắt buộc.
 - **STK/bank-account: chỉ owner sửa + audit log append-only**; **QR tĩnh** render **server-side** từ STK đã lưu (chống tráo STK; **nội dung/memo CK không bắt buộc**).
 - Rate-limit `/checkout`, order-lookup, auth ở **Cloudflare WAF** + token-bucket trong Go (defense-in-depth).
 - Guest order-lookup: so sánh **constant-time** mã+SĐT + **token-bucket per-code** chống dò (KHÔNG failure-lockout theo mã — mã đơn tuần-tự nên lockout-theo-mã để attacker khoá chủ đơn thật khỏi đơn của họ; token-bucket đã chặn brute-force, WAF là lớp per-IP — ADR-034).

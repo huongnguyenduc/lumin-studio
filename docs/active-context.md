@@ -6,6 +6,32 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**🔨 PHASE 3 · P3-a (admin login + auth-redirect) — BUILT + VERIFIED on `feat/phase-3-admin-p3a-login`** (off `main`
+`a448a7d`; NOT the migration branch — re-based off main so the pending unaccent fix stays separate). **Backend auth đã có**
+(ADR-030 self-issued JWT: `POST /auth/login` bcrypt→httpOnly cookie `lumin_session` SameSite=Strict, `/auth/logout`); P3-a chỉ
+là **FE + BFF re-issue cookie**. **Restructure:** route-group `app/(app)/` giữ chrome (sidebar+offset) — MOVED `page/loading/
+error.tsx` vào đó; `/dang-nhap` sống NGOÀI group (full-bleed, no nav); root `layout.tsx` giờ chỉ html/body/providers.
+**Login flow:** `login-form.tsx` (client, native required/type=email) → Server Action `lib/auth-actions.ts#login` gọi core-api
+`POST /auth/login` **server-side** → `parseSessionCookie` lấy value+Max-Age từ upstream Set-Cookie → `cookies().set` re-issue
+trên host admin (httpOnly+strict+secure-khi-prod, token KHÔNG chạm client JS) → `router.replace('/')`. 401/400→"sai email/mật
+khẩu" ĐỒNG NHẤT (no enum), 5xx/throw→"thử lại" (no set). **`middleware.ts`** (edge): thiếu cookie→redirect `/dang-nhap` (real
+gate vẫn là core-api 401; Max-Age==JWT TTL nên expiry drop cookie→middleware, không ping-pong); có cookie ở `/dang-nhap`→`/`.
+**Logout** = Server Action xoá cookie (JWT stateless) trong sidebar footer. Dropped signup/forgot-pw/remember-me (owner seed qua
+`make seed-owner`; staff invite=P3-q; no reset backend). **Reuse:** `SESSION_COOKIE`+`coreApiBaseUrl` extract sang `lib/session.ts`
+(dashboard-fetch dùng chung). **Verify:** `pnpm verify` **6/6** (lint·typecheck·test·format) — admin **24** test (auth.test.ts
+**+10**: parseSessionCookie 5 + login action 5) · `next build` xanh (`/dang-nhap` static · `/` dynamic · Middleware 34kB).
+Acceptance **Cụm 26 `ADM-01`** (FE `[ ]`). **Runtime smoke (next start):** `/dang-nhap` 200+form · `/`+`/don-hang` no-cookie
+→307 `/dang-nhap` · `/dang-nhap`+cookie →307 `/` · `/favicon.ico` không redirect (matcher OK). **✅ Review DONE:** spec-guardian
+**PASS** (0 BLK/0 WARN/0 NOTE); adversarial-security **0 exploitable** (7 góc refute: cookie round-trip byte-khớp — JWT base64url
+không `=`/`;`; matcher chỉ UX-gate real-gate=core-api 401, no open-redirect; uniform 401 no-enum; SameSite=Strict CSRF; Max-Age
+luôn có). **2 LOW deferred (không chặn):** (1) `secure:NODE_ENV==='production'` — landmine khi viết admin Dockerfile (đã `ponytail:`
+comment: pin NODE_ENV hoặc COOKIE_SECURE env); (2) `/auth/login` chưa rate-limit app-level (dựa CF WAF chưa wire; BFF-hop giấu
+client IP → limit phải ở **edge admin**, không core-api keyed-IP) — ops Phase-5. **✅ Doc-sync (BLOCKER-E) DONE:** synced
+"Cloudflare Access" → ADR-030 JWT ở `conventions.md §Bảo mật` (qua van `.allow-contract-edit` dùng-rồi-xả) + `.claude/rules/
+admin.md` + `plan.md §Phase-3` + `architecture.md`; giữ nguyên các ref hợp-lệ (ADR-030 "KHÔNG dựa CF Access" · operations.md
+GlitchTip-UI-sau-CF-Access · core-http-relay plan). **NEXT:** commit → user gate (cân nhắc tách `docs:` doc-sync + `docs(phase-3):
+plan` khỏi `feat(admin):P3-a` — Scope §1-PR-1-trục); kế tiếp **P3-b** (GET /admin/orders list).
+
 **✅ PHASE 2 CHECKOUT COMPLETE (2026-07-10)** — cả 9 sub-PR `P2-a..i` MERGED; cuối = **P2-g #60** (`origin/main` squash
 `17284fb`; local `main` đã ff'd, working tree clean). Đơn web end-to-end đủ luồng: `/thanh-toan` C1 địa chỉ → C2 VietQR+proof
 → C3 wait-screen auto-poll (PENDING_CONFIRM→PAID không refresh) + `/o/{code}-{token}` phone-less deep link.
@@ -22,10 +48,19 @@ body (`public.unaccent('public.unaccent'::regdictionary, …)`) + `CREATE EXTENS
 `make migrate` 0→13 green · `immutable_unaccent('Đèn để bàn')`→`Den de ban` · sqlc vet/diff clean · db+httpapi integration green.
 Commit/PR pending user gate.
 
-**➡️ NEXT = Phase 3 · Admin (+ Admin Mobile)** — `docs/plan.md §Phase 3`: dashboard · đơn (confirm + lý do huỷ/hoàn) · hàng đợi
-in (kéo-thả↔status, SSE) · sản phẩm (upload model→AssetJob) · đánh giá · cài đặt (VietQR/STK owner-only + audit). **CHƯA có
-plan file** (`docs/plans/` mới có phase-0/1/2 + core) → Phase 3 cần vòng planning trước khi code (như các phase trước).
-Housekeeping treo: **52 nhánh local** (đa số merged/`:gone`) chờ chủ duyệt xoá.
+**➡️ PHASE 3 · Admin — PLAN LOCKED (2026-07-10), chưa code.** Plan `docs/plans/phase-3-admin.md` (3 vòng探索 read-only:
+backend-surface + spec/designs + FE-reuse). **Phát hiện then chốt:** xương sống admin **đã có** (Core slice 3 PR-3a..k:
+auth+RBAC JWT [ADR-030, **KHÔNG** Cloudflare Access], dashboard, `POST /orders/{id}/transitions` confirm/advance/cancel/refund,
+settings/STK owner-only+audit, reply-templates) → Phase 3 = **FE-nặng** + lấp handler đọc + 2 surface greenfield. `apps/admin`
+hiện **chỉ có dashboard** — **CHƯA có màn login** (backend auth chạy nhưng không có UI lấy cookie) → **P3-a `/dang-nhap` =
+firstPR, gate tất cả**. **Owner-lock:** D-P3-1 scope=**EVERYTHING** (mọi màn `designs/`, ~20 sub-PR) · D-P3-2 hàng-đợi-in=
+**drag-drop @dnd-kit + SSE** · D-P3-3 editor SP=**full 2-cột + live preview** · D-P3-5 upload 2 đường (**ảnh** reuse P2-c
+presigned-POST; **model .glb** = presigned-PUT multipart ADR-005, infra greenfield) · D-P3-6 QC-photo `→SHIPPING` (migration
+000014) · D-P3-7 Vật-tư + Pet-Tag=**greenfield cuối** (Pet-Tag tách `docs/plans/pet-tag.md`). **Tracks:** 0-Foundation(P3-a) ·
+A-Đơn(b..e) · B-Hàng-in(f..h) · C-Cài-đặt(i) = **Done-gate lõi `plan.md`**; D-SP(j..l) · E-Đánh-giá(m..n) · F-extras
+(o..t Danh-mục/Khách/Nhân-viên/Kênh/Vật-tư/Pet-Tag). **BLOCKER-E doc-drift:** `conventions.md` §57 + `plan.md` §Phase-3 còn
+ghi "Cloudflare Access" → spec-sync về ADR-030 (JWT). **NEXT = P3-a** (login UI; backend `/auth/login` đã sẵn). Housekeeping
+treo: **52 nhánh local** (đa số merged/`:gone`) chờ chủ duyệt xoá.
 
 **— P2-g history (MERGED #60 → `main` `17284fb`) —**
 **P2-g (C3 wait-screen + confirmation) — spec-guardian **PASS** (0 BLK/0 WARN/3 NOTE —
