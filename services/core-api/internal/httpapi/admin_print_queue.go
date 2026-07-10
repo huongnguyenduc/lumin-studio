@@ -63,7 +63,13 @@ func (s *Server) AdvancePrintJobStage(ctx context.Context, request api.AdvancePr
 	if err != nil {
 		return nil, err
 	}
-	return api.AdvancePrintJobStage200JSONResponse(printQueueEntryDTO(row)), nil
+	card := printQueueEntryDTO(row)
+	// Push the advanced card to every open board (P3-g SSE). Post-commit — AdvancePrintStage's UPDATE
+	// is committed and PrintQueueEntry read it back — so this is publish-on-commit (ADR-006 spirit); it
+	// is non-blocking and best-effort (a missed frame self-heals via the client's re-read/poll), so it
+	// never affects the PATCH's own 200 response.
+	s.printHub.broadcast(card)
+	return api.AdvancePrintJobStage200JSONResponse(card), nil
 }
 
 // printQueueDTO maps the enriched board rows to wire cards. Split from the I/O (pure) so the row→DTO slot

@@ -6,6 +6,33 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**🔨 PHASE 3 · P3-g (BE SSE `GET /admin/print-queue/stream` — live print board) — BUILT + VERIFIED on `feat/phase-3-admin-p3g-print-stream`**
+(off `main` `fddfe40` after P3-f #68 merged + local main ff'd). **BE-only** (Track B, `dependsOn: P3-f`) — the live push behind the P3-h kanban so a
+drag on one board reflects on every open board without polling. **KEY DESIGN — in-process hub, NOT NATS (ponytail + ADR-009):** core-api is
+single-instance, so the PATCH that moves a card and every SSE subscriber are the same process → a mutex-guarded in-process `printStreamHub`
+(subscribe/broadcast/unsubscribe) suffices and is correct. ADR-008 only forbids **exposing NATS to the browser**; it does NOT mandate NATS as the
+internal source. Print-stage sync is ephemeral + re-derivable (client re-GETs on reconnect) → **no outbox, no NATS publish, no durability** (event-outbox
+skill N/A). `ponytail:` if core-api ever scales horizontally, back the hub with a NATS-subscribe (SSE transport to browser unchanged). **RAW chi route,
+NOT OpenAPI:** the oapi strict layer buffers the whole response → cannot stream; `/healthz`+`/readyz` are already raw routes outside the contract
+(precedent) → **no openapi/codegen change**. Auth is **manual in-handler** via the same `resolveActor` (owner AND staff — same gate as GET
+/admin/print-queue; EventSource sends `lumin_session` same-origin; no-cookie → 401 before any stream byte). **ROUTER restructure (the crux):**
+`middleware.Timeout(30s)` moved from global `r.Use` into a **Group wrapping the OpenAPI routes**, so the SSE route escapes the 30s cooperative
+context-cancel; there is **no global WriteTimeout** either (main.go left it unset **deliberately** — "SSE routes need per-route handling"). **SSE
+hardening (ADR-008 / conventions §Realtime):** `text/event-stream` + `no-transform` + `Content-Encoding: identity` + `X-Accel-Buffering: no` +
+`http.Flusher` per frame + **heartbeat `: ping` every 25s** (< Cloudflare 100s idle cap) + opening `: ok` comment; `event: stage` + one-line JSON `data:`
+per advanced card; `r.Context().Done()` (clean, since outside Timeout) → unsubscribe. **Broadcast** wired into `AdvancePrintJobStage` **post-commit**
+(best-effort · non-blocking · drop-on-full → self-heals via client GET/poll · nil-safe). **Files: 8** (`print_stream.go` hub+handler+writeSSEEvent NEW ·
+`server.go` +printHub field/init · `admin_print_queue.go` +broadcast · `router.go` Group+raw-route · `middleware_auth_test.go` +printHub in
+`serverWithUsers` · `print_stream_test.go` NEW [hub fan-out · never-blocks · nil-safe · auth-401 · SSE-headers · writeSSEEvent] · integration
++broadcast-on-PATCH assert · acceptance **Cụm 32 `ADM-09`**). **Verify:** `make verify-go` ✓ (gofmt · vet · golangci **0** · sqlc vet/diff · **oapi
+stale-check clean — no codegen** · `go test -race ./...` all ok incl real-PG broadcast-on-PATCH; httpapi 43s/db 54s w/ `TESTCONTAINERS_RYUK_DISABLED=true`)
+· core `acceptance.ledger` **62** green (new `[ ]` `ADM-09`) · `pnpm verify` **N/A** (zero TS/openapi/packages touched). **No new dep · no new ADR**
+(ADR-008 + ADR-009 cover it) **· no migration · no contract-break.** **⚠️ BLOCKER-B STILL OPEN — named-tunnel smoke-test is a MANUAL gate** (can't run
+cloudflared here): SSE through the home-box tunnel must be smoke-tested (buffer / 100s / 524) before P3-h ships; if flaky → **poll-only v1** (open-q #4,
+ADR-008 allows; fallback `use-order-poll` P1-o already exists). **NEXT after P3-g land = P3-h** (FE `/hang-doi-in` kanban @dnd-kit + consume this SSE +
+fallback poll). **Adversarial self-check + spec-guardian → then commit → user gate.**
+
+**— P3-f history (MERGED #68 → `main` `fddfe40`) —**
 **🔨 PHASE 3 · P3-f (BE `GET /admin/print-queue` + `PATCH /admin/print-jobs/{id}` — print board list + stage advance) — BUILT + VERIFIED on `feat/phase-3-admin-p3f-print-queue`**
 (off `main` `0e307f4` after P3-e #67 merged + local main ff'd). **BE-only** (Track B start, `dependsOn: —`) — the read + mutate behind the P3-h
 kanban. **Reuse-heavy (ponytail):** the bare print-job seams (`db.Jobs.PrintJobsByStage`/`AdvancePrintStage`, migration 000006) already existed but

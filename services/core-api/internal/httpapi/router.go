@@ -44,8 +44,10 @@ func NewRouter(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus, authIss
 	// NOTE: middleware.Timeout only sets a context deadline (cooperative) — it
 	// cannot interrupt a handler that ignores ctx.Done(). Domain handlers MUST
 	// propagate r.Context() into every DB/NATS call to be cancellable; the real
-	// socket-level backstop is the http.Server Read/Write timeouts (Phase-1).
-	r.Use(middleware.Timeout(30 * time.Second))
+	// socket-level backstop is the http.Server Read/Write timeouts (Phase-1). It
+	// is applied to the OpenAPI route group below, NOT globally: the SSE stream
+	// (/admin/print-queue/stream, P3-g) must outlive the 30s deadline, and no
+	// global WriteTimeout hard-closes it either (main.go, conventions.md §Realtime).
 
 	srv := NewServer(logger, pool, nats, authIssuer, opts...)
 
@@ -54,9 +56,17 @@ func NewRouter(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus, authIss
 	r.Get("/healthz", health)
 	r.Get("/readyz", srv.readiness)
 
-	// Mount the OpenAPI-generated domain routes. oapi-codegen has TWO error seams and both
-	// default to a plaintext http.Error(w, err.Error()) that we must override, or a raw Go
-	// error (incl. the domain's Vietnamese TransitionError.Message) leaks onto the wire and
+	// Print-board live stream (P3-g, ADR-008): a raw SSE route, deliberately OUTSIDE both the
+	// strict/oapi layer (which buffers the whole response and cannot stream) and middleware.Timeout
+	// (a long-lived stream must not be cancelled at 30s). It is not a classify()-gated strict
+	// operation, so the handler enforces auth itself via resolveActor — the same lumin_session cookie
+	// EventSource sends same-origin. Mirrors /healthz + /readyz as a raw (non-contract) route.
+	r.Get("/admin/print-queue/stream", srv.streamPrintQueue)
+
+	// Mount the OpenAPI-generated domain routes inside a group that restores the 30s cooperative
+	// deadline (the SSE route above is the one endpoint that must escape it). oapi-codegen has TWO
+	// error seams and both default to a plaintext http.Error(w, err.Error()) that we must override, or
+	// a raw Go error (incl. the domain's Vietnamese TransitionError.Message) leaks onto the wire and
 	// the response breaks the single ErrorEnvelope contract all three TS clients consume
 	// (always-must #3 / ADR-032):
 	//   1. the STRICT layer (Request/ResponseErrorHandlerFunc) — body decode + handler-return
@@ -66,16 +76,19 @@ func NewRouter(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus, authIss
 	// Both route through handleRequestError/handleResponseError → the JSON ErrorEnvelope. The
 	// auth boundary (PR-3e-2) is the StrictMiddlewareFunc slice below: srv.authMiddleware runs
 	// per-operation, branches on the operationID (fail-closed: unlisted ops require a valid
-	// actor), verifies the session cookie, and injects the resolved Actor into the handler's
-	// context. Handlers are 501 stubs until their domain PRs (3g–3k) land.
-	strict := api.NewStrictHandlerWithOptions(srv, []api.StrictMiddlewareFunc{srv.authMiddleware}, api.StrictHTTPServerOptions{
-		RequestErrorHandlerFunc:  srv.handleRequestError,
-		ResponseErrorHandlerFunc: srv.handleResponseError,
+	// actor), verifies the session cookie, and injects the resolved Actor into the handler's context.
+	r.Group(func(gr chi.Router) {
+		gr.Use(middleware.Timeout(30 * time.Second))
+		strict := api.NewStrictHandlerWithOptions(srv, []api.StrictMiddlewareFunc{srv.authMiddleware}, api.StrictHTTPServerOptions{
+			RequestErrorHandlerFunc:  srv.handleRequestError,
+			ResponseErrorHandlerFunc: srv.handleResponseError,
+		})
+		api.HandlerWithOptions(strict, api.ChiServerOptions{
+			BaseRouter:       gr,
+			ErrorHandlerFunc: srv.handleRequestError,
+		})
 	})
-	return api.HandlerWithOptions(strict, api.ChiServerOptions{
-		BaseRouter:       r,
-		ErrorHandlerFunc: srv.handleRequestError,
-	})
+	return r
 }
 
 // requestLogger emits one structured slog line per request.

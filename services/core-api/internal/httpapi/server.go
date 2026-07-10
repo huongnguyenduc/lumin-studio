@@ -63,6 +63,10 @@ type Server struct {
 	// NewServer defaults it to a dev-secret signer so unit tests need no wiring, and WithTrackingSecret
 	// (called by main.go with the real TRACKING_SECRET) overrides it. See track.go.
 	tracking *trackingSigner
+	// printHub is the in-process fan-out for the print-board SSE stream (P3-g, ADR-008). The stage PATCH
+	// broadcasts the advanced card; GET /admin/print-queue/stream subscribers push it to the browser.
+	// core-api is single-instance (ADR-009) so no NATS is involved. Never nil off NewServer; see print_stream.go.
+	printHub *printStreamHub
 }
 
 // ServerOption customizes an optional Server dependency without churning every existing
@@ -107,6 +111,7 @@ func NewServer(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus, authIss
 		lookup:             newLookupLimiter(defaultLookupLimits()),
 		proofUploadLimiter: newPaymentProofUploadLimiter(defaultPaymentProofUploadLimits()),
 		tracking:           newTrackingSigner(devTrackingSecret),
+		printHub:           newPrintStreamHub(),
 	}
 	for _, opt := range opts {
 		opt(s)
