@@ -607,10 +607,10 @@ if [ -f "$TRANSITION" ]; then
   TRANSBODY="$(grep -vE '^[[:space:]]*//' "$TRANSITION" 2>/dev/null)"
   if printf '%s' "$TRANSBODY" | grep -q 'ConfirmPaymentTx' \
      && printf '%s' "$TRANSBODY" | grep -q 'order.RoleOwner' \
-     && printf '%s' "$TRANSBODY" | grep -q 'SetTrackingCodeTx'; then
-    ok "ARM: có httpapi/transition.go -> reconcile→PAID qua ConfirmPaymentTx (emitter order.paid duy nhất) + owner-gate biên (order.RoleOwner) + SHIPPING persist SetTrackingCodeTx (dispatch-footgun/money-in/tracking — locked #9/§6 D12)"
+     && printf '%s' "$TRANSBODY" | grep -q 'SetShippingArtifactsTx'; then
+    ok "ARM: có httpapi/transition.go -> reconcile→PAID qua ConfirmPaymentTx (emitter order.paid duy nhất) + owner-gate biên (order.RoleOwner) + SHIPPING persist SetShippingArtifactsTx (tracking_code + qc_photo_url, D-P3-6) (dispatch-footgun/money-in/shipping-artifacts — locked #9/§6 D12)"
   else
-    bad "ARM: httpapi/transition.go LAND nhưng thiếu 1 trong {ConfirmPaymentTx cho money-in, order.RoleOwner owner-gate biên, SetTrackingCodeTx cho SHIPPING} -> reconcile qua AdvanceStatusTx (mất order.paid câm) / staff reconcile lọt / SHIPPING không mã vận chuyển (money-path!)"
+    bad "ARM: httpapi/transition.go LAND nhưng thiếu 1 trong {ConfirmPaymentTx cho money-in, order.RoleOwner owner-gate biên, SetShippingArtifactsTx cho SHIPPING} -> reconcile qua AdvanceStatusTx (mất order.paid câm) / staff reconcile lọt / SHIPPING không mã vận chuyển+QC (money-path!)"
   fi
 else ok "ARM: chưa có httpapi/transition.go (transition dispatch/owner/tracking arm khi land — PR-3h)"; fi
 # ARM PR-3g (checkout handler): khoá 4 bất biến money-path của endpoint tạo đơn —
