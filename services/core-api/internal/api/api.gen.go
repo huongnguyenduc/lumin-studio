@@ -46,13 +46,13 @@ const (
 
 // Defines values for OrderStatus.
 const (
-	CANCELLED      OrderStatus = "CANCELLED"
-	COMPLETED      OrderStatus = "COMPLETED"
-	PAID           OrderStatus = "PAID"
-	PENDINGCONFIRM OrderStatus = "PENDING_CONFIRM"
-	PRINTING       OrderStatus = "PRINTING"
-	REFUNDED       OrderStatus = "REFUNDED"
-	SHIPPING       OrderStatus = "SHIPPING"
+	OrderStatusCANCELLED      OrderStatus = "CANCELLED"
+	OrderStatusCOMPLETED      OrderStatus = "COMPLETED"
+	OrderStatusPAID           OrderStatus = "PAID"
+	OrderStatusPENDINGCONFIRM OrderStatus = "PENDING_CONFIRM"
+	OrderStatusPRINTING       OrderStatus = "PRINTING"
+	OrderStatusREFUNDED       OrderStatus = "REFUNDED"
+	OrderStatusSHIPPING       OrderStatus = "SHIPPING"
 )
 
 // Defines values for PaymentProofUploadInputContentType.
@@ -60,6 +60,14 @@ const (
 	Imagejpeg PaymentProofUploadInputContentType = "image/jpeg"
 	Imagepng  PaymentProofUploadInputContentType = "image/png"
 	Imagewebp PaymentProofUploadInputContentType = "image/webp"
+)
+
+// Defines values for PrintStage.
+const (
+	PrintStageNEEDPRINT PrintStage = "NEED_PRINT"
+	PrintStagePACKING   PrintStage = "PACKING"
+	PrintStagePRINTING  PrintStage = "PRINTING"
+	PrintStageSHIPPED   PrintStage = "SHIPPED"
 )
 
 // Defines values for ProductStatus.
@@ -478,6 +486,40 @@ type PriceQuoteLine struct {
 	UnitPrice int64 `json:"unitPrice"`
 }
 
+// PrintQueueJob One enriched print-queue card (P3-f), returned by GET /admin/print-queue and the stage PATCH. The bare print_jobs row (spec §02: orderItemRef · stage · printer · colorName · eta) joined to the order code, product name and quantity so a card at the printer says WHAT to make for WHICH order. colorName/printer/eta are optional (nullable columns). Stage is a PrintStage enum the client maps to the kanban column label (always-must #3).
+type PrintQueueJob struct {
+	// ColorName Denormalized color name for the queue card (spec colorName); absent if the line has no color.
+	ColorName *string `json:"colorName,omitempty"`
+
+	// Eta Estimated handoff, when set.
+	Eta *time.Time         `json:"eta,omitempty"`
+	Id  openapi_types.UUID `json:"id"`
+
+	// OrderCode Display code of the owning order (e.g.
+	OrderCode string `json:"orderCode"`
+
+	// Printer Assigned printer, when staff have set one.
+	Printer *string `json:"printer,omitempty"`
+
+	// ProductName Product name of the print job's order line — what to make.
+	ProductName string `json:"productName"`
+
+	// Quantity Quantity of the order line (the card renders "×N").
+	Quantity int `json:"quantity"`
+
+	// Stage Print queue stage (spec §02 PrintJob). STORED and staff-driven — finer-grained than OrderStatus (one PRINTING order spans the PRINTING + PACKING print stages) and advanced independently of it (D6): a stage move is NOT an OrderStatus transition.
+	Stage PrintStage `json:"stage"`
+}
+
+// PrintStage Print queue stage (spec §02 PrintJob). STORED and staff-driven — finer-grained than OrderStatus (one PRINTING order spans the PRINTING + PACKING print stages) and advanced independently of it (D6): a stage move is NOT an OrderStatus transition.
+type PrintStage string
+
+// PrintStageUpdate PATCH body for /admin/print-jobs/{id} — the target print stage (staff drag-drop).
+type PrintStageUpdate struct {
+	// Stage Print queue stage (spec §02 PrintJob). STORED and staff-driven — finer-grained than OrderStatus (one PRINTING order spans the PRINTING + PACKING print stages) and advanced independently of it (D6): a stage move is NOT an OrderStatus transition.
+	Stage PrintStage `json:"stage"`
+}
+
 // Product Storefront product detail (spec §02). Money fields (basePrice, colors[].priceDelta, options[].priceDelta) are raw int-VND — the client formats via @lumin/core (always-must #2). images[0] is the card cover (sprite-first, ADR-007). No productType in Phase 1 (D-P1-1).
 type Product struct {
 	// BasePrice Starting price in int-VND (>= 0); options may add to it.
@@ -773,6 +815,9 @@ type GetProductReviewsParams struct {
 	IfNoneMatch *string `json:"If-None-Match,omitempty"`
 }
 
+// AdvancePrintJobStageJSONRequestBody defines body for AdvancePrintJobStage for application/json ContentType.
+type AdvancePrintJobStageJSONRequestBody = PrintStageUpdate
+
 // UpdateBankAccountJSONRequestBody defines body for UpdateBankAccount for application/json ContentType.
 type UpdateBankAccountJSONRequestBody = BankAccountUpdate
 
@@ -897,6 +942,12 @@ type ServerInterface interface {
 	// Admin order detail by id — the full internal order (admin-gated).
 	// (GET /admin/orders/{id})
 	GetAdminOrder(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Move a print job to a new queue stage (admin-gated; stage-only, no order transition).
+	// (PATCH /admin/print-jobs/{id})
+	AdvancePrintJobStage(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Admin print queue — every print job across all stages, enriched (admin-gated).
+	// (GET /admin/print-queue)
+	GetPrintQueue(w http.ResponseWriter, r *http.Request)
 	// List the extension reply templates (admin-gated read).
 	// (GET /admin/reply-templates)
 	ListReplyTemplates(w http.ResponseWriter, r *http.Request)
@@ -978,6 +1029,18 @@ func (_ Unimplemented) GetAdminOrders(w http.ResponseWriter, r *http.Request, pa
 // Admin order detail by id — the full internal order (admin-gated).
 // (GET /admin/orders/{id})
 func (_ Unimplemented) GetAdminOrder(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Move a print job to a new queue stage (admin-gated; stage-only, no order transition).
+// (PATCH /admin/print-jobs/{id})
+func (_ Unimplemented) AdvancePrintJobStage(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Admin print queue — every print job across all stages, enriched (admin-gated).
+// (GET /admin/print-queue)
+func (_ Unimplemented) GetPrintQueue(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1201,6 +1264,57 @@ func (siw *ServerInterfaceWrapper) GetAdminOrder(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAdminOrder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdvancePrintJobStage operation middleware
+func (siw *ServerInterfaceWrapper) AdvancePrintJobStage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdvancePrintJobStage(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPrintQueue operation middleware
+func (siw *ServerInterfaceWrapper) GetPrintQueue(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPrintQueue(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1890,6 +2004,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/admin/orders/{id}", wrapper.GetAdminOrder)
 	})
 	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/admin/print-jobs/{id}", wrapper.AdvancePrintJobStage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/print-queue", wrapper.GetPrintQueue)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/reply-templates", wrapper.ListReplyTemplates)
 	})
 	r.Group(func(r chi.Router) {
@@ -2067,6 +2187,76 @@ type GetAdminOrder404JSONResponse struct{ NotFoundJSONResponse }
 func (response GetAdminOrder404JSONResponse) VisitGetAdminOrderResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type AdvancePrintJobStageRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *AdvancePrintJobStageJSONRequestBody
+}
+
+type AdvancePrintJobStageResponseObject interface {
+	VisitAdvancePrintJobStageResponse(w http.ResponseWriter) error
+}
+
+type AdvancePrintJobStage200JSONResponse PrintQueueJob
+
+func (response AdvancePrintJobStage200JSONResponse) VisitAdvancePrintJobStageResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type AdvancePrintJobStage400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response AdvancePrintJobStage400JSONResponse) VisitAdvancePrintJobStageResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type AdvancePrintJobStage401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response AdvancePrintJobStage401JSONResponse) VisitAdvancePrintJobStageResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type AdvancePrintJobStage404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response AdvancePrintJobStage404JSONResponse) VisitAdvancePrintJobStageResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetPrintQueueRequestObject struct {
+}
+
+type GetPrintQueueResponseObject interface {
+	VisitGetPrintQueueResponse(w http.ResponseWriter) error
+}
+
+type GetPrintQueue200JSONResponse []PrintQueueJob
+
+func (response GetPrintQueue200JSONResponse) VisitGetPrintQueueResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetPrintQueue401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetPrintQueue401JSONResponse) VisitGetPrintQueueResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -2863,6 +3053,12 @@ type StrictServerInterface interface {
 	// Admin order detail by id — the full internal order (admin-gated).
 	// (GET /admin/orders/{id})
 	GetAdminOrder(ctx context.Context, request GetAdminOrderRequestObject) (GetAdminOrderResponseObject, error)
+	// Move a print job to a new queue stage (admin-gated; stage-only, no order transition).
+	// (PATCH /admin/print-jobs/{id})
+	AdvancePrintJobStage(ctx context.Context, request AdvancePrintJobStageRequestObject) (AdvancePrintJobStageResponseObject, error)
+	// Admin print queue — every print job across all stages, enriched (admin-gated).
+	// (GET /admin/print-queue)
+	GetPrintQueue(ctx context.Context, request GetPrintQueueRequestObject) (GetPrintQueueResponseObject, error)
 	// List the extension reply templates (admin-gated read).
 	// (GET /admin/reply-templates)
 	ListReplyTemplates(ctx context.Context, request ListReplyTemplatesRequestObject) (ListReplyTemplatesResponseObject, error)
@@ -3023,6 +3219,63 @@ func (sh *strictHandler) GetAdminOrder(w http.ResponseWriter, r *http.Request, i
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAdminOrderResponseObject); ok {
 		if err := validResponse.VisitGetAdminOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AdvancePrintJobStage operation middleware
+func (sh *strictHandler) AdvancePrintJobStage(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request AdvancePrintJobStageRequestObject
+
+	request.Id = id
+
+	var body AdvancePrintJobStageJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AdvancePrintJobStage(ctx, request.(AdvancePrintJobStageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AdvancePrintJobStage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AdvancePrintJobStageResponseObject); ok {
+		if err := validResponse.VisitAdvancePrintJobStageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPrintQueue operation middleware
+func (sh *strictHandler) GetPrintQueue(w http.ResponseWriter, r *http.Request) {
+	var request GetPrintQueueRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPrintQueue(ctx, request.(GetPrintQueueRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPrintQueue")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPrintQueueResponseObject); ok {
+		if err := validResponse.VisitGetPrintQueueResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

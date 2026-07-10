@@ -397,6 +397,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/print-queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin print queue — every print job across all stages, enriched (admin-gated).
+         * @description Returns the whole print board (P3-f): one enriched card per print job across all four stages (NEED_PRINT/PRINTING/PACKING/SHIPPED), each carrying the order code, product name, quantity, color, printer and ETA a fulfiller needs — the join the bare print_jobs row (ids only) cannot give. Ordered by stage then created_at; the client groups into the kanban columns and derives per-column counts. Admin-gated (cookieAuth; owner AND staff — the print board is fulfillment work, not a money-out edge). Stage is a PrintStage enum the client maps to an i18n label (always-must #3); ETA/color/printer are optional. NOT paginated (the active queue is small).
+         */
+        get: operations["getPrintQueue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/print-jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Move a print job to a new queue stage (admin-gated; stage-only, no order transition).
+         * @description Sets the print job's board stage (P3-f) — the staff drag-drop between kanban columns. The print queue is STORED and staff-driven, finer-grained than order status and advanced INDEPENDENTLY of it (D6): this endpoint moves ONLY the print stage, it does NOT transition the customer's OrderStatus. Order status changes go through POST /orders/{id}/transitions, which enforces the RBAC + statusHistory + →SHIPPING QC-photo/tracking gate (P3-e) that dragging a card must never bypass. The target stage must be a valid PrintStage; an unknown value → 400, an unknown job id → 404. Admin-gated (cookieAuth; owner AND staff). Returns the updated card (same shape as the board list).
+         */
+        patch: operations["advancePrintJobStage"];
+        trace?: never;
+    };
     "/admin/settings": {
         parameters: {
             query?: never;
@@ -460,6 +500,11 @@ export interface components {
          * @enum {string}
          */
         OrderStatus: "PENDING_CONFIRM" | "PAID" | "PRINTING" | "SHIPPING" | "COMPLETED" | "CANCELLED" | "REFUNDED";
+        /**
+         * @description Print queue stage (spec §02 PrintJob). STORED and staff-driven — finer-grained than OrderStatus (one PRINTING order spans the PRINTING + PACKING print stages) and advanced independently of it (D6): a stage move is NOT an OrderStatus transition.
+         * @enum {string}
+         */
+        PrintStage: "NEED_PRINT" | "PRINTING" | "PACKING" | "SHIPPED";
         /**
          * @description Order origin (spec §04).
          * @enum {string}
@@ -1004,6 +1049,31 @@ export interface components {
             pageSize: number;
             /** @description Total orders matching the status filter, across all pages. */
             total: number;
+        };
+        /** @description One enriched print-queue card (P3-f), returned by GET /admin/print-queue and the stage PATCH. The bare print_jobs row (spec §02: orderItemRef · stage · printer · colorName · eta) joined to the order code, product name and quantity so a card at the printer says WHAT to make for WHICH order. colorName/printer/eta are optional (nullable columns). Stage is a PrintStage enum the client maps to the kanban column label (always-must #3). */
+        PrintQueueJob: {
+            /** Format: uuid */
+            id: string;
+            stage: components["schemas"]["PrintStage"];
+            /** @description Display code of the owning order (e.g. */
+            orderCode: string;
+            /** @description Product name of the print job's order line — what to make. */
+            productName: string;
+            /** @description Quantity of the order line (the card renders "×N"). */
+            quantity: number;
+            /** @description Denormalized color name for the queue card (spec colorName); absent if the line has no color. */
+            colorName?: string;
+            /** @description Assigned printer, when staff have set one. */
+            printer?: string;
+            /**
+             * Format: date-time
+             * @description Estimated handoff, when set.
+             */
+            eta?: string;
+        };
+        /** @description PATCH body for /admin/print-jobs/{id} — the target print stage (staff drag-drop). */
+        PrintStageUpdate: {
+            stage: components["schemas"]["PrintStage"];
         };
         /** @description The guest-facing order timeline returned by GET /orders/lookup. It is a SEPARATE schema from Order (never a $ref) and exposes ONLY what a customer who already knows their code + phone may see: the code they typed, the current status, a status→time milestone list, an optional carrier tracking code, and the creation instant. It deliberately OMITS every internal field — customer PII, shipping address, line items, money (subtotal/shippingFee/total/unitPrice), payment/refund proof URLs, the internal note, the order uuid, the channel, and the statusHistory actor (byUser) + reason (ADR-032 non-leak). */
         PublicOrderTimeline: {
@@ -1666,6 +1736,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Order"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getPrintQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every print job as an enriched queue card, ordered by stage then age. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrintQueueJob"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    advancePrintJobStage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrintStageUpdate"];
+            };
+        };
+        responses: {
+            /** @description The updated print queue card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrintQueueJob"];
                 };
             };
             400: components["responses"]["BadRequest"];

@@ -93,6 +93,9 @@ type Querier interface {
 	// and writes the order atomically (no lost-update race between concurrent transitions).
 	GetOrderForUpdate(ctx context.Context, id uuid.UUID) (Order, error)
 	GetPrintJobByID(ctx context.Context, id uuid.UUID) (PrintJob, error)
+	// GetPrintQueueEntry is the single-card read behind the stage PATCH (P3-f): the same enriched shape as
+	// ListPrintQueue for one job, so the mutate response and the board list carry one identical card shape.
+	GetPrintQueueEntry(ctx context.Context, id uuid.UUID) (GetPrintQueueEntryRow, error)
 	// GetProductByID is the by-id read the checkout handler (PR-3g) needs to derive a
 	// server-authoritative UnitPrice from base_price (never a client price). ProductBySlug is the
 	// storefront read; this is the intake read. Colors/options are validated via the existing
@@ -213,6 +216,16 @@ type Querier interface {
 	ListOrdersByCustomer(ctx context.Context, customerID uuid.UUID) ([]Order, error)
 	ListOrdersByStatus(ctx context.Context, status order.Status) ([]Order, error)
 	ListPrintJobsByStage(ctx context.Context, stage PrintStage) ([]PrintJob, error)
+	// ListPrintQueue is the admin kanban board read (P3-f): every print job across all stages, joined to
+	// the human-readable order code + product name + quantity so a queue card says WHAT TO MAKE for WHICH
+	// order (the bare print_jobs row carries ids only, useless at the printer). color_name is denormalized
+	// on print_jobs (queue-card field, spec §02) so no colors join is needed; printer/eta/color_name are
+	// nullable. All joins are INNER: a print job's order_item FK is ON DELETE CASCADE and its product FK is
+	// RESTRICT, so every job has exactly one live item → order + product. Ordered by stage (enum definition
+	// order NEED_PRINT→SHIPPED) then created_at, so each column is stable FIFO; the client groups by stage.
+	// ponytail: no pagination — the active print queue on a one-shop box is small; SHIPPED accretes, so add
+	// a "recent N" / archive filter here if that column ever grows unbounded.
+	ListPrintQueue(ctx context.Context) ([]ListPrintQueueRow, error)
 	ListProductsByStatus(ctx context.Context, status ProductStatus) ([]Product, error)
 	// ListPurgeableProofOrders returns orders whose receipt image has outlived the retention window
 	// (ADR-035): the order is in a terminal status AND its last transition (orders.updated_at, set by

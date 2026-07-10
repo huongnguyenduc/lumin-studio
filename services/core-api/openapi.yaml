@@ -781,6 +781,72 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /admin/print-queue:
+    get:
+      tags: [admin]
+      operationId: getPrintQueue
+      summary: Admin print queue — every print job across all stages, enriched (admin-gated).
+      description: >
+        Returns the whole print board (P3-f): one enriched card per print job across all four stages
+        (NEED_PRINT/PRINTING/PACKING/SHIPPED), each carrying the order code, product name, quantity,
+        color, printer and ETA a fulfiller needs — the join the bare print_jobs row (ids only) cannot
+        give. Ordered by stage then created_at; the client groups into the kanban columns and derives
+        per-column counts. Admin-gated (cookieAuth; owner AND staff — the print board is fulfillment
+        work, not a money-out edge). Stage is a PrintStage enum the client maps to an i18n label
+        (always-must #3); ETA/color/printer are optional. NOT paginated (the active queue is small).
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Every print job as an enriched queue card, ordered by stage then age.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PrintQueueJob'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /admin/print-jobs/{id}:
+    patch:
+      tags: [admin]
+      operationId: advancePrintJobStage
+      summary: Move a print job to a new queue stage (admin-gated; stage-only, no order transition).
+      description: >
+        Sets the print job's board stage (P3-f) — the staff drag-drop between kanban columns. The print
+        queue is STORED and staff-driven, finer-grained than order status and advanced INDEPENDENTLY of
+        it (D6): this endpoint moves ONLY the print stage, it does NOT transition the customer's
+        OrderStatus. Order status changes go through POST /orders/{id}/transitions, which enforces the
+        RBAC + statusHistory + →SHIPPING QC-photo/tracking gate (P3-e) that dragging a card must never
+        bypass. The target stage must be a valid PrintStage; an unknown value → 400, an unknown job id →
+        404. Admin-gated (cookieAuth; owner AND staff). Returns the updated card (same shape as the
+        board list).
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrintStageUpdate'
+      responses:
+        '200':
+          description: The updated print queue card.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrintQueueJob'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /admin/settings:
     get:
       tags: [admin]
@@ -917,6 +983,18 @@ components:
         - COMPLETED
         - CANCELLED
         - REFUNDED
+
+    PrintStage:
+      type: string
+      description: >
+        Print queue stage (spec §02 PrintJob). STORED and staff-driven — finer-grained than OrderStatus
+        (one PRINTING order spans the PRINTING + PACKING print stages) and advanced independently of it
+        (D6): a stage move is NOT an OrderStatus transition.
+      enum:
+        - NEED_PRINT
+        - PRINTING
+        - PACKING
+        - SHIPPED
 
     Channel:
       type: string
@@ -1959,6 +2037,49 @@ components:
         total:
           type: integer
           description: Total orders matching the status filter, across all pages.
+
+    PrintQueueJob:
+      type: object
+      description: >
+        One enriched print-queue card (P3-f), returned by GET /admin/print-queue and the stage PATCH.
+        The bare print_jobs row (spec §02: orderItemRef · stage · printer · colorName · eta) joined to
+        the order code, product name and quantity so a card at the printer says WHAT to make for WHICH
+        order. colorName/printer/eta are optional (nullable columns). Stage is a PrintStage enum the
+        client maps to the kanban column label (always-must #3).
+      required: [id, stage, orderCode, productName, quantity]
+      properties:
+        id:
+          type: string
+          format: uuid
+        stage:
+          $ref: '#/components/schemas/PrintStage'
+        orderCode:
+          type: string
+          description: Display code of the owning order (e.g. #LMN-2261) — the card's "which order" anchor.
+        productName:
+          type: string
+          description: Product name of the print job's order line — what to make.
+        quantity:
+          type: integer
+          description: Quantity of the order line (the card renders "×N").
+        colorName:
+          type: string
+          description: Denormalized color name for the queue card (spec colorName); absent if the line has no color.
+        printer:
+          type: string
+          description: Assigned printer, when staff have set one.
+        eta:
+          type: string
+          format: date-time
+          description: Estimated handoff, when set.
+
+    PrintStageUpdate:
+      type: object
+      description: PATCH body for /admin/print-jobs/{id} — the target print stage (staff drag-drop).
+      required: [stage]
+      properties:
+        stage:
+          $ref: '#/components/schemas/PrintStage'
 
     # --- Public guest order lookup (P1-n) ---------------------------------------------------------
     PublicOrderTimeline:
