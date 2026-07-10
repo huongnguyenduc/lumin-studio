@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { cn } from '@lumin/ui';
+import { logout } from '@/lib/auth-actions';
 import {
   BoxIcon,
   CoilIcon,
@@ -80,6 +81,20 @@ export function Sidebar() {
               </li>
             );
           })}
+          {/* Logout is an action, not a nav target: a form posting to the `logout` Server Action
+              (drops the session cookie → middleware routes the next request to /dang-nhap). Styled
+              as a muted nav row so it sits with the list on both the desktop rail and the mobile
+              top bar. */}
+          <li className="shrink-0 lg:mt-1 lg:shrink lg:border-t lg:border-border-subtle lg:pt-1">
+            <form action={logout}>
+              <button
+                type="submit"
+                className="flex min-h-[44px] w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-text-muted transition-colors hover:bg-surface-sunken hover:text-text-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
+              >
+                <span className="whitespace-nowrap">{t('logout')}</span>
+              </button>
+            </form>
+          </li>
         </ul>
       </nav>
     </aside>

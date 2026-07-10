@@ -23,6 +23,21 @@ export const vi = {
     materials: 'Vật tư',
     customers: 'Khách hàng',
     settings: 'Cài đặt',
+    logout: 'Đăng xuất',
+  },
+  auth: {
+    metaTitle: 'Đăng nhập — Lumin Studio',
+    brand: 'Lumin',
+    brandTagline:
+      'Bảng điều khiển cho cửa hàng in 3D của Lumin — đơn hàng, hàng đợi in, sản phẩm và đánh giá, tất cả ở một nơi.',
+    title: 'Đăng nhập',
+    subtitle: 'Quản lý cửa hàng Lumin Studio.',
+    email: 'Email',
+    password: 'Mật khẩu',
+    submit: 'Đăng nhập',
+    submitting: 'Đang đăng nhập…',
+    invalid: 'Email hoặc mật khẩu chưa đúng — bạn thử lại giúp mình nhé.',
+    error: 'Mất kết nối một chút — bạn thử lại giúp mình nhé.',
   },
   topbar: {
     greeting: 'Chào buổi sáng, Lumin 🧡',
