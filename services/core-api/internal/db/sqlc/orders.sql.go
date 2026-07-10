@@ -27,6 +27,22 @@ func (q *Queries) ClearOrderPaymentProof(ctx context.Context, id uuid.UUID) erro
 	return err
 }
 
+const countAdminOrders = `-- name: CountAdminOrders :one
+SELECT count(*) FROM orders o
+WHERE $1::order_status IS NULL OR o.status = $1::order_status
+`
+
+// CountAdminOrders is the total for the admin list envelope — the SAME status filter as ListAdminOrders,
+// no sort/limit. It runs as a second autocommit read alongside the list; a concurrent order write between
+// the two can skew the count by one (cosmetic, self-heals next request, never a money value), which a
+// one-shop admin accepts rather than pay for a snapshot tx (same stance as CountActiveProducts).
+func (q *Queries) CountAdminOrders(ctx context.Context, status NullOrderStatus) (int64, error) {
+	row := q.db.QueryRow(ctx, countAdminOrders, status)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createOrder = `-- name: CreateOrder :one
 
 INSERT INTO orders (
@@ -231,6 +247,78 @@ func (q *Queries) InsertOrderItem(ctx context.Context, arg InsertOrderItemParams
 		&i.UnitPrice,
 	)
 	return i, err
+}
+
+const listAdminOrders = `-- name: ListAdminOrders :many
+SELECT
+  o.id, o.code, c.name AS customer_name, o.channel, o.status, o.total, o.created_at,
+  (SELECT p.name
+     FROM order_items oi JOIN products p ON p.id = oi.product_id
+    WHERE oi.order_id = o.id
+    ORDER BY oi.id
+    LIMIT 1) AS first_item_name,
+  (SELECT count(*) FROM order_items oi WHERE oi.order_id = o.id)::int AS item_count
+FROM orders o
+JOIN customers c ON c.id = o.customer_id
+WHERE $1::order_status IS NULL OR o.status = $1::order_status
+ORDER BY o.created_at DESC, o.id DESC
+LIMIT $3::int OFFSET $2::int
+`
+
+type ListAdminOrdersParams struct {
+	Status     NullOrderStatus `json:"status"`
+	PageOffset int32           `json:"pageOffset"`
+	PageLimit  int32           `json:"pageLimit"`
+}
+
+type ListAdminOrdersRow struct {
+	ID            uuid.UUID          `json:"id"`
+	Code          string             `json:"code"`
+	CustomerName  string             `json:"customerName"`
+	Channel       order.Channel      `json:"channel"`
+	Status        order.Status       `json:"status"`
+	Total         int64              `json:"total"`
+	CreatedAt     pgtype.Timestamptz `json:"createdAt"`
+	FirstItemName string             `json:"firstItemName"`
+	ItemCount     int32              `json:"itemCount"`
+}
+
+// ListAdminOrders is the admin orders table read (P3-b, GET /admin/orders): one page of orders newest-
+// first, optionally filtered to a single status. Unlike the public timeline it joins the customer NAME
+// and, for the "sản phẩm" column, a representative first-item product name + the line-item count (two
+// scalar subqueries — bounded per page, backed by order_items_order_idx, no N+1). The first item is
+// picked by a stable oi.id order: which line represents a multi-item order carries no meaning, only that
+// it is the SAME one every load. The status filter is a nullable narg (NULL = all statuses, "Tất cả").
+// created_at DESC, id DESC give a deterministic total order so OFFSET pagination is stable across pages.
+// Every order has ≥1 item (CreateOrderTx enforces it) so first_item_name is never NULL in practice.
+func (q *Queries) ListAdminOrders(ctx context.Context, arg ListAdminOrdersParams) ([]ListAdminOrdersRow, error) {
+	rows, err := q.db.Query(ctx, listAdminOrders, arg.Status, arg.PageOffset, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAdminOrdersRow
+	for rows.Next() {
+		var i ListAdminOrdersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.CustomerName,
+			&i.Channel,
+			&i.Status,
+			&i.Total,
+			&i.CreatedAt,
+			&i.FirstItemName,
+			&i.ItemCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listOrderItems = `-- name: ListOrderItems :many

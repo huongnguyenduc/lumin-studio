@@ -33,6 +33,37 @@ SELECT * FROM orders WHERE status = $1 ORDER BY created_at DESC;
 -- name: ListOrdersByCustomer :many
 SELECT * FROM orders WHERE customer_id = $1 ORDER BY created_at DESC;
 
+-- ListAdminOrders is the admin orders table read (P3-b, GET /admin/orders): one page of orders newest-
+-- first, optionally filtered to a single status. Unlike the public timeline it joins the customer NAME
+-- and, for the "sản phẩm" column, a representative first-item product name + the line-item count (two
+-- scalar subqueries — bounded per page, backed by order_items_order_idx, no N+1). The first item is
+-- picked by a stable oi.id order: which line represents a multi-item order carries no meaning, only that
+-- it is the SAME one every load. The status filter is a nullable narg (NULL = all statuses, "Tất cả").
+-- created_at DESC, id DESC give a deterministic total order so OFFSET pagination is stable across pages.
+-- Every order has ≥1 item (CreateOrderTx enforces it) so first_item_name is never NULL in practice.
+-- name: ListAdminOrders :many
+SELECT
+  o.id, o.code, c.name AS customer_name, o.channel, o.status, o.total, o.created_at,
+  (SELECT p.name
+     FROM order_items oi JOIN products p ON p.id = oi.product_id
+    WHERE oi.order_id = o.id
+    ORDER BY oi.id
+    LIMIT 1) AS first_item_name,
+  (SELECT count(*) FROM order_items oi WHERE oi.order_id = o.id)::int AS item_count
+FROM orders o
+JOIN customers c ON c.id = o.customer_id
+WHERE sqlc.narg('status')::order_status IS NULL OR o.status = sqlc.narg('status')::order_status
+ORDER BY o.created_at DESC, o.id DESC
+LIMIT sqlc.arg('page_limit')::int OFFSET sqlc.arg('page_offset')::int;
+
+-- CountAdminOrders is the total for the admin list envelope — the SAME status filter as ListAdminOrders,
+-- no sort/limit. It runs as a second autocommit read alongside the list; a concurrent order write between
+-- the two can skew the count by one (cosmetic, self-heals next request, never a money value), which a
+-- one-shop admin accepts rather than pay for a snapshot tx (same stance as CountActiveProducts).
+-- name: CountAdminOrders :one
+SELECT count(*) FROM orders o
+WHERE sqlc.narg('status')::order_status IS NULL OR o.status = sqlc.narg('status')::order_status;
+
 -- UpdateOrderStatus persists a transition: the new status, the full appended statusHistory,
 -- and — only when supplied — the denormalized refund_proof_url and payment_confirmed_at
 -- (COALESCE keeps the existing value when the narg is NULL). The append itself is computed in

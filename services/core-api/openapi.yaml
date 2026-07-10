@@ -699,6 +699,55 @@ paths:
                 $ref: '#/components/schemas/DashboardSnapshot'
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /admin/orders:
+    get:
+      tags: [admin]
+      operationId: getAdminOrders
+      summary: Admin orders list — paginated, optionally filtered by status (admin-gated).
+      description: >
+        Returns one page of orders as an admin SUMMARY projection (code, customer name, a first-item name
+        + item count for the "sản phẩm" column, channel, status, total, created date), newest first,
+        optionally filtered to a single OrderStatus (omit the param for all statuses, "Tất cả"). This is
+        the INTERNAL admin projection: it carries customer PII (name), the channel and the money that the
+        public PublicOrderTimeline whitelist deliberately omits (ADR-032) — so it is admin-gated (cookieAuth;
+        owner AND staff read). Money (total) is raw int-VND, never formatted server-side (always-must #2);
+        status/channel cross the wire as enums the client maps to i18n labels (always-must #3).
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Filter to a single order status (spec §04). Omit for all statuses ("Tất cả").
+          schema:
+            $ref: '#/components/schemas/OrderStatus'
+        - name: page
+          in: query
+          required: false
+          description: 1-based page number.
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          description: Items per page. Capped at 50 to bound the query on this admin endpoint.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: A page of admin order summaries (newest first).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOrderList'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /admin/settings:
     get:
       tags: [admin]
@@ -1803,6 +1852,61 @@ components:
           type: integer
         paidWaitingPrint:
           type: integer
+
+    # --- Admin orders list (P3-b) -----------------------------------------------------------------
+    AdminOrderSummary:
+      type: object
+      description: >
+        One order row in the admin orders table (P3-b). The INTERNAL admin projection — unlike the public
+        PublicOrderTimeline it carries the customer name, the channel and the total. firstItemName +
+        itemCount back the "sản phẩm" column (the client renders e.g. "Đèn Mochi +1" when itemCount > 1);
+        total is raw int-VND (never formatted server-side, always-must #2).
+      required: [id, code, customerName, firstItemName, itemCount, channel, status, total, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        customerName:
+          type: string
+        firstItemName:
+          type: string
+          description: Product name of the order's first line item — the "sản phẩm" column anchor.
+        itemCount:
+          type: integer
+          description: Number of line items on the order; the client renders "+N" (itemCount − 1) when > 1.
+        channel:
+          $ref: '#/components/schemas/Channel'
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        total:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+
+    AdminOrderList:
+      type: object
+      description: >
+        One page of admin order summaries plus the pagination envelope. `total` is the count of orders
+        matching the status filter across all pages; the client derives the page count.
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminOrderSummary'
+        page:
+          type: integer
+          description: 1-based page number echoed from the request.
+        pageSize:
+          type: integer
+          description: Items per page echoed from the request.
+        total:
+          type: integer
+          description: Total orders matching the status filter, across all pages.
 
     # --- Public guest order lookup (P1-n) ---------------------------------------------------------
     PublicOrderTimeline:

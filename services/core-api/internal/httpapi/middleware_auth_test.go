@@ -269,6 +269,7 @@ func TestClassifyFailsClosed(t *testing.T) {
 		"CreateOrder":              authOptional,
 		"UpdateBankAccount":        authOwnerOnly,
 		"GetDashboard":             authRequired,
+		"GetAdminOrders":           authRequired,
 		"GetSettings":              authRequired,
 		"ListReplyTemplates":       authRequired,
 		"TransitionOrder":          authRequired,

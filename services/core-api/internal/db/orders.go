@@ -64,6 +64,46 @@ func (o *Orders) Items(ctx context.Context, orderID uuid.UUID) ([]sqlc.OrderItem
 	return o.q.ListOrderItems(ctx, orderID)
 }
 
+// AdminOrderFilter narrows the admin orders list (P3-b). Status nil = all statuses ("Tất cả"); Limit /
+// Offset are the page window (bounded by the handler before it reaches here).
+type AdminOrderFilter struct {
+	Status *order.Status
+	Limit  int32
+	Offset int32
+}
+
+// AdminList returns one page of admin order summaries (newest-first) plus the total matching the status
+// filter, for the admin orders table (P3-b, GET /admin/orders). Like the catalog list it runs the page
+// read and the count as two autocommit reads; a concurrent order write between them can skew the total by
+// one — cosmetic, self-heals next request, never a money value — which a one-shop admin accepts over a
+// snapshot tx (same stance as CountActiveProducts). Customer name + first-item name + item count are
+// joined into each row, so a list page needs no follow-up read (no N+1).
+func (o *Orders) AdminList(ctx context.Context, f AdminOrderFilter) ([]sqlc.ListAdminOrdersRow, int64, error) {
+	status := nullOrderStatus(f.Status)
+	rows, err := o.q.ListAdminOrders(ctx, sqlc.ListAdminOrdersParams{
+		Status:     status,
+		PageLimit:  f.Limit,
+		PageOffset: f.Offset,
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := o.q.CountAdminOrders(ctx, status)
+	if err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
+}
+
+// nullOrderStatus maps the optional domain status filter to the sqlc nullable enum param: nil → NULL
+// (Valid:false, so the query's `IS NULL` arm matches every status), a value → that single status.
+func nullOrderStatus(s *order.Status) sqlc.NullOrderStatus {
+	if s == nil {
+		return sqlc.NullOrderStatus{}
+	}
+	return sqlc.NullOrderStatus{OrderStatus: sqlc.OrderStatus(*s), Valid: true}
+}
+
 // PurgeableProofOrders returns terminal orders whose receipt image has outlived the retention window
 // (ADR-035): the terminal-transition time (orders.updated_at) is older than `before` and the proof is
 // still attached. Bounded by limit, oldest-first. The terminal set comes from order.TerminalStatuses()
