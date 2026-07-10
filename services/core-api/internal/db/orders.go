@@ -59,8 +59,9 @@ func (o *Orders) ByCustomer(ctx context.Context, customerID uuid.UUID) ([]sqlc.O
 	return o.q.ListOrdersByCustomer(ctx, customerID)
 }
 
-// Items lists an order's line items.
-func (o *Orders) Items(ctx context.Context, orderID uuid.UUID) ([]sqlc.OrderItem, error) {
+// Items lists an order's line items, each enriched with the human product/color/option names for the
+// admin order-detail view (P3-e) — see the ListOrderItems query.
+func (o *Orders) Items(ctx context.Context, orderID uuid.UUID) ([]sqlc.ListOrderItemsRow, error) {
 	return o.q.ListOrderItems(ctx, orderID)
 }
 
@@ -398,21 +399,22 @@ func AdvanceStatusTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, to order
 	return row, nil
 }
 
-// SetTrackingCodeTx persists the carrier tracking code WITHIN tx. The PRINTING→SHIPPING status
-// flip goes through AdvanceStatusTx (the order.Transition guard); the transition handler (§3h)
-// calls this in the SAME tx immediately after, so the flip and the mandatory tracking_code
-// (spec §04) commit atomically — an order can never reach SHIPPING without its code. The
-// returned row reflects both the already-flipped status and the tracking_code (RETURNING *),
-// so the caller uses it as the authoritative post-transition order. Emits no outbox event
-// (the SHIPPING transition itself has no money-in event; ADR-006). ErrNotFound for a missing id.
-func SetTrackingCodeTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, code string) (sqlc.Order, error) {
+// SetShippingArtifactsTx persists the two mandatory SHIPPING artifacts — the carrier tracking code
+// and the QC packing photo (D-P3-6) — WITHIN tx. The PRINTING→SHIPPING status flip goes through
+// AdvanceStatusTx (the order.Transition guard); the transition handler (§3h) calls this in the SAME
+// tx immediately after, so the flip and its mandatory tracking_code + qc_photo_url (spec §04) commit
+// atomically — an order can never reach SHIPPING without both. The returned row reflects the
+// already-flipped status plus both artifacts (RETURNING *), so the caller uses it as the
+// authoritative post-transition order. Emits no outbox event (the SHIPPING transition itself has no
+// money-in event; ADR-006). ErrNotFound for a missing id.
+func SetShippingArtifactsTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, trackingCode, qcPhotoURL string) (sqlc.Order, error) {
 	q := sqlc.New(tx)
-	row, err := q.SetTrackingCode(ctx, sqlc.SetTrackingCodeParams{ID: orderID, TrackingCode: &code})
+	row, err := q.SetShippingArtifacts(ctx, sqlc.SetShippingArtifactsParams{ID: orderID, TrackingCode: &trackingCode, QcPhotoUrl: &qcPhotoURL})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return sqlc.Order{}, ErrNotFound
 	}
 	if err != nil {
-		return sqlc.Order{}, fmt.Errorf("order: set tracking code %s: %w", orderID, err)
+		return sqlc.Order{}, fmt.Errorf("order: set shipping artifacts %s: %w", orderID, err)
 	}
 	return row, nil
 }

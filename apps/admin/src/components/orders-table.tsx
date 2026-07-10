@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { formatVnd, formatVnDate } from '@lumin/core';
 import { Card } from '@lumin/ui';
@@ -12,10 +13,10 @@ import { OrderStatusBadge } from './order-status-badge';
  * a desktop table (from `md`) and a mobile card stack (below `md`, matching Admin Mobile Hi-fi),
  * fed by the same rows + selection Set. Client component because selection is interactive.
  *
- * Multi-select is a SCAFFOLD: rows are checkable and the selection bar reports the count, but the
- * bulk action is inert until P3-e (the order-detail transition flow) can wire it — see the comment
- * on the bar. Rows/cards are display-only here too; the per-order transition affordances the design
- * shows (inline status dropdown, "Chuyển … →") land in P3-e with the /don-hang/{id} detail route.
+ * Each row/card's code links to the order-detail route (/don-hang/{id}, P3-e) where the per-order
+ * transition flow lives. Multi-select is still a SCAFFOLD: rows are checkable and the selection bar
+ * reports the count, but the BULK action stays inert (a bulk transition is N× POST /transitions —
+ * deferred) — see the comment on the bar.
  */
 export function OrdersTable({ rows }: { rows: AdminOrderRow[] }) {
   const t = useTranslations('orders');
@@ -122,7 +123,14 @@ export function OrdersTable({ rows }: { rows: AdminOrderRow[] }) {
                       className="h-4 w-4 align-middle"
                     />
                   </td>
-                  <td className="px-4 py-3 font-mono font-semibold text-text-strong">{r.code}</td>
+                  <td className="px-4 py-3 font-mono font-semibold">
+                    <Link
+                      href={`/don-hang/${r.id}`}
+                      className="text-text-strong hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
+                    >
+                      {r.code}
+                    </Link>
+                  </td>
                   <td className="px-4 py-3 text-text-body">{r.customer}</td>
                   <td className="px-4 py-3 text-text-body">{r.productLabel}</td>
                   <td className="px-4 py-3 text-right font-mono text-text-strong">
@@ -148,7 +156,12 @@ export function OrdersTable({ rows }: { rows: AdminOrderRow[] }) {
           <li key={r.id}>
             <Card elevation="md" className="flex flex-col gap-3 p-4">
               <div className="flex items-center justify-between gap-3">
-                <span className="font-mono font-semibold text-text-strong">{r.code}</span>
+                <Link
+                  href={`/don-hang/${r.id}`}
+                  className="font-mono font-semibold text-text-strong hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
+                >
+                  {r.code}
+                </Link>
                 <OrderStatusBadge status={r.status} />
               </div>
               <div className="flex items-start gap-3">

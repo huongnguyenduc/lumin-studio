@@ -38,7 +38,7 @@ func assembleOrderDTO(ctx context.Context, q sqlc.DBTX, row sqlc.Order) (api.Ord
 // stays raw int VND (no server formatting, always-must #2); the domain's ISO-8601 statusHistory
 // timestamps are parsed to time.Time for the typed contract. A malformed stored `at` (never
 // written by the seams, which validate via order.Transition) surfaces as an error, not a panic.
-func toOrderDTO(row sqlc.Order, items []sqlc.OrderItem, cust sqlc.Customer) (api.Order, error) {
+func toOrderDTO(row sqlc.Order, items []sqlc.ListOrderItemsRow, cust sqlc.Customer) (api.Order, error) {
 	history, err := statusHistoryDTO(row.StatusHistory)
 	if err != nil {
 		return api.Order{}, err
@@ -65,6 +65,7 @@ func toOrderDTO(row sqlc.Order, items []sqlc.OrderItem, cust sqlc.Customer) (api
 		PaymentProofUrl: row.PaymentProofUrl,
 		RefundProofUrl:  row.RefundProofUrl,
 		TrackingCode:    row.TrackingCode,
+		QcPhotoUrl:      row.QcPhotoUrl,
 	}
 	if row.PaymentConfirmedAt.Valid {
 		t := row.PaymentConfirmedAt.Time
@@ -89,9 +90,11 @@ func addressDTO(a order.Address) api.Address {
 	return api.Address{Province: a.Province, Ward: a.Ward, Street: a.Street}
 }
 
-// orderItemsDTO maps each persisted line to its wire shape. option_ids is a jsonb array of uuid
-// strings; a nil/empty column yields a non-nil empty slice so the JSON renders `[]`, not `null`.
-func orderItemsDTO(items []sqlc.OrderItem) ([]api.OrderItem, error) {
+// orderItemsDTO maps each persisted line to its wire shape, carrying the joined product/color/option
+// names (P3-e admin detail) so the client shows what to make, not raw ids. option_ids is a jsonb
+// array of uuid strings; a nil/empty column yields a non-nil empty slice so the JSON renders `[]`,
+// not `null`. productName is always present (NOT NULL join); colorName/optionLabels omit when absent.
+func orderItemsDTO(items []sqlc.ListOrderItemsRow) ([]api.OrderItem, error) {
 	out := make([]api.OrderItem, len(items))
 	for i, it := range items {
 		optionIDs := []openapi_types.UUID{}
@@ -100,15 +103,22 @@ func orderItemsDTO(items []sqlc.OrderItem) ([]api.OrderItem, error) {
 				return nil, fmt.Errorf("order item %s: option_ids: %w", it.ID, err)
 			}
 		}
+		name := it.ProductName
 		dto := api.OrderItem{
-			ProductId: it.ProductID,
-			OptionIds: optionIDs,
-			Quantity:  int(it.Quantity),
-			UnitPrice: it.UnitPrice,
+			ProductId:   it.ProductID,
+			ProductName: &name,
+			OptionIds:   optionIDs,
+			Quantity:    int(it.Quantity),
+			UnitPrice:   it.UnitPrice,
+			ColorName:   it.ColorName,
 		}
 		if it.ColorID.Valid {
 			c := uuid.UUID(it.ColorID.Bytes)
 			dto.ColorId = &c
+		}
+		if len(it.OptionLabels) > 0 {
+			labels := it.OptionLabels
+			dto.OptionLabels = &labels
 		}
 		if it.Personalization != nil {
 			dto.Personalization = &api.Personalization{

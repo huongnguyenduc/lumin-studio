@@ -184,9 +184,10 @@ func TestLookupOrderEndToEnd(t *testing.T) {
 		// Walk PENDING_CONFIRM → PAID (owner reconcile) → PRINTING → SHIPPING(+tracking) via the real
 		// transition handler, then re-look-up: the public timeline now carries the waybill.
 		tracking := "VN-TRACK-777"
-		mustTransition(t, srv, ownerActorCtx(), orderID, "PAID", nil)
-		mustTransition(t, srv, ownerActorCtx(), orderID, "PRINTING", nil)
-		mustTransition(t, srv, ownerActorCtx(), orderID, "SHIPPING", &tracking)
+		qc := "https://cdn.lumin.test/qc/pack.jpg"
+		mustTransition(t, srv, ownerActorCtx(), orderID, "PAID", nil, nil)
+		mustTransition(t, srv, ownerActorCtx(), orderID, "PRINTING", nil, nil)
+		mustTransition(t, srv, ownerActorCtx(), orderID, "SHIPPING", &tracking, &qc)
 
 		rec := doLookup(t, router, code, phone)
 		if rec.Code != http.StatusOK {

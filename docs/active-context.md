@@ -6,6 +6,38 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**🔨 PHASE 3 · P3-e (admin order-detail `/don-hang/{id}` + transition UI + QC-photo gate) — BUILT + VERIFIED + REVIEWED on `feat/phase-3-admin-p3e-order-detail`**
+(off `main` `d0898a0` after P3-d #66 merged + local main ff'd). **FE+BE in ONE PR** (user chose "whole P3-e") — the piece that makes the
+admin order flow *operate*, not just read. **BE (QC gate, D-P3-6):** `→SHIPPING` now requires trackingCode **AND** qcPhotoUrl at the
+boundary (`transition.go`, before tx) — both persist atomically with the flip via renamed **`SetShippingArtifacts`** (was `SetTrackingCode`;
+sets `tracking_code`+`qc_photo_url` in one UPDATE, same tx as `AdvanceStatusTx`); **migration 000014** `orders.qc_photo_url` (nullable text,
+>000013 monotonic); `qcPhotoUrl` exposed on Order DTO (raw, denormalized like `trackingCode`). qcPhotoUrl **shape-checked** via exported
+`order.IsHTTPURL` (parity w/ refundProofUrl — no `javascript:` link persists; **adversarial Obs-2 FIXED**). **OrderItem DTO enriched** (was
+ids-only, useless to a fulfiller): `ListOrderItems` joins **productName** (products INNER) + **colorName** (colors LEFT) + **optionLabels**
+(options via jsonb `array_agg`+coalesce) → additive-optional openapi fields (safe — no existing consumer breaks; public timeline untouched).
+**FE:** RSC `[id]/page.tsx` (`fetchAdminOrderDetail` cookie-forward · 404→not-found · err→`(app)/error.tsx`) + `[id]/loading.tsx` skeleton;
+client `order-detail-view.tsx` (progress 5-step from statusHistory + terminal banner · items w/ names/color/options/engrave · customer PII ·
+money `formatVnd` ZERO client-math · payment/refund/QC proof **links** · note) + **action bar from `canTransition(status,to,role)`** (never
+offers an edge the server rejects): 1-touch confirm→PAID (owner-only) + advance; **native `<dialog>`** `transition-dialog.tsx` for ship
+[tracking+QC upload] / cancel [reason radio] / refund [reason+proof upload], submit locked till fields present; upload reuses `POST
+/checkout/payment-proof-upload` presigned-POST (P2-c) → Garage direct → `finalUrl` on transition; Server Actions `order-actions.ts`
+(`transitionOrder` cookie-forward + `presignProofUpload`, failures→view codes, no envelope leak) + `upload-proof.ts` client util;
+`orders-table.tsx` row code→`/don-hang/{id}` **Link (P3-c seam wired)**; bulk-transition stays inert. **FE role hardcoded `'owner'`** (no
+staff yet=P3-q · no `/auth/me`; SERVER authoritative — `ponytail:` comment). i18n `orderDetail.*` namespace. Pure adapters `order-detail.ts`
+(`progressSteps`/`availableTransitions`/`transitionKind`) unit-tested. **Files: 30, +1295/−113.** **Verify:** `make verify-go` ✓ (gofmt·vet·
+golangci **0**·sqlc·oapi stale staged·`go test -race` incl real-PG `TestSetShippingArtifacts` + `TestTransitionShippingRequiresQcPhoto`
+[omit/blank/**non-http**→422] + walk persist-qc + `TestToOrderDTOFullMapping`[names]; db 48s/httpapi 37s — reaper flake needs
+`TESTCONTAINERS_RYUK_DISABLED=true` under agent-Docker contention, NOT a code fail) · `pnpm verify` **6/6** (admin **44** tests incl
+order-detail **11** · schema.stale · prettier) · `next build` ✓ (`/don-hang/[id]` = ƒ 4.38kB/149kB). **No new dep · no new ADR.** **✅ Reviews
+DONE:** spec-guardian **PASS** (0 BLK/0 WARN/0 NOTE — money·statusHistory-via-guard·QC-gate·monotonic-migration·RBAC-server-authoritative·
+ADR-032-no-leak·i18n·additive-contract·a11y·anti-reward-hack·spec-sync all confirmed); adversarial **0 correctness bugs** (8 vectors REFUTED:
+QC-gate-ordering·atomicity·money-in-owner-only·refund-orphan·migration+join·double-submit[server `FOR UPDATE`+edge-guard+outbox-dedup
+backstop → benign 409]·upload·canTransition-projection). 2 LOW obs: **Obs-2 FIXED** (qcPhotoUrl IsHTTPURL, `javascript:`-XSS parity); **Obs-1**
+orphan-Garage-on-failed-upload = **documented-accept** (`ponytail:`, harmless bytes, manual refund). Acceptance **Cụm 30 `ADM-05` (Go-gated) +
+`ADM-06` (TS-gated)** both `[ ]`. **NEXT after P3-e land = P3-f** (Track B print-queue: drag-drop @dnd-kit + SSE, D-P3-2). **Commit done →
+user gate: push + open PR.**
+
+**— P3-d history (MERGED #66 → `main` `d0898a0`) —**
 **🔨 PHASE 3 · P3-d (BE `GET /admin/orders/{id}` order detail) — BUILT + VERIFIED + REVIEWED on `feat/phase-3-admin-p3d-order-detail`**
 (off `main` `59b4601` after rebase; P3-b MERGED #64, **P3-c MERGED #65**. **Independent of P3-c** [FE `/don-hang` list] — disjoint
 files [`services/core-api/**` vs `apps/admin/**`], plan `dependsOn: —`; rebased onto main after P3-c landed, only the 2 shared docs

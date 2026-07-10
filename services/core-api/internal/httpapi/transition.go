@@ -51,12 +51,22 @@ func (s *Server) TransitionOrder(ctx context.Context, req api.TransitionOrderReq
 		RefundProofURL: deref(req.Body.RefundProofUrl),
 	}
 
-	// SHIPPING requires a non-empty tracking code (spec §04). Validate at the boundary before the
-	// tx — the QC packing-photo half is deferred with the upload surface (§0), this enforces the
-	// trackingCode half.
+	// SHIPPING requires BOTH a non-empty tracking code AND a QC packing photo (spec §04, D-P3-6).
+	// Validate at the boundary before the tx — these are HTTP-edge shipping artifacts, not state
+	// semantics, so they live here (as the trackingCode half always has), mirroring how the domain
+	// guard enforces reason/refundProofUrl for the close states. The QC URL gets the SAME http/https
+	// shape check the domain guard applies to refundProofUrl (order.IsHTTPURL — covers empty AND
+	// malformed): both persist as admin-rendered links, so a non-http (e.g. javascript:) value must
+	// never land. The tracking code is a free carrier string, so it stays a plain non-empty check.
 	trackingCode := strings.TrimSpace(deref(req.Body.TrackingCode))
-	if to == order.Shipping && trackingCode == "" {
-		return nil, errTrackingCodeRequired
+	qcPhotoURL := strings.TrimSpace(deref(req.Body.QcPhotoUrl))
+	if to == order.Shipping {
+		if trackingCode == "" {
+			return nil, errTrackingCodeRequired
+		}
+		if !order.IsHTTPURL(qcPhotoURL) {
+			return nil, errQcPhotoRequired
+		}
 	}
 
 	// Money-in is owner-only and ConfirmPaymentTx won't self-reject a staff caller — gate it here.
@@ -74,12 +84,12 @@ func (s *Server) TransitionOrder(ctx context.Context, req api.TransitionOrderReq
 				OrderID: req.Id, ByUser: actor.ByUser, At: tctx.At,
 			})
 		case order.Shipping:
-			// Flip PRINTING→SHIPPING through the guard, then persist the tracking code in the SAME
-			// tx so the status and its mandatory code commit atomically (§6 D12).
+			// Flip PRINTING→SHIPPING through the guard, then persist the tracking code + QC photo in
+			// the SAME tx so the status and its mandatory artifacts commit atomically (§6 D12, D-P3-6).
 			if row, e = db.AdvanceStatusTx(ctx, tx, req.Id, to, tctx); e != nil {
 				return e
 			}
-			row, e = db.SetTrackingCodeTx(ctx, tx, req.Id, trackingCode)
+			row, e = db.SetShippingArtifactsTx(ctx, tx, req.Id, trackingCode, qcPhotoURL)
 		default:
 			row, e = db.AdvanceStatusTx(ctx, tx, req.Id, to, tctx)
 		}
