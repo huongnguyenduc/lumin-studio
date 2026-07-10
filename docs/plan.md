@@ -43,7 +43,7 @@ Nguyên tắc: mỗi màn dựng đủ **empty · loading · error** (không ch�
 
 ## Phase 3 · Admin (+ Admin Mobile)
 **Lõi:** dashboard · đơn (confirm + lý do huỷ/hoàn) · hàng đợi in (kéo-thả ↔ status, SSE) · sản phẩm (upload model → AssetJob, màu/option) · đánh giá · cài đặt (VietQR/STK; thiếu STK ⇒ chặn checkout web).
-**Gộp cải tiến:** **Cloudflare Access** trùm Admin + API admin/extension · **STK chỉ owner sửa + audit log + QR render server-side** · **nút 1-chạm → PAID** (Admin + Admin Mobile) · thông báo online.gov.vn (làm lúc launch, `compliance.md`) · G-code slicer (Orca/Prusa) → giá + PrintJob + Spoolman quản nhựa · **chụp ảnh đóng gói (QC) trước khi SHIPPING**.
+**Gộp cải tiến:** **Auth self-issued JWT (ADR-030)** cho Admin + API admin (KHÔNG Cloudflare Access; CF Access/WAF = lớp edge tuỳ-chọn) · **STK chỉ owner sửa + audit log + QR render server-side** · **nút 1-chạm → PAID** (Admin + Admin Mobile) · thông báo online.gov.vn (làm lúc launch, `compliance.md`) · G-code slicer (Orca/Prusa) → giá + PrintJob + Spoolman quản nhựa · **chụp ảnh đóng gói (QC) trước khi SHIPPING**.
 **Done:** vận hành trọn vòng đơn từ Admin; responsive mobile.
 
 ## Phase 4 · Extension (assistive-only, thu nhỏ)
