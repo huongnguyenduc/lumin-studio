@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -144,6 +145,81 @@ func listAdmin(t *testing.T, srv *Server, ctx context.Context, params api.GetAdm
 		t.Fatalf("response type = %T, want GetAdminOrders200JSONResponse", resp)
 	}
 	return api.AdminOrderList(ok)
+}
+
+// TestGetAdminOrderEndToEnd exercises GetAdminOrder over a real Postgres: seed a 2-item web order, read it
+// by id, and assert the FULL internal detail the admin table row (P3-b summary) does not carry — customer
+// PII (name + phone), the line items, the money (subtotal/shippingFee/total, raw int-VND), the payment
+// proof url, and the complete statusHistory (the born PENDING_CONFIRM event with its actor). Then a random
+// id returns db.ErrNotFound (→ 404 at the boundary, no leak). The pure row→DTO mapping is pinned Docker-free
+// in TestToOrderDTOFullMapping; this proves the route is wired and assembleOrderDTO reads items + customer.
+func TestGetAdminOrderEndToEnd(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+
+	catID := seedCategory(t, ctx, pool)
+	mochi := seedProductNamed(t, ctx, pool, catID, "mochi", "Đèn Mochi", 390_000)
+	origami := seedProductNamed(t, ctx, pool, catID, "origami", "Kệ Origami", 120_000)
+
+	orderID := seedAdminOrder(t, ctx, pool, adminOrderSeed{
+		customer: "Nguyễn An", channel: order.ChannelWeb, createdAt: "2026-07-03T08:00:00Z",
+		items: []db.NewOrderItem{
+			{ProductID: mochi, Quantity: 1, UnitPrice: 390_000},
+			{ProductID: origami, Quantity: 1, UnitPrice: 120_000},
+		},
+	})
+
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
+	got := getAdminOrder(t, srv, ctx, orderID)
+
+	// Header: web order born PENDING_CONFIRM, with its display code.
+	if got.Id != orderID || got.Code == "" ||
+		string(got.Channel) != string(order.ChannelWeb) || string(got.Status) != string(order.PendingConfirm) {
+		t.Fatalf("order header wrong: id=%v code=%q channel=%s status=%s", got.Id, got.Code, got.Channel, got.Status)
+	}
+	// Customer PII + shipping address — the fields the public PublicOrderTimeline whitelist omits (ADR-032).
+	if got.Customer.Name != "Nguyễn An" || got.Customer.Phone != "0901234567" {
+		t.Fatalf("customer PII wrong: %+v", got.Customer)
+	}
+	if got.ShippingAddress.Province != "Hà Nội" || got.ShippingAddress.Ward != "Cửa Nam" {
+		t.Fatalf("shipping address wrong: %+v", got.ShippingAddress)
+	}
+	// Both seeded line items are present.
+	if len(got.Items) != 2 {
+		t.Fatalf("items = %d, want 2", len(got.Items))
+	}
+	// Money, raw int-VND (server-computed, never formatted here): subtotal 510k + ship 30k = total 540k.
+	if got.Subtotal != 510_000 || got.ShippingFee != 30_000 || got.Total != 540_000 {
+		t.Fatalf("money wrong: subtotal=%d ship=%d total=%d, want 510000/30000/540000", got.Subtotal, got.ShippingFee, got.Total)
+	}
+	// Payment proof url present (web order born with a receipt) — omitted by the public timeline.
+	if got.PaymentProofUrl == nil || *got.PaymentProofUrl == "" {
+		t.Fatalf("paymentProofUrl = %v, want the seeded receipt url", got.PaymentProofUrl)
+	}
+	// statusHistory carries the born PENDING_CONFIRM event WITH its actor — the public timeline drops byUser.
+	if len(got.StatusHistory) != 1 || string(got.StatusHistory[0].To) != string(order.PendingConfirm) ||
+		got.StatusHistory[0].ByUser != "seed" {
+		t.Fatalf("statusHistory wrong: %+v", got.StatusHistory)
+	}
+
+	// Unknown id → db.ErrNotFound, which mapError renders as a uniform 404 NOT_FOUND (no leak).
+	if _, err := srv.GetAdminOrder(ctx, api.GetAdminOrderRequestObject{Id: uuid.New()}); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("unknown id → err %v, want db.ErrNotFound (→ 404)", err)
+	}
+}
+
+// getAdminOrder calls the detail handler and unwraps the 200 Order body, failing on any other outcome.
+func getAdminOrder(t *testing.T, srv *Server, ctx context.Context, id uuid.UUID) api.Order {
+	t.Helper()
+	resp, err := srv.GetAdminOrder(ctx, api.GetAdminOrderRequestObject{Id: id})
+	if err != nil {
+		t.Fatalf("GetAdminOrder: %v", err)
+	}
+	ok, isOK := resp.(api.GetAdminOrder200JSONResponse)
+	if !isOK {
+		t.Fatalf("response type = %T, want GetAdminOrder200JSONResponse", resp)
+	}
+	return api.Order(ok)
 }
 
 func seedCategory(t *testing.T, ctx context.Context, pool *pgxpool.Pool) uuid.UUID {

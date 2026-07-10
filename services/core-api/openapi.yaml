@@ -748,6 +748,39 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /admin/orders/{id}:
+    get:
+      tags: [admin]
+      operationId: getAdminOrder
+      summary: Admin order detail by id — the full internal order (admin-gated).
+      description: >
+        Returns one order as the full INTERNAL Order projection: customer PII (name, phone, social
+        handle, email), the line items, shipping address, money (subtotal/shippingFee/total, raw
+        int-VND), the payment/refund proof URLs, the internal note, the tracking code, and the complete
+        statusHistory (actor + reason). This is the admin detail read behind the orders table (P3-d) —
+        admin-gated (cookieAuth; owner AND staff read), NOT the public PublicOrderTimeline whitelist,
+        which omits every one of those fields (ADR-032). Read-only; status changes go through
+        POST /orders/{id}/transitions (RBAC-gated). An unknown id → 404 NOT_FOUND.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The full internal order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /admin/settings:
     get:
       tags: [admin]

@@ -270,6 +270,7 @@ func TestClassifyFailsClosed(t *testing.T) {
 		"UpdateBankAccount":        authOwnerOnly,
 		"GetDashboard":             authRequired,
 		"GetAdminOrders":           authRequired,
+		"GetAdminOrder":            authRequired,
 		"GetSettings":              authRequired,
 		"ListReplyTemplates":       authRequired,
 		"TransitionOrder":          authRequired,

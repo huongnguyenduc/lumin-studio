@@ -26,6 +26,20 @@ func TestGetAdminOrdersRequiresAuth(t *testing.T) {
 	}
 }
 
+// TestGetAdminOrderRequiresAuth proves the detail route /admin/orders/{id} is mounted AND admin-gated
+// (classify → authRequired default): a no-cookie request is rejected with 401 before the handler runs, so it
+// needs no DB (nil pool). A valid uuid is used so path-binding succeeds and the request reaches the auth
+// boundary (a malformed id would 400 at binding, before auth); the class itself is locked in
+// TestClassifyFailsClosed, this locks the mounted route.
+func TestGetAdminOrderRequiresAuth(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/admin/orders/"+uuid.NewString(), nil)
+	testAuthedRouter(serverWithUsers(fakeUsers{})).ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("GET /admin/orders/{id} (no cookie) = %d, want 401 (admin-gated, fail-closed)", rec.Code)
+	}
+}
+
 // TestAdminOrderSummariesDTO pins the row→DTO slot wiring with DISTINCT values in every field, so any swap
 // (e.g. code↔customerName, channel↔status) or a mis-widened enum fails. Pure — runs in the Docker-free lane.
 func TestAdminOrderSummariesDTO(t *testing.T) {
