@@ -6,6 +6,40 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**➡️ P2-f (payment step C2 on `/thanh-toan`: VietQR + proof upload + submit → `POST /orders`) — BUILT + VERIFIED on
+`feat/phase-2-checkout-p2f` (off `feat/phase-2-checkout-p2e`; P2-f STACKS on P2-e — merge P2-e first).** `note` handling
+(owner-chosen "hide it on review" after adversarial flag): collected on C1 but **neither echoed on the C2 review nor sent** —
+`CreateWebOrderInput` has no `note` field (only the inbox DTO), and echoing it on the confirm screen would imply it was saved;
+contract gap deferred (add additive `note?` later). Flow: C2 renders the server-built VietQR
+(`config.vietqrUrl` img + STK accountNumber/accountName; **no bank-name** — QR renders it, ponytail bin→name map deferred) →
+shopper picks a receipt → Server Action **`createPaymentProofUpload(contentType)`** (P2-c presigned POST) → browser POSTs the
+bytes **straight to Garage** (policy fields first, file part last; size ≤ maxBytes pre-checked) → hold `finalUrl` → "Xác nhận
+đặt đơn" (disabled until proof done + total settled; double-submit guard D-P2-7) → Server Action
+**`placeOrder(buildWebOrderInput(...))`** → 201 `{order, trackingToken}` → **clear cart** + minimal done view (holds token;
+**full wait-screen + `/o/{code}-{token}` link = P2-g seam**). **C2½ full-screen loading** while in-flight (not just a disabled
+button); STK-empty → friendly closed-notice (mirrors `NO_STK_CONFIGURED`); failures mapped to `no_stk`/`no_shipping_rule`/
+`error` (loud-reject, no envelope leak).
+
+**Money-path core = pure `buildWebOrderInput(validated, items, proofUrl)` in `lib/checkout-form.ts`:** priced fields
+(`productId`/`colorId`/`optionIds`/`quantity`) come **STRAIGHT from `cartQuoteItems`** → the order can't be priced ≠ the quote
+the shopper saw (parity by construction; P2-b's Go `TestQuotePriceParityWithOrder` already proved order-with-personalization ==
+quote). Engraved lines add `personalization{text, zoneId=engrave.optionId}` (zoneId non-blank server-required, §5 free-form;
+blank text dropped, mirroring `personalizationFrom` trim); acks map 1:1 when personalized; **note omitted**. **5 files:** NEW
+`lib/order-submit.ts` (2 Server Actions, `'use server'`, safe-`code` mapping like `quoteCart` — no envelope leak) ·
+`lib/checkout-form.ts` (+`buildWebOrderInput`) · `lib/cart-store.ts` (+`clear()`) · `components/checkout-view.tsx` (payment UI +
+`submitting`/`placed` states + STK guard; replaced the P2-f seam line) · `messages/vi.ts` (C2/C2½/done keys, dropped
+`paymentPending`). **Verify:** `pnpm verify` **6/6** — storefront **157** tests incl `checkout-form` **17** (+4
+`buildWebOrderInput`: plain mapping · quote-parity · engrave personalization+zoneId+acks · blank-engrave drop · note excluded).
+Acceptance **Cụm 25 `CHK-11`** (FE `[ ]` by convention). **No new dep · no new ADR · no migration.** **✅ Review DONE:**
+spec-guardian **PASS** (0 blk/0 warn/2 note); adversarial **1 HIGH + 1 MED + 1 LOW** → HIGH **FIXED** (double-submit: the
+`submitting` state guard leaked across the async setState gap → 2nd fast click minted a duplicate order; replaced with a
+synchronous `submitLatch` useRef — server idempotency stays the authoritative future fix, ADR-033), MED = note→**hide-on-review**
+(owner), LOW = `file.type` trust noted as `ponytail:` ceiling. Re-verified green post-fix. **P2-e MERGED (PR #58 → `main`
+`1b656fe`); P2-f rebased onto that `main` (dropped the 2 now-redundant P2-e commits → single-commit clean diff) + pushed → PR
+open → `main`; chờ user merge-gate.** **NEXT after P2-f = P2-g** (C3 wait-screen: reuse P1-o poll over `GET /orders/track`
+token + OrderTimeline + `/o/{code}-{token}` copy link + CANCELLED branch).
+
+**— P2-e history below (now MERGED via PR #58 → `main` `1b656fe`; P2-f was branched off it, since rebased onto `main`) —**
 **➡️ P2-e (engrave acks on `/thanh-toan` info step) — BUILT + VERIFIED + REVIEWED on `feat/phase-2-checkout-p2e`
 (off `main` `e1234ab`; P2-d #57 MERGED, local main ff'd).** FE-only, **no BE/contract change** — the two ack fields
 already exist on `CreateWebOrderInput` (openapi.yaml:1490-1493), unlike the `note` gap. ADR-012 dual-ack **add-on that

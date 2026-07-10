@@ -89,6 +89,9 @@ export type UseCart = {
   add: (item: CartItem) => void;
   setQuantity: (key: string, qty: number) => void;
   remove: (key: string) => void;
+  /** Empty the cart. Called after a successful order (P2-f) so a placed order's items don't linger to be
+   *  re-checked-out; writes [] through the same path as the mutators (persists + notifies subscribers). */
+  clear: () => void;
 };
 
 /**
@@ -104,5 +107,6 @@ export function useCart(): UseCart {
     add: (item) => write(addItem(read(), item)),
     setQuantity: (key, qty) => write(setItemQuantity(read(), key, qty)),
     remove: (key) => write(removeItem(read(), key)),
+    clear: () => write(EMPTY),
   };
 }

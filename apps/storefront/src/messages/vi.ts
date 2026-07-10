@@ -247,10 +247,45 @@ export const vi = {
     deliverToLabel: 'Giao cho',
     recipientLine: '{name} · {phone}',
     addressLine: '{street}, {ward}, {province}',
-    noteSummaryLine: 'Ghi chú: {note}',
     editLabel: 'Sửa',
     backToInfo: 'Quay lại',
-    paymentPending: 'Bước thanh toán (QR chuyển khoản + gửi biên lai) sắp có ở đây.',
+    // Payment step (C2, P2-f): VietQR panel + receipt upload + submit. The bank name is not shown (config
+    // carries only the bin) — the QR image renders it; we show account number + holder.
+    payHeading: 'Chuyển khoản',
+    payIntro: 'Quét mã VietQR bằng app ngân hàng, hoặc chuyển tới số tài khoản dưới đây.',
+    qrAlt: 'Mã QR chuyển khoản VietQR',
+    accountNumberLabel: 'Số tài khoản',
+    accountNameLabel: 'Chủ tài khoản',
+    proofHeading: 'Gửi ảnh chuyển khoản',
+    proofIntro: 'Đính kèm ảnh chụp biên lai để shop đối chiếu và xác nhận đơn nhanh hơn.',
+    proofPick: 'Chọn ảnh biên lai',
+    proofChange: 'Đổi ảnh khác',
+    proofUploading: 'Đang tải ảnh lên…',
+    proofDone: 'Đã đính kèm: {name}',
+    proofErrors: {
+      type: 'Chỉ nhận ảnh JPG, PNG hoặc WebP nhé.',
+      size: 'Ảnh hơi lớn — chọn ảnh nhỏ hơn giúp mình nhé.',
+      upload: 'Chưa tải được ảnh lên — thử lại giúp mình nhé.',
+    },
+    submitCta: 'Xác nhận đặt đơn',
+    // Submit failures mapped from POST /orders (lib/order-submit.ts). Two recoverable 422s get their own
+    // line; everything else is one loud retry message (the client sends no prices, so never proceed).
+    submitErrors: {
+      no_stk: 'Shop tạm chưa nhận đặt đơn online — bạn nhắn trực tiếp shop giúp mình nhé.',
+      no_shipping_rule:
+        'Chúng mình chưa giao tới tỉnh/thành này — quay lại chọn nơi khác giúp mình nhé.',
+      error: 'Chưa đặt được đơn — kiểm tra lại rồi thử lại giúp mình nhé.',
+    },
+    // Shown when the shop has no STK configured (no web payment possible; mirrors NO_STK_CONFIGURED).
+    noStk: 'Shop tạm chưa nhận đặt đơn online. Bạn nhắn trực tiếp shop để đặt nhé.',
+    // C2½ full-screen loading while the order is being created.
+    submittingTitle: 'Đang gửi đơn cho shop…',
+    submittingBody: 'Chờ xíu nha, chúng mình đang lưu thông tin và ảnh chuyển khoản.',
+    // Minimal order-placed confirmation (P2-f). The full wait-screen + tracking link land in P2-g.
+    doneTitle: 'Đơn đã đặt rồi 🧡',
+    donePendingBadge: 'Đã báo chuyển khoản · chờ shop xác nhận',
+    doneBody:
+      'Đơn {code} đã lưu. Shop sẽ đối chiếu chuyển khoản rồi bắt đầu in. Chúng mình sẽ báo bạn khi đơn được xác nhận nhé.',
     // Field errors — mirror lib/checkout-form.ts codes. Surfaced under each input on submit.
     errors: {
       nameInvalid: 'Họ tên cần từ 2 đến 60 ký tự.',

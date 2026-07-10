@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import {
+  buildWebOrderInput,
   EMPTY_CHECKOUT_FORM,
   normalizePhone,
   personalizationAckMet,
   validateCheckoutForm,
   type CheckoutFormState,
+  type ValidatedCheckout,
 } from '../src/lib/checkout-form';
+import { cartQuoteItems, type CartItem } from '../src/lib/cart';
 
 // A fully-valid info form; each test overrides the field under exam. Mirrors the server's authoritative
 // validate() (checkout.go intake.validate) — these assertions are the client half of that contract.
@@ -131,5 +134,98 @@ describe('personalizationAckMet — ADR-012 dual-ack gate (mirrors checkout.go:2
     expect(personalizationAckMet(true, true, false)).toBe(false);
     expect(personalizationAckMet(true, false, true)).toBe(false);
     expect(personalizationAckMet(true, true, true)).toBe(true);
+  });
+});
+
+/** Minimal CartItem fixture; each test overrides the priced/engrave axes under exam. */
+function cartItem(partial: Partial<CartItem> = {}): CartItem {
+  return {
+    key: 'k1',
+    productId: 'p1',
+    slug: 'den-ngu',
+    name: 'Đèn ngủ',
+    colorId: null,
+    colorName: null,
+    optionIds: [],
+    optionLabels: [],
+    engrave: null,
+    quantity: 1,
+    ...partial,
+  };
+}
+
+const baseValidated: ValidatedCheckout = {
+  customer: { name: 'Nguyễn An', phone: '0901234567' },
+  shippingAddress: { province: 'TP.HCM', ward: 'Phường Bến Nghé', street: '12 Nguyễn Huệ' },
+};
+
+describe('buildWebOrderInput — POST /orders body (P2-f)', () => {
+  it('maps a plain cart: web channel, customer/address/proof, priced items; no personalization/acks/note', () => {
+    const items = [cartItem({ productId: 'p1', colorId: 'c1', optionIds: ['o1'], quantity: 2 })];
+    // Even though the validated form carries a note, it must NOT reach the body — CreateWebOrderInput has
+    // no `note` field (display-only, the deferred contract gap).
+    const body = buildWebOrderInput(
+      { ...baseValidated, note: 'giao giờ hành chính' },
+      items,
+      'https://garage.local/proof/x.jpg',
+    );
+    expect(body.channel).toBe('web');
+    expect(body.customer).toEqual(baseValidated.customer);
+    expect(body.shippingAddress).toEqual(baseValidated.shippingAddress);
+    expect(body.paymentProofUrl).toBe('https://garage.local/proof/x.jpg');
+    expect(body.items).toEqual([
+      { productId: 'p1', colorId: 'c1', optionIds: ['o1'], quantity: 2 },
+    ]);
+    expect('personalizationAck' in body).toBe(false);
+    expect('engraveEchoConfirmed' in body).toBe(false);
+    expect('note' in body).toBe(false);
+  });
+
+  it('priced item fields come STRAIGHT from the quote mapping (order can never be priced differently)', () => {
+    const items = [
+      cartItem({ productId: 'p1', colorId: 'c1', optionIds: ['o1'], quantity: 2 }),
+      cartItem({
+        key: 'k2',
+        productId: 'p2',
+        optionIds: [],
+        engrave: { optionId: 'eng', text: 'An' },
+        quantity: 1,
+      }),
+    ];
+    const priced = cartQuoteItems(items);
+    const body = buildWebOrderInput(baseValidated, items, 'u');
+    expect(body.items).toHaveLength(priced.length);
+    // Each order item CONTAINS its quote line's priced fields verbatim (may add personalization on top).
+    priced.forEach((line, i) => expect(body.items[i]).toMatchObject(line));
+  });
+
+  it('an engraved line folds the engrave option into optionIds and carries personalization {text, zoneId=optionId}; acks forwarded 1:1', () => {
+    const items = [
+      cartItem({ optionIds: ['o1'], engrave: { optionId: 'eng-1', text: 'An' }, quantity: 1 }),
+    ];
+    const body = buildWebOrderInput(
+      { ...baseValidated, personalizationAck: true, engraveEchoConfirmed: true },
+      items,
+      'u',
+    );
+    expect(body.items).toEqual([
+      {
+        productId: 'p1',
+        optionIds: ['o1', 'eng-1'],
+        quantity: 1,
+        personalization: { text: 'An', zoneId: 'eng-1' },
+      },
+    ]);
+    expect(body.personalizationAck).toBe(true);
+    expect(body.engraveEchoConfirmed).toBe(true);
+  });
+
+  it('drops a tampered blank-text engrave (mirrors the server personalizationFrom trim)', () => {
+    const items = [cartItem({ engrave: { optionId: 'eng-1', text: '   ' }, quantity: 1 })];
+    const body = buildWebOrderInput(baseValidated, items, 'u');
+    // The engrave option is still folded into optionIds (priced like the quote), but no personalization
+    // content is sent — the server would trim the blank text to "none" anyway.
+    expect(body.items[0]?.optionIds).toEqual(['eng-1']);
+    expect(body.items[0] && 'personalization' in body.items[0]).toBe(false);
   });
 });
