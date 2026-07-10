@@ -26,7 +26,7 @@ import (
 // the handler method directly (the auth middleware is unit-tested separately) with an owner actor
 // injected as the boundary would, walking one order PENDING_CONFIRM→PAID→PRINTING→SHIPPING to
 // prove: the dispatch footgun (reconcile emits exactly one order.paid, non-money edges emit none —
-// PAY-01), and SHIPPING persists its tracking code atomically with the status flip (SHP-01).
+// PAY-01), and SHIPPING persists its tracking code + QC photo atomically with the status flip (SHP-01).
 // testcontainers: skips local (no Docker), runs in CI (ADR-020). The Postgres bring-up mirrors
 // internal/db's helper — duplicated because that one is unexported test code in another package.
 
@@ -152,10 +152,10 @@ func countPaidEvents(t *testing.T, ctx context.Context, pool *pgxpool.Pool, orde
 	return n
 }
 
-func mustTransition(t *testing.T, srv *Server, ctx context.Context, id uuid.UUID, to api.OrderStatus, tracking *string) api.Order {
+func mustTransition(t *testing.T, srv *Server, ctx context.Context, id uuid.UUID, to api.OrderStatus, tracking, qc *string) api.Order {
 	t.Helper()
 	resp, err := srv.TransitionOrder(ctx, api.TransitionOrderRequestObject{
-		Id: id, Body: &api.TransitionRequest{To: to, TrackingCode: tracking},
+		Id: id, Body: &api.TransitionRequest{To: to, TrackingCode: tracking, QcPhotoUrl: qc},
 	})
 	if err != nil {
 		t.Fatalf("transition →%s: %v", to, err)
@@ -177,7 +177,7 @@ func TestTransitionWalkEmitsPaidOnceAndPersistsTracking(t *testing.T) {
 	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
 
 	// PENDING_CONFIRM → PAID (money-in reconcile via ConfirmPaymentTx).
-	paid := mustTransition(t, srv, ownerActorCtx(), orderID, "PAID", nil)
+	paid := mustTransition(t, srv, ownerActorCtx(), orderID, "PAID", nil, nil)
 	if paid.Status != "PAID" {
 		t.Fatalf("status = %s, want PAID", paid.Status)
 	}
@@ -189,27 +189,34 @@ func TestTransitionWalkEmitsPaidOnceAndPersistsTracking(t *testing.T) {
 	}
 
 	// PAID → PRINTING (non-money edge via AdvanceStatusTx — must NOT emit order.paid).
-	if got := mustTransition(t, srv, ownerActorCtx(), orderID, "PRINTING", nil); got.Status != "PRINTING" {
+	if got := mustTransition(t, srv, ownerActorCtx(), orderID, "PRINTING", nil, nil); got.Status != "PRINTING" {
 		t.Fatalf("status = %s, want PRINTING", got.Status)
 	}
 	if n := countPaidEvents(t, ctx, pool, orderID); n != 1 {
 		t.Fatalf("order.paid after PRINTING = %d, want still 1 (footgun: AdvanceStatusTx emits none)", n)
 	}
 
-	// PRINTING → SHIPPING with a tracking code (flip + code atomic).
-	shipped := mustTransition(t, srv, ownerActorCtx(), orderID, "SHIPPING", strp("VN-TRACK-123"))
+	// PRINTING → SHIPPING with a tracking code + QC photo (flip + both artifacts atomic).
+	const qcURL = "https://cdn.lumin.test/qc/pack.jpg"
+	shipped := mustTransition(t, srv, ownerActorCtx(), orderID, "SHIPPING", strp("VN-TRACK-123"), strp(qcURL))
 	if shipped.Status != "SHIPPING" {
 		t.Fatalf("status = %s, want SHIPPING", shipped.Status)
 	}
 	if shipped.TrackingCode == nil || *shipped.TrackingCode != "VN-TRACK-123" {
 		t.Fatalf("DTO trackingCode = %v, want VN-TRACK-123", shipped.TrackingCode)
 	}
-	var persisted *string
-	if err := pool.QueryRow(ctx, `SELECT tracking_code FROM orders WHERE id=$1`, orderID).Scan(&persisted); err != nil {
-		t.Fatalf("read tracking_code: %v", err)
+	if shipped.QcPhotoUrl == nil || *shipped.QcPhotoUrl != qcURL {
+		t.Fatalf("DTO qcPhotoUrl = %v, want %q", shipped.QcPhotoUrl, qcURL)
+	}
+	var persisted, persistedQC *string
+	if err := pool.QueryRow(ctx, `SELECT tracking_code, qc_photo_url FROM orders WHERE id=$1`, orderID).Scan(&persisted, &persistedQC); err != nil {
+		t.Fatalf("read shipping artifacts: %v", err)
 	}
 	if persisted == nil || *persisted != "VN-TRACK-123" {
 		t.Fatalf("persisted tracking_code = %v, want VN-TRACK-123", persisted)
+	}
+	if persistedQC == nil || *persistedQC != qcURL {
+		t.Fatalf("persisted qc_photo_url = %v, want %q", persistedQC, qcURL)
 	}
 	if n := countPaidEvents(t, ctx, pool, orderID); n != 1 {
 		t.Fatalf("order.paid after SHIPPING = %d, want still 1", n)
@@ -235,10 +242,12 @@ func TestTransitionErrorsMapToEnvelope(t *testing.T) {
 		t.Fatalf("missing-order status = %d, want 404 (err=%v)", status, err)
 	}
 
-	// Invalid edge (PENDING_CONFIRM → SHIPPING) on a real order → 409 INVALID_EDGE.
+	// Invalid edge (PENDING_CONFIRM → SHIPPING) on a real order → 409 INVALID_EDGE. Both SHIPPING
+	// boundary artifacts (trackingCode + qcPhotoUrl) are supplied so the request clears the HTTP-edge
+	// checks and the DOMAIN edge guard is what rejects it (not a 422 artifact-missing).
 	orderID := seedPendingWebOrder(t, ctx, pool)
 	_, err = srv.TransitionOrder(ownerActorCtx(), api.TransitionOrderRequestObject{
-		Id: orderID, Body: &api.TransitionRequest{To: "SHIPPING", TrackingCode: strp("VN1")},
+		Id: orderID, Body: &api.TransitionRequest{To: "SHIPPING", TrackingCode: strp("VN1"), QcPhotoUrl: strp("https://cdn/qc.jpg")},
 	})
 	if status, env := mapError(err); status != 409 || env.Code != string(order.ErrInvalidEdge) {
 		t.Fatalf("invalid-edge = %d/%s, want 409/INVALID_EDGE (err=%v)", status, env.Code, err)

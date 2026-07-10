@@ -199,7 +199,13 @@ type Querier interface {
 	ListCategories(ctx context.Context) ([]Category, error)
 	ListColorsByProduct(ctx context.Context, productID uuid.UUID) ([]Color, error)
 	ListOptionsByProduct(ctx context.Context, productID uuid.UUID) ([]Option, error)
-	ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]OrderItem, error)
+	// ListOrderItems returns an order's line items enriched with the human-readable product name, color
+	// name and selected option labels (P3-e admin detail) — joined here so the admin order-detail page
+	// shows WHAT TO MAKE, not raw ids (the merged Order DTO carried ids only, useless to a fulfiller).
+	// product_name is NOT NULL (product FK is RESTRICT); color_name is NULL when the line has no color;
+	// option_labels is a text[] (empty, never NULL) whose order is stable-arbitrary (by label), like the
+	// admin list's first-item pick. The Personalization jsonb is unchanged (oi.*).
+	ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]ListOrderItemsRow, error)
 	// ListOrdersByCustomer returns a customer's own orders, newest-first, for the authenticated
 	// storefront account history (PR-P1-r, GET /customer/orders). Scoped strictly by customer_id (the
 	// verified session subject) — never by phone, which is non-unique. Guest orders placed before the
@@ -249,12 +255,13 @@ type Querier interface {
 	// late-committing lower-seq row forever = silent money-event loss. Single instance (ADR-009)
 	// ⇒ no SKIP LOCKED / advisory lock. Uses the partial index outbox_unpublished_idx.
 	SelectPendingOutbox(ctx context.Context, limit int32) ([]SelectPendingOutboxRow, error)
-	// SetTrackingCode persists the carrier tracking code on the SHIPPING transition. The status
-	// flip itself goes through UpdateOrderStatus (order.Transition guard); the transition handler
-	// runs this in the SAME tx so the PRINTING→SHIPPING flip and its mandatory tracking_code
-	// (spec §04) commit atomically — an order can never reach SHIPPING without its code. RETURNING *
-	// reflects both the new status (already flipped in this tx) and the tracking_code (§3h / §6 D12).
-	SetTrackingCode(ctx context.Context, arg SetTrackingCodeParams) (Order, error)
+	// SetShippingArtifacts persists the two mandatory SHIPPING artifacts — the carrier tracking code
+	// and the QC packing photo (D-P3-6) — on the PRINTING→SHIPPING transition. The status flip itself
+	// goes through UpdateOrderStatus (order.Transition guard); the transition handler runs this in the
+	// SAME tx so the flip and its mandatory tracking_code + qc_photo_url (spec §04) commit atomically —
+	// an order can never reach SHIPPING without both. RETURNING * reflects the new status (already
+	// flipped in this tx) plus both artifacts (§3h / §6 D12 / P3-e).
+	SetShippingArtifacts(ctx context.Context, arg SetShippingArtifactsParams) (Order, error)
 	// UpdateAssetJobStatus records a worker lifecycle transition (slice-3 callback): the new status,
 	// the attempt count, last_error (set on 'failed', NULL clears it on 'ready'), and completed_at when
 	// supplied (COALESCE keeps the prior value when the narg is NULL).

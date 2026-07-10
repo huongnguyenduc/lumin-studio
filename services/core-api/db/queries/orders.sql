@@ -78,14 +78,16 @@ SET status = sqlc.arg('status'),
 WHERE id = sqlc.arg('id')
 RETURNING *;
 
--- SetTrackingCode persists the carrier tracking code on the SHIPPING transition. The status
--- flip itself goes through UpdateOrderStatus (order.Transition guard); the transition handler
--- runs this in the SAME tx so the PRINTING→SHIPPING flip and its mandatory tracking_code
--- (spec §04) commit atomically — an order can never reach SHIPPING without its code. RETURNING *
--- reflects both the new status (already flipped in this tx) and the tracking_code (§3h / §6 D12).
--- name: SetTrackingCode :one
+-- SetShippingArtifacts persists the two mandatory SHIPPING artifacts — the carrier tracking code
+-- and the QC packing photo (D-P3-6) — on the PRINTING→SHIPPING transition. The status flip itself
+-- goes through UpdateOrderStatus (order.Transition guard); the transition handler runs this in the
+-- SAME tx so the flip and its mandatory tracking_code + qc_photo_url (spec §04) commit atomically —
+-- an order can never reach SHIPPING without both. RETURNING * reflects the new status (already
+-- flipped in this tx) plus both artifacts (§3h / §6 D12 / P3-e).
+-- name: SetShippingArtifacts :one
 UPDATE orders
 SET tracking_code = sqlc.arg('tracking_code'),
+    qc_photo_url = sqlc.arg('qc_photo_url'),
     updated_at = now()
 WHERE id = sqlc.arg('id')
 RETURNING *;
@@ -96,8 +98,26 @@ INSERT INTO order_items (
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
+-- ListOrderItems returns an order's line items enriched with the human-readable product name, color
+-- name and selected option labels (P3-e admin detail) — joined here so the admin order-detail page
+-- shows WHAT TO MAKE, not raw ids (the merged Order DTO carried ids only, useless to a fulfiller).
+-- product_name is NOT NULL (product FK is RESTRICT); color_name is NULL when the line has no color;
+-- option_labels is a text[] (empty, never NULL) whose order is stable-arbitrary (by label), like the
+-- admin list's first-item pick. The Personalization jsonb is unchanged (oi.*).
 -- name: ListOrderItems :many
-SELECT * FROM order_items WHERE order_id = $1;
+SELECT oi.*,
+  p.name AS product_name,
+  c.name AS color_name,
+  coalesce(
+    (SELECT array_agg(o.label ORDER BY o.label)
+       FROM options o
+       JOIN jsonb_array_elements_text(oi.option_ids) AS sel(id) ON o.id = sel.id::uuid),
+    '{}'
+  )::text[] AS option_labels
+FROM order_items oi
+JOIN products p ON p.id = oi.product_id
+LEFT JOIN colors c ON c.id = oi.color_id
+WHERE oi.order_id = $1;
 
 -- NextOrderCode hands the create tx the next display-code number from order_code_seq (000010).
 -- nextval is atomic and collision-free across concurrent callers by construction (§6 D9); the Go

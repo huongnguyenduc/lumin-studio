@@ -148,11 +148,14 @@ func isISOUTC(s string) bool {
 	return err == nil
 }
 
-// isHTTPURL reports whether s is a non-empty http/https URL with a host. Like
+// IsHTTPURL reports whether s is a non-empty http/https URL with a host. Like
 // isISOUTC, this is intentionally STRICTER than the TS reference's WHATWG URL() (which
 // coerces hostless shapes like "http:example.com" into a host) — the server rejects
-// degenerate/hostless URLs for a refund-proof image rather than silently coercing them.
-func isHTTPURL(s string) bool {
+// degenerate/hostless URLs for a proof image rather than silently coercing them. Exported so
+// the httpapi transition boundary can apply the SAME shape check to the SHIPPING QC-photo URL
+// (D-P3-6) that the domain guard applies to the refund-proof URL — both render as admin links,
+// so a non-http (e.g. javascript:) value must never persist.
+func IsHTTPURL(s string) bool {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return false
@@ -234,7 +237,7 @@ func Transition(o Order, to Status, ctx TransitionContext) (Order, error) {
 	if reasonRequired[to] && strings.TrimSpace(ctx.Reason) == "" { // #REASON
 		return Order{}, &TransitionError{ErrReasonRequired, fmt.Sprintf("Chuyển sang %s cần lý do.", to)}
 	}
-	if to == Refunded && !isHTTPURL(ctx.RefundProofURL) {
+	if to == Refunded && !IsHTTPURL(ctx.RefundProofURL) {
 		return Order{}, &TransitionError{ErrRefundProofRequired, "REFUNDED cần refundProofUrl hợp lệ (ảnh chuyển hoàn, http/https)."}
 	}
 

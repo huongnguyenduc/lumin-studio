@@ -49,7 +49,7 @@ INSERT INTO orders (
   id, code, channel, status, customer_id, shipping_address,
   subtotal, shipping_fee, total, payment_proof_url, payment_confirmed_at, note, status_history
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING id, code, channel, status, customer_id, shipping_address, subtotal, shipping_fee, total, payment_method, payment_proof_url, payment_confirmed_at, refund_proof_url, tracking_code, note, status_history, created_at, updated_at
+RETURNING id, code, channel, status, customer_id, shipping_address, subtotal, shipping_fee, total, payment_method, payment_proof_url, payment_confirmed_at, refund_proof_url, tracking_code, note, status_history, created_at, updated_at, qc_photo_url
 `
 
 type CreateOrderParams struct {
@@ -110,12 +110,13 @@ func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order
 		&i.StatusHistory,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.QcPhotoUrl,
 	)
 	return i, err
 }
 
 const getOrderByCode = `-- name: GetOrderByCode :one
-SELECT id, code, channel, status, customer_id, shipping_address, subtotal, shipping_fee, total, payment_method, payment_proof_url, payment_confirmed_at, refund_proof_url, tracking_code, note, status_history, created_at, updated_at FROM orders WHERE code = $1
+SELECT id, code, channel, status, customer_id, shipping_address, subtotal, shipping_fee, total, payment_method, payment_proof_url, payment_confirmed_at, refund_proof_url, tracking_code, note, status_history, created_at, updated_at, qc_photo_url FROM orders WHERE code = $1
 `
 
 func (q *Queries) GetOrderByCode(ctx context.Context, code string) (Order, error) {
@@ -140,12 +141,13 @@ func (q *Queries) GetOrderByCode(ctx context.Context, code string) (Order, error
 		&i.StatusHistory,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.QcPhotoUrl,
 	)
 	return i, err
 }
 
 const getOrderByID = `-- name: GetOrderByID :one
-SELECT id, code, channel, status, customer_id, shipping_address, subtotal, shipping_fee, total, payment_method, payment_proof_url, payment_confirmed_at, refund_proof_url, tracking_code, note, status_history, created_at, updated_at FROM orders WHERE id = $1
+SELECT id, code, channel, status, customer_id, shipping_address, subtotal, shipping_fee, total, payment_method, payment_proof_url, payment_confirmed_at, refund_proof_url, tracking_code, note, status_history, created_at, updated_at, qc_photo_url FROM orders WHERE id = $1
 `
 
 func (q *Queries) GetOrderByID(ctx context.Context, id uuid.UUID) (Order, error) {
@@ -170,12 +172,13 @@ func (q *Queries) GetOrderByID(ctx context.Context, id uuid.UUID) (Order, error)
 		&i.StatusHistory,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.QcPhotoUrl,
 	)
 	return i, err
 }
 
 const getOrderForUpdate = `-- name: GetOrderForUpdate :one
-SELECT id, code, channel, status, customer_id, shipping_address, subtotal, shipping_fee, total, payment_method, payment_proof_url, payment_confirmed_at, refund_proof_url, tracking_code, note, status_history, created_at, updated_at FROM orders WHERE id = $1 FOR UPDATE
+SELECT id, code, channel, status, customer_id, shipping_address, subtotal, shipping_fee, total, payment_method, payment_proof_url, payment_confirmed_at, refund_proof_url, tracking_code, note, status_history, created_at, updated_at, qc_photo_url FROM orders WHERE id = $1 FOR UPDATE
 `
 
 // GetOrderForUpdate locks the row for the duration of the caller's tx so a status flip reads
@@ -202,6 +205,7 @@ func (q *Queries) GetOrderForUpdate(ctx context.Context, id uuid.UUID) (Order, e
 		&i.StatusHistory,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.QcPhotoUrl,
 	)
 	return i, err
 }
@@ -322,18 +326,50 @@ func (q *Queries) ListAdminOrders(ctx context.Context, arg ListAdminOrdersParams
 }
 
 const listOrderItems = `-- name: ListOrderItems :many
-SELECT id, order_id, product_id, color_id, option_ids, personalization, quantity, unit_price FROM order_items WHERE order_id = $1
+SELECT oi.id, oi.order_id, oi.product_id, oi.color_id, oi.option_ids, oi.personalization, oi.quantity, oi.unit_price,
+  p.name AS product_name,
+  c.name AS color_name,
+  coalesce(
+    (SELECT array_agg(o.label ORDER BY o.label)
+       FROM options o
+       JOIN jsonb_array_elements_text(oi.option_ids) AS sel(id) ON o.id = sel.id::uuid),
+    '{}'
+  )::text[] AS option_labels
+FROM order_items oi
+JOIN products p ON p.id = oi.product_id
+LEFT JOIN colors c ON c.id = oi.color_id
+WHERE oi.order_id = $1
 `
 
-func (q *Queries) ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]OrderItem, error) {
+type ListOrderItemsRow struct {
+	ID              uuid.UUID              `json:"id"`
+	OrderID         uuid.UUID              `json:"orderId"`
+	ProductID       uuid.UUID              `json:"productId"`
+	ColorID         pgtype.UUID            `json:"colorId"`
+	OptionIds       []byte                 `json:"optionIds"`
+	Personalization *order.Personalization `json:"personalization"`
+	Quantity        int32                  `json:"quantity"`
+	UnitPrice       int64                  `json:"unitPrice"`
+	ProductName     string                 `json:"productName"`
+	ColorName       *string                `json:"colorName"`
+	OptionLabels    []string               `json:"optionLabels"`
+}
+
+// ListOrderItems returns an order's line items enriched with the human-readable product name, color
+// name and selected option labels (P3-e admin detail) — joined here so the admin order-detail page
+// shows WHAT TO MAKE, not raw ids (the merged Order DTO carried ids only, useless to a fulfiller).
+// product_name is NOT NULL (product FK is RESTRICT); color_name is NULL when the line has no color;
+// option_labels is a text[] (empty, never NULL) whose order is stable-arbitrary (by label), like the
+// admin list's first-item pick. The Personalization jsonb is unchanged (oi.*).
+func (q *Queries) ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]ListOrderItemsRow, error) {
 	rows, err := q.db.Query(ctx, listOrderItems, orderID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []OrderItem
+	var items []ListOrderItemsRow
 	for rows.Next() {
-		var i OrderItem
+		var i ListOrderItemsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OrderID,
@@ -343,6 +379,9 @@ func (q *Queries) ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]Orde
 			&i.Personalization,
 			&i.Quantity,
 			&i.UnitPrice,
+			&i.ProductName,
+			&i.ColorName,
+			&i.OptionLabels,
 		); err != nil {
 			return nil, err
 		}
@@ -355,7 +394,7 @@ func (q *Queries) ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]Orde
 }
 
 const listOrdersByCustomer = `-- name: ListOrdersByCustomer :many
-SELECT id, code, channel, status, customer_id, shipping_address, subtotal, shipping_fee, total, payment_method, payment_proof_url, payment_confirmed_at, refund_proof_url, tracking_code, note, status_history, created_at, updated_at FROM orders WHERE customer_id = $1 ORDER BY created_at DESC
+SELECT id, code, channel, status, customer_id, shipping_address, subtotal, shipping_fee, total, payment_method, payment_proof_url, payment_confirmed_at, refund_proof_url, tracking_code, note, status_history, created_at, updated_at, qc_photo_url FROM orders WHERE customer_id = $1 ORDER BY created_at DESC
 `
 
 // ListOrdersByCustomer returns a customer's own orders, newest-first, for the authenticated
@@ -390,6 +429,7 @@ func (q *Queries) ListOrdersByCustomer(ctx context.Context, customerID uuid.UUID
 			&i.StatusHistory,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.QcPhotoUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -402,7 +442,7 @@ func (q *Queries) ListOrdersByCustomer(ctx context.Context, customerID uuid.UUID
 }
 
 const listOrdersByStatus = `-- name: ListOrdersByStatus :many
-SELECT id, code, channel, status, customer_id, shipping_address, subtotal, shipping_fee, total, payment_method, payment_proof_url, payment_confirmed_at, refund_proof_url, tracking_code, note, status_history, created_at, updated_at FROM orders WHERE status = $1 ORDER BY created_at DESC
+SELECT id, code, channel, status, customer_id, shipping_address, subtotal, shipping_fee, total, payment_method, payment_proof_url, payment_confirmed_at, refund_proof_url, tracking_code, note, status_history, created_at, updated_at, qc_photo_url FROM orders WHERE status = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListOrdersByStatus(ctx context.Context, status order.Status) ([]Order, error) {
@@ -433,6 +473,7 @@ func (q *Queries) ListOrdersByStatus(ctx context.Context, status order.Status) (
 			&i.StatusHistory,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.QcPhotoUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -507,26 +548,29 @@ func (q *Queries) NextOrderCode(ctx context.Context) (int64, error) {
 	return n, err
 }
 
-const setTrackingCode = `-- name: SetTrackingCode :one
+const setShippingArtifacts = `-- name: SetShippingArtifacts :one
 UPDATE orders
 SET tracking_code = $1,
+    qc_photo_url = $2,
     updated_at = now()
-WHERE id = $2
-RETURNING id, code, channel, status, customer_id, shipping_address, subtotal, shipping_fee, total, payment_method, payment_proof_url, payment_confirmed_at, refund_proof_url, tracking_code, note, status_history, created_at, updated_at
+WHERE id = $3
+RETURNING id, code, channel, status, customer_id, shipping_address, subtotal, shipping_fee, total, payment_method, payment_proof_url, payment_confirmed_at, refund_proof_url, tracking_code, note, status_history, created_at, updated_at, qc_photo_url
 `
 
-type SetTrackingCodeParams struct {
+type SetShippingArtifactsParams struct {
 	TrackingCode *string   `json:"trackingCode"`
+	QcPhotoUrl   *string   `json:"qcPhotoUrl"`
 	ID           uuid.UUID `json:"id"`
 }
 
-// SetTrackingCode persists the carrier tracking code on the SHIPPING transition. The status
-// flip itself goes through UpdateOrderStatus (order.Transition guard); the transition handler
-// runs this in the SAME tx so the PRINTING→SHIPPING flip and its mandatory tracking_code
-// (spec §04) commit atomically — an order can never reach SHIPPING without its code. RETURNING *
-// reflects both the new status (already flipped in this tx) and the tracking_code (§3h / §6 D12).
-func (q *Queries) SetTrackingCode(ctx context.Context, arg SetTrackingCodeParams) (Order, error) {
-	row := q.db.QueryRow(ctx, setTrackingCode, arg.TrackingCode, arg.ID)
+// SetShippingArtifacts persists the two mandatory SHIPPING artifacts — the carrier tracking code
+// and the QC packing photo (D-P3-6) — on the PRINTING→SHIPPING transition. The status flip itself
+// goes through UpdateOrderStatus (order.Transition guard); the transition handler runs this in the
+// SAME tx so the flip and its mandatory tracking_code + qc_photo_url (spec §04) commit atomically —
+// an order can never reach SHIPPING without both. RETURNING * reflects the new status (already
+// flipped in this tx) plus both artifacts (§3h / §6 D12 / P3-e).
+func (q *Queries) SetShippingArtifacts(ctx context.Context, arg SetShippingArtifactsParams) (Order, error) {
+	row := q.db.QueryRow(ctx, setShippingArtifacts, arg.TrackingCode, arg.QcPhotoUrl, arg.ID)
 	var i Order
 	err := row.Scan(
 		&i.ID,
@@ -547,6 +591,7 @@ func (q *Queries) SetTrackingCode(ctx context.Context, arg SetTrackingCodeParams
 		&i.StatusHistory,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.QcPhotoUrl,
 	)
 	return i, err
 }
@@ -559,7 +604,7 @@ SET status = $1,
     payment_confirmed_at = COALESCE($4, payment_confirmed_at),
     updated_at = now()
 WHERE id = $5
-RETURNING id, code, channel, status, customer_id, shipping_address, subtotal, shipping_fee, total, payment_method, payment_proof_url, payment_confirmed_at, refund_proof_url, tracking_code, note, status_history, created_at, updated_at
+RETURNING id, code, channel, status, customer_id, shipping_address, subtotal, shipping_fee, total, payment_method, payment_proof_url, payment_confirmed_at, refund_proof_url, tracking_code, note, status_history, created_at, updated_at, qc_photo_url
 `
 
 type UpdateOrderStatusParams struct {
@@ -602,6 +647,7 @@ func (q *Queries) UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusPa
 		&i.StatusHistory,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.QcPhotoUrl,
 	)
 	return i, err
 }

@@ -33,6 +33,7 @@ const (
 	codeInternal        = "INTERNAL"
 	codeNotImplemented  = "NOT_IMPLEMENTED"
 	codeTrackingReqd    = "TRACKING_CODE_REQUIRED"
+	codeQcPhotoReqd     = "QC_PHOTO_REQUIRED"
 	codeRateLimited     = "RATE_LIMITED"
 	// codeEmailTaken is the storefront-register 409: the login email is already registered. It is
 	// the ONE field a register form may safely surface (a login email is user-known, not a secret —
@@ -63,6 +64,14 @@ var errNotImplemented = errors.New("httpapi: endpoint not implemented")
 // concern — the domain order.Transition guard does not model trackingCode — so it lives here and
 // maps to 422 TRACKING_CODE_REQUIRED, sibling to the domain's REASON_REQUIRED/REFUND_PROOF_REQUIRED.
 var errTrackingCodeRequired = errors.New("httpapi: tracking code required for SHIPPING")
+
+// errQcPhotoRequired is the transition handler's boundary rejection for a PRINTING→SHIPPING request
+// whose qcPhotoUrl is missing OR not a valid http/https URL (D-P3-6 requires a QC packing photo on
+// SHIPPING; order.IsHTTPURL enforces the same shape the domain guard uses for refundProofUrl, so a
+// non-http value can't persist and be rendered as an admin link). Like errTrackingCodeRequired it is
+// an HTTP-edge concern — the domain guard models neither shipping artifact — so it lives here and
+// maps to 422 QC_PHOTO_REQUIRED.
+var errQcPhotoRequired = errors.New("httpapi: valid QC photo URL required for SHIPPING")
 
 // Checkout (PR-3g) boundary sentinels — HTTP-edge rules the domain/db layers don't model.
 var (
@@ -136,6 +145,9 @@ func mapError(err error) (int, api.ErrorEnvelope) {
 	case errors.Is(err, errTrackingCodeRequired):
 		// SHIPPING with no tracking code — well-formed request, unprocessable per spec §04.
 		return http.StatusUnprocessableEntity, envelope(codeTrackingReqd)
+	case errors.Is(err, errQcPhotoRequired):
+		// SHIPPING with no QC packing photo — well-formed request, unprocessable per D-P3-6.
+		return http.StatusUnprocessableEntity, envelope(codeQcPhotoReqd)
 	case errors.Is(err, errPaymentProofRequired):
 		// Web create with no usable CK-receipt URL (CHK-04). Same code the domain guard uses.
 		return http.StatusUnprocessableEntity, envelope(string(order.ErrProofRequired))

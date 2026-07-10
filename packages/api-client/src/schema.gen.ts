@@ -148,7 +148,7 @@ export interface paths {
         put?: never;
         /**
          * Advance an order's status (RBAC-gated; reconcile→PAID and →REFUNDED are owner-only).
-         * @description Applies one OrderStatus transition through the domain guard. The reconcile edge PENDING_CONFIRM→PAID is dispatched to ConfirmPaymentTx (the only `order.paid` emitter); every other edge goes through AdvanceStatusTx. `reason` is required for CANCELLED/REFUNDED; `refundProofUrl` for REFUNDED; `trackingCode` for →SHIPPING. Actor/role/timestamp come from the auth context + server clock, never the body.
+         * @description Applies one OrderStatus transition through the domain guard. The reconcile edge PENDING_CONFIRM→PAID is dispatched to ConfirmPaymentTx (the only `order.paid` emitter); every other edge goes through AdvanceStatusTx. `reason` is required for CANCELLED/REFUNDED; `refundProofUrl` for REFUNDED; `trackingCode` + `qcPhotoUrl` for →SHIPPING. Actor/role/timestamp come from the auth context + server clock, never the body.
          */
         post: operations["transitionOrder"];
         delete?: never;
@@ -694,6 +694,12 @@ export interface components {
              * @description Server-derived int VND (base + color/option deltas). Never accepted from the client.
              */
             unitPrice: number;
+            /** @description Human product name, joined for the admin order-detail view (P3-e). Read-only. */
+            productName?: string;
+            /** @description Human color name when the line has a color, joined for the admin detail. Read-only. */
+            colorName?: string;
+            /** @description Selected option labels, joined for the admin detail (empty when none). Read-only. */
+            optionLabels?: string[];
         };
         /** @description A requested line item. Deliberately has NO unitPrice — the server re-derives every price from the catalog (always-must #2); a client price is never trusted. */
         OrderItemInput: {
@@ -768,6 +774,11 @@ export interface components {
             /** Format: uri */
             refundProofUrl?: string;
             trackingCode?: string;
+            /**
+             * Format: uri
+             * @description QC packing photo attached on the PRINTING→SHIPPING transition (D-P3-6).
+             */
+            qcPhotoUrl?: string;
             note?: string;
             statusHistory: components["schemas"]["StatusEvent"][];
             /** Format: date-time */
@@ -808,13 +819,15 @@ export interface components {
             items: components["schemas"]["OrderItemInput"][];
             note?: string;
         };
-        /** @description One requested status change. `reason` required for CANCELLED/REFUNDED; `refundProofUrl` for REFUNDED; `trackingCode` for →SHIPPING. Actor/role/time are NOT in the body (server-sourced). */
+        /** @description One requested status change. `reason` required for CANCELLED/REFUNDED; `refundProofUrl` for REFUNDED; `trackingCode` + `qcPhotoUrl` for →SHIPPING. Actor/role/time are NOT in the body (server-sourced). */
         TransitionRequest: {
             to: components["schemas"]["OrderStatus"];
             reason?: string;
             /** Format: uri */
             refundProofUrl?: string;
             trackingCode?: string;
+            /** Format: uri */
+            qcPhotoUrl?: string;
         };
         LoginRequest: {
             /** Format: email */

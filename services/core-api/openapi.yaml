@@ -226,8 +226,8 @@ paths:
         Applies one OrderStatus transition through the domain guard. The reconcile edge
         PENDING_CONFIRM→PAID is dispatched to ConfirmPaymentTx (the only `order.paid` emitter); every
         other edge goes through AdvanceStatusTx. `reason` is required for CANCELLED/REFUNDED;
-        `refundProofUrl` for REFUNDED; `trackingCode` for →SHIPPING. Actor/role/timestamp come from the
-        auth context + server clock, never the body.
+        `refundProofUrl` for REFUNDED; `trackingCode` + `qcPhotoUrl` for →SHIPPING. Actor/role/timestamp
+        come from the auth context + server clock, never the body.
       security:
         - cookieAuth: []
       parameters:
@@ -1349,6 +1349,17 @@ components:
           type: integer
           format: int64
           description: Server-derived int VND (base + color/option deltas). Never accepted from the client.
+        productName:
+          type: string
+          description: Human product name, joined for the admin order-detail view (P3-e). Read-only.
+        colorName:
+          type: string
+          description: Human color name when the line has a color, joined for the admin detail. Read-only.
+        optionLabels:
+          type: array
+          items:
+            type: string
+          description: Selected option labels, joined for the admin detail (empty when none). Read-only.
 
     OrderItemInput:
       type: object
@@ -1503,6 +1514,10 @@ components:
           format: uri
         trackingCode:
           type: string
+        qcPhotoUrl:
+          type: string
+          format: uri
+          description: QC packing photo attached on the PRINTING→SHIPPING transition (D-P3-6).
         note:
           type: string
         statusHistory:
@@ -1600,7 +1615,8 @@ components:
       type: object
       description: >
         One requested status change. `reason` required for CANCELLED/REFUNDED; `refundProofUrl` for
-        REFUNDED; `trackingCode` for →SHIPPING. Actor/role/time are NOT in the body (server-sourced).
+        REFUNDED; `trackingCode` + `qcPhotoUrl` for →SHIPPING. Actor/role/time are NOT in the body
+        (server-sourced).
       required: [to]
       properties:
         to:
@@ -1612,6 +1628,9 @@ components:
           format: uri
         trackingCode:
           type: string
+        qcPhotoUrl:
+          type: string
+          format: uri
 
     LoginRequest:
       type: object

@@ -610,6 +610,7 @@ type Order struct {
 	StatusHistory      []order.StatusEvent `json:"statusHistory"`
 	CreatedAt          pgtype.Timestamptz  `json:"createdAt"`
 	UpdatedAt          pgtype.Timestamptz  `json:"updatedAt"`
+	QcPhotoUrl         *string             `json:"qcPhotoUrl"`
 }
 
 type OrderItem struct {

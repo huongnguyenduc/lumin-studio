@@ -41,3 +41,29 @@ export async function fetchAdminOrders(
   }
   return data;
 }
+
+/**
+ * Fetch ONE order's full internal detail (GET /admin/orders/{id}, P3-d), forwarding the session cookie.
+ * `no-store` so the detail (and its statusHistory) is always live after a transition. Returns `null` on
+ * 404 so the page can render its "không tìm thấy" state (a uniform NOT_FOUND — no existence leak, ADR-032);
+ * any other non-2xx throws to the route error boundary ((app)/error.tsx), same as the list.
+ */
+export async function fetchAdminOrderDetail(
+  id: string,
+): Promise<components['schemas']['Order'] | null> {
+  const session = (await cookies()).get(SESSION_COOKIE)?.value;
+  const client = createApiClient({
+    baseUrl: coreApiBaseUrl(),
+    headers: session ? { cookie: `${SESSION_COOKIE}=${session}` } : {},
+  });
+
+  const { data, error, response } = await client.GET('/admin/orders/{id}', {
+    params: { path: { id } },
+    cache: 'no-store',
+  });
+  if (response.status === 404) return null;
+  if (error || !data) {
+    throw new Error(`admin order detail fetch failed (${response.status})`);
+  }
+  return data;
+}

@@ -351,7 +351,10 @@ type Order struct {
 	Note               *string            `json:"note,omitempty"`
 	PaymentConfirmedAt *time.Time         `json:"paymentConfirmedAt,omitempty"`
 	PaymentProofUrl    *string            `json:"paymentProofUrl,omitempty"`
-	RefundProofUrl     *string            `json:"refundProofUrl,omitempty"`
+
+	// QcPhotoUrl QC packing photo attached on the PRINTING→SHIPPING transition (D-P3-6).
+	QcPhotoUrl     *string `json:"qcPhotoUrl,omitempty"`
+	RefundProofUrl *string `json:"refundProofUrl,omitempty"`
 
 	// ShippingAddress Vietnamese shipping address — no district level (ADR-017).
 	ShippingAddress Address `json:"shippingAddress"`
@@ -367,13 +370,22 @@ type Order struct {
 
 // OrderItem A priced line item as returned in an Order (unitPrice is server-derived).
 type OrderItem struct {
-	ColorId   *openapi_types.UUID  `json:"colorId,omitempty"`
+	ColorId *openapi_types.UUID `json:"colorId,omitempty"`
+
+	// ColorName Human color name when the line has a color, joined for the admin detail. Read-only.
+	ColorName *string              `json:"colorName,omitempty"`
 	OptionIds []openapi_types.UUID `json:"optionIds"`
+
+	// OptionLabels Selected option labels, joined for the admin detail (empty when none). Read-only.
+	OptionLabels *[]string `json:"optionLabels,omitempty"`
 
 	// Personalization Per-item engraving (distinct from a Review's text — that field is `body`).
 	Personalization *Personalization   `json:"personalization,omitempty"`
 	ProductId       openapi_types.UUID `json:"productId"`
-	Quantity        int                `json:"quantity"`
+
+	// ProductName Human product name, joined for the admin order-detail view (P3-e). Read-only.
+	ProductName *string `json:"productName,omitempty"`
+	Quantity    int     `json:"quantity"`
 
 	// UnitPrice Server-derived int VND (base + color/option deltas). Never accepted from the client.
 	UnitPrice int64 `json:"unitPrice"`
@@ -654,8 +666,9 @@ type StatusEvent struct {
 	To OrderStatus `json:"to"`
 }
 
-// TransitionRequest One requested status change. `reason` required for CANCELLED/REFUNDED; `refundProofUrl` for REFUNDED; `trackingCode` for →SHIPPING. Actor/role/time are NOT in the body (server-sourced).
+// TransitionRequest One requested status change. `reason` required for CANCELLED/REFUNDED; `refundProofUrl` for REFUNDED; `trackingCode` + `qcPhotoUrl` for →SHIPPING. Actor/role/time are NOT in the body (server-sourced).
 type TransitionRequest struct {
+	QcPhotoUrl     *string `json:"qcPhotoUrl,omitempty"`
 	Reason         *string `json:"reason,omitempty"`
 	RefundProofUrl *string `json:"refundProofUrl,omitempty"`
 

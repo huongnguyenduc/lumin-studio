@@ -40,6 +40,7 @@ func TestToOrderDTOFullMapping(t *testing.T) {
 		PaymentProofUrl:    strp("https://cdn/x.jpg"),
 		PaymentConfirmedAt: pgtype.Timestamptz{Time: paidAt, Valid: true},
 		TrackingCode:       strp("VN123"),
+		QcPhotoUrl:         strp("https://cdn/qc.jpg"),
 		Note:               strp("giao giờ hành chính"),
 		CreatedAt:          pgtype.Timestamptz{Time: created, Valid: true},
 		StatusHistory: []order.StatusEvent{
@@ -47,7 +48,7 @@ func TestToOrderDTOFullMapping(t *testing.T) {
 			{From: &pendingStatus, To: order.Paid, At: "2026-07-01T09:30:00Z", ByUser: uuid.NewString()},
 		},
 	}
-	items := []sqlc.OrderItem{{
+	items := []sqlc.ListOrderItemsRow{{
 		ID:              uuid.New(),
 		OrderID:         orderID,
 		ProductID:       productID,
@@ -56,6 +57,9 @@ func TestToOrderDTOFullMapping(t *testing.T) {
 		Personalization: &order.Personalization{Text: "An", ZoneID: "base"},
 		Quantity:        2,
 		UnitPrice:       195_000,
+		ProductName:     "Đèn nấm",
+		ColorName:       strp("Cam"),
+		OptionLabels:    []string{"Size M"},
 	}}
 	email := "an@lumin.vn"
 	cust := sqlc.Customer{Name: "Nguyễn An", Phone: "0901234567", Email: &email}
@@ -73,6 +77,9 @@ func TestToOrderDTOFullMapping(t *testing.T) {
 	}
 	if dto.TrackingCode == nil || *dto.TrackingCode != "VN123" {
 		t.Fatalf("tracking = %v, want VN123", dto.TrackingCode)
+	}
+	if dto.QcPhotoUrl == nil || *dto.QcPhotoUrl != "https://cdn/qc.jpg" {
+		t.Fatalf("qcPhotoUrl = %v, want https://cdn/qc.jpg", dto.QcPhotoUrl)
 	}
 	if dto.PaymentConfirmedAt == nil || !dto.PaymentConfirmedAt.Equal(paidAt) {
 		t.Fatalf("paymentConfirmedAt = %v, want %v", dto.PaymentConfirmedAt, paidAt)
@@ -103,6 +110,15 @@ func TestToOrderDTOFullMapping(t *testing.T) {
 	if it.Personalization == nil || it.Personalization.Text != "An" || it.Personalization.ZoneId != "base" {
 		t.Fatalf("personalization mismatch: %+v", it.Personalization)
 	}
+	if it.ProductName == nil || *it.ProductName != "Đèn nấm" {
+		t.Fatalf("productName = %v, want Đèn nấm", it.ProductName)
+	}
+	if it.ColorName == nil || *it.ColorName != "Cam" {
+		t.Fatalf("colorName = %v, want Cam", it.ColorName)
+	}
+	if it.OptionLabels == nil || len(*it.OptionLabels) != 1 || (*it.OptionLabels)[0] != "Size M" {
+		t.Fatalf("optionLabels = %v, want [Size M]", it.OptionLabels)
+	}
 
 	if len(dto.StatusHistory) != 2 {
 		t.Fatalf("statusHistory len = %d, want 2", len(dto.StatusHistory))
@@ -125,7 +141,7 @@ func TestToOrderDTOEmptyOptionalsRenderCleanly(t *testing.T) {
 		ID: uuid.New(), Code: "#LMN-1001", Channel: order.ChannelInbox, Status: order.PendingConfirm,
 		StatusHistory: []order.StatusEvent{{From: nil, To: order.Paid, At: "2026-07-01T08:00:00.500Z", ByUser: uuid.NewString()}},
 	}
-	items := []sqlc.OrderItem{{ID: uuid.New(), ProductID: uuid.New(), OptionIds: nil, Quantity: 1, UnitPrice: 10}}
+	items := []sqlc.ListOrderItemsRow{{ID: uuid.New(), ProductID: uuid.New(), ProductName: "x", OptionIds: nil, Quantity: 1, UnitPrice: 10}}
 
 	dto, err := toOrderDTO(row, items, sqlc.Customer{Name: "x", Phone: "0900000000"})
 	if err != nil {
@@ -140,11 +156,17 @@ func TestToOrderDTOEmptyOptionalsRenderCleanly(t *testing.T) {
 	if dto.Items[0].ColorId != nil || dto.Items[0].Personalization != nil {
 		t.Fatalf("unset color/personalization not nil: %+v", dto.Items[0])
 	}
+	if dto.Items[0].ProductName == nil || *dto.Items[0].ProductName != "x" {
+		t.Fatalf("productName = %v, want x", dto.Items[0].ProductName)
+	}
+	if dto.Items[0].ColorName != nil || dto.Items[0].OptionLabels != nil {
+		t.Fatalf("unset colorName/optionLabels not nil: %+v", dto.Items[0])
+	}
 	if dto.Customer.Email != nil {
 		t.Fatalf("email = %v, want nil", dto.Customer.Email)
 	}
-	if dto.TrackingCode != nil || dto.PaymentConfirmedAt != nil {
-		t.Fatalf("unset tracking/paidAt not nil: %+v", dto)
+	if dto.TrackingCode != nil || dto.PaymentConfirmedAt != nil || dto.QcPhotoUrl != nil {
+		t.Fatalf("unset tracking/paidAt/qc not nil: %+v", dto)
 	}
 }
 
