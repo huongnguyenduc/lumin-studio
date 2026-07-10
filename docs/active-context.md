@@ -6,8 +6,25 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
-**➡️ P2-g (C3 wait-screen + confirmation) — BUILT + VERIFIED + REVIEWED on `feat/phase-2-checkout-p2g` (off `main`
-`e94b658`); staged, chờ user commit+push+PR-gate.** **✅ Review DONE:** spec-guardian **PASS** (0 BLK/0 WARN/3 NOTE —
+**✅ PHASE 2 CHECKOUT COMPLETE (2026-07-10)** — cả 9 sub-PR `P2-a..i` MERGED; cuối = **P2-g #60** (`origin/main` squash
+`17284fb`; local `main` đã ff'd, working tree clean). Đơn web end-to-end đủ luồng: `/thanh-toan` C1 địa chỉ → C2 VietQR+proof
+→ C3 wait-screen auto-poll (PENDING_CONFIRM→PAID không refresh) + `/o/{code}-{token}` phone-less deep link.
+
+**🔨 IN FLIGHT: cart→checkout CTA (walkthrough finding-1 fix)** — end-to-end **browser** walkthrough of the full P2 journey
+(2026-07-10, full local stack: storefront+core-api+PG/NATS/Garage, seeded product+STK+shipping, LMN-1000 placed→reconciled→PAID
+live) confirmed the happy path works; surfaced 2 gaps (→ memory [[lumin-phase2-walkthrough-findings]]): **(1)** `/gio-hang` had
+**NO checkout CTA** (`cart-view.tsx` Phase-1 boundary never re-wired) → `/thanh-toan` URL-only → **FIXED** on branch
+`fix/cart-checkout-cta` (add `CtaLink`→`/thanh-toan` + `cart.checkoutCta` i18n; comment un-boundary'd; `pnpm verify` **6/6**);
+**(2)** fresh `make migrate` fails at `000012_product_search` (in-tx `CREATE EXTENSION unaccent` invisible to function-body
+validation) — deferred. Commit/PR pending user gate.
+
+**➡️ NEXT = Phase 3 · Admin (+ Admin Mobile)** — `docs/plan.md §Phase 3`: dashboard · đơn (confirm + lý do huỷ/hoàn) · hàng đợi
+in (kéo-thả↔status, SSE) · sản phẩm (upload model→AssetJob) · đánh giá · cài đặt (VietQR/STK owner-only + audit). **CHƯA có
+plan file** (`docs/plans/` mới có phase-0/1/2 + core) → Phase 3 cần vòng planning trước khi code (như các phase trước).
+Housekeeping treo: **52 nhánh local** (đa số merged/`:gone`) chờ chủ duyệt xoá.
+
+**— P2-g history (MERGED #60 → `main` `17284fb`) —**
+**P2-g (C3 wait-screen + confirmation) — spec-guardian **PASS** (0 BLK/0 WARN/3 NOTE —
 NOTE-1 no-render-test = **deliberate skip** [storefront has NO jsdom/testing-library, pure-logic-only convention like
 P2-d/e/f; the risky parser IS unit-tested]; NOTE-2 emoji-🧡 precedent + NOTE-3 `createdAt` mapping-parity = no-action);
 adversarial **0 correctness bugs** (7 risk-vectors refuted: `#`-in-code query-encode → `%23` via openapi-fetch serializer,
@@ -33,8 +50,7 @@ point of reuse-verbatim). NEW `track` i18n namespace (reuses `lookup.*` for shar
 dropped dead `checkout.done*`. robots.ts disallow += `/o/` + overdue `/thanh-toan` (comment promised it "when checkout lands";
 P2-d/f missed it — both already per-page noindex, this is the crawl backstop). **Verify:** `pnpm verify` **6/6** — storefront
 **161** tests (order-lookup-view **16**, +4 handle round-trip/split/case/malformed). **9 files (+513/−136;** order-lookup.tsx −90
-net as the loop moved to the hook). **NEXT: review outcomes → user push+PR-gate. After P2-g merges = ✅ PHASE 2 CHECKOUT
-COMPLETE.**
+net as the loop moved to the hook).
 
 **— P2-f history below (now MERGED via PR #59 → `main` `e94b658`; P2-g branched off it) —**
 **P2-f (payment step C2 on `/thanh-toan`: VietQR + proof upload + submit → `POST /orders`) — BUILT + VERIFIED on
