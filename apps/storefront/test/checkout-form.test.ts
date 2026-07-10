@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   EMPTY_CHECKOUT_FORM,
   normalizePhone,
+  personalizationAckMet,
   validateCheckoutForm,
   type CheckoutFormState,
 } from '../src/lib/checkout-form';
@@ -116,5 +117,19 @@ describe('validateCheckoutForm — required address fields (trimmed non-empty)',
       'street',
       'ward',
     ]);
+  });
+});
+
+describe('personalizationAckMet — ADR-012 dual-ack gate (mirrors checkout.go:241)', () => {
+  it('never gates a cart with no engraving, whatever the flags', () => {
+    expect(personalizationAckMet(false, false, false)).toBe(true);
+    expect(personalizationAckMet(false, true, false)).toBe(true);
+  });
+
+  it('requires BOTH acks once the cart is personalized', () => {
+    expect(personalizationAckMet(true, false, false)).toBe(false);
+    expect(personalizationAckMet(true, true, false)).toBe(false);
+    expect(personalizationAckMet(true, false, true)).toBe(false);
+    expect(personalizationAckMet(true, true, true)).toBe(true);
   });
 });

@@ -223,6 +223,18 @@ export const vi = {
     refundFallback:
       'Hàng in theo đơn, có khắc tên hoặc làm riêng, không đổi trả vì đổi ý. Lỗi do shop thì chúng mình in lại hoặc hoàn tiền cho bạn.',
     refundLink: 'Xem chính sách đổi trả đầy đủ',
+    // Engrave add-on (ADR-012) — shown only when the cart has engraving. Echoes the text for a last
+    // check, states the prepay rule, and the two required acks (no-return + echo-correct) that gate
+    // "continue". Mirrors the server's dual-ack at checkout.go:241.
+    engraveHeading: 'Xác nhận nội dung khắc',
+    engraveEchoIntro: 'Bạn đang khắc:',
+    engraveEchoLine: '{name} · khắc "{text}"',
+    prepayNote: 'Hàng khắc theo yêu cầu nên chúng mình cần bạn chuyển khoản đủ trước khi in nhé.',
+    ackNoReturn:
+      'Mình hiểu hàng khắc theo yêu cầu không đổi trả vì đổi ý (shop vẫn in lại nếu lỗi).',
+    ackEcho: 'Mình đã kiểm tra, nội dung khắc ở trên là chính xác.',
+    // Nudge next to the disabled "continue" button when an engraved cart hasn't ticked both acks.
+    ackHint: 'Tích hai ô xác nhận hàng khắc phía trên để tiếp tục nhé.',
     // PDPL privacy notice — informational, unbundled, no marketing tick (compliance §2). Consent to
     // process the order is contract-basis (granted server-side at order creation), not a gate here.
     privacyNotice:
