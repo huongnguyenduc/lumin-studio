@@ -10,13 +10,17 @@
 `17284fb`; local `main` đã ff'd, working tree clean). Đơn web end-to-end đủ luồng: `/thanh-toan` C1 địa chỉ → C2 VietQR+proof
 → C3 wait-screen auto-poll (PENDING_CONFIRM→PAID không refresh) + `/o/{code}-{token}` phone-less deep link.
 
-**🔨 IN FLIGHT: cart→checkout CTA (walkthrough finding-1 fix)** — end-to-end **browser** walkthrough of the full P2 journey
-(2026-07-10, full local stack: storefront+core-api+PG/NATS/Garage, seeded product+STK+shipping, LMN-1000 placed→reconciled→PAID
-live) confirmed the happy path works; surfaced 2 gaps (→ memory [[lumin-phase2-walkthrough-findings]]): **(1)** `/gio-hang` had
-**NO checkout CTA** (`cart-view.tsx` Phase-1 boundary never re-wired) → `/thanh-toan` URL-only → **FIXED** on branch
-`fix/cart-checkout-cta` (add `CtaLink`→`/thanh-toan` + `cart.checkoutCta` i18n; comment un-boundary'd; `pnpm verify` **6/6**);
-**(2)** fresh `make migrate` fails at `000012_product_search` (in-tx `CREATE EXTENSION unaccent` invisible to function-body
-validation) — deferred. Commit/PR pending user gate.
+**✅ WALKTHROUGH FINDINGS — BOTH FIXED** — end-to-end **browser** walkthrough of the full P2 journey (2026-07-10, full local
+stack: storefront+core-api+PG/NATS/Garage, seeded product+STK+shipping, LMN-1000 placed→reconciled→PAID live) confirmed the happy
+path; surfaced 2 gaps (→ memory [[lumin-phase2-walkthrough-findings]]): **(1)** `/gio-hang` had **NO checkout CTA** (`cart-view.tsx`
+Phase-1 boundary never re-wired) → `/thanh-toan` URL-only → **MERGED #61** (`main` `a448a7d`; `CtaLink`→`/thanh-toan` +
+`cart.checkoutCta` i18n). **(2)** fresh `make migrate` breaks at `000012_product_search` — golang-migrate's session can't resolve the
+**unqualified** `unaccent(...)` in the `immutable_unaccent` body ("unaccent(unknown,text) does not exist" **even with the extension
+in public + public on search_path** — NOT the same-tx/visibility theory; CI masks it because integration tests apply `.sql` via a
+direct **pgx applier** [D4], never golang-migrate CLI) → **FIXED** on `fix/migrate-unaccent-schema-qualify`: fully schema-qualify the
+body (`public.unaccent('public.unaccent'::regdictionary, …)`) + `CREATE EXTENSION … WITH SCHEMA public`. Verified: fresh
+`make migrate` 0→13 green · `immutable_unaccent('Đèn để bàn')`→`Den de ban` · sqlc vet/diff clean · db+httpapi integration green.
+Commit/PR pending user gate.
 
 **➡️ NEXT = Phase 3 · Admin (+ Admin Mobile)** — `docs/plan.md §Phase 3`: dashboard · đơn (confirm + lý do huỷ/hoàn) · hàng đợi
 in (kéo-thả↔status, SSE) · sản phẩm (upload model→AssetJob) · đánh giá · cài đặt (VietQR/STK owner-only + audit). **CHƯA có

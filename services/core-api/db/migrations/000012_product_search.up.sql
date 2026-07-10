@@ -24,12 +24,21 @@
 --     want one (ADR-016 scope is exact tokens after unaccent, not fuzzy search). The WHERE predicate in
 --     db/queries/catalog.sql repeats this exact expression so the planner uses this index.
 
-CREATE EXTENSION IF NOT EXISTS unaccent;
+-- Pinned to `public` so the function body below can reference it fully-qualified (see next paragraph).
+CREATE EXTENSION IF NOT EXISTS unaccent WITH SCHEMA public;
 
 -- immutable_unaccent pins the accent-folding to the shipped 'unaccent' dictionary and is DECLARED immutable
 -- (see the dictionary-mutation caveat above) so it may be used in the index expression below and in the
 -- matching query predicate. STRICT: name/description are NOT NULL so the argument is never NULL, but a NULL
--- in yields NULL out for free. The two-arg unaccent(regdictionary, text) form is search_path-independent.
+-- in yields NULL out for free.
+--
+-- The body is FULLY schema-qualified — `public.unaccent(...)` + `'public.unaccent'::regdictionary` — on
+-- purpose: at CREATE time Postgres validates the SQL body by resolving `unaccent` against the CURRENT
+-- session's search_path, and golang-migrate's connection does NOT resolve it the way psql does (an
+-- unqualified `unaccent('unaccent', …)` fails there with "function unaccent(unknown, text) does not exist"
+-- even when the extension is installed in public and public is on the default search_path — a fresh
+-- `make migrate` breaks at this migration). Qualifying makes the body search_path-independent so it applies
+-- identically under every client. `immutable_unaccent` itself lands in public (migrate's current_schema).
 --
 -- The translate(…, 'đĐ', 'dd') is NOT redundant: Vietnamese đ/Đ (U+0111/U+0110) is a STROKE letter with no
 -- Unicode canonical decomposition, so unaccent's decomposition-derived rules do not reliably fold it to d
@@ -39,7 +48,7 @@ CREATE EXTENSION IF NOT EXISTS unaccent;
 -- only gap. Because this exact expression is shared by the index and the query predicate, both stay in sync.
 CREATE FUNCTION immutable_unaccent(text) RETURNS text
   LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT
-  AS $$ SELECT translate(unaccent('unaccent', $1), 'đĐ', 'dd') $$;
+  AS $$ SELECT translate(public.unaccent('public.unaccent'::regdictionary, $1), 'đĐ', 'dd') $$;
 
 CREATE INDEX products_search_idx ON products USING gin (
   to_tsvector('simple', immutable_unaccent(name || ' ' || description))
