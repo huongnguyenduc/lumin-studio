@@ -6,6 +6,29 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**🔨 PHASE 3 · P3-b (BE `GET /admin/orders` — list · status-filter · paginate) — BUILT + VERIFIED + REVIEWED on `feat/phase-3-admin-p3b-orders-list`**
+(off `main` `edcb5fe`; P3-a MERGED #63). **BE-only** — mirrors catalog-list (`products.go GetProducts`) + dashboard patterns. **DTO** =
+INTERNAL admin projection (`AdminOrderSummary`: id/code/customerName/**firstItemName+itemCount** cho cột "sản phẩm"/channel/status/
+total-**raw-int-VND**/createdAt) — **KHÔNG** dùng public `PublicOrderTimeline` whitelist (đây có PII/kênh/tiền, ADR-032). **SQL**
+(`orders.sql`): `ListAdminOrders` (newest-first `created_at DESC, id DESC` stable-paging · nullable `status` narg = "Tất cả" · JOIN
+`customers.name` + 2 scalar subquery first-item-name/item-count backed by `order_items_order_idx`, no-N+1; first item picked `ORDER BY
+oi.id` stable-arbitrary; `firstItemName` non-pointer `string` an-toàn vì mọi đơn ≥1 item — CreateOrderTx `ErrNoItems` + `order_items`
+CHỈ ON DELETE CASCADE, KHÔNG có standalone item-DELETE) + `CountAdminOrders` (cùng filter). **Handler** (`admin_orders.go`): `authRequired`
+FREE qua classify fail-closed default (owner+staff đọc); `adminOrdersPageParams` (default 20, max 50) + `adminOrdersStatusFilter` (validate
+vs `order.Statuses`) → **400 trước mọi read** (oapi bỏ min/max/enum); offset-clamp 100k chống int32-overflow (như catalog). Money raw
+int-VND (#2); status/channel = enum, FE format "+N"/label (#3). **Reuse**: `db.NewOrders(pool).AdminList(AdminOrderFilter)` + `nullOrderStatus`
+(map `*order.Status`→`sqlc.NullOrderStatus`). **Verify:** `make verify-go` ✓ (gofmt·vet·golangci **0**·sqlc vet/diff·oapi stale-check
+staged·`go test -race`: httpapi **+7** admin-orders test [4 Docker-free DTO/page/status + 3 integration real-PG: filter/paginate/newest-first/
+multi-item/empty/bad-input→400] + classify `GetAdminOrders`→authRequired) · `pnpm verify` **6/6** (schema.gen.ts stale-gate + prettier).
+Additive openapi (`/admin/orders` + 2 schema) + regen api.gen.go/schema.gen.ts **staged**. Acceptance **Cụm 27 `ADM-02`** (Go-gated `[ ]`).
+**No new dep · no new ADR · no migration.** 12 files/+998. **✅ Review DONE:** spec-guardian **PASS** (0 BLK/1 WARN/1 NOTE — WARN
+acceptance-EARS + NOTE codegen-staged **cả hai ĐÃ thoả** [ADM-02 ở Cụm 27, .gen staged + stale-check xanh]; reviewer chưa với tới file
+staged); adversarial (oracle) **0 correctness bug** (6 góc REFUTED: offset-clamp int-không-int32 an-toàn · `$1 IS NULL` match mọi row =
+"Tất cả" · ≥1-item invariant làm non-pointer `firstItemName` scan airtight · `id` tiebreak = total-order stable-paging · itemCount int32-widen
+· mọi bad-input→400-trước-read). **NEXT sau P3-b land = P3-c** (FE `/don-hang` danh sách — filter pills + table + `OrderStatusBadge` +
+multi-select scaffold, tiêu thụ endpoint này; admin-mobile card-stack). **Commit → user gate.**
+
+**— P3-a history (MERGED #63 → `main` `edcb5fe`) —**
 **🔨 PHASE 3 · P3-a (admin login + auth-redirect) — BUILT + VERIFIED on `feat/phase-3-admin-p3a-login`** (off `main`
 `a448a7d`; NOT the migration branch — re-based off main so the pending unaccent fix stays separate). **Backend auth đã có**
 (ADR-030 self-issued JWT: `POST /auth/login` bcrypt→httpOnly cookie `lumin_session` SameSite=Strict, `/auth/logout`); P3-a chỉ

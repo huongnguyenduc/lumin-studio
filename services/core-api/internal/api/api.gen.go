@@ -90,6 +90,40 @@ type Address struct {
 	Ward     string `json:"ward"`
 }
 
+// AdminOrderList One page of admin order summaries plus the pagination envelope. `total` is the count of orders matching the status filter across all pages; the client derives the page count.
+type AdminOrderList struct {
+	Items []AdminOrderSummary `json:"items"`
+
+	// Page 1-based page number echoed from the request.
+	Page int `json:"page"`
+
+	// PageSize Items per page echoed from the request.
+	PageSize int `json:"pageSize"`
+
+	// Total Total orders matching the status filter, across all pages.
+	Total int `json:"total"`
+}
+
+// AdminOrderSummary One order row in the admin orders table (P3-b). The INTERNAL admin projection — unlike the public PublicOrderTimeline it carries the customer name, the channel and the total. firstItemName + itemCount back the "sản phẩm" column (the client renders e.g. "Đèn Mochi +1" when itemCount > 1); total is raw int-VND (never formatted server-side, always-must #2).
+type AdminOrderSummary struct {
+	// Channel Order origin (spec §04).
+	Channel      Channel   `json:"channel"`
+	Code         string    `json:"code"`
+	CreatedAt    time.Time `json:"createdAt"`
+	CustomerName string    `json:"customerName"`
+
+	// FirstItemName Product name of the order's first line item — the "sản phẩm" column anchor.
+	FirstItemName string             `json:"firstItemName"`
+	Id            openapi_types.UUID `json:"id"`
+
+	// ItemCount Number of line items on the order; the client renders "+N" (itemCount − 1) when > 1.
+	ItemCount int `json:"itemCount"`
+
+	// Status Order lifecycle status (spec §04). 5 progress milestones + 2 close states.
+	Status OrderStatus `json:"status"`
+	Total  int64       `json:"total"`
+}
+
 // AuthUser The authenticated user (no credential material).
 type AuthUser struct {
 	Email openapi_types.Email `json:"email"`
@@ -654,6 +688,18 @@ type Unauthorized = ErrorEnvelope
 // Unprocessable The one error shape every endpoint returns (ADR-032). `code` is a stable machine code (e.g. NOT_FOUND, INVALID_EDGE, RBAC, REASON_REQUIRED, VALIDATION); `messageKey` is a next-intl key (the domain's Vietnamese prose is NEVER forwarded). `fields` maps a field path → messageKey for per-field validation errors.
 type Unprocessable = ErrorEnvelope
 
+// GetAdminOrdersParams defines parameters for GetAdminOrders.
+type GetAdminOrdersParams struct {
+	// Status Filter to a single order status (spec §04). Omit for all statuses ("Tất cả").
+	Status *OrderStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// Page 1-based page number.
+	Page *int `form:"page,omitempty" json:"page,omitempty"`
+
+	// PageSize Items per page. Capped at 50 to bound the query on this admin endpoint.
+	PageSize *int `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
 // GetCategoriesParams defines parameters for GetCategories.
 type GetCategoriesParams struct {
 	// IfNoneMatch Conditional GET — when it matches the current ETag the server returns 304 with no body.
@@ -832,6 +878,9 @@ type ServerInterface interface {
 	// Admin dashboard aggregates (counts + net revenue + recent orders + todos).
 	// (GET /admin/dashboard)
 	GetDashboard(w http.ResponseWriter, r *http.Request)
+	// Admin orders list — paginated, optionally filtered by status (admin-gated).
+	// (GET /admin/orders)
+	GetAdminOrders(w http.ResponseWriter, r *http.Request, params GetAdminOrdersParams)
 	// List the extension reply templates (admin-gated read).
 	// (GET /admin/reply-templates)
 	ListReplyTemplates(w http.ResponseWriter, r *http.Request)
@@ -901,6 +950,12 @@ type Unimplemented struct{}
 // Admin dashboard aggregates (counts + net revenue + recent orders + todos).
 // (GET /admin/dashboard)
 func (_ Unimplemented) GetDashboard(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Admin orders list — paginated, optionally filtered by status (admin-gated).
+// (GET /admin/orders)
+func (_ Unimplemented) GetAdminOrders(w http.ResponseWriter, r *http.Request, params GetAdminOrdersParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1044,6 +1099,55 @@ func (siw *ServerInterfaceWrapper) GetDashboard(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetDashboard(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAdminOrders operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminOrders(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAdminOrdersParams
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", r.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "page", r.URL.Query(), &params.Page)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "pageSize", r.URL.Query(), &params.PageSize)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAdminOrders(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1727,6 +1831,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/admin/dashboard", wrapper.GetDashboard)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/orders", wrapper.GetAdminOrders)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/reply-templates", wrapper.ListReplyTemplates)
 	})
 	r.Group(func(r chi.Router) {
@@ -1823,6 +1930,41 @@ func (response GetDashboard200JSONResponse) VisitGetDashboardResponse(w http.Res
 type GetDashboard401JSONResponse struct{ UnauthorizedJSONResponse }
 
 func (response GetDashboard401JSONResponse) VisitGetDashboardResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminOrdersRequestObject struct {
+	Params GetAdminOrdersParams
+}
+
+type GetAdminOrdersResponseObject interface {
+	VisitGetAdminOrdersResponse(w http.ResponseWriter) error
+}
+
+type GetAdminOrders200JSONResponse AdminOrderList
+
+func (response GetAdminOrders200JSONResponse) VisitGetAdminOrdersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminOrders400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetAdminOrders400JSONResponse) VisitGetAdminOrdersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminOrders401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetAdminOrders401JSONResponse) VisitGetAdminOrdersResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
 
@@ -2615,6 +2757,9 @@ type StrictServerInterface interface {
 	// Admin dashboard aggregates (counts + net revenue + recent orders + todos).
 	// (GET /admin/dashboard)
 	GetDashboard(ctx context.Context, request GetDashboardRequestObject) (GetDashboardResponseObject, error)
+	// Admin orders list — paginated, optionally filtered by status (admin-gated).
+	// (GET /admin/orders)
+	GetAdminOrders(ctx context.Context, request GetAdminOrdersRequestObject) (GetAdminOrdersResponseObject, error)
 	// List the extension reply templates (admin-gated read).
 	// (GET /admin/reply-templates)
 	ListReplyTemplates(ctx context.Context, request ListReplyTemplatesRequestObject) (ListReplyTemplatesResponseObject, error)
@@ -2723,6 +2868,32 @@ func (sh *strictHandler) GetDashboard(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetDashboardResponseObject); ok {
 		if err := validResponse.VisitGetDashboardResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAdminOrders operation middleware
+func (sh *strictHandler) GetAdminOrders(w http.ResponseWriter, r *http.Request, params GetAdminOrdersParams) {
+	var request GetAdminOrdersRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAdminOrders(ctx, request.(GetAdminOrdersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAdminOrders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAdminOrdersResponseObject); ok {
+		if err := validResponse.VisitGetAdminOrdersResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

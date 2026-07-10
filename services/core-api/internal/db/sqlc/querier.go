@@ -23,6 +23,11 @@ type Querier interface {
 	// request) on a made-to-order shop whose catalog rarely mutates, and it is never a money value — so we
 	// accept it rather than pay for a snapshot transaction (documented on the repo method).
 	CountActiveProducts(ctx context.Context, arg CountActiveProductsParams) (int64, error)
+	// CountAdminOrders is the total for the admin list envelope — the SAME status filter as ListAdminOrders,
+	// no sort/limit. It runs as a second autocommit read alongside the list; a concurrent order write between
+	// the two can skew the count by one (cosmetic, self-heals next request, never a money value), which a
+	// one-shop admin accepts rather than pay for a snapshot tx (same stance as CountActiveProducts).
+	CountAdminOrders(ctx context.Context, status NullOrderStatus) (int64, error)
 	// CountPublishedReviewsByProduct is the total for the review-list envelope — the SAME product_id +
 	// status='published' filter as ListReviewsByProduct, no sort/limit. It runs alongside the list as a
 	// second autocommit read; a concurrent review write between the two can skew the total by one. That is
@@ -166,6 +171,15 @@ type Querier interface {
 	// matching on a tiny catalog, so relevance ranking (ts_rank) is a deliberate non-goal (it would also mean a
 	// new sort enum value — a contract change P1-e avoids).
 	ListActiveProducts(ctx context.Context, arg ListActiveProductsParams) ([]ListActiveProductsRow, error)
+	// ListAdminOrders is the admin orders table read (P3-b, GET /admin/orders): one page of orders newest-
+	// first, optionally filtered to a single status. Unlike the public timeline it joins the customer NAME
+	// and, for the "sản phẩm" column, a representative first-item product name + the line-item count (two
+	// scalar subqueries — bounded per page, backed by order_items_order_idx, no N+1). The first item is
+	// picked by a stable oi.id order: which line represents a multi-item order carries no meaning, only that
+	// it is the SAME one every load. The status filter is a nullable narg (NULL = all statuses, "Tất cả").
+	// created_at DESC, id DESC give a deterministic total order so OFFSET pagination is stable across pages.
+	// Every order has ≥1 item (CreateOrderTx enforces it) so first_item_name is never NULL in practice.
+	ListAdminOrders(ctx context.Context, arg ListAdminOrdersParams) ([]ListAdminOrdersRow, error)
 	ListAssetJobsByStatus(ctx context.Context, status AssetJobStatus) ([]AssetJob, error)
 	// ListBankAudit returns the money-out config history, newest first (the owner audit view). Ordering is
 	// by seq (monotonic insertion order), so it is deterministic even when two changes share a created_at

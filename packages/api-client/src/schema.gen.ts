@@ -357,6 +357,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin orders list — paginated, optionally filtered by status (admin-gated).
+         * @description Returns one page of orders as an admin SUMMARY projection (code, customer name, a first-item name + item count for the "sản phẩm" column, channel, status, total, created date), newest first, optionally filtered to a single OrderStatus (omit the param for all statuses, "Tất cả"). This is the INTERNAL admin projection: it carries customer PII (name), the channel and the money that the public PublicOrderTimeline whitelist deliberately omits (ADR-032) — so it is admin-gated (cookieAuth; owner AND staff read). Money (total) is raw int-VND, never formatted server-side (always-must #2); status/channel cross the wire as enums the client maps to i18n labels (always-must #3).
+         */
+        get: operations["getAdminOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/settings": {
         parameters: {
             query?: never;
@@ -924,6 +944,33 @@ export interface components {
         DashboardTodos: {
             pendingConfirm: number;
             paidWaitingPrint: number;
+        };
+        /** @description One order row in the admin orders table (P3-b). The INTERNAL admin projection — unlike the public PublicOrderTimeline it carries the customer name, the channel and the total. firstItemName + itemCount back the "sản phẩm" column (the client renders e.g. "Đèn Mochi +1" when itemCount > 1); total is raw int-VND (never formatted server-side, always-must #2). */
+        AdminOrderSummary: {
+            /** Format: uuid */
+            id: string;
+            code: string;
+            customerName: string;
+            /** @description Product name of the order's first line item — the "sản phẩm" column anchor. */
+            firstItemName: string;
+            /** @description Number of line items on the order; the client renders "+N" (itemCount − 1) when > 1. */
+            itemCount: number;
+            channel: components["schemas"]["Channel"];
+            status: components["schemas"]["OrderStatus"];
+            /** Format: int64 */
+            total: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @description One page of admin order summaries plus the pagination envelope. `total` is the count of orders matching the status filter across all pages; the client derives the page count. */
+        AdminOrderList: {
+            items: components["schemas"]["AdminOrderSummary"][];
+            /** @description 1-based page number echoed from the request. */
+            page: number;
+            /** @description Items per page echoed from the request. */
+            pageSize: number;
+            /** @description Total orders matching the status filter, across all pages. */
+            total: number;
         };
         /** @description The guest-facing order timeline returned by GET /orders/lookup. It is a SEPARATE schema from Order (never a $ref) and exposes ONLY what a customer who already knows their code + phone may see: the code they typed, the current status, a status→time milestone list, an optional carrier tracking code, and the creation instant. It deliberately OMITS every internal field — customer PII, shipping address, line items, money (subtotal/shippingFee/total/unitPrice), payment/refund proof URLs, the internal note, the order uuid, the channel, and the statusHistory actor (byUser) + reason (ADR-032 non-leak). */
         PublicOrderTimeline: {
@@ -1536,6 +1583,35 @@ export interface operations {
                     "application/json": components["schemas"]["DashboardSnapshot"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getAdminOrders: {
+        parameters: {
+            query?: {
+                /** @description Filter to a single order status (spec §04). Omit for all statuses ("Tất cả"). */
+                status?: components["schemas"]["OrderStatus"];
+                /** @description 1-based page number. */
+                page?: number;
+                /** @description Items per page. Capped at 50 to bound the query on this admin endpoint. */
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of admin order summaries (newest first). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOrderList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
         };
     };
