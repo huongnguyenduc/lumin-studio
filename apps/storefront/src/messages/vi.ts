@@ -173,6 +173,9 @@ export const vi = {
     // Summary card.
     subtotalLabel: 'Tạm tính',
     shippingNote: 'Phí ship tính theo khu vực ở bước sau.',
+    // Primary CTA into the checkout flow (/thanh-toan). The cart creates no order — it just navigates;
+    // address + payment + order creation all begin on /thanh-toan.
+    checkoutCta: 'Tiến hành đặt hàng',
     // States. `unavailableError` = a line's product/colour/option is no longer valid (server 422);
     // `pricingError` = a transient failure computing the subtotal. Both offer retry.
     unavailableError: 'Một món trong giỏ không còn khả dụng — thử xoá rồi thêm lại nhé.',

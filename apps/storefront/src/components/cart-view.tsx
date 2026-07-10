@@ -33,8 +33,9 @@ type QuoteState =
  * store) while the price re-quotes; a removed last unit drops the line. Renders the full state set:
  * a mount skeleton (localStorage isn't readable during SSR), empty, priced, and a retryable error.
  *
- * BOUNDARY (plan §0, Phase-1/2 cứng): there is NO checkout here — the footer shows the subtotal and a
- * "shipping is calculated later" note, and nothing creates an order or takes an address/payment.
+ * The footer shows the subtotal, a "shipping is calculated later" note, and the primary CTA into
+ * checkout (/thanh-toan). The cart itself still creates no order and takes no address/payment — that
+ * all begins on /thanh-toan (the Phase-2 checkout flow, P2-d→g).
  */
 export function CartView() {
   const t = useTranslations('cart');
@@ -158,6 +159,13 @@ export function CartView() {
               <p className="mt-2 text-sm text-text-muted">{t('shippingNote')}</p>
             )}
           </div>
+
+          {/* Primary entry into checkout. Always available on a non-empty cart — the cart's own
+              debounced quote is display-only; /thanh-toan re-prices + validates server-side and owns
+              every error/empty state, so navigation is never gated on a transient cart-quote hiccup. */}
+          <CtaLink href="/thanh-toan" className="mt-4 w-full">
+            {t('checkoutCta')}
+          </CtaLink>
         </>
       )}
     </section>
