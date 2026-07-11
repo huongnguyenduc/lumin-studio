@@ -1731,6 +1731,201 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /admin/filament-materials/{id}/scrap:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [admin]
+      operationId: scrapFilament
+      summary: Log a scrap draw against a material (owner-only) — the hao-hụt tab (ADR-039).
+      description: >
+        Draws qty of the material FIFO (reusing the deduct-on-print helper, kind='scrap') so scrap flows
+        through the same filament_consumption ledger and moves stock. A shortfall clamps (never errors).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FilamentScrapInput'
+      responses:
+        '200':
+          description: The material with updated stock + its batches.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilamentMaterialDetail'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/machines:
+    get:
+      tags: [admin]
+      operationId: listMachines
+      summary: List machines with derived ₫/hour (admin-gated read; owner+staff).
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Machines, primary first then by name.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Machine'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [admin]
+      operationId: createMachine
+      summary: Add a machine (owner-only).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MachineInput'
+      responses:
+        '201':
+          description: The created machine.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Machine'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/machines/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [admin]
+      operationId: updateMachine
+      summary: Edit a machine (owner-only).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MachineInput'
+      responses:
+        '200':
+          description: The updated machine.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Machine'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [admin]
+      operationId: deleteMachine
+      summary: Delete a machine (owner-only).
+      security:
+        - cookieAuth: []
+      responses:
+        '204': { description: Deleted. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/aux-costs:
+    get:
+      tags: [admin]
+      operationId: listAuxCosts
+      summary: List auxiliary/overhead cost lines (admin-gated read; owner+staff).
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Overhead lines, by kind then label.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuxCost'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [admin]
+      operationId: createAuxCost
+      summary: Add an overhead cost line (owner-only).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuxCostInput'
+      responses:
+        '201':
+          description: The created overhead line.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuxCost'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/aux-costs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [admin]
+      operationId: updateAuxCost
+      summary: Edit an overhead cost line (owner-only).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuxCostInput'
+      responses:
+        '200':
+          description: The updated overhead line.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuxCost'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [admin]
+      operationId: deleteAuxCost
+      summary: Delete an overhead cost line (owner-only).
+      security:
+        - cookieAuth: []
+      responses:
+        '204': { description: Deleted. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 components:
   securitySchemes:
     cookieAuth:
@@ -2322,6 +2517,71 @@ components:
         spoolCount: { type: integer, format: int64, description: 'Number of spools imported (>= 1).' }
         qtyPerSpool: { type: integer, format: int64, description: 'Unit qty per spool (grams/ml, >= 1).' }
         pricePerSpoolVnd: { type: integer, format: int64, description: 'Price per spool in int-VND (>= 0).' }
+
+    FilamentScrapInput:
+      type: object
+      description: >
+        Log a scrap draw against a material (ADR-039 hao-hụt tab, owner-only). Draws qty FIFO through the
+        deduct helper (kind='scrap') so scrap moves stock + writes the same consumption ledger; a shortfall
+        clamps to available stock (never errors).
+      required: [qty]
+      properties:
+        qty: { type: integer, format: int64, description: 'Scrap quantity in the material unit (>= 1).' }
+        reason: { type: string, description: 'Optional scrap reason.' }
+        note: { type: string, description: 'Optional note.' }
+
+    Machine:
+      type: object
+      description: >
+        A printer for machine-hour costing (ADR-039 pt 6). costPerHour is DERIVED = purchasePriceVnd /
+        (depreciationMonths × expectedHoursPerMonth) — a rate (float, not stored money); the 4c snapshot
+        attributes hours to the primary machine. active=false hides it from the cost rollup.
+      required: [id, name, purchasePriceVnd, depreciationMonths, expectedHoursPerMonth, isPrimary, active, costPerHour]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        purchasePriceVnd: { type: integer, format: int64, description: 'Purchase price in int-VND (>= 0).' }
+        depreciationMonths: { type: integer, description: 'Depreciation window in months (> 0).' }
+        expectedHoursPerMonth: { type: integer, description: 'Expected run hours per month (> 0).' }
+        isPrimary: { type: boolean, description: 'The machine the snapshot attributes hours to.' }
+        active: { type: boolean, description: 'Excluded from the cost rollup when false.' }
+        costPerHour:
+          type: number
+          format: double
+          description: Derived ₫/hour = purchasePriceVnd / (depreciationMonths × expectedHoursPerMonth). A rate, not stored money.
+
+    MachineInput:
+      type: object
+      description: Create/replace body for a machine (ADR-039, owner-only). isPrimary/active default false/true.
+      required: [name, purchasePriceVnd, depreciationMonths, expectedHoursPerMonth]
+      properties:
+        name: { type: string }
+        purchasePriceVnd: { type: integer, format: int64, description: 'Purchase price in int-VND (>= 0).' }
+        depreciationMonths: { type: integer, description: 'Depreciation window in months (> 0).' }
+        expectedHoursPerMonth: { type: integer, description: 'Expected run hours per month (> 0).' }
+        isPrimary: { type: boolean, description: 'Mark as the primary machine; optional, defaults false.' }
+        active: { type: boolean, description: 'Optional, defaults true.' }
+
+    AuxCost:
+      type: object
+      description: An auxiliary/overhead cost line (ADR-039 pt 7). amountVnd is int-VND; the per-order allocation is derived at rollup time.
+      required: [id, label, kind, amountVnd]
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        kind:
+          type: string
+          description: 'per_order (a flat cost each order) | per_month (amortized over the 30-day order count). Validated server-side (ADR-028), not a wire enum.'
+        amountVnd: { type: integer, format: int64, description: 'Amount in int-VND (>= 0).' }
+
+    AuxCostInput:
+      type: object
+      description: Create/replace body for an overhead line (ADR-039, owner-only).
+      required: [label, kind, amountVnd]
+      properties:
+        label: { type: string }
+        kind: { type: string, description: 'per_order | per_month.' }
+        amountVnd: { type: integer, format: int64, description: 'Amount in int-VND (>= 0).' }
 
     ProductInput:
       type: object

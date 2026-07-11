@@ -307,6 +307,16 @@ func TestClassifyFailsClosed(t *testing.T) {
 		"CreateFilamentMaterial": authOwnerOnly, // Vật tư cost config — owner-only writes
 		"UpdateFilamentMaterial": authOwnerOnly,
 		"ImportFilament":         authOwnerOnly,
+		"ScrapFilament":          authOwnerOnly, // hao-hụt draw — owner-only (ADR-039 slice 4c)
+
+		"ListMachines":  authRequired, // Vật tư cost-input reads — owner+staff (ADR-039 slice 4c)
+		"ListAuxCosts":  authRequired,
+		"CreateMachine": authOwnerOnly, // machines / aux costs — owner-only cost config
+		"UpdateMachine": authOwnerOnly,
+		"DeleteMachine": authOwnerOnly,
+		"CreateAuxCost": authOwnerOnly,
+		"UpdateAuxCost": authOwnerOnly,
+		"DeleteAuxCost": authOwnerOnly,
 	}
 	for op, want := range cases {
 		if got := classify(op); got != want {

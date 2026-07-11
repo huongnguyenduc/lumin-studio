@@ -545,6 +545,15 @@ type AssetJob struct {
 	CompletedAt    pgtype.Timestamptz `json:"completedAt"`
 }
 
+type AuxCost struct {
+	ID        uuid.UUID          `json:"id"`
+	Label     string             `json:"label"`
+	Kind      string             `json:"kind"`
+	AmountVnd int64              `json:"amountVnd"`
+	CreatedAt pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt pgtype.Timestamptz `json:"updatedAt"`
+}
+
 type Category struct {
 	ID   uuid.UUID `json:"id"`
 	Slug string    `json:"slug"`
@@ -615,6 +624,18 @@ type FilamentMaterial struct {
 	Archived          bool               `json:"archived"`
 	CreatedAt         pgtype.Timestamptz `json:"createdAt"`
 	UpdatedAt         pgtype.Timestamptz `json:"updatedAt"`
+}
+
+type Machine struct {
+	ID                    uuid.UUID          `json:"id"`
+	Name                  string             `json:"name"`
+	PurchasePriceVnd      int64              `json:"purchasePriceVnd"`
+	DepreciationMonths    int32              `json:"depreciationMonths"`
+	ExpectedHoursPerMonth int32              `json:"expectedHoursPerMonth"`
+	IsPrimary             bool               `json:"isPrimary"`
+	Active                bool               `json:"active"`
+	CreatedAt             pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt             pgtype.Timestamptz `json:"updatedAt"`
 }
 
 type Option struct {

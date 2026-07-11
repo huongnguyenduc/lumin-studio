@@ -910,6 +910,104 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/filament-materials/{id}/scrap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Log a scrap draw against a material (owner-only) — the hao-hụt tab (ADR-039).
+         * @description Draws qty of the material FIFO (reusing the deduct-on-print helper, kind='scrap') so scrap flows through the same filament_consumption ledger and moves stock. A shortfall clamps (never errors).
+         */
+        post: operations["scrapFilament"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/machines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List machines with derived ₫/hour (admin-gated read; owner+staff). */
+        get: operations["listMachines"];
+        put?: never;
+        /** Add a machine (owner-only). */
+        post: operations["createMachine"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/machines/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a machine (owner-only). */
+        delete: operations["deleteMachine"];
+        options?: never;
+        head?: never;
+        /** Edit a machine (owner-only). */
+        patch: operations["updateMachine"];
+        trace?: never;
+    };
+    "/admin/aux-costs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List auxiliary/overhead cost lines (admin-gated read; owner+staff). */
+        get: operations["listAuxCosts"];
+        put?: never;
+        /** Add an overhead cost line (owner-only). */
+        post: operations["createAuxCost"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/aux-costs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete an overhead cost line (owner-only). */
+        delete: operations["deleteAuxCost"];
+        options?: never;
+        head?: never;
+        /** Edit an overhead cost line (owner-only). */
+        patch: operations["updateAuxCost"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1253,6 +1351,83 @@ export interface components {
              * @description Price per spool in int-VND (>= 0).
              */
             pricePerSpoolVnd: number;
+        };
+        /** @description Log a scrap draw against a material (ADR-039 hao-hụt tab, owner-only). Draws qty FIFO through the deduct helper (kind='scrap') so scrap moves stock + writes the same consumption ledger; a shortfall clamps to available stock (never errors). */
+        FilamentScrapInput: {
+            /**
+             * Format: int64
+             * @description Scrap quantity in the material unit (>= 1).
+             */
+            qty: number;
+            /** @description Optional scrap reason. */
+            reason?: string;
+            /** @description Optional note. */
+            note?: string;
+        };
+        /** @description A printer for machine-hour costing (ADR-039 pt 6). costPerHour is DERIVED = purchasePriceVnd / (depreciationMonths × expectedHoursPerMonth) — a rate (float, not stored money); the 4c snapshot attributes hours to the primary machine. active=false hides it from the cost rollup. */
+        Machine: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /**
+             * Format: int64
+             * @description Purchase price in int-VND (>= 0).
+             */
+            purchasePriceVnd: number;
+            /** @description Depreciation window in months (> 0). */
+            depreciationMonths: number;
+            /** @description Expected run hours per month (> 0). */
+            expectedHoursPerMonth: number;
+            /** @description The machine the snapshot attributes hours to. */
+            isPrimary: boolean;
+            /** @description Excluded from the cost rollup when false. */
+            active: boolean;
+            /**
+             * Format: double
+             * @description Derived ₫/hour = purchasePriceVnd / (depreciationMonths × expectedHoursPerMonth). A rate, not stored money.
+             */
+            costPerHour: number;
+        };
+        /** @description Create/replace body for a machine (ADR-039, owner-only). isPrimary/active default false/true. */
+        MachineInput: {
+            name: string;
+            /**
+             * Format: int64
+             * @description Purchase price in int-VND (>= 0).
+             */
+            purchasePriceVnd: number;
+            /** @description Depreciation window in months (> 0). */
+            depreciationMonths: number;
+            /** @description Expected run hours per month (> 0). */
+            expectedHoursPerMonth: number;
+            /** @description Mark as the primary machine; optional, defaults false. */
+            isPrimary?: boolean;
+            /** @description Optional, defaults true. */
+            active?: boolean;
+        };
+        /** @description An auxiliary/overhead cost line (ADR-039 pt 7). amountVnd is int-VND; the per-order allocation is derived at rollup time. */
+        AuxCost: {
+            /** Format: uuid */
+            id: string;
+            label: string;
+            /** @description per_order (a flat cost each order) | per_month (amortized over the 30-day order count). Validated server-side (ADR-028), not a wire enum. */
+            kind: string;
+            /**
+             * Format: int64
+             * @description Amount in int-VND (>= 0).
+             */
+            amountVnd: number;
+        };
+        /** @description Create/replace body for an overhead line (ADR-039, owner-only). */
+        AuxCostInput: {
+            label: string;
+            /** @description per_order | per_month. */
+            kind: string;
+            /**
+             * Format: int64
+             * @description Amount in int-VND (>= 0).
+             */
+            amountVnd: number;
         };
         /** @description Create/replace body for a product (P3-j, owner-only). Same editable fields as Product MINUS the server/pipeline-owned ones: no id/createdAt/ratingAvg/reviewCount (server-owned), no colors/options (managed via their own nested endpoints), and no model3dUrl (owned by the asset pipeline, P3-j-b — the editor form can never set or blank it). basePrice is raw int-VND (always-must #2). description and images are optional (default "" / []). */
         ProductInput: {
@@ -3540,6 +3715,238 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FilamentMaterialDetail"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    scrapFilament: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FilamentScrapInput"];
+            };
+        };
+        responses: {
+            /** @description The material with updated stock + its batches. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilamentMaterialDetail"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listMachines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Machines, primary first then by name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Machine"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createMachine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MachineInput"];
+            };
+        };
+        responses: {
+            /** @description The created machine. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Machine"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    deleteMachine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateMachine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MachineInput"];
+            };
+        };
+        responses: {
+            /** @description The updated machine. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Machine"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listAuxCosts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Overhead lines, by kind then label. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuxCost"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createAuxCost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuxCostInput"];
+            };
+        };
+        responses: {
+            /** @description The created overhead line. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuxCost"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    deleteAuxCost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateAuxCost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuxCostInput"];
+            };
+        };
+        responses: {
+            /** @description The updated overhead line. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuxCost"];
                 };
             };
             400: components["responses"]["BadRequest"];

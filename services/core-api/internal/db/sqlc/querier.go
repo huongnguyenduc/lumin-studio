@@ -95,7 +95,9 @@ type Querier interface {
 	// DecrementBatch subtracts a drawn qty from one lot. The 000018 CHECK (qty_remaining >= 0) is the backstop;
 	// the caller never takes more than the lot's qty_remaining (clamp), so this cannot go negative.
 	DecrementBatch(ctx context.Context, arg DecrementBatchParams) error
+	DeleteAuxCost(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	DeleteColor(ctx context.Context, arg DeleteColorParams) (uuid.UUID, error)
+	DeleteMachine(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	DeleteOption(ctx context.Context, arg DeleteOptionParams) (uuid.UUID, error)
 	DeleteOptionChoice(ctx context.Context, arg DeleteOptionChoiceParams) (uuid.UUID, error)
 	DeletePart(ctx context.Context, arg DeletePartParams) (uuid.UUID, error)
@@ -159,6 +161,7 @@ type Querier interface {
 	// IncrementOutboxAttempts bumps the per-row publish-attempt counter on a poison (per-message
 	// PubAck rejection). A transient connection/no-stream failure must NOT call this.
 	IncrementOutboxAttempts(ctx context.Context, id uuid.UUID) error
+	InsertAuxCost(ctx context.Context, arg InsertAuxCostParams) (AuxCost, error)
 	InsertBankAudit(ctx context.Context, arg InsertBankAuditParams) (SettingBankAudit, error)
 	// catalog.sql — catalog read/write queries (PR-2c). spec.md §02. Inserts return the row so
 	// callers (slice-3 admin handlers, tests) get the persisted record back.
@@ -196,6 +199,11 @@ type Querier interface {
 	// filament_batches = import lots. Stock + weighted-average cost/unit are DERIVED here (never stored): the
 	// list/get queries LEFT JOIN batches so a never-imported material reads stock 0, avg 0.
 	InsertFilamentMaterial(ctx context.Context, arg InsertFilamentMaterialParams) (FilamentMaterial, error)
+	// costing.sql — Vật tư cost inputs (ADR-039 slice 4c-1): machines (depreciation) + aux_costs (overhead).
+	// Plain CRUD — the ₫/hour rate and the per-order aux allocation are DERIVED downstream (Go DTO / the 4c-2
+	// rollup), never stored (ADR-039 pt 8), so these queries carry no money math. Scrap has no table here (it is
+	// a filament_consumption row, 000019 — the scrap endpoint reuses the deduct helper).
+	InsertMachine(ctx context.Context, arg InsertMachineParams) (Machine, error)
 	InsertOption(ctx context.Context, arg InsertOptionParams) (Option, error)
 	// === ADR-037 configurator: option choices (enumerated values for a `choice` option) ===
 	InsertOptionChoice(ctx context.Context, arg InsertOptionChoiceParams) (OptionChoice, error)
@@ -255,6 +263,8 @@ type Querier interface {
 	// editor shows the latest attempt's status at the top. id breaks created_at ties for stable ordering.
 	ListAssetJobsByProduct(ctx context.Context, productID uuid.UUID) ([]AssetJob, error)
 	ListAssetJobsByStatus(ctx context.Context, status AssetJobStatus) ([]AssetJob, error)
+	// ListAuxCosts returns every overhead line grouped by kind then label — the /vat-tu Chi phí phụ tab (owner+staff).
+	ListAuxCosts(ctx context.Context) ([]AuxCost, error)
 	// ListBankAudit returns the money-out config history, newest first (the owner audit view). Ordering is
 	// by seq (monotonic insertion order), so it is deterministic even when two changes share a created_at
 	// microsecond — a random-uuid tiebreaker would not be.
@@ -283,6 +293,9 @@ type Querier interface {
 	// to float8 for display (a RATE, not stored money — frozen to int only at the print-time snapshot, 4b). A
 	// material with no batches reads stock 0, avg 0. include_archived NULL → active only (archived hidden).
 	ListFilamentMaterials(ctx context.Context, includeArchived *bool) ([]ListFilamentMaterialsRow, error)
+	// ListMachines returns every machine, the primary(s) first then by name — the /vat-tu Giờ máy tab (owner+staff).
+	// The DTO derives ₫/hour = purchase_price_vnd / (depreciation_months × expected_hours_per_month).
+	ListMachines(ctx context.Context) ([]Machine, error)
 	ListOptionsByProduct(ctx context.Context, productID uuid.UUID) ([]Option, error)
 	// ListOrderItems returns an order's line items enriched with the human-readable product name, color
 	// name and selected option labels (P3-e admin detail) — joined here so the admin order-detail page
@@ -370,6 +383,7 @@ type Querier interface {
 	// the attempt count, last_error (set on 'failed', NULL clears it on 'ready'), and completed_at when
 	// supplied (COALESCE keeps the prior value when the narg is NULL).
 	UpdateAssetJobStatus(ctx context.Context, arg UpdateAssetJobStatusParams) (AssetJob, error)
+	UpdateAuxCost(ctx context.Context, arg UpdateAuxCostParams) (AuxCost, error)
 	// UpdateBankAccount sets the VietQR STK the server renders the static QR from. Called only inside
 	// UpdateBankAccountTx, alongside InsertBankAudit, so every change is audited (conventions §57).
 	UpdateBankAccount(ctx context.Context, bankAccount []byte) (Setting, error)
@@ -378,6 +392,7 @@ type Querier interface {
 	// cross-product edit. RETURNING lets the handler 404 on a stale id.
 	UpdateColor(ctx context.Context, arg UpdateColorParams) (Color, error)
 	UpdateFilamentMaterial(ctx context.Context, arg UpdateFilamentMaterialParams) (FilamentMaterial, error)
+	UpdateMachine(ctx context.Context, arg UpdateMachineParams) (Machine, error)
 	// UpdateOption / DeleteOption are scoped by BOTH id AND product_id (P3-j), same cross-product guard as the
 	// color mutations: an optionId under the wrong product → no row → 404.
 	UpdateOption(ctx context.Context, arg UpdateOptionParams) (Option, error)
