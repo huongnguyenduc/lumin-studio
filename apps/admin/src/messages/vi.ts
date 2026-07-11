@@ -184,6 +184,24 @@ export const vi = {
       error: 'Mất kết nối một chút — bạn thử lại giúp mình nhé.',
     },
   },
+  printQueue: {
+    title: 'Hàng đợi in',
+    count: '{count} món trong hàng đợi',
+    live: 'Cập nhật trực tiếp',
+    syncing: 'Đang đồng bộ…',
+    columnEmpty: 'Kéo thẻ tới đây',
+    due: 'hẹn {date}',
+    advanceTo: 'Chuyển sang {stage}',
+    advanceError: 'Chưa chuyển được thẻ — bạn thử lại giúp mình nhé.',
+    emptyTitle: 'Hàng đợi in đang trống',
+    emptyBody: 'Khi có đơn đã thanh toán cần in, thẻ sẽ hiện ở đây để bạn kéo qua từng bước.',
+    stage: {
+      needPrint: 'Cần in',
+      printing: 'Đang in',
+      packing: 'Đóng gói',
+      shipped: 'Đã gửi',
+    },
+  },
 } as const;
 
 export type AdminMessages = typeof vi;
