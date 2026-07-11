@@ -6,6 +6,35 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**🔨 PHASE 3 · P3-h (FE `/hang-doi-in` kanban kéo-thả + SSE live — print board) — BUILT + VERIFIED on `feat/phase-3-admin-p3h-print-board`**
+(off `main` `9241ad0` after P3-g #69 merged + local main ff'd). **FE-only** (Track B end, `dependsOn: P3-f, P3-g`) — the operator screen that consumes the
+P3-f read/PATCH + P3-g SSE. **4 columns = the 4 `PrintStage`s** (Cần in/Đang in/Đóng gói/Đã gửi); RSC fetches the board once (cookie-forward, `no-store`),
+the client `<PrintBoard>` keeps it live. **KEY DESIGN — SSE reaches core-api via a same-origin proxy, NOT a direct cross-origin EventSource:** `CORE_API_URL`
+is server-only (never `NEXT_PUBLIC`) + the `lumin_session` cookie is httpOnly on the admin host, so the browser CANNOT open an EventSource straight at
+core-api. New route handler `app/api/print-stream/route.ts` (Node runtime, `force-dynamic`) reads the cookie server-side and pipes core-api's
+`/admin/print-queue/stream` back **byte-for-byte** (returns `upstream.body` ReadableStream — no buffering; `request.signal` forwarded so a browser disconnect
+tears down the upstream → core-api `ctx.Done`). This is the concrete meaning of P3-g's "EventSource same-origin" comment. GET (initial board) + PATCH (drag)
+stay **Server Actions** (server-side, cookie-forward) — only the ONE streaming endpoint needs the proxy. **Drag = @dnd-kit** (`@dnd-kit/core@6.3.1`, 1 new
+dep, D-P3-8) — MouseSensor 8px + TouchSensor hold-200ms (so a mobile swipe still scrolls; no `touch-action:none` trap); **only `listeners` spread, NOT
+`attributes`** → the card stays a plain container and the accessible control is the per-card **"Chuyển sang {stage}" button** (keyboard/AT/mobile path,
+D-P3-2 — avoids nesting a real button inside a role=button). **STAGE-ONLY (D6):** both drag + button `PATCH /admin/print-jobs/{id}` move **only print_jobs.stage**,
+they do **NOT** transition OrderStatus — the design's "kéo → tự đổi trạng thái khách" is intentionally decoupled (order status goes through the P3-e transition
+flow with the QC/tracking gate a board drag must never bypass); dropped the design's "ĐẶT TRẠNG THÁI KHÁCH" legend as factually wrong for our contract.
+**Optimistic:** card moves immediately → reconciles to the server card (`mergeCard`, idempotent with the SSE broadcast of the same PATCH) → reverts just that
+card's stage on failure + `advanceError`. **Fallback poll** (`use-print-stream`): re-GET every 15s **only while SSE is down** (BLOCKER-B / open-q #4 — degrades
+to effectively poll-only if the tunnel buffers SSE; visibility-paused; also the only path that surfaces newly-created jobs SSE doesn't emit). **Did NOT port
+`use-order-poll`** (plan §5 "reuse") — it's storefront-coupled + single-order-until-terminal semantics; the board fallback is a whole-list refresh, ~12 lines,
+not a new poller. **reduced-motion** → drop-animation off. **Filament "thiếu nhựa" badge DEFERRED to P3-s** (no DTO field — render no warning we can't
+substantiate, not a fake placeholder). empty/loading/error all present. **Files: 11** (`print-queue.ts` pure adapters `groupByStage`/`nextStage`/`mergeCard` +
+`print-queue.test.ts` 4 tests · `print-queue-fetch.ts` RSC GET · `print-queue-actions.ts` advance+refetch Server Actions · `api/print-stream/route.ts` SSE
+proxy · `use-print-stream.ts` EventSource+poll · `print-board.tsx` dnd-kit board · `hang-doi-in/{page,loading}.tsx` · `messages/vi.ts` +`printQueue.*` ·
+`package.json` +@dnd-kit/core). **Verify:** `pnpm verify` **6/6** (lint · typecheck · admin **48** tests incl print-queue **4** + messages still green ·
+prettier) · `next build` ✓ (`/hang-doi-in` ƒ 17.6kB/149kB [dnd-kit] · `/api/print-stream` ƒ 127B) · core `acceptance.ledger` **63** (new `[ ]` `ADM-10`,
+Cụm 33 FE). **No BE/contract/codegen/migration change** (P3-f/g already landed) · **1 new dep** (@dnd-kit/core) · **no new ADR** (ADR-008/009 + D6 cover it).
+**⚠️ BLOCKER-B STILL A MANUAL GATE** — SSE through the named cloudflared tunnel (incl. this new Next-proxy leg) must be smoke-tested (buffer / 100s / 524)
+before relying on live push; the poll fallback ships regardless so the board is correct either way. **NEXT: adversarial self-check + spec-guardian → commit → user gate.** After P3-h, Track B (print board) is complete; core Done-gate = Track 0/A/B/C → remaining lõi is C (P3-i settings).
+
+**— P3-g history (MERGED #69 → `main` `9241ad0`) —**
 **🔨 PHASE 3 · P3-g (BE SSE `GET /admin/print-queue/stream` — live print board) — BUILT + VERIFIED on `feat/phase-3-admin-p3g-print-stream`**
 (off `main` `fddfe40` after P3-f #68 merged + local main ff'd). **BE-only** (Track B, `dependsOn: P3-f`) — the live push behind the P3-h kanban so a
 drag on one board reflects on every open board without polling. **KEY DESIGN — in-process hub, NOT NATS (ponytail + ADR-009):** core-api is
