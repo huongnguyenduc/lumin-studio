@@ -8,28 +8,111 @@ import { Button, PriceTag, Rating, cn } from '@lumin/ui';
 import { buildCartItem } from '@/lib/cart';
 import { useCart } from '@/lib/cart-store';
 import {
+  allChoicesSelected,
+  allPartsSelected,
+  canAddConfiguredToCart,
   canAddToCart,
-  canAddToCartWithOptions,
+  colorsForPart,
   formatDimensions,
   isColorSelectable,
+  type ColorView,
   type ProductDetailView,
 } from '@/lib/product-view';
 import { EngraveField } from './engrave-field';
 import { Model3dViewer } from './model-3d-viewer';
 
 /**
+ * One labelled group of colour swatches. Reused (ADR-037) for BOTH the flat product colour picker and
+ * each named part's own colour set — a parts product renders one of these per part. Out-of-stock swatches
+ * (available:false) render disabled + struck-through and can never be selected, so the add-to-cart gate
+ * never unlocks on one. `labelFor` is built by the parent (where next-intl's `t` is precisely typed), so
+ * this component stays translator-agnostic. Pure presentation — the parent owns the selection state.
+ */
+function ColorSwatches({
+  heading,
+  headingId,
+  colors,
+  selectedId,
+  onSelect,
+  labelFor,
+  outOfStockNote,
+}: {
+  heading: string;
+  headingId: string;
+  colors: ColorView[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  labelFor: (color: ColorView) => string;
+  outOfStockNote: string;
+}) {
+  const anyUnavailable = colors.some((c) => !c.available);
+  return (
+    <div role="group" aria-labelledby={headingId}>
+      <h2 id={headingId} className="mb-2 font-display text-sm font-semibold text-text-strong">
+        {heading}
+      </h2>
+      <ul className="flex flex-wrap gap-3">
+        {colors.map((c) => {
+          const selectable = isColorSelectable(c);
+          const selected = c.id === selectedId;
+          return (
+            <li key={c.id}>
+              <button
+                type="button"
+                disabled={!selectable}
+                aria-pressed={selectable ? selected : undefined}
+                aria-label={labelFor(c)}
+                onClick={() => onSelect(c.id)}
+                className={cn(
+                  'relative h-11 w-11 rounded-full border-2 transition-transform duration-150 ease-out',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2',
+                  'motion-reduce:transition-none',
+                  selected
+                    ? 'border-border-strong ring-2 ring-border-strong ring-offset-2'
+                    : 'border-border-default',
+                  selectable
+                    ? 'hover:-translate-y-px motion-reduce:transform-none'
+                    : 'cursor-not-allowed opacity-40',
+                )}
+                style={{ backgroundColor: c.hex }}
+              >
+                {!selectable ? (
+                  // Diagonal strike (CSS, no glyph) marks the out-of-stock swatch; the disabled state +
+                  // aria-label carry the meaning for AT.
+                  <span
+                    aria-hidden="true"
+                    className="absolute left-1/2 top-1/2 h-0.5 w-[130%] -translate-x-1/2 -translate-y-1/2 -rotate-45 rounded-full bg-border-strong"
+                  />
+                ) : null}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {/* Spec §05-mandated copy (SF-04). Out-of-stock swatches are disabled → un-selectable, so this is a
+          standing note explaining the dimmed swatches rather than a per-selection error. */}
+      {anyUnavailable ? (
+        <p role="note" className="mt-2 text-sm text-text-muted">
+          {outOfStockNote}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * Product detail (/san-pham/{slug}). Data is fetched server-side (page.tsx → lib/catalog) and passed in;
- * this is a client component for the local color/gallery selection state only. Scope (P1-h): media +
- * name + price + rating + description + specs + colour swatches, with the "Thêm vào giỏ" CTA LOCKED
- * until an in-stock colour is chosen (spec §03 / plan §3). The on-demand 3D viewer (P1-i) is wired via
- * Model3dViewer when the product carries a `.glb`; the sprite-first 360° hover (ADR-007) is still
- * deferred (no spriteUrl in the contract until the render-worker emits sprite-sheets). The reviews
- * section is P1-m.
+ * this is a client component for the local selection state only. Scope (P1-h + ADR-037): media + name +
+ * price + rating + description + specs + a configurator — either a flat colour picker OR one picker per
+ * named part (partColors), plus enumerated choice-options (optionChoices, e.g. size S/M/L), engraving
+ * fields, and boolean toggle add-ons. The "Thêm vào giỏ" CTA is LOCKED until the whole selection is valid
+ * (every part coloured, every enumerated option picked, every engraving within its limit) — mirroring the
+ * server's pricing 422s so the client never lets a shopper add something POST /price/quote would reject.
  *
- * Money: displays basePrice via PriceTag/@lumin/core only — never sums basePrice + colour/option deltas
- * on the client (conventions §Tiền: tổng tính ở server; the live per-selection total is POST
- * /price/quote in P1-k). It imports the VIEW TYPE + pure helpers, never lib/catalog, so the server-only
- * client stays out of the bundle.
+ * Money: displays basePrice via PriceTag/@lumin/core only — never sums basePrice + colour/option/choice
+ * deltas on the client (conventions §Tiền: tổng tính ở server; the live per-selection total is POST
+ * /price/quote in the cart). It imports the VIEW TYPE + pure helpers, never lib/catalog, so the
+ * server-only client stays out of the bundle.
  */
 export function ProductDetail({ product }: { product: ProductDetailView }) {
   const t = useTranslations('productDetail');
@@ -38,9 +121,12 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
   const tErr = useTranslations('core.errors');
 
   const [activeImage, setActiveImage] = useState(0);
+  // Flat colour (single-piece product). A parts product leaves this null and uses partColorByPart.
   const [selectedColorId, setSelectedColorId] = useState<string | null>(null);
-  // Engraving text per text-option id; choice add-on ids that are toggled on. Selection is UI-only
-  // until the cart lands (P1-k) — no /price/quote call, no total change here.
+  // ADR-037: one colour per named part ({partId → colorId}); one choice per enumerated choice-option
+  // ({optionId → choiceId}). Engraving text per text-option id; toggle add-on ids that are switched on.
+  const [partColorByPart, setPartColorByPart] = useState<Record<string, string>>({});
+  const [choiceByOption, setChoiceByOption] = useState<Record<string, string>>({});
   const [engraveTexts, setEngraveTexts] = useState<Record<string, string>>({});
   const [selectedChoiceIds, setSelectedChoiceIds] = useState<string[]>([]);
 
@@ -48,38 +134,61 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
   const { add } = useCart();
 
   const cover = product.images[activeImage];
+  const hasParts = product.parts.length > 0;
   const hasColors = product.colors.length > 0;
-  const anyUnavailable = product.colors.some((c) => !c.available);
   const anyPriceDelta = product.colors.some((c) => c.priceDelta > 0);
 
-  // Options split by kind: `text` → engrave fields, `choice` → add-on toggles (no sub-values in the
-  // contract). The engrave entries feed the composite lock so an over-limit engraving keeps the CTA shut.
+  // Options split by kind (ADR-037): `text` → engrave fields; `choice` with no enumerated choices → a
+  // boolean toggle (optionIds); `choice` with choices → an enumerated picker (optionChoices, pick one).
   const textOptions = product.options.filter((o) => o.type === 'text');
-  const choiceOptions = product.options.filter((o) => o.type === 'choice');
+  const toggleOptions = product.options.filter(
+    (o) => o.type === 'choice' && o.choices.length === 0,
+  );
+  const enumOptions = product.options.filter((o) => o.type === 'choice' && o.choices.length > 0);
   const engraveEntries = textOptions.map((o) => ({
     text: engraveTexts[o.id] ?? '',
     maxChars: o.maxChars,
   }));
 
-  // Colour lock (SF-03) drives the "pick a colour" hint; the composite lock (colour AND every engraving
-  // within its limit) drives the button. An engrave error is surfaced by EngraveField itself.
-  const colorOk = canAddToCart(selectedColorId, product.colors);
-  const canAdd = canAddToCartWithOptions(selectedColorId, product.colors, engraveEntries);
+  // The colour axis (flat lock OR every part coloured) and the enumerated-choice axis each drive a hint;
+  // the composite lock (colour AND choices AND every engraving within its limit) drives the button. An
+  // engrave error is surfaced by EngraveField itself.
+  const colorOk = hasParts
+    ? allPartsSelected(product.parts, product.colors, partColorByPart)
+    : canAddToCart(selectedColorId, product.colors);
+  const choicesOk = allChoicesSelected(product.options, choiceByOption);
+  const canAdd = canAddConfiguredToCart({
+    parts: product.parts,
+    colors: product.colors,
+    options: product.options,
+    selectedColorId,
+    partColorByPart,
+    choiceByOption,
+    engraveEntries,
+  });
+
+  const colorLabel = (c: ColorView) =>
+    isColorSelectable(c)
+      ? t('selectColorLabel', { name: c.name })
+      : t('colorUnavailableLabel', { name: c.name });
 
   const toggleChoice = (id: string) =>
     setSelectedChoiceIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
 
-  // Add the current selection to the cart, then send the shopper to /gio-hang (P1-k). The Selection is
-  // snapshot-shaped by buildCartItem (no price — the cart re-prices via POST /price/quote); the button
-  // is disabled unless `canAdd`, so this only fires on a valid, in-limit selection. The guard is belt-
-  // and-braces against a programmatic click.
+  // Add the current selection to the cart, then send the shopper to /gio-hang. The Selection is
+  // snapshot-shaped by buildCartItem (no price — the cart re-prices via POST /price/quote); the button is
+  // disabled unless `canAdd`, so this only fires on a valid selection. A parts product sends colorId=null
+  // (its colours ride on partColors — sending both 422s the server). The guard is belt-and-braces against
+  // a programmatic click.
   const handleAddToCart = () => {
     if (!canAdd) return;
     add(
       buildCartItem(product, {
-        colorId: selectedColorId,
+        colorId: hasParts ? null : selectedColorId,
         choiceIds: selectedChoiceIds,
         engraveTexts,
+        partColorByPart,
+        choiceByOption,
       }),
     );
     router.push('/gio-hang');
@@ -165,69 +274,97 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
           {anyPriceDelta ? <p className="text-sm text-text-muted">{t('priceNote')}</p> : null}
           <p className="text-sm text-text-muted">{t('madeToOrder')}</p>
 
-          {/* Colour swatches. Out-of-stock (available:false) → disabled swatch; the CTA can never
-              unlock on an unavailable colour (canAddToCart). */}
-          {hasColors ? (
-            // role=group + aria-labelledby names the swatch set by its heading; the swatches stay
-            // aria-pressed toggle buttons (per the locked a11y invariant), now announced as a group.
-            <div role="group" aria-labelledby="detail-colors-heading">
-              <h2
-                id="detail-colors-heading"
-                className="mb-2 font-display text-sm font-semibold text-text-strong"
-              >
-                {t('colorsLabel')}
-              </h2>
-              <ul className="flex flex-wrap gap-3">
-                {product.colors.map((c) => {
-                  const selectable = isColorSelectable(c);
-                  const selected = c.id === selectedColorId;
-                  return (
-                    <li key={c.id}>
-                      <button
-                        type="button"
-                        disabled={!selectable}
-                        aria-pressed={selectable ? selected : undefined}
-                        aria-label={
-                          selectable
-                            ? t('selectColorLabel', { name: c.name })
-                            : t('colorUnavailableLabel', { name: c.name })
-                        }
-                        onClick={() => setSelectedColorId(c.id)}
-                        className={cn(
-                          'relative h-11 w-11 rounded-full border-2 transition-transform duration-150 ease-out',
-                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2',
-                          'motion-reduce:transition-none',
-                          selected
-                            ? 'border-border-strong ring-2 ring-border-strong ring-offset-2'
-                            : 'border-border-default',
-                          selectable
-                            ? 'hover:-translate-y-px motion-reduce:transform-none'
-                            : 'cursor-not-allowed opacity-40',
-                        )}
-                        style={{ backgroundColor: c.hex }}
-                      >
-                        {!selectable ? (
-                          // Diagonal strike (CSS, no glyph) marks the out-of-stock swatch; the disabled
-                          // state + aria-label carry the meaning for AT.
+          {/* Colour picker (ADR-037). A parts product renders one swatch group per named part (the
+              customer picks one colour per part → partColors); a single-piece product renders the flat
+              picker. Out-of-stock swatches are disabled → the CTA can never unlock on one. */}
+          {hasParts ? (
+            product.parts.map((part) => (
+              <ColorSwatches
+                key={part.id}
+                heading={part.name}
+                headingId={`detail-part-${part.id}-heading`}
+                colors={colorsForPart(product.colors, part.id)}
+                selectedId={partColorByPart[part.id] ?? null}
+                onSelect={(id) => setPartColorByPart((prev) => ({ ...prev, [part.id]: id }))}
+                labelFor={colorLabel}
+                outOfStockNote={tErr('colorOutOfStock')}
+              />
+            ))
+          ) : hasColors ? (
+            <ColorSwatches
+              heading={t('colorsLabel')}
+              headingId="detail-colors-heading"
+              colors={product.colors}
+              selectedId={selectedColorId}
+              onSelect={setSelectedColorId}
+              labelFor={colorLabel}
+              outOfStockNote={tErr('colorOutOfStock')}
+            />
+          ) : null}
+
+          {/* Enumerated choice-options (ADR-037), e.g. size S/M/L — a native radio group per option (one
+              pick required). Native radios give arrow-key selection + one-per-group semantics for free;
+              the visual swatch is a struck-in custom control over the sr-only input (same pattern as the
+              toggle checkbox below). Priced server-side by the picked choice's delta (option base ignored). */}
+          {enumOptions.map((o) => {
+            const groupName = `detail-choice-${o.id}`;
+            return (
+              <fieldset key={o.id}>
+                <legend className="mb-2 font-display text-sm font-semibold text-text-strong">
+                  {o.label}
+                </legend>
+                {o.description ? (
+                  <p className="mb-2 text-sm text-text-muted">{o.description}</p>
+                ) : null}
+                <ul className="flex flex-col gap-1">
+                  {o.choices.map((ch) => {
+                    const checked = choiceByOption[o.id] === ch.id;
+                    const descId = `${groupName}-${ch.id}-desc`;
+                    return (
+                      <li key={ch.id}>
+                        <label className="flex min-h-11 cursor-pointer items-center gap-3">
+                          <input
+                            type="radio"
+                            name={groupName}
+                            checked={checked}
+                            onChange={() =>
+                              setChoiceByOption((prev) => ({ ...prev, [o.id]: ch.id }))
+                            }
+                            aria-describedby={ch.description ? descId : undefined}
+                            className="peer sr-only"
+                          />
                           <span
                             aria-hidden="true"
-                            className="absolute left-1/2 top-1/2 h-0.5 w-[130%] -translate-x-1/2 -translate-y-1/2 -rotate-45 rounded-full bg-border-strong"
-                          />
+                            className={cn(
+                              'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-border-strong bg-surface-card',
+                              'transition-[border-color] duration-150 ease-out motion-reduce:transition-none',
+                              'peer-checked:border-primary peer-checked:[&>span]:opacity-100',
+                              'peer-focus-visible:ring-2 peer-focus-visible:ring-accent-sky peer-focus-visible:ring-offset-2',
+                            )}
+                          >
+                            <span className="h-2.5 w-2.5 rounded-full bg-primary opacity-0 transition-opacity duration-150 ease-out motion-reduce:transition-none" />
+                          </span>
+                          <span className="flex-1 text-text-body">{ch.label}</span>
+                          {ch.priceDelta > 0 ? (
+                            <span className="text-sm text-text-muted">
+                              +<PriceTag amount={ch.priceDelta} className="text-sm font-medium" />
+                            </span>
+                          ) : (
+                            <span className="text-sm text-accent-teal">{t('optionFree')}</span>
+                          )}
+                        </label>
+                        {ch.description ? (
+                          <p id={descId} className="ml-8 text-sm text-text-muted">
+                            {ch.description}
+                          </p>
                         ) : null}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-              {/* Spec §05-mandated copy (SF-04). Out-of-stock swatches are disabled → un-selectable, so
-                  this is a standing note explaining the dimmed swatches rather than a per-selection error. */}
-              {anyUnavailable ? (
-                <p role="note" className="mt-2 text-sm text-text-muted">
-                  {tErr('colorOutOfStock')}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </fieldset>
+            );
+          })}
 
           {/* Engraving (text options). Live preview + rune counter + over-limit block (P1-j). Each text
               option is independently counted against its own maxChars — realistically one per product. */}
@@ -240,9 +377,9 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
             />
           ))}
 
-          {/* Choice add-on toggles. The contract carries no sub-values[] — a choice option is a boolean
-              add-on (label + priceDelta). Selection is UI-only until P1-k wires the cart + live total. */}
-          {choiceOptions.length > 0 ? (
+          {/* Toggle add-on options (ADR-037: a `choice` option with NO enumerated choices). A boolean
+              add-on (label + priceDelta); the live total lands with the cart quote. */}
+          {toggleOptions.length > 0 ? (
             <div role="group" aria-labelledby="detail-options-heading">
               <h2
                 id="detail-options-heading"
@@ -251,7 +388,7 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
                 {t('optionsHeading')}
               </h2>
               <ul className="flex flex-col gap-1">
-                {choiceOptions.map((o) => {
+                {toggleOptions.map((o) => {
                   const checked = selectedChoiceIds.includes(o.id);
                   const descId = `detail-option-${o.id}-desc`;
                   return (
@@ -306,8 +443,9 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
             </div>
           ) : null}
 
-          {/* Add-to-cart: locked until an in-stock colour is chosen AND every engraving fits its limit.
-              On click it snapshots the selection into the cart and navigates to /gio-hang (P1-k). */}
+          {/* Add-to-cart: locked until the whole selection is valid (colour/parts + enumerated choices +
+              every engraving in-limit). On click it snapshots the selection into the cart and navigates to
+              /gio-hang. The hint names the first unmet axis (engrave errors surface on the field itself). */}
           <div>
             <Button
               variant="pop"
@@ -318,8 +456,10 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
             >
               {tp('add')}
             </Button>
-            {hasColors && !colorOk ? (
+            {!canAdd && !colorOk && (hasColors || hasParts) ? (
               <p className="mt-2 text-sm text-text-muted">{t('pickColorHint')}</p>
+            ) : !canAdd && colorOk && !choicesOk ? (
+              <p className="mt-2 text-sm text-text-muted">{t('pickChoiceHint')}</p>
             ) : null}
           </div>
 

@@ -66,6 +66,28 @@ export type ColorView = {
    *  (P1-k); the detail page displays basePrice only — no client-side sum (conventions §Tiền: tổng
    *  tính ở server). */
   priceDelta: number;
+  /** The named part this colour belongs to (ADR-037), or null for a flat product-level colour. A product
+   *  with `parts` groups its colours by this id — the customer picks one colour per part; the server
+   *  validates the colour ∈ its claimed part (ErrColorNotForPart). null = the legacy flat colour path. */
+  partId: string | null;
+};
+
+/** One enumerated choice of a `choice` option (ADR-037) — e.g. size "M". The customer picks exactly one
+ *  choice per choice-option that offers them; the option's own priceDelta is ignored (the choice's delta
+ *  prices the line). displayOrder is dropped — the API returns choices pre-sorted. */
+export type OptionChoiceView = {
+  id: string;
+  label: string;
+  description: string;
+  /** Added price, int VND (>= 0). Priced server-side by POST /price/quote — never summed here. */
+  priceDelta: number;
+};
+
+/** A named part of a product (ADR-037) — e.g. "Chao đèn". `colors[]` belong to a part via
+ *  `ColorView.partId`; the customer picks one colour per part. displayOrder is dropped (API pre-sorted). */
+export type PartView = {
+  id: string;
+  name: string;
 };
 
 /** A customization option on the detail page (spec §02). Two kinds, mirroring the catalog `option_type`:
@@ -83,6 +105,10 @@ export type OptionView = {
   priceDelta: number;
   /** Engraving rune limit for a `text` option; null when no limit applies (or for a `choice` option). */
   maxChars: number | null;
+  /** Enumerated choices for a `choice` option (ADR-037). Empty = a legacy boolean toggle priced by this
+   *  option's own `priceDelta`; non-empty = the customer picks exactly one choice (priced by the choice's
+   *  delta, the option base ignored). Always `[]` for a `text` option. */
+  choices: OptionChoiceView[];
 };
 
 /** The product-detail view the client component renders. A narrow, serialisable projection of the API
@@ -110,8 +136,13 @@ export type ProductDetailView = {
    *  product has no photo yet → the component shows its dotgrid placeholder. */
   images: string[];
   colors: ColorView[];
-  /** Customization options: `text` engrave fields + `choice` add-on toggles (P1-j). `[]` when none. */
+  /** Customization options: `text` engrave fields + `choice` add-ons — a toggle when `choices` is empty,
+   *  an enumerated picker when non-empty (ADR-037). `[]` when none. */
   options: OptionView[];
+  /** Named parts (ADR-037), each grouping a subset of `colors[]` via `ColorView.partId`. Empty = a
+   *  single-piece product priced by the flat `colorId`; non-empty = the customer picks one colour per
+   *  part (partColors) and the flat colorId is not used. */
+  parts: PartView[];
   /** Average rating, or null until the first review (the detail hides the Rating block when null). */
   rating: number | null;
   reviewCount: number;
@@ -140,6 +171,8 @@ export function toProductDetailView(product: components['schemas']['Product']): 
       hex: c.hex,
       available: c.available,
       priceDelta: c.priceDelta,
+      // openapi partId is nullable + optional (a flat product's colours omit it); collapse to null.
+      partId: c.partId ?? null,
     })),
     options: product.options.map((o) => ({
       id: o.id,
@@ -149,7 +182,16 @@ export function toProductDetailView(product: components['schemas']['Product']): 
       priceDelta: o.priceDelta,
       // openapi maxChars is `nullable` (and only meaningful for a text option); collapse absent/null to null.
       maxChars: o.maxChars ?? null,
+      // `?? []` guards the SSG/ISR boundary — a page cached before the 2a deploy could lack the field.
+      choices: (o.choices ?? []).map((ch) => ({
+        id: ch.id,
+        label: ch.label,
+        description: ch.description,
+        priceDelta: ch.priceDelta,
+      })),
     })),
+    // Same SSG/ISR guard as choices; a flat product has `parts: []`.
+    parts: (product.parts ?? []).map((p) => ({ id: p.id, name: p.name })),
     rating: product.ratingAvg ?? null,
     reviewCount: product.reviewCount,
   };
@@ -282,4 +324,79 @@ export function canAddToCartWithOptions(
 ): boolean {
   if (!canAddToCart(selectedColorId, colors)) return false;
   return engraveEntries.every((e) => isEngraveWithinLimit(e.text, e.maxChars));
+}
+
+/** The colours belonging to a named part (ADR-037): `partId === part.id`. Flat colours (partId null) are
+ *  never grouped under a part. Used both to render a part's swatch set and to validate a per-part pick. */
+export function colorsForPart(colors: ReadonlyArray<ColorView>, partId: string): ColorView[] {
+  return colors.filter((c) => c.partId === partId);
+}
+
+/**
+ * Whether every named part has an IN-STOCK colour picked that belongs to that part (ADR-037). Mirrors the
+ * server's per-part membership + availability (ErrMissingPartColor / ErrColorNotForPart / an unavailable
+ * colour) so a parts product's CTA never unlocks on a selection POST /price/quote would 422. A product
+ * with no parts trivially passes here — the flat colour lock (canAddToCart) applies to it instead. Pure.
+ */
+export function allPartsSelected(
+  parts: ReadonlyArray<Pick<PartView, 'id'>>,
+  colors: ReadonlyArray<Pick<ColorView, 'id' | 'partId' | 'available'>>,
+  partColorByPart: Readonly<Record<string, string>>,
+): boolean {
+  return parts.every((p) => {
+    const colorId = partColorByPart[p.id];
+    if (colorId === undefined) return false;
+    const c = colors.find((x) => x.id === colorId);
+    return c !== undefined && c.partId === p.id && c.available;
+  });
+}
+
+/**
+ * Whether every choice-option that OFFERS choices has one picked (ADR-037, ErrOptionNeedsChoice). Options
+ * with no choices (legacy toggles) and text options trivially pass — they are not enumerated. Pure.
+ */
+export function allChoicesSelected(
+  options: ReadonlyArray<{
+    id: string;
+    type: OptionView['type'];
+    choices: ReadonlyArray<{ id: string }>;
+  }>,
+  choiceByOption: Readonly<Record<string, string>>,
+): boolean {
+  return options.every((o) => {
+    if (o.type !== 'choice' || o.choices.length === 0) return true;
+    const choiceId = choiceByOption[o.id];
+    return choiceId !== undefined && o.choices.some((ch) => ch.id === choiceId);
+  });
+}
+
+/**
+ * The full configurator add-to-cart gate (ADR-037): the colour lock — per-part when the product has
+ * parts (allPartsSelected), else the flat lock (canAddToCart) — AND every enumerated choice-option picked
+ * (allChoicesSelected) AND every engraving within its limit. One pure function so the whole invariant is
+ * unit-testable and the component can never let a shopper add a selection the server would 422. A flat
+ * product with no parts and no enumerated choices reduces exactly to canAddToCartWithOptions.
+ */
+export function canAddConfiguredToCart(input: {
+  parts: ReadonlyArray<Pick<PartView, 'id'>>;
+  colors: ReadonlyArray<Pick<ColorView, 'id' | 'partId' | 'available'>>;
+  options: ReadonlyArray<{
+    id: string;
+    type: OptionView['type'];
+    choices: ReadonlyArray<{ id: string }>;
+  }>;
+  selectedColorId: string | null;
+  partColorByPart: Readonly<Record<string, string>>;
+  choiceByOption: Readonly<Record<string, string>>;
+  engraveEntries: ReadonlyArray<{ text: string; maxChars: number | null }>;
+}): boolean {
+  const colorOk =
+    input.parts.length > 0
+      ? allPartsSelected(input.parts, input.colors, input.partColorByPart)
+      : canAddToCart(input.selectedColorId, input.colors);
+  return (
+    colorOk &&
+    allChoicesSelected(input.options, input.choiceByOption) &&
+    input.engraveEntries.every((e) => isEngraveWithinLimit(e.text, e.maxChars))
+  );
 }

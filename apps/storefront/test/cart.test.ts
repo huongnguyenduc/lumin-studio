@@ -26,8 +26,15 @@ const product: ProductDetailView = {
   dimensions: { w: 120, d: 120, h: 160 },
   images: ['https://cdn.example/mochi.jpg', 'https://cdn.example/mochi-2.jpg'],
   colors: [
-    { id: 'col-cam', name: 'Cam', hex: '#FF6B4A', available: true, priceDelta: 0 },
-    { id: 'col-xanh', name: 'Xanh', hex: '#4C8DFF', available: false, priceDelta: 20_000 },
+    { id: 'col-cam', name: 'Cam', hex: '#FF6B4A', available: true, priceDelta: 0, partId: null },
+    {
+      id: 'col-xanh',
+      name: 'Xanh',
+      hex: '#4C8DFF',
+      available: false,
+      priceDelta: 20_000,
+      partId: null,
+    },
   ],
   options: [
     {
@@ -37,6 +44,7 @@ const product: ProductDetailView = {
       type: 'choice',
       priceDelta: 40_000,
       maxChars: null,
+      choices: [],
     },
     {
       id: 'opt-khac',
@@ -45,10 +53,73 @@ const product: ProductDetailView = {
       type: 'text',
       priceDelta: 30_000,
       maxChars: 12,
+      choices: [],
     },
   ],
+  parts: [],
   rating: 4.8,
   reviewCount: 12,
+};
+
+// A parts product (ADR-037): two named parts each with their own colour set, plus an enumerated
+// choice-option (size). No flat colours — a parts product picks one colour per part.
+const partsProduct: ProductDetailView = {
+  ...product,
+  id: 'prod-2',
+  slug: 'den-treo-lumi',
+  name: 'Đèn treo Lumi',
+  colors: [
+    {
+      id: 'c-shade-red',
+      name: 'Đỏ',
+      hex: '#E5484D',
+      available: true,
+      priceDelta: 0,
+      partId: 'p-shade',
+    },
+    {
+      id: 'c-shade-wht',
+      name: 'Trắng',
+      hex: '#FFFFFF',
+      available: true,
+      priceDelta: 10_000,
+      partId: 'p-shade',
+    },
+    {
+      id: 'c-base-red',
+      name: 'Đỏ',
+      hex: '#E5484D',
+      available: true,
+      priceDelta: 0,
+      partId: 'p-base',
+    },
+    {
+      id: 'c-base-wht',
+      name: 'Trắng',
+      hex: '#FFFFFF',
+      available: true,
+      priceDelta: 0,
+      partId: 'p-base',
+    },
+  ],
+  options: [
+    {
+      id: 'opt-size',
+      label: 'Kích thước',
+      description: '',
+      type: 'choice',
+      priceDelta: 0,
+      maxChars: null,
+      choices: [
+        { id: 'ch-s', label: 'S', description: '', priceDelta: 0 },
+        { id: 'ch-m', label: 'M', description: '', priceDelta: 40_000 },
+      ],
+    },
+  ],
+  parts: [
+    { id: 'p-shade', name: 'Chao đèn' },
+    { id: 'p-base', name: 'Đế' },
+  ],
 };
 
 /** A minimal cart item builder for the reducer tests (buildCartItem is exercised separately). */
@@ -63,6 +134,10 @@ function item(overrides: Partial<CartItem> = {}): CartItem {
     colorName: 'Cam',
     optionIds: [],
     optionLabels: [],
+    partColors: [],
+    partColorLabels: [],
+    optionChoices: [],
+    optionChoiceLabels: [],
     engrave: null,
     quantity: 1,
     ...overrides,
@@ -76,7 +151,48 @@ describe('cartLineKey', () => {
 
   it('separates different engraving text and null colour', () => {
     expect(cartLineKey('p', 'c', [], 'An')).not.toBe(cartLineKey('p', 'c', [], 'Bo'));
-    expect(cartLineKey('p', null, [], null)).toBe('p|||');
+    // Six positional segments: productId|colorId|optionIds|partColors|optionChoices|engrave.
+    expect(cartLineKey('p', null, [], null)).toBe('p|||||');
+  });
+
+  it('is independent of part-colour / choice order (ADR-037)', () => {
+    const pc = [
+      { partId: 'b', colorId: 'y' },
+      { partId: 'a', colorId: 'x' },
+    ];
+    const pcRev = [...pc].reverse();
+    const oc = [
+      { optionId: 'o2', choiceId: 'c2' },
+      { optionId: 'o1', choiceId: 'c1' },
+    ];
+    const ocRev = [...oc].reverse();
+    expect(cartLineKey('p', null, [], null, pc, oc)).toBe(
+      cartLineKey('p', null, [], null, pcRev, ocRev),
+    );
+  });
+
+  it('separates different per-part colour combinations — the ghost-line guard (ADR-037)', () => {
+    // Same flat identity (productId + null colorId), different per-part assignment: must NOT collapse.
+    const a = cartLineKey('p', null, [], null, [
+      { partId: 'shade', colorId: 'red' },
+      { partId: 'base', colorId: 'white' },
+    ]);
+    const b = cartLineKey('p', null, [], null, [
+      { partId: 'shade', colorId: 'white' },
+      { partId: 'base', colorId: 'red' },
+    ]);
+    expect(a).not.toBe(b);
+  });
+
+  it('separates different enumerated choices (ADR-037)', () => {
+    const s = cartLineKey('p', null, [], null, [], [{ optionId: 'size', choiceId: 'S' }]);
+    const m = cartLineKey('p', null, [], null, [], [{ optionId: 'size', choiceId: 'M' }]);
+    expect(s).not.toBe(m);
+  });
+
+  it('keeps a flat product byte-identical to a no-configurator key', () => {
+    // A flat product passes no partColors/optionChoices → empty middle segments.
+    expect(cartLineKey('p', 'c', ['a'], null)).toBe(cartLineKey('p', 'c', ['a'], null, [], []));
   });
 });
 
@@ -131,6 +247,45 @@ describe('buildCartItem', () => {
       engraveTexts: { 'opt-khac': 'Bo' },
     });
     expect(c.key).not.toBe(a.key);
+  });
+
+  it('captures per-part colours + enumerated choice with labels (ADR-037)', () => {
+    const built = buildCartItem(partsProduct, {
+      colorId: null,
+      choiceIds: [],
+      engraveTexts: {},
+      partColorByPart: { 'p-shade': 'c-shade-red', 'p-base': 'c-base-wht' },
+      choiceByOption: { 'opt-size': 'ch-m' },
+    });
+    // Flat colorId stays null (a parts product rides on partColors — sending both 422s the server).
+    expect(built.colorId).toBeNull();
+    expect(built.partColors).toEqual([
+      { partId: 'p-shade', colorId: 'c-shade-red' },
+      { partId: 'p-base', colorId: 'c-base-wht' },
+    ]);
+    expect(built.partColorLabels).toEqual(['Chao đèn: Đỏ', 'Đế: Trắng']);
+    expect(built.optionChoices).toEqual([{ optionId: 'opt-size', choiceId: 'ch-m' }]);
+    expect(built.optionChoiceLabels).toEqual(['Kích thước: M']);
+    // An enumerated option is never toggled into optionIds.
+    expect(built.optionIds).toEqual([]);
+  });
+
+  it('separates two per-part colour combinations of the same product (ghost-line guard)', () => {
+    const a = buildCartItem(partsProduct, {
+      colorId: null,
+      choiceIds: [],
+      engraveTexts: {},
+      partColorByPart: { 'p-shade': 'c-shade-red', 'p-base': 'c-base-wht' },
+      choiceByOption: { 'opt-size': 'ch-s' },
+    });
+    const b = buildCartItem(partsProduct, {
+      colorId: null,
+      choiceIds: [],
+      engraveTexts: {},
+      partColorByPart: { 'p-shade': 'c-shade-wht', 'p-base': 'c-base-red' },
+      choiceByOption: { 'opt-size': 'ch-s' },
+    });
+    expect(a.key).not.toBe(b.key);
   });
 });
 
@@ -226,6 +381,26 @@ describe('cartQuoteItems', () => {
     const quote = cartQuoteItems(items);
     expect(quote.map((q) => q.colorId)).toEqual(['col-cam', 'col-xanh']);
   });
+
+  it('sends partColors + optionChoices when present, omitting flat colorId (ADR-037)', () => {
+    const line = cartQuoteItems([
+      item({
+        key: 'k1',
+        colorId: null,
+        partColors: [{ partId: 'p-shade', colorId: 'c-shade-red' }],
+        optionChoices: [{ optionId: 'opt-size', choiceId: 'ch-m' }],
+      }),
+    ])[0];
+    expect(line.partColors).toEqual([{ partId: 'p-shade', colorId: 'c-shade-red' }]);
+    expect(line.optionChoices).toEqual([{ optionId: 'opt-size', choiceId: 'ch-m' }]);
+    expect('colorId' in line).toBe(false);
+  });
+
+  it('omits the configurator arrays entirely for a flat line (byte-identical wire)', () => {
+    const line = cartQuoteItems([item({ key: 'k1', colorId: 'col-cam' })])[0];
+    expect('partColors' in line).toBe(false);
+    expect('optionChoices' in line).toBe(false);
+  });
 });
 
 describe('cartSignature / cartCount', () => {
@@ -265,5 +440,47 @@ describe('sanitizeCart', () => {
   it('coerces a malformed engrave to null', () => {
     const out = sanitizeCart([{ ...item({ key: 'k1' }), engrave: { optionId: 'x' } }]);
     expect(out[0].engrave).toBeNull();
+  });
+
+  it('defaults the ADR-037 fields to [] for a cart persisted before 2c', () => {
+    // A valid pre-2c flat line has no partColors/optionChoices/labels — it must still load (not drop).
+    const legacy = {
+      key: 'legacy',
+      productId: 'prod-1',
+      slug: 'den-ngu-mochi',
+      name: 'Đèn ngủ Mochi',
+      colorId: 'col-cam',
+      colorName: 'Cam',
+      optionIds: [],
+      optionLabels: [],
+      engrave: null,
+      quantity: 1,
+    };
+    const out = sanitizeCart([legacy]);
+    expect(out).toHaveLength(1);
+    expect(out[0].partColors).toEqual([]);
+    expect(out[0].partColorLabels).toEqual([]);
+    expect(out[0].optionChoices).toEqual([]);
+    expect(out[0].optionChoiceLabels).toEqual([]);
+  });
+
+  it('coerces persisted configurator selections, dropping malformed pairs', () => {
+    const raw = [
+      {
+        ...item({ key: 'k1' }),
+        partColors: [
+          { partId: 'p-shade', colorId: 'c-red' },
+          { partId: 'p-base' }, // missing colorId → dropped
+        ],
+        partColorLabels: ['Chao đèn: Đỏ', 7], // non-string dropped
+        optionChoices: [{ optionId: 'opt-size', choiceId: 'ch-m' }],
+        optionChoiceLabels: 'nope', // non-array → []
+      },
+    ];
+    const out = sanitizeCart(raw);
+    expect(out[0].partColors).toEqual([{ partId: 'p-shade', colorId: 'c-red' }]);
+    expect(out[0].partColorLabels).toEqual(['Chao đèn: Đỏ']);
+    expect(out[0].optionChoices).toEqual([{ optionId: 'opt-size', choiceId: 'ch-m' }]);
+    expect(out[0].optionChoiceLabels).toEqual([]);
   });
 });

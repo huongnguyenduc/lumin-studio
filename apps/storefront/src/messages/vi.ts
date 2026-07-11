@@ -100,8 +100,11 @@ export const vi = {
     colorsLabel: 'Màu in',
     selectColorLabel: 'Chọn màu {name}',
     colorUnavailableLabel: '{name} — tạm hết',
-    // Shown under the disabled CTA to explain the lock (spec §03: khoá tới khi chọn màu).
+    // Shown under the disabled CTA to explain the lock (spec §03: khoá tới khi chọn màu). The colour hint
+    // covers both a flat product and a parts product (mỗi bộ phận một màu); the choice hint (ADR-037)
+    // covers an enumerated option (size…) not yet picked.
     pickColorHint: 'Chọn màu để thêm vào giỏ nhé.',
+    pickChoiceHint: 'Chọn đủ tuỳ chọn để thêm vào giỏ nhé.',
     // Colour/option surcharges are priced at checkout (server-authoritative), not summed on the card.
     priceNote: 'Màu và tuỳ chọn được tính khi đặt hàng.',
     // Rating fallback before the first review.

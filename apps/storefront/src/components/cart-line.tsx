@@ -29,9 +29,13 @@ type CartLineProps = {
 export function CartLine({ item, lineTotal, priceStatus, onQuantityChange }: CartLineProps) {
   const t = useTranslations('cart');
 
-  // Summary line: colour · choice add-ons · engraving — only the parts that apply.
+  // Summary line: per-part colours · flat colour · choice picks · toggle add-ons · engraving — only the
+  // parts that apply (ADR-037). partColorLabels/optionChoiceLabels are "{part}: {colour}" / "{option}:
+  // {choice}" snapshots captured at add-time (the cart page has no product data to re-derive them).
   const specParts = [
+    ...item.partColorLabels,
     item.colorName,
+    ...item.optionChoiceLabels,
     ...item.optionLabels,
     item.engrave ? t('engraveSummary', { text: item.engrave.text }) : null,
   ].filter((p): p is string => Boolean(p));

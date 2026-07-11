@@ -148,6 +148,10 @@ function cartItem(partial: Partial<CartItem> = {}): CartItem {
     colorName: null,
     optionIds: [],
     optionLabels: [],
+    partColors: [],
+    partColorLabels: [],
+    optionChoices: [],
+    optionChoiceLabels: [],
     engrave: null,
     quantity: 1,
     ...partial,
@@ -197,6 +201,26 @@ describe('buildWebOrderInput — POST /orders body (P2-f)', () => {
     expect(body.items).toHaveLength(priced.length);
     // Each order item CONTAINS its quote line's priced fields verbatim (may add personalization on top).
     priced.forEach((line, i) => expect(body.items[i]).toMatchObject(line));
+  });
+
+  it('threads a parts/choices line’s partColors + optionChoices into the order body (ADR-037)', () => {
+    const items = [
+      cartItem({
+        productId: 'p2',
+        colorId: null,
+        partColors: [{ partId: 'p-shade', colorId: 'c-red' }],
+        optionChoices: [{ optionId: 'opt-size', choiceId: 'ch-m' }],
+        quantity: 1,
+      }),
+    ];
+    const body = buildWebOrderInput(baseValidated, items, 'u');
+    expect(body.items[0]).toMatchObject({
+      productId: 'p2',
+      partColors: [{ partId: 'p-shade', colorId: 'c-red' }],
+      optionChoices: [{ optionId: 'opt-size', choiceId: 'ch-m' }],
+    });
+    // A parts product sends no flat colorId (sending both 422s the server).
+    expect('colorId' in body.items[0]).toBe(false);
   });
 
   it('an engraved line folds the engrave option into optionIds and carries personalization {text, zoneId=optionId}; acks forwarded 1:1', () => {
