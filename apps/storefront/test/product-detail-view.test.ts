@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
+  allChoicesSelected,
+  allPartsSelected,
+  canAddConfiguredToCart,
   canAddToCart,
   canAddToCartWithOptions,
+  colorsForPart,
   engraveLength,
   formatDimensions,
   isColorSelectable,
@@ -80,9 +84,11 @@ describe('toProductDetailView', () => {
           hex: '#F3E9D2',
           available: true,
           priceDelta: 0,
+          partId: null,
         },
       ],
       options: [],
+      parts: [],
       rating: 4.8,
       reviewCount: 128,
     });
@@ -113,6 +119,7 @@ describe('toProductDetailView', () => {
         type: 'text',
         priceDelta: 0,
         maxChars: 12,
+        choices: [],
       },
       {
         id: 'o2',
@@ -121,6 +128,7 @@ describe('toProductDetailView', () => {
         type: 'choice',
         priceDelta: 100000,
         maxChars: null,
+        choices: [],
       },
     ]);
   });
@@ -130,6 +138,44 @@ describe('toProductDetailView', () => {
       apiProduct({ options: [option({ id: 'o1', maxChars: undefined })] }),
     );
     expect(view.options[0].maxChars).toBeNull();
+  });
+
+  it('surfaces parts, colour.partId, and option.choices (ADR-037)', () => {
+    const view = toProductDetailView(
+      apiProduct({
+        parts: [
+          { id: 'p-shade', name: 'Chao đèn', displayOrder: 0 },
+          { id: 'p-base', name: 'Đế', displayOrder: 1 },
+        ],
+        colors: [color({ id: 'c1', partId: 'p-shade' }), color({ id: 'c2', partId: null })],
+        options: [
+          option({
+            id: 'o1',
+            type: 'choice',
+            maxChars: null,
+            choices: [
+              { id: 'ch-s', label: 'S', description: '', priceDelta: 0, displayOrder: 0 },
+              {
+                id: 'ch-m',
+                label: 'M',
+                description: '12×9 cm',
+                priceDelta: 40000,
+                displayOrder: 1,
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+    expect(view.parts).toEqual([
+      { id: 'p-shade', name: 'Chao đèn' },
+      { id: 'p-base', name: 'Đế' },
+    ]);
+    expect(view.colors.map((c) => c.partId)).toEqual(['p-shade', null]);
+    expect(view.options[0].choices).toEqual([
+      { id: 'ch-s', label: 'S', description: '', priceDelta: 0 },
+      { id: 'ch-m', label: 'M', description: '12×9 cm', priceDelta: 40000 },
+    ]);
   });
 
   it('surfaces a non-empty model3dUrl and collapses an empty one to undefined', () => {
@@ -171,8 +217,15 @@ describe('toProductDetailView', () => {
       }),
     );
     expect(view.colors).toEqual([
-      { id: 'a', name: 'Kem sữa', hex: '#F3E9D2', available: true, priceDelta: 15000 },
-      { id: 'b', name: 'Kem sữa', hex: '#F3E9D2', available: false, priceDelta: 0 },
+      {
+        id: 'a',
+        name: 'Kem sữa',
+        hex: '#F3E9D2',
+        available: true,
+        priceDelta: 15000,
+        partId: null,
+      },
+      { id: 'b', name: 'Kem sữa', hex: '#F3E9D2', available: false, priceDelta: 0, partId: null },
     ]);
   });
 });
@@ -305,6 +358,150 @@ describe('canAddToCartWithOptions (colour lock AND every engraving within its li
         { text: 'ok', maxChars: 12 },
         { text: 'way too long', maxChars: 3 },
       ]),
+    ).toBe(false);
+  });
+});
+
+// --- ADR-037 configurator gates ---------------------------------------------------------------------
+
+const partColors = [
+  { id: 'c-shade-red', partId: 'p-shade', available: true },
+  { id: 'c-shade-out', partId: 'p-shade', available: false },
+  { id: 'c-base-red', partId: 'p-base', available: true },
+  { id: 'c-flat', partId: null, available: true },
+];
+const parts = [{ id: 'p-shade' }, { id: 'p-base' }];
+
+describe('colorsForPart (ADR-037)', () => {
+  it('returns only the colours whose partId matches; flat (null) colours never group', () => {
+    const colors = [
+      { id: 'a', name: '', hex: '', available: true, priceDelta: 0, partId: 'p-shade' },
+      { id: 'b', name: '', hex: '', available: true, priceDelta: 0, partId: 'p-base' },
+      { id: 'c', name: '', hex: '', available: true, priceDelta: 0, partId: null },
+    ];
+    expect(colorsForPart(colors, 'p-shade').map((c) => c.id)).toEqual(['a']);
+    expect(colorsForPart(colors, 'p-base').map((c) => c.id)).toEqual(['b']);
+  });
+});
+
+describe('allPartsSelected (mirrors the server per-part membership + availability)', () => {
+  it('true only when every part has an in-stock colour that belongs to it', () => {
+    expect(
+      allPartsSelected(parts, partColors, { 'p-shade': 'c-shade-red', 'p-base': 'c-base-red' }),
+    ).toBe(true);
+  });
+
+  it('false when a part is unpicked', () => {
+    expect(allPartsSelected(parts, partColors, { 'p-shade': 'c-shade-red' })).toBe(false);
+  });
+
+  it('false when a picked colour is out of stock', () => {
+    expect(
+      allPartsSelected(parts, partColors, { 'p-shade': 'c-shade-out', 'p-base': 'c-base-red' }),
+    ).toBe(false);
+  });
+
+  it('false on a cross-part colour (colour of another part) — blocks the 422', () => {
+    // c-base-red belongs to p-base, assigned to p-shade → rejected.
+    expect(
+      allPartsSelected(parts, partColors, { 'p-shade': 'c-base-red', 'p-base': 'c-base-red' }),
+    ).toBe(false);
+  });
+
+  it('true for a product with no parts (the flat lock applies instead)', () => {
+    expect(allPartsSelected([], partColors, {})).toBe(true);
+  });
+});
+
+describe('allChoicesSelected (mirrors ErrOptionNeedsChoice)', () => {
+  const options = [
+    { id: 'o-size', type: 'choice' as const, choices: [{ id: 'ch-s' }, { id: 'ch-m' }] },
+    { id: 'o-toggle', type: 'choice' as const, choices: [] }, // legacy toggle → trivially passes
+    { id: 'o-text', type: 'text' as const, choices: [] },
+  ];
+
+  it('true when every enumerated option has a valid pick', () => {
+    expect(allChoicesSelected(options, { 'o-size': 'ch-m' })).toBe(true);
+  });
+
+  it('false when an enumerated option is unpicked', () => {
+    expect(allChoicesSelected(options, {})).toBe(false);
+  });
+
+  it('false when the pick is not one of the option’s choices', () => {
+    expect(allChoicesSelected(options, { 'o-size': 'ch-xl' })).toBe(false);
+  });
+});
+
+describe('canAddConfiguredToCart (the full ADR-037 gate)', () => {
+  const flatColors = [
+    { id: 'a', partId: null, available: true },
+    { id: 'b', partId: null, available: false },
+  ];
+
+  it('reduces to the flat colour lock for a product with no parts / no enumerated choices', () => {
+    expect(
+      canAddConfiguredToCart({
+        parts: [],
+        colors: flatColors,
+        options: [],
+        selectedColorId: 'a',
+        partColorByPart: {},
+        choiceByOption: {},
+        engraveEntries: [],
+      }),
+    ).toBe(true);
+    expect(
+      canAddConfiguredToCart({
+        parts: [],
+        colors: flatColors,
+        options: [],
+        selectedColorId: null,
+        partColorByPart: {},
+        choiceByOption: {},
+        engraveEntries: [],
+      }),
+    ).toBe(false);
+  });
+
+  it('locks a parts product until every part coloured AND every enumerated choice picked', () => {
+    const options = [{ id: 'o-size', type: 'choice' as const, choices: [{ id: 'ch-m' }] }];
+    const base = {
+      parts,
+      colors: partColors,
+      options,
+      selectedColorId: null,
+      engraveEntries: [] as { text: string; maxChars: number | null }[],
+    };
+    // Parts done, choice missing → locked.
+    expect(
+      canAddConfiguredToCart({
+        ...base,
+        partColorByPart: { 'p-shade': 'c-shade-red', 'p-base': 'c-base-red' },
+        choiceByOption: {},
+      }),
+    ).toBe(false);
+    // Both done → unlocked.
+    expect(
+      canAddConfiguredToCart({
+        ...base,
+        partColorByPart: { 'p-shade': 'c-shade-red', 'p-base': 'c-base-red' },
+        choiceByOption: { 'o-size': 'ch-m' },
+      }),
+    ).toBe(true);
+  });
+
+  it('still gates on an over-limit engraving for a fully-configured parts product', () => {
+    expect(
+      canAddConfiguredToCart({
+        parts,
+        colors: partColors,
+        options: [],
+        selectedColorId: null,
+        partColorByPart: { 'p-shade': 'c-shade-red', 'p-base': 'c-base-red' },
+        choiceByOption: {},
+        engraveEntries: [{ text: 'too long', maxChars: 3 }],
+      }),
     ).toBe(false);
   });
 });
