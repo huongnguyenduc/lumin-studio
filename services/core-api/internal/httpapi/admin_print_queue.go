@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/api"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
@@ -31,7 +32,11 @@ func (s *Server) GetPrintQueue(ctx context.Context, _ api.GetPrintQueueRequestOb
 	if err != nil {
 		return nil, err // db error → mapError → 500, no leak
 	}
-	return api.GetPrintQueue200JSONResponse(printQueueDTO(rows)), nil
+	cards, err := printQueueDTO(rows)
+	if err != nil {
+		return nil, err // malformed part_colors jsonb (never written by the capture seam) → 500, logged
+	}
+	return api.GetPrintQueue200JSONResponse(cards), nil
 }
 
 // AdvancePrintJobStage handles PATCH /admin/print-jobs/{id} (P3-f): the staff drag-drop between kanban
@@ -63,7 +68,10 @@ func (s *Server) AdvancePrintJobStage(ctx context.Context, request api.AdvancePr
 	if err != nil {
 		return nil, err
 	}
-	card := printQueueEntryDTO(row)
+	card, err := printQueueEntryDTO(row)
+	if err != nil {
+		return nil, err // malformed part_colors jsonb (never written by the capture seam) → 500, logged
+	}
 	// Push the advanced card to every open board (P3-g SSE). Post-commit — AdvancePrintStage's UPDATE
 	// is committed and PrintQueueEntry read it back — so this is publish-on-commit (ADR-006 spirit); it
 	// is non-blocking and best-effort (a missed frame self-heals via the client's re-read/poll), so it
@@ -75,17 +83,23 @@ func (s *Server) AdvancePrintJobStage(ctx context.Context, request api.AdvancePr
 // printQueueDTO maps the enriched board rows to wire cards. Split from the I/O (pure) so the row→DTO slot
 // wiring is pinned by a Docker-free unit test. Money is not involved (a print card carries no amount). A
 // nil/empty result yields a non-nil empty slice so the JSON renders `[]`, not `null` (spec §03 zero-state).
-func printQueueDTO(rows []sqlc.ListPrintQueueRow) []api.PrintQueueJob {
+// Returns an error only if a row's part_colors jsonb is malformed (never written by the capture seam).
+func printQueueDTO(rows []sqlc.ListPrintQueueRow) ([]api.PrintQueueJob, error) {
 	out := make([]api.PrintQueueJob, len(rows))
 	for i, r := range rows {
+		labels, err := printQueuePartLabels(r.PartColors)
+		if err != nil {
+			return nil, fmt.Errorf("print job %s: part_colors: %w", r.ID, err)
+		}
 		dto := api.PrintQueueJob{
-			Id:          r.ID,
-			Stage:       api.PrintStage(r.Stage),
-			OrderCode:   r.OrderCode,
-			ProductName: r.ProductName,
-			Quantity:    int(r.Quantity),
-			ColorName:   r.ColorName, // *string, omitempty when the line has no color
-			Printer:     r.Printer,   // *string, omitempty when no printer assigned
+			Id:              r.ID,
+			Stage:           api.PrintStage(r.Stage),
+			OrderCode:       r.OrderCode,
+			ProductName:     r.ProductName,
+			Quantity:        int(r.Quantity),
+			ColorName:       r.ColorName, // *string, omitempty when the line has no color
+			PartColorLabels: labels,      // *[]string, omitempty for a flat line (ADR-037)
+			Printer:         r.Printer,   // *string, omitempty when no printer assigned
 		}
 		if r.Eta.Valid {
 			t := r.Eta.Time
@@ -93,24 +107,48 @@ func printQueueDTO(rows []sqlc.ListPrintQueueRow) []api.PrintQueueJob {
 		}
 		out[i] = dto
 	}
-	return out
+	return out, nil
 }
 
 // printQueueEntryDTO maps the single re-read card (GetPrintQueueEntry — a distinct sqlc row type with the
 // SAME fields as the list row) to the identical wire card printQueueDTO produces per board row.
-func printQueueEntryDTO(r sqlc.GetPrintQueueEntryRow) api.PrintQueueJob {
+func printQueueEntryDTO(r sqlc.GetPrintQueueEntryRow) (api.PrintQueueJob, error) {
+	labels, err := printQueuePartLabels(r.PartColors)
+	if err != nil {
+		return api.PrintQueueJob{}, fmt.Errorf("print job %s: part_colors: %w", r.ID, err)
+	}
 	dto := api.PrintQueueJob{
-		Id:          r.ID,
-		Stage:       api.PrintStage(r.Stage),
-		OrderCode:   r.OrderCode,
-		ProductName: r.ProductName,
-		Quantity:    int(r.Quantity),
-		ColorName:   r.ColorName,
-		Printer:     r.Printer,
+		Id:              r.ID,
+		Stage:           api.PrintStage(r.Stage),
+		OrderCode:       r.OrderCode,
+		ProductName:     r.ProductName,
+		Quantity:        int(r.Quantity),
+		ColorName:       r.ColorName,
+		PartColorLabels: labels,
+		Printer:         r.Printer,
 	}
 	if r.Eta.Valid {
 		t := r.Eta.Time
 		dto.Eta = &t
 	}
-	return dto
+	return dto, nil
+}
+
+// printQueuePartLabels parses the joined oi.part_colors jsonb into the per-part colour labels a card shows
+// for a parts product (ADR-037: "Chao: Đỏ") — nil (field omitted) for a flat line. Reuses the order-detail
+// parse/format (partColorSnapshots / partColorLabel) so a print card and the order detail can never render
+// the same order's colours differently.
+func printQueuePartLabels(raw []byte) (*[]string, error) {
+	snap, err := partColorSnapshots(raw)
+	if err != nil {
+		return nil, err
+	}
+	if len(snap) == 0 {
+		return nil, nil
+	}
+	labels := make([]string, len(snap))
+	for i, s := range snap {
+		labels[i] = partColorLabel(s)
+	}
+	return &labels, nil
 }

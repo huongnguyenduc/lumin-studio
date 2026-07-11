@@ -256,10 +256,15 @@ export function OrderDetailView({ order }: { order: Order }) {
   );
 }
 
-// itemSpecs joins the fulfillment facts into one line: color · options · engraving (all optional).
+// itemSpecs joins the fulfillment facts into one line: per-part colours · colour · choices · options ·
+// engraving (all optional). partColorLabels / optionChoiceLabels are the ADR-037 configurator labels
+// ("Chao: Đỏ" / "Kích thước: Lớn"), denormalized on the order at capture — shown straight, no id lookup.
+// Same order as the storefront cart line so a shopper and the fulfiller read the spec identically.
 function itemSpecs(item: Order['items'][number], t: ReturnType<typeof useTranslations>): string {
   const parts: string[] = [];
+  if (item.partColorLabels) parts.push(...item.partColorLabels);
   if (item.colorName) parts.push(item.colorName);
+  if (item.optionChoiceLabels) parts.push(...item.optionChoiceLabels);
   if (item.optionLabels) parts.push(...item.optionLabels);
   if (item.personalization?.text) parts.push(t('engrave', { text: item.personalization.text }));
   return parts.join(' · ') || '—';

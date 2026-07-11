@@ -161,9 +161,9 @@ type NewOrderItem struct {
 	ProductID       uuid.UUID
 	ColorID         *uuid.UUID // nil when the product has no color choice (flat product)
 	OptionIDs       []string
-	PartColors      []order.PartColorSelection    // ADR-037: colour picked per named part (empty for a flat product)
-	OptionChoices   []order.OptionChoiceSelection // ADR-037: picked choice per choice-option (empty when none)
-	Personalization *order.Personalization        // nil = no engraving
+	PartColors      []order.PartColorSnapshot    // ADR-037: denormalized colour per named part (empty for a flat product)
+	OptionChoices   []order.OptionChoiceSnapshot // ADR-037: denormalized picked choice per choice-option (empty when none)
+	Personalization *order.Personalization       // nil = no engraving
 	Quantity        int32
 	UnitPrice       int64
 }
@@ -446,11 +446,11 @@ func optionIDsJSON(ids []string) []byte {
 	return b
 }
 
-// selectionsJSON marshals an ADR-037 configurator selection slice (part_colors / option_choices) to a
+// selectionsJSON marshals an ADR-037 configurator snapshot slice (part_colors / option_choices) to a
 // jsonb array, defaulting to `[]` for an empty selection so the NOT NULL columns never see NULL and a
-// flat/legacy line reads as "no per-part/per-choice selection". The elements are plain uuid-pair structs
-// (order.PartColorSelection / OptionChoiceSelection), which never fail to marshal.
-func selectionsJSON[T order.PartColorSelection | order.OptionChoiceSelection](sel []T) []byte {
+// flat/legacy line reads as "no per-part/per-choice selection". The elements are the DENORMALIZED snapshot
+// structs (order.PartColorSnapshot / OptionChoiceSnapshot — ids + resolved names), which never fail to marshal.
+func selectionsJSON[T order.PartColorSnapshot | order.OptionChoiceSnapshot](sel []T) []byte {
 	if len(sel) == 0 {
 		return []byte("[]")
 	}

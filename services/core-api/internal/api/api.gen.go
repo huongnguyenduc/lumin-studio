@@ -564,12 +564,18 @@ type OrderItem struct {
 	// ColorName Human color name when the line has a color, joined for the admin detail. Read-only.
 	ColorName *string `json:"colorName,omitempty"`
 
+	// OptionChoiceLabels Display labels for the picked choices ("Kích thước: Lớn"), resolved from the names denormalized at capture (ADR-037). One per optionChoices entry, same order. Omitted when the line has none. Read-only.
+	OptionChoiceLabels *[]string `json:"optionChoiceLabels,omitempty"`
+
 	// OptionChoices The picked choice for each choice-option that offers choices (ADR-037), snapshotted from the order. Omitted when the line has none. Read-only.
 	OptionChoices *[]OptionChoiceSelection `json:"optionChoices,omitempty"`
 	OptionIds     []openapi_types.UUID     `json:"optionIds"`
 
 	// OptionLabels Selected option labels, joined for the admin detail (empty when none). Read-only.
 	OptionLabels *[]string `json:"optionLabels,omitempty"`
+
+	// PartColorLabels Display labels for the per-part colours ("Chao: Đỏ"), resolved from the names DENORMALIZED into the order at capture (ADR-037 — a later catalog rename can't rewrite a sold order; no live join). One per partColors entry, same order. Omitted for a flat product. Read-only.
+	PartColorLabels *[]string `json:"partColorLabels,omitempty"`
 
 	// PartColors The colour chosen for each named part (ADR-037), snapshotted from the order. Omitted for a flat product (which uses colorId). Read-only.
 	PartColors *[]PartColorSelection `json:"partColors,omitempty"`
@@ -715,6 +721,9 @@ type PrintQueueJob struct {
 
 	// OrderCode Display code of the owning order (e.g.
 	OrderCode string `json:"orderCode"`
+
+	// PartColorLabels Per-part colour labels ("Chao: Đỏ") for a product with named parts (ADR-037), from the names denormalized into the order line at capture. What filament for which part, at the printer. Absent for a flat product (which uses colorName). Read-only.
+	PartColorLabels *[]string `json:"partColorLabels,omitempty"`
 
 	// Printer Assigned printer, when staff have set one.
 	Printer *string `json:"printer,omitempty"`

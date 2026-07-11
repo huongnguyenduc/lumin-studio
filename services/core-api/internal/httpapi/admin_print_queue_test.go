@@ -49,13 +49,21 @@ func TestPrintQueueDTO(t *testing.T) {
 	id1, id2 := uuid.New(), uuid.New()
 	eta := mustParse(t, "2026-06-21T10:00:00Z")
 	color, printer := "Cam", "máy #2"
+	// Card B is a PARTS product (ADR-037): no flat colorName, but a part_colors jsonb snapshot with the
+	// colour names frozen at capture. The card must surface them as per-part labels — what filament for
+	// which part, at the printer — read straight off the snapshot with no catalog join.
+	partColorsJSON := []byte(`[{"partId":"11111111-1111-1111-1111-111111111111","partName":"Chao","colorId":"22222222-2222-2222-2222-222222222222","colorName":"Đỏ","hex":"#E23"},` +
+		`{"partId":"33333333-3333-3333-3333-333333333333","partName":"Đế","colorId":"44444444-4444-4444-4444-444444444444","colorName":"Trắng","hex":"#FFF"}]`)
 	rows := []sqlc.ListPrintQueueRow{
 		{ID: id1, Stage: sqlc.PrintStageNEEDPRINT, OrderCode: "#LMN-2048", ProductName: "Đèn Mochi", Quantity: 1,
 			ColorName: &color, Printer: nil, Eta: pgtype.Timestamptz{Time: eta, Valid: true}},
 		{ID: id2, Stage: sqlc.PrintStagePRINTING, OrderCode: "#LMN-2050", ProductName: "Mèo Mập", Quantity: 3,
-			ColorName: nil, Printer: &printer, Eta: pgtype.Timestamptz{}},
+			ColorName: nil, Printer: &printer, Eta: pgtype.Timestamptz{}, PartColors: partColorsJSON},
 	}
-	got := printQueueDTO(rows)
+	got, err := printQueueDTO(rows)
+	if err != nil {
+		t.Fatalf("printQueueDTO: unexpected error: %v", err)
+	}
 	if len(got) != 2 {
 		t.Fatalf("len = %d, want 2", len(got))
 	}
@@ -74,6 +82,9 @@ func TestPrintQueueDTO(t *testing.T) {
 	if a.Eta == nil || !a.Eta.Equal(eta) {
 		t.Fatalf("card A eta = %v, want %v", a.Eta, eta)
 	}
+	if a.PartColorLabels != nil {
+		t.Fatalf("card A partColorLabels = %v, want nil (a flat line carries none)", a.PartColorLabels)
+	}
 
 	b := got[1]
 	if b.Id != id2 || string(b.Stage) != "PRINTING" || b.OrderCode != "#LMN-2050" ||
@@ -89,16 +100,24 @@ func TestPrintQueueDTO(t *testing.T) {
 	if b.Eta != nil {
 		t.Fatalf("card B eta = %v, want nil (absent eta stays nil)", b.Eta)
 	}
+	if b.PartColorLabels == nil || len(*b.PartColorLabels) != 2 ||
+		(*b.PartColorLabels)[0] != "Chao: Đỏ" || (*b.PartColorLabels)[1] != "Đế: Trắng" {
+		t.Fatalf("card B partColorLabels = %v, want [Chao: Đỏ, Đế: Trắng]", b.PartColorLabels)
+	}
 }
 
 // printQueueDTO must render an empty result as a non-nil slice so the JSON is `[]`, not `null` (spec §03
 // zero-state — the empty print board renders as empty columns, never blank).
 func TestPrintQueueDTOEmptyIsNonNil(t *testing.T) {
-	if got := printQueueDTO(nil); got == nil {
+	got, err := printQueueDTO(nil)
+	if err != nil {
+		t.Fatalf("printQueueDTO(nil): unexpected error: %v", err)
+	}
+	if got == nil {
 		t.Fatal("printQueueDTO(nil) = nil, want non-nil empty slice (renders [], not null)")
 	}
-	if got := printQueueDTO([]sqlc.ListPrintQueueRow{}); len(got) != 0 || got == nil {
-		t.Fatalf("printQueueDTO([]) = %v, want non-nil empty", got)
+	if got, err := printQueueDTO([]sqlc.ListPrintQueueRow{}); err != nil || len(got) != 0 || got == nil {
+		t.Fatalf("printQueueDTO([]) = %v (err %v), want non-nil empty", got, err)
 	}
 }
 

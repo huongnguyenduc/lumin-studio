@@ -29,23 +29,49 @@ type Personalization struct {
 	ZoneID string `json:"zoneId"`
 }
 
-// PartColorSelection is one part's chosen colour (ADR-037): for a product with named parts the
-// customer picks one colour per part. It is BOTH the pricing input (pricing.Selection validates the
-// colour ∈ the part) and the persisted snapshot — marshaled to the order_items.part_colors jsonb
-// array so the made-to-order line records exactly which colour each part was ordered in. Byte-identical
-// to packages/core PartColorSelectionSchema and the OpenAPI PartColorSelection.
+// PartColorSelection is one part's chosen colour as it arrives from the client (ADR-037): for a product
+// with named parts the customer picks one colour per part. It is the pricing INPUT (pricing.Selection
+// validates the colour ∈ the part) — ids only, because the client is not trusted for names. At capture
+// the server resolves it into a PartColorSnapshot (the persisted, denormalized record). Byte-identical to
+// packages/core PartColorSelectionSchema and the OpenAPI PartColorSelection.
 type PartColorSelection struct {
 	PartID  uuid.UUID `json:"partId"`
 	ColorID uuid.UUID `json:"colorId"`
 }
 
-// OptionChoiceSelection is one choice-option's picked choice (ADR-037): for an option that offers
-// enumerated choices the customer picks exactly one (priced by the choice's own delta). Like
-// PartColorSelection it is both the pricing input and the persisted snapshot (order_items.option_choices
-// jsonb). Byte-identical to packages/core OptionChoiceSelectionSchema and the OpenAPI OptionChoiceSelection.
+// OptionChoiceSelection is one choice-option's picked choice as it arrives from the client (ADR-037): for
+// an option that offers enumerated choices the customer picks exactly one (priced by the choice's own
+// delta). Like PartColorSelection it is the pricing input (ids only); the server denormalizes it into an
+// OptionChoiceSnapshot at capture. Byte-identical to packages/core OptionChoiceSelectionSchema and the
+// OpenAPI OptionChoiceSelection.
 type OptionChoiceSelection struct {
 	OptionID uuid.UUID `json:"optionId"`
 	ChoiceID uuid.UUID `json:"choiceId"`
+}
+
+// PartColorSnapshot is the DENORMALIZED per-part colour frozen into the order_items.part_colors jsonb at
+// capture (ADR-037 pt 2): the ids for lineage PLUS the part name + colour name/hex resolved from the
+// catalog AT ORDER TIME. Storing the names on the line means admin order-detail and the print queue read
+// what-to-make with no live catalog join — and a later colour rename or delete can never rewrite what a
+// sold order says. The server builds it from a validated PartColorSelection + the priced catalog
+// (httpapi.partColorSnapshotsFrom); the client never sends names.
+type PartColorSnapshot struct {
+	PartID    uuid.UUID `json:"partId"`
+	PartName  string    `json:"partName"`
+	ColorID   uuid.UUID `json:"colorId"`
+	ColorName string    `json:"colorName"`
+	Hex       string    `json:"hex"`
+}
+
+// OptionChoiceSnapshot is the denormalized picked choice frozen into order_items.option_choices at capture
+// (ADR-037 pt 2): the ids plus the option label + choice label resolved at order time, so the reads show
+// "Kích thước: Lớn" without joining the live catalog. Built server-side from a validated
+// OptionChoiceSelection + the priced catalog.
+type OptionChoiceSnapshot struct {
+	OptionID    uuid.UUID `json:"optionId"`
+	OptionLabel string    `json:"optionLabel"`
+	ChoiceID    uuid.UUID `json:"choiceId"`
+	ChoiceLabel string    `json:"choiceLabel"`
 }
 
 // GenesisEvent builds the first statusHistory record for a newly created order: From is nil

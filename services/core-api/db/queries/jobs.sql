@@ -60,7 +60,9 @@ RETURNING *;
 -- the human-readable order code + product name + quantity so a queue card says WHAT TO MAKE for WHICH
 -- order (the bare print_jobs row carries ids only, useless at the printer). color_name is denormalized
 -- on print_jobs (queue-card field, spec §02) so no colors join is needed; printer/eta/color_name are
--- nullable. All joins are INNER: a print job's order_item FK is ON DELETE CASCADE and its product FK is
+-- nullable. oi.part_colors is the ADR-037 per-part-colour snapshot (jsonb, already denormalized WITH the
+-- colour names at capture) — carried straight off the joined order_item so a parts-product card shows
+-- what-filament-for-which-part without any new colours/parts join. All joins are INNER: a print job's order_item FK is ON DELETE CASCADE and its product FK is
 -- RESTRICT, so every job has exactly one live item → order + product. Ordered by stage (enum definition
 -- order NEED_PRINT→SHIPPED) then created_at, so each column is stable FIFO; the client groups by stage.
 -- ponytail: no pagination — the active print queue on a one-shop box is small; SHIPPED accretes, so add
@@ -69,7 +71,8 @@ RETURNING *;
 SELECT pj.id, pj.stage, pj.printer, pj.color_name, pj.eta,
   o.code AS order_code,
   p.name AS product_name,
-  oi.quantity AS quantity
+  oi.quantity AS quantity,
+  oi.part_colors AS part_colors
 FROM print_jobs pj
 JOIN order_items oi ON oi.id = pj.order_item_id
 JOIN orders o ON o.id = oi.order_id
@@ -82,7 +85,8 @@ ORDER BY pj.stage, pj.created_at;
 SELECT pj.id, pj.stage, pj.printer, pj.color_name, pj.eta,
   o.code AS order_code,
   p.name AS product_name,
-  oi.quantity AS quantity
+  oi.quantity AS quantity,
+  oi.part_colors AS part_colors
 FROM print_jobs pj
 JOIN order_items oi ON oi.id = pj.order_item_id
 JOIN orders o ON o.id = oi.order_id
