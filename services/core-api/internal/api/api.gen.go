@@ -625,6 +625,11 @@ type RecentOrder struct {
 	Total  int64       `json:"total"`
 }
 
+// RefundPolicyUpdate Owner-only refund-policy text change (PATCH, ADR-012).
+type RefundPolicyUpdate struct {
+	RefundPolicy string `json:"refundPolicy"`
+}
+
 // ReplyTemplate An extension reply template (spec §02).
 type ReplyTemplate struct {
 	Body      string             `json:"body"`
@@ -635,6 +640,12 @@ type ReplyTemplate struct {
 
 	// Variables Placeholder tokens, e.g. ["{tên}", "{mã đơn}", "{STK}"].
 	Variables []string `json:"variables"`
+}
+
+// ReplyTemplateInput Create/replace body for a reply template. `variables` is DERIVED server-side from the {token} placeholders in `body` (spec §02) — it is NOT accepted here, so the stored hint list can never drift from the body text. The client sends title + body only.
+type ReplyTemplateInput struct {
+	Body  string `json:"body"`
+	Title string `json:"title"`
 }
 
 // Review One PUBLISHED product review as it crosses the public wire (spec §02). The author's identity is deliberately omitted — reviews carry a nullable customer_id and guests may review, so exposing a reviewer name would be public PII (PDPL); only the review content is returned. `reply` is the shop's public reply, null until the shop replies (no Phase-1 write path populates it yet). Hidden reviews are filtered at the SQL source and never appear here.
@@ -682,11 +693,25 @@ type ReviewReply struct {
 // Settings The settings singleton. `shopInfo` and `shippingRules` are free-form jsonb whose precise shapes are pinned in the Phase-1 storefront slice; typed loosely here on purpose.
 type Settings struct {
 	// BankAccount VietQR STK the server renders the static QR from (conventions §57). May be unset.
-	BankAccount   BankAccount               `json:"bankAccount"`
-	RefundPolicy  string                    `json:"refundPolicy"`
-	ShippingRules *[]map[string]interface{} `json:"shippingRules,omitempty"`
-	ShopInfo      *map[string]interface{}   `json:"shopInfo,omitempty"`
-	UpdatedAt     time.Time                 `json:"updatedAt"`
+	BankAccount   BankAccount             `json:"bankAccount"`
+	RefundPolicy  string                  `json:"refundPolicy"`
+	ShippingRules *[]ShippingRule         `json:"shippingRules,omitempty"`
+	ShopInfo      *map[string]interface{} `json:"shopInfo,omitempty"`
+	UpdatedAt     time.Time               `json:"updatedAt"`
+}
+
+// ShippingRule One per-region shipping-fee row (settings.shipping_rules). VN address model, no district (ADR-017). Province "*" is the wildcard default fee (applied when no exact province matches).
+type ShippingRule struct {
+	// Fee Shipping fee for this province, raw int VND (≥ 0). Server resolves shippingFee from this table.
+	Fee int64 `json:"fee"`
+
+	// Province Destination province name, or "*" for the wildcard default.
+	Province string `json:"province"`
+}
+
+// ShippingRulesUpdate Owner-only wholesale replace of the shipping-fee table (PATCH).
+type ShippingRulesUpdate struct {
+	ShippingRules []ShippingRule `json:"shippingRules"`
 }
 
 // StatusEvent One appended statusHistory record (spec §02/§04). `from` is null only at creation.
@@ -818,8 +843,20 @@ type GetProductReviewsParams struct {
 // AdvancePrintJobStageJSONRequestBody defines body for AdvancePrintJobStage for application/json ContentType.
 type AdvancePrintJobStageJSONRequestBody = PrintStageUpdate
 
+// CreateReplyTemplateJSONRequestBody defines body for CreateReplyTemplate for application/json ContentType.
+type CreateReplyTemplateJSONRequestBody = ReplyTemplateInput
+
+// UpdateReplyTemplateJSONRequestBody defines body for UpdateReplyTemplate for application/json ContentType.
+type UpdateReplyTemplateJSONRequestBody = ReplyTemplateInput
+
 // UpdateBankAccountJSONRequestBody defines body for UpdateBankAccount for application/json ContentType.
 type UpdateBankAccountJSONRequestBody = BankAccountUpdate
+
+// UpdateRefundPolicyJSONRequestBody defines body for UpdateRefundPolicy for application/json ContentType.
+type UpdateRefundPolicyJSONRequestBody = RefundPolicyUpdate
+
+// UpdateShippingRulesJSONRequestBody defines body for UpdateShippingRules for application/json ContentType.
+type UpdateShippingRulesJSONRequestBody = ShippingRulesUpdate
 
 // LoginUserJSONRequestBody defines body for LoginUser for application/json ContentType.
 type LoginUserJSONRequestBody = LoginRequest
@@ -951,12 +988,27 @@ type ServerInterface interface {
 	// List the extension reply templates (admin-gated read).
 	// (GET /admin/reply-templates)
 	ListReplyTemplates(w http.ResponseWriter, r *http.Request)
+	// Create an extension reply template (owner-only).
+	// (POST /admin/reply-templates)
+	CreateReplyTemplate(w http.ResponseWriter, r *http.Request)
+	// Delete an extension reply template (owner-only).
+	// (DELETE /admin/reply-templates/{id})
+	DeleteReplyTemplate(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Replace an extension reply template (owner-only).
+	// (PATCH /admin/reply-templates/{id})
+	UpdateReplyTemplate(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// Read the settings singleton (admin-gated).
 	// (GET /admin/settings)
 	GetSettings(w http.ResponseWriter, r *http.Request)
 	// Change the VietQR STK (owner-only; persisted with an append-only audit row).
 	// (PATCH /admin/settings/bank-account)
 	UpdateBankAccount(w http.ResponseWriter, r *http.Request)
+	// Change the refund-policy text shown pre-purchase (owner-only, ADR-012).
+	// (PATCH /admin/settings/refund-policy)
+	UpdateRefundPolicy(w http.ResponseWriter, r *http.Request)
+	// Replace the per-region shipping-fee table (owner-only).
+	// (PATCH /admin/settings/shipping-rules)
+	UpdateShippingRules(w http.ResponseWriter, r *http.Request)
 	// Email + password login; sets the session cookie on success.
 	// (POST /auth/login)
 	LoginUser(w http.ResponseWriter, r *http.Request)
@@ -1050,6 +1102,24 @@ func (_ Unimplemented) ListReplyTemplates(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Create an extension reply template (owner-only).
+// (POST /admin/reply-templates)
+func (_ Unimplemented) CreateReplyTemplate(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete an extension reply template (owner-only).
+// (DELETE /admin/reply-templates/{id})
+func (_ Unimplemented) DeleteReplyTemplate(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Replace an extension reply template (owner-only).
+// (PATCH /admin/reply-templates/{id})
+func (_ Unimplemented) UpdateReplyTemplate(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Read the settings singleton (admin-gated).
 // (GET /admin/settings)
 func (_ Unimplemented) GetSettings(w http.ResponseWriter, r *http.Request) {
@@ -1059,6 +1129,18 @@ func (_ Unimplemented) GetSettings(w http.ResponseWriter, r *http.Request) {
 // Change the VietQR STK (owner-only; persisted with an append-only audit row).
 // (PATCH /admin/settings/bank-account)
 func (_ Unimplemented) UpdateBankAccount(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Change the refund-policy text shown pre-purchase (owner-only, ADR-012).
+// (PATCH /admin/settings/refund-policy)
+func (_ Unimplemented) UpdateRefundPolicy(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Replace the per-region shipping-fee table (owner-only).
+// (PATCH /admin/settings/shipping-rules)
+func (_ Unimplemented) UpdateShippingRules(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1344,6 +1426,88 @@ func (siw *ServerInterfaceWrapper) ListReplyTemplates(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// CreateReplyTemplate operation middleware
+func (siw *ServerInterfaceWrapper) CreateReplyTemplate(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateReplyTemplate(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteReplyTemplate operation middleware
+func (siw *ServerInterfaceWrapper) DeleteReplyTemplate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteReplyTemplate(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateReplyTemplate operation middleware
+func (siw *ServerInterfaceWrapper) UpdateReplyTemplate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateReplyTemplate(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -1375,6 +1539,46 @@ func (siw *ServerInterfaceWrapper) UpdateBankAccount(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateBankAccount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateRefundPolicy operation middleware
+func (siw *ServerInterfaceWrapper) UpdateRefundPolicy(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateRefundPolicy(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateShippingRules operation middleware
+func (siw *ServerInterfaceWrapper) UpdateShippingRules(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateShippingRules(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2013,10 +2217,25 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/admin/reply-templates", wrapper.ListReplyTemplates)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/reply-templates", wrapper.CreateReplyTemplate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/admin/reply-templates/{id}", wrapper.DeleteReplyTemplate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/admin/reply-templates/{id}", wrapper.UpdateReplyTemplate)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/settings", wrapper.GetSettings)
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/admin/settings/bank-account", wrapper.UpdateBankAccount)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/admin/settings/refund-policy", wrapper.UpdateRefundPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/admin/settings/shipping-rules", wrapper.UpdateShippingRules)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/auth/login", wrapper.LoginUser)
@@ -2286,6 +2505,147 @@ func (response ListReplyTemplates401JSONResponse) VisitListReplyTemplatesRespons
 	return json.NewEncoder(w).Encode(response)
 }
 
+type CreateReplyTemplateRequestObject struct {
+	Body *CreateReplyTemplateJSONRequestBody
+}
+
+type CreateReplyTemplateResponseObject interface {
+	VisitCreateReplyTemplateResponse(w http.ResponseWriter) error
+}
+
+type CreateReplyTemplate201JSONResponse ReplyTemplate
+
+func (response CreateReplyTemplate201JSONResponse) VisitCreateReplyTemplateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateReplyTemplate400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateReplyTemplate400JSONResponse) VisitCreateReplyTemplateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateReplyTemplate401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateReplyTemplate401JSONResponse) VisitCreateReplyTemplateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateReplyTemplate403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateReplyTemplate403JSONResponse) VisitCreateReplyTemplateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteReplyTemplateRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type DeleteReplyTemplateResponseObject interface {
+	VisitDeleteReplyTemplateResponse(w http.ResponseWriter) error
+}
+
+type DeleteReplyTemplate204Response struct {
+}
+
+func (response DeleteReplyTemplate204Response) VisitDeleteReplyTemplateResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteReplyTemplate401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteReplyTemplate401JSONResponse) VisitDeleteReplyTemplateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteReplyTemplate403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteReplyTemplate403JSONResponse) VisitDeleteReplyTemplateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteReplyTemplate404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteReplyTemplate404JSONResponse) VisitDeleteReplyTemplateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateReplyTemplateRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *UpdateReplyTemplateJSONRequestBody
+}
+
+type UpdateReplyTemplateResponseObject interface {
+	VisitUpdateReplyTemplateResponse(w http.ResponseWriter) error
+}
+
+type UpdateReplyTemplate200JSONResponse ReplyTemplate
+
+func (response UpdateReplyTemplate200JSONResponse) VisitUpdateReplyTemplateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateReplyTemplate400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateReplyTemplate400JSONResponse) VisitUpdateReplyTemplateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateReplyTemplate401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateReplyTemplate401JSONResponse) VisitUpdateReplyTemplateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateReplyTemplate403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateReplyTemplate403JSONResponse) VisitUpdateReplyTemplateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateReplyTemplate404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateReplyTemplate404JSONResponse) VisitUpdateReplyTemplateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetSettingsRequestObject struct {
 }
 
@@ -2349,6 +2709,94 @@ func (response UpdateBankAccount401JSONResponse) VisitUpdateBankAccountResponse(
 type UpdateBankAccount403JSONResponse struct{ ForbiddenJSONResponse }
 
 func (response UpdateBankAccount403JSONResponse) VisitUpdateBankAccountResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateRefundPolicyRequestObject struct {
+	Body *UpdateRefundPolicyJSONRequestBody
+}
+
+type UpdateRefundPolicyResponseObject interface {
+	VisitUpdateRefundPolicyResponse(w http.ResponseWriter) error
+}
+
+type UpdateRefundPolicy200JSONResponse Settings
+
+func (response UpdateRefundPolicy200JSONResponse) VisitUpdateRefundPolicyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateRefundPolicy400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateRefundPolicy400JSONResponse) VisitUpdateRefundPolicyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateRefundPolicy401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateRefundPolicy401JSONResponse) VisitUpdateRefundPolicyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateRefundPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateRefundPolicy403JSONResponse) VisitUpdateRefundPolicyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateShippingRulesRequestObject struct {
+	Body *UpdateShippingRulesJSONRequestBody
+}
+
+type UpdateShippingRulesResponseObject interface {
+	VisitUpdateShippingRulesResponse(w http.ResponseWriter) error
+}
+
+type UpdateShippingRules200JSONResponse Settings
+
+func (response UpdateShippingRules200JSONResponse) VisitUpdateShippingRulesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateShippingRules400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateShippingRules400JSONResponse) VisitUpdateShippingRulesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateShippingRules401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateShippingRules401JSONResponse) VisitUpdateShippingRulesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateShippingRules403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateShippingRules403JSONResponse) VisitUpdateShippingRulesResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
 
@@ -3062,12 +3510,27 @@ type StrictServerInterface interface {
 	// List the extension reply templates (admin-gated read).
 	// (GET /admin/reply-templates)
 	ListReplyTemplates(ctx context.Context, request ListReplyTemplatesRequestObject) (ListReplyTemplatesResponseObject, error)
+	// Create an extension reply template (owner-only).
+	// (POST /admin/reply-templates)
+	CreateReplyTemplate(ctx context.Context, request CreateReplyTemplateRequestObject) (CreateReplyTemplateResponseObject, error)
+	// Delete an extension reply template (owner-only).
+	// (DELETE /admin/reply-templates/{id})
+	DeleteReplyTemplate(ctx context.Context, request DeleteReplyTemplateRequestObject) (DeleteReplyTemplateResponseObject, error)
+	// Replace an extension reply template (owner-only).
+	// (PATCH /admin/reply-templates/{id})
+	UpdateReplyTemplate(ctx context.Context, request UpdateReplyTemplateRequestObject) (UpdateReplyTemplateResponseObject, error)
 	// Read the settings singleton (admin-gated).
 	// (GET /admin/settings)
 	GetSettings(ctx context.Context, request GetSettingsRequestObject) (GetSettingsResponseObject, error)
 	// Change the VietQR STK (owner-only; persisted with an append-only audit row).
 	// (PATCH /admin/settings/bank-account)
 	UpdateBankAccount(ctx context.Context, request UpdateBankAccountRequestObject) (UpdateBankAccountResponseObject, error)
+	// Change the refund-policy text shown pre-purchase (owner-only, ADR-012).
+	// (PATCH /admin/settings/refund-policy)
+	UpdateRefundPolicy(ctx context.Context, request UpdateRefundPolicyRequestObject) (UpdateRefundPolicyResponseObject, error)
+	// Replace the per-region shipping-fee table (owner-only).
+	// (PATCH /admin/settings/shipping-rules)
+	UpdateShippingRules(ctx context.Context, request UpdateShippingRulesRequestObject) (UpdateShippingRulesResponseObject, error)
 	// Email + password login; sets the session cookie on success.
 	// (POST /auth/login)
 	LoginUser(ctx context.Context, request LoginUserRequestObject) (LoginUserResponseObject, error)
@@ -3307,6 +3770,96 @@ func (sh *strictHandler) ListReplyTemplates(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// CreateReplyTemplate operation middleware
+func (sh *strictHandler) CreateReplyTemplate(w http.ResponseWriter, r *http.Request) {
+	var request CreateReplyTemplateRequestObject
+
+	var body CreateReplyTemplateJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateReplyTemplate(ctx, request.(CreateReplyTemplateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateReplyTemplate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateReplyTemplateResponseObject); ok {
+		if err := validResponse.VisitCreateReplyTemplateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteReplyTemplate operation middleware
+func (sh *strictHandler) DeleteReplyTemplate(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request DeleteReplyTemplateRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteReplyTemplate(ctx, request.(DeleteReplyTemplateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteReplyTemplate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteReplyTemplateResponseObject); ok {
+		if err := validResponse.VisitDeleteReplyTemplateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateReplyTemplate operation middleware
+func (sh *strictHandler) UpdateReplyTemplate(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request UpdateReplyTemplateRequestObject
+
+	request.Id = id
+
+	var body UpdateReplyTemplateJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateReplyTemplate(ctx, request.(UpdateReplyTemplateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateReplyTemplate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateReplyTemplateResponseObject); ok {
+		if err := validResponse.VisitUpdateReplyTemplateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetSettings operation middleware
 func (sh *strictHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	var request GetSettingsRequestObject
@@ -3355,6 +3908,68 @@ func (sh *strictHandler) UpdateBankAccount(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateBankAccountResponseObject); ok {
 		if err := validResponse.VisitUpdateBankAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateRefundPolicy operation middleware
+func (sh *strictHandler) UpdateRefundPolicy(w http.ResponseWriter, r *http.Request) {
+	var request UpdateRefundPolicyRequestObject
+
+	var body UpdateRefundPolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateRefundPolicy(ctx, request.(UpdateRefundPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateRefundPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateRefundPolicyResponseObject); ok {
+		if err := validResponse.VisitUpdateRefundPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateShippingRules operation middleware
+func (sh *strictHandler) UpdateShippingRules(w http.ResponseWriter, r *http.Request) {
+	var request UpdateShippingRulesRequestObject
+
+	var body UpdateShippingRulesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateShippingRules(ctx, request.(UpdateShippingRulesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateShippingRules")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateShippingRulesResponseObject); ok {
+		if err := validResponse.VisitUpdateShippingRulesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

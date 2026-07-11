@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/api"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/pricing"
 )
 
 // A non-owner actor reaching the STK write is rejected 403 (errForbidden) BEFORE any DB touch —
@@ -131,5 +133,131 @@ func TestReplyTemplatesDTO(t *testing.T) {
 	blob, _ := json.Marshal(empty[0])
 	if !json.Valid(blob) {
 		t.Fatal("reply template must marshal to valid JSON")
+	}
+}
+
+// Every settings/config WRITE is owner-only (staff không sửa cài đặt). Each rejects a staff actor with
+// 403 and an absent actor with 401 BEFORE any DB touch (nil pool) — defense in depth behind the
+// authOwnerOnly boundary gate, so a classify() regress cannot let staff write settings.
+func TestSettingsWritesAreOwnerOnly(t *testing.T) {
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
+	id := uuid.New()
+	calls := map[string]func(context.Context) error{
+		"UpdateShippingRules": func(ctx context.Context) error {
+			_, err := srv.UpdateShippingRules(ctx, api.UpdateShippingRulesRequestObject{Body: &api.ShippingRulesUpdate{}})
+			return err
+		},
+		"UpdateRefundPolicy": func(ctx context.Context) error {
+			_, err := srv.UpdateRefundPolicy(ctx, api.UpdateRefundPolicyRequestObject{Body: &api.RefundPolicyUpdate{}})
+			return err
+		},
+		"CreateReplyTemplate": func(ctx context.Context) error {
+			_, err := srv.CreateReplyTemplate(ctx, api.CreateReplyTemplateRequestObject{Body: &api.ReplyTemplateInput{Title: "x", Body: "y"}})
+			return err
+		},
+		"UpdateReplyTemplate": func(ctx context.Context) error {
+			_, err := srv.UpdateReplyTemplate(ctx, api.UpdateReplyTemplateRequestObject{Id: id, Body: &api.ReplyTemplateInput{Title: "x", Body: "y"}})
+			return err
+		},
+		"DeleteReplyTemplate": func(ctx context.Context) error {
+			_, err := srv.DeleteReplyTemplate(ctx, api.DeleteReplyTemplateRequestObject{Id: id})
+			return err
+		},
+	}
+	for name, call := range calls {
+		t.Run(name+"/staff→403", func(t *testing.T) {
+			ctx := withActor(context.Background(), Actor{ByUser: uuid.NewString(), Role: order.RoleStaff, At: time.Now().UTC()})
+			if err := call(ctx); !errors.Is(err, errForbidden) {
+				t.Fatalf("staff: err = %v, want errForbidden", err)
+			}
+		})
+		t.Run(name+"/no-actor→401", func(t *testing.T) {
+			if err := call(context.Background()); !errors.Is(err, errUnauthenticated) {
+				t.Fatalf("no actor: err = %v, want errUnauthenticated", err)
+			}
+		})
+	}
+}
+
+// cleanShippingRules must produce EXACTLY the shape the checkout fee resolver reads: the test marshals
+// the cleaned rows and feeds them back through pricing.ShippingFee. This is the load-bearing link — a
+// shape drift here would silently misroute every order's shipping fee.
+func TestCleanShippingRules(t *testing.T) {
+	ok, fields := cleanShippingRules([]api.ShippingRule{
+		{Province: " Nội thành TP.HCM ", Fee: 25000},
+		{Province: "*", Fee: 40000},
+	})
+	if len(fields) != 0 {
+		t.Fatalf("valid rules rejected: %v", fields)
+	}
+	if len(ok) != 2 || ok[0].Province != "Nội thành TP.HCM" || ok[0].Fee != 25000 || ok[1].Province != "*" {
+		t.Fatalf("clean wrong: %+v", ok)
+	}
+	blob, _ := json.Marshal(ok)
+	if fee, err := pricing.ShippingFee(blob, "Nội thành TP.HCM"); err != nil || fee != 25000 {
+		t.Fatalf("resolver on cleaned rules: fee=%d err=%v", fee, err)
+	}
+	if fee, err := pricing.ShippingFee(blob, "Somewhere Else"); err != nil || fee != 40000 {
+		t.Fatalf("wildcard fallback: fee=%d err=%v", fee, err)
+	}
+	// An empty table is valid (owner clearing to rebuild).
+	if _, f := cleanShippingRules([]api.ShippingRule{}); len(f) != 0 {
+		t.Fatalf("empty table should be valid: %v", f)
+	}
+	bad := map[string][]api.ShippingRule{
+		"negative fee":   {{Province: "Hà Nội", Fee: -1}},
+		"empty province": {{Province: "  ", Fee: 1000}},
+		"dup province":   {{Province: "Hà Nội", Fee: 1000}, {Province: "Hà Nội", Fee: 2000}},
+	}
+	for name, in := range bad {
+		t.Run(name, func(t *testing.T) {
+			if _, f := cleanShippingRules(in); len(f) == 0 {
+				t.Fatalf("%s: expected a field error, got none", name)
+			}
+		})
+	}
+}
+
+func TestExtractTemplateVariables(t *testing.T) {
+	got := extractTemplateVariables("Phí ship {phí}, giao {ngày}. Nhắc lại {phí}. CK {STK}")
+	want := []string{"{phí}", "{ngày}", "{STK}"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v (dedup + order)", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("order/dedup wrong: got %v, want %v", got, want)
+		}
+	}
+	if v := extractTemplateVariables("no tokens here"); v == nil || len(v) != 0 {
+		t.Fatalf("no tokens must be non-nil empty, got %v", v)
+	}
+}
+
+func TestCleanReplyTemplateInput(t *testing.T) {
+	title, body, vars, fields := cleanReplyTemplateInput(api.ReplyTemplateInput{
+		Title: "  Báo phí ship  ", Body: "  Phí khu vực là {phí} nha  ",
+	})
+	if len(fields) != 0 {
+		t.Fatalf("valid rejected: %v", fields)
+	}
+	if title != "Báo phí ship" || body != "Phí khu vực là {phí} nha" {
+		t.Fatalf("trim wrong: %q / %q", title, body)
+	}
+	if len(vars) != 1 || vars[0] != "{phí}" {
+		t.Fatalf("derived vars = %v", vars)
+	}
+	bad := map[string]api.ReplyTemplateInput{
+		"empty title": {Title: "  ", Body: "x"},
+		"empty body":  {Title: "x", Body: "  "},
+		"long title":  {Title: strings.Repeat("a", maxReplyTitleChars+1), Body: "x"},
+		"long body":   {Title: "x", Body: strings.Repeat("a", maxReplyBodyChars+1)},
+	}
+	for name, in := range bad {
+		t.Run(name, func(t *testing.T) {
+			if _, _, _, f := cleanReplyTemplateInput(in); len(f) == 0 {
+				t.Fatalf("%s: expected field errors, got none", name)
+			}
+		})
 	}
 }

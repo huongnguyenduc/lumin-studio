@@ -45,6 +45,18 @@ func (s *Settings) UpdateConfig(ctx context.Context, arg sqlc.UpdateSettingsPara
 	return s.q.UpdateSettings(ctx, arg)
 }
 
+// UpdateShippingRules replaces the per-region shipping-fee table (settings.shipping_rules) and returns
+// the updated singleton. Targeted single-column write (does not touch shop_info/bank_account/
+// refund_policy). Not audited — unlike the STK, the fee table is not a money-out destination (P3-i).
+func (s *Settings) UpdateShippingRules(ctx context.Context, shippingRules []byte) (sqlc.Setting, error) {
+	return s.q.UpdateShippingRules(ctx, shippingRules)
+}
+
+// UpdateRefundPolicy replaces the refund-policy text (ADR-012) and returns the updated singleton.
+func (s *Settings) UpdateRefundPolicy(ctx context.Context, refundPolicy string) (sqlc.Setting, error) {
+	return s.q.UpdateRefundPolicy(ctx, refundPolicy)
+}
+
 // BankAudits returns the money-out config history, newest first (the owner audit view).
 func (s *Settings) BankAudits(ctx context.Context) ([]sqlc.SettingBankAudit, error) {
 	return s.q.ListBankAudit(ctx)
@@ -67,6 +79,29 @@ func (s *Settings) ReplyTemplateByID(ctx context.Context, id uuid.UUID) (sqlc.Re
 // ReplyTemplates lists all reply templates, ordered by title.
 func (s *Settings) ReplyTemplates(ctx context.Context) ([]sqlc.ReplyTemplate, error) {
 	return s.q.ListReplyTemplates(ctx)
+}
+
+// UpdateReplyTemplate replaces a template's title/body/variables, or returns ErrNotFound if the id is
+// unknown (the RETURNING clause matches no row → pgx.ErrNoRows).
+func (s *Settings) UpdateReplyTemplate(ctx context.Context, arg sqlc.UpdateReplyTemplateParams) (sqlc.ReplyTemplate, error) {
+	row, err := s.q.UpdateReplyTemplate(ctx, arg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.ReplyTemplate{}, ErrNotFound
+	}
+	return row, err
+}
+
+// DeleteReplyTemplate removes a template, or returns ErrNotFound if the id matched no row (so the
+// handler renders a uniform 404 rather than a silent success on a bogus id).
+func (s *Settings) DeleteReplyTemplate(ctx context.Context, id uuid.UUID) error {
+	n, err := s.q.DeleteReplyTemplate(ctx, id)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // ErrInvalidBankChange is returned for a structurally invalid BankAccountChange, before any write.

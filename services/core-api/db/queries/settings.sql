@@ -20,6 +20,26 @@ SET shop_info = sqlc.arg('shop_info'),
 WHERE id = true
 RETURNING *;
 
+-- UpdateShippingRules writes ONLY the per-region fee table (settings.shipping_rules), leaving
+-- shop_info/refund_policy untouched — a targeted PATCH cannot clobber the rest of the singleton (the
+-- 3-column UpdateSettings would). The server resolves shippingFee from this jsonb (pricing.ShippingFee),
+-- so the shape MUST stay [{province, fee}]; the handler validates that before this write. Not audited
+-- (P3-i open-q #2: only the STK is a high-value money-out field worth an audit trail).
+-- name: UpdateShippingRules :one
+UPDATE settings
+SET shipping_rules = sqlc.arg('shipping_rules'),
+    updated_at = now()
+WHERE id = true
+RETURNING *;
+
+-- UpdateRefundPolicy writes ONLY the refund-policy text (ADR-012), same targeted reasoning as above.
+-- name: UpdateRefundPolicy :one
+UPDATE settings
+SET refund_policy = sqlc.arg('refund_policy'),
+    updated_at = now()
+WHERE id = true
+RETURNING *;
+
 -- UpdateBankAccount sets the VietQR STK the server renders the static QR from. Called only inside
 -- UpdateBankAccountTx, alongside InsertBankAudit, so every change is audited (conventions §57).
 -- name: UpdateBankAccount :one
@@ -50,3 +70,16 @@ SELECT * FROM reply_templates WHERE id = $1;
 
 -- name: ListReplyTemplates :many
 SELECT * FROM reply_templates ORDER BY title;
+
+-- UpdateReplyTemplate replaces a template's title/body/variables. RETURNING with no matched row yields
+-- pgx.ErrNoRows → mapped to ErrNotFound (404) in the db wrapper, like GetReplyTemplateByID.
+-- name: UpdateReplyTemplate :one
+UPDATE reply_templates
+SET title = $2, body = $3, variables = $4, updated_at = now()
+WHERE id = $1
+RETURNING *;
+
+-- DeleteReplyTemplate removes a template. :execrows so the wrapper can map 0-rows → ErrNotFound (404)
+-- rather than silently succeeding on a bogus id.
+-- name: DeleteReplyTemplate :execrows
+DELETE FROM reply_templates WHERE id = $1;

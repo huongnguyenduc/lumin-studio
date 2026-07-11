@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -14,6 +16,7 @@ import (
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/pricing"
 )
 
 // settings.go — the admin config/reference surface (PR-3k): read the settings singleton, change the
@@ -107,6 +110,68 @@ func (s *Server) UpdateBankAccount(ctx context.Context, req api.UpdateBankAccoun
 	return api.UpdateBankAccount200JSONResponse(dto), nil
 }
 
+// UpdateShippingRules handles PATCH /admin/settings/shipping-rules (owner-only). It replaces the
+// per-region fee table the server resolves shippingFee from at checkout — so the persisted jsonb is
+// EXACTLY []pricing.ShippingRule (the same type the resolver reads, marshaled here), and a shipping-fee
+// edit can never store a shape checkout cannot parse. Owner-only is gated at the boundary
+// (classify → authOwnerOnly); re-asserted here (defense in depth — a fee table is money-adjacent). Not
+// audited (P3-i open-q #2: only the STK is).
+func (s *Server) UpdateShippingRules(ctx context.Context, req api.UpdateShippingRulesRequestObject) (api.UpdateShippingRulesResponseObject, error) {
+	if err := assertOwner(ctx); err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return api.UpdateShippingRules400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
+	}
+	rules, fields := cleanShippingRules(req.Body.ShippingRules)
+	if len(fields) > 0 {
+		env := envelope(codeValidation)
+		env.Fields = &fields
+		return api.UpdateShippingRules400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(env)}, nil
+	}
+	rulesJSON, err := json.Marshal(rules)
+	if err != nil {
+		return nil, fmt.Errorf("settings: marshal shipping_rules: %w", err)
+	}
+	row, err := db.NewSettings(s.pool).UpdateShippingRules(ctx, rulesJSON)
+	if err != nil {
+		return nil, err
+	}
+	dto, err := settingsDTO(row)
+	if err != nil {
+		return nil, err
+	}
+	return api.UpdateShippingRules200JSONResponse(dto), nil
+}
+
+// UpdateRefundPolicy handles PATCH /admin/settings/refund-policy (owner-only). Plain text (ADR-012);
+// clearing it is legitimate (nothing shown pre-purchase), so empty is allowed — only an absurdly long
+// blob is rejected.
+func (s *Server) UpdateRefundPolicy(ctx context.Context, req api.UpdateRefundPolicyRequestObject) (api.UpdateRefundPolicyResponseObject, error) {
+	if err := assertOwner(ctx); err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return api.UpdateRefundPolicy400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
+	}
+	policy := strings.TrimSpace(req.Body.RefundPolicy)
+	if utf8.RuneCountInString(policy) > maxRefundPolicyChars {
+		env := envelope(codeValidation)
+		fields := map[string]string{"refundPolicy": msgKey(codeValidation)}
+		env.Fields = &fields
+		return api.UpdateRefundPolicy400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(env)}, nil
+	}
+	row, err := db.NewSettings(s.pool).UpdateRefundPolicy(ctx, policy)
+	if err != nil {
+		return nil, err
+	}
+	dto, err := settingsDTO(row)
+	if err != nil {
+		return nil, err
+	}
+	return api.UpdateRefundPolicy200JSONResponse(dto), nil
+}
+
 // ListReplyTemplates handles GET /admin/reply-templates (admin-gated read), ordered by title.
 func (s *Server) ListReplyTemplates(ctx context.Context, _ api.ListReplyTemplatesRequestObject) (api.ListReplyTemplatesResponseObject, error) {
 	rows, err := db.NewSettings(s.pool).ReplyTemplates(ctx)
@@ -118,6 +183,181 @@ func (s *Server) ListReplyTemplates(ctx context.Context, _ api.ListReplyTemplate
 		return nil, err
 	}
 	return api.ListReplyTemplates200JSONResponse(dtos), nil
+}
+
+// CreateReplyTemplate handles POST /admin/reply-templates (owner-only). `variables` is derived from the
+// body's {token} placeholders server-side (never trusted from the client), so the hint list cannot
+// drift from the text.
+func (s *Server) CreateReplyTemplate(ctx context.Context, req api.CreateReplyTemplateRequestObject) (api.CreateReplyTemplateResponseObject, error) {
+	if err := assertOwner(ctx); err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return api.CreateReplyTemplate400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
+	}
+	title, body, vars, fields := cleanReplyTemplateInput(*req.Body)
+	if len(fields) > 0 {
+		env := envelope(codeValidation)
+		env.Fields = &fields
+		return api.CreateReplyTemplate400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(env)}, nil
+	}
+	varsJSON, err := json.Marshal(vars)
+	if err != nil {
+		return nil, fmt.Errorf("reply template: marshal variables: %w", err)
+	}
+	row, err := db.NewSettings(s.pool).CreateReplyTemplate(ctx, sqlc.InsertReplyTemplateParams{
+		ID:        uuid.New(),
+		Title:     title,
+		Body:      body,
+		Variables: varsJSON,
+	})
+	if err != nil {
+		return nil, err
+	}
+	dto, err := replyTemplateDTO(row)
+	if err != nil {
+		return nil, err
+	}
+	return api.CreateReplyTemplate201JSONResponse(dto), nil
+}
+
+// UpdateReplyTemplate handles PATCH /admin/reply-templates/{id} (owner-only). Unknown id → 404 (the
+// db seam maps the no-row RETURNING to ErrNotFound). Variables re-derived from the new body.
+func (s *Server) UpdateReplyTemplate(ctx context.Context, req api.UpdateReplyTemplateRequestObject) (api.UpdateReplyTemplateResponseObject, error) {
+	if err := assertOwner(ctx); err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return api.UpdateReplyTemplate400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
+	}
+	title, body, vars, fields := cleanReplyTemplateInput(*req.Body)
+	if len(fields) > 0 {
+		env := envelope(codeValidation)
+		env.Fields = &fields
+		return api.UpdateReplyTemplate400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(env)}, nil
+	}
+	varsJSON, err := json.Marshal(vars)
+	if err != nil {
+		return nil, fmt.Errorf("reply template: marshal variables: %w", err)
+	}
+	row, err := db.NewSettings(s.pool).UpdateReplyTemplate(ctx, sqlc.UpdateReplyTemplateParams{
+		ID:        req.Id,
+		Title:     title,
+		Body:      body,
+		Variables: varsJSON,
+	})
+	if err != nil {
+		return nil, err // db.ErrNotFound → 404 (mapError)
+	}
+	dto, err := replyTemplateDTO(row)
+	if err != nil {
+		return nil, err
+	}
+	return api.UpdateReplyTemplate200JSONResponse(dto), nil
+}
+
+// DeleteReplyTemplate handles DELETE /admin/reply-templates/{id} (owner-only). Unknown id → 404 (the
+// db seam maps 0 rows affected to ErrNotFound), so a bogus id is not a silent success.
+func (s *Server) DeleteReplyTemplate(ctx context.Context, req api.DeleteReplyTemplateRequestObject) (api.DeleteReplyTemplateResponseObject, error) {
+	if err := assertOwner(ctx); err != nil {
+		return nil, err
+	}
+	if err := db.NewSettings(s.pool).DeleteReplyTemplate(ctx, req.Id); err != nil {
+		return nil, err // db.ErrNotFound → 404 (mapError)
+	}
+	return api.DeleteReplyTemplate204Response{}, nil
+}
+
+// assertOwner fails closed on the owner-only config edges: no actor → 401, non-owner → 403. This
+// re-asserts what classify → authOwnerOnly already gates at the boundary, so a classify regress can
+// never let staff write settings (staff không sửa cài đặt — domain-core RBAC). Handlers that also need
+// the actor identity (UpdateBankAccount, for the audit changed_by) resolve it directly.
+func assertOwner(ctx context.Context) error {
+	actor, ok := actorFrom(ctx)
+	if !ok {
+		return errUnauthenticated
+	}
+	if actor.Role != order.RoleOwner {
+		return errForbidden
+	}
+	return nil
+}
+
+// Sanity caps on free-text config (belt against a pathological blob in a text/jsonb column; the UI
+// keeps well under these). Measured in runes — Vietnamese is multibyte.
+const (
+	maxReplyTitleChars   = 200
+	maxReplyBodyChars    = 4000
+	maxRefundPolicyChars = 5000
+)
+
+// cleanShippingRules validates the owner's fee-table edit at the HTTP boundary and returns the cleaned
+// rows to persist (as []pricing.ShippingRule — the exact shape the checkout fee resolver reads) plus a
+// per-field error map (empty ⇒ valid). Each province must be non-empty (or "*" wildcard) and unique;
+// each fee must be ≥ 0 (a negative fee makes pricing.ShippingFee treat the whole table as malformed).
+// An empty array is allowed (the shop temporarily ships nowhere — checkout then 422s per province,
+// same class as an unset STK), so the owner can clear and rebuild the table.
+func cleanShippingRules(in []api.ShippingRule) ([]pricing.ShippingRule, map[string]string) {
+	out := make([]pricing.ShippingRule, 0, len(in))
+	fields := map[string]string{}
+	seen := make(map[string]struct{}, len(in))
+	for i, r := range in {
+		prov := strings.TrimSpace(r.Province)
+		if prov == "" {
+			fields[fmt.Sprintf("shippingRules.%d.province", i)] = msgKey(codeValidation)
+		} else {
+			if _, dup := seen[prov]; dup {
+				fields[fmt.Sprintf("shippingRules.%d.province", i)] = msgKey(codeValidation)
+			}
+			seen[prov] = struct{}{}
+		}
+		if r.Fee < 0 {
+			fields[fmt.Sprintf("shippingRules.%d.fee", i)] = msgKey(codeValidation)
+		}
+		out = append(out, pricing.ShippingRule{Province: prov, Fee: r.Fee})
+	}
+	if len(fields) > 0 {
+		return nil, fields
+	}
+	return out, nil
+}
+
+// cleanReplyTemplateInput trims + validates a reply-template create/replace body and derives its
+// {token} variables from the (cleaned) body. Title required; body required; both length-capped.
+// Returns the derived variables (first-seen order) and a per-field error map (empty ⇒ valid).
+func cleanReplyTemplateInput(in api.ReplyTemplateInput) (title, body string, vars []string, fields map[string]string) {
+	title = strings.TrimSpace(in.Title)
+	body = strings.TrimSpace(in.Body)
+	fields = map[string]string{}
+	if title == "" || utf8.RuneCountInString(title) > maxReplyTitleChars {
+		fields["title"] = msgKey(codeValidation)
+	}
+	if body == "" || utf8.RuneCountInString(body) > maxReplyBodyChars {
+		fields["body"] = msgKey(codeValidation)
+	}
+	if len(fields) > 0 {
+		return "", "", nil, fields
+	}
+	return title, body, extractTemplateVariables(body), nil
+}
+
+// templateVarRe matches a single {token} placeholder (no nested braces).
+var templateVarRe = regexp.MustCompile(`\{[^{}]+\}`)
+
+// extractTemplateVariables returns the unique {token} placeholders in a reply-template body, in
+// first-seen order (spec §02 — e.g. "{tên}", "{mã đơn}", "{STK}"). Deriving them from the body keeps
+// the stored hint list from ever drifting from the text. Always non-nil so the jsonb renders [] not null.
+func extractTemplateVariables(body string) []string {
+	out := []string{}
+	seen := map[string]struct{}{}
+	for _, m := range templateVarRe.FindAllString(body, -1) {
+		if _, ok := seen[m]; ok {
+			continue
+		}
+		seen[m] = struct{}{}
+		out = append(out, m)
+	}
+	return out
 }
 
 // bankAccountRecord is the persisted STK shape stored in settings.bank_account (jsonb) and read back
@@ -190,7 +430,7 @@ func settingsDTO(row sqlc.Setting) (api.Settings, error) {
 			return api.Settings{}, fmt.Errorf("settings: decode shop_info: %w", err)
 		}
 	}
-	var rules []map[string]interface{}
+	rules := []api.ShippingRule{} // non-nil so an empty table renders [] not null
 	if len(row.ShippingRules) > 0 {
 		if err := json.Unmarshal(row.ShippingRules, &rules); err != nil {
 			return api.Settings{}, fmt.Errorf("settings: decode shipping_rules: %w", err)
@@ -205,26 +445,35 @@ func settingsDTO(row sqlc.Setting) (api.Settings, error) {
 	}, nil
 }
 
-// replyTemplatesDTO maps the persisted reply templates to their wire shape, decoding the `variables`
-// jsonb array of placeholder tokens. A nil/empty column yields a non-nil empty slice so the JSON
-// renders `[]`, not `null`.
+// replyTemplateDTO maps one persisted reply template to its wire shape, decoding the `variables` jsonb
+// array of placeholder tokens. A nil/empty column yields a non-nil empty slice so the JSON renders
+// `[]`, not `null`.
+func replyTemplateDTO(r sqlc.ReplyTemplate) (api.ReplyTemplate, error) {
+	vars := []string{}
+	if len(r.Variables) > 0 {
+		if err := json.Unmarshal(r.Variables, &vars); err != nil {
+			return api.ReplyTemplate{}, fmt.Errorf("reply template %s: decode variables: %w", r.ID, err)
+		}
+	}
+	return api.ReplyTemplate{
+		Id:        r.ID,
+		Title:     r.Title,
+		Body:      r.Body,
+		Variables: vars,
+		CreatedAt: r.CreatedAt.Time,
+		UpdatedAt: r.UpdatedAt.Time,
+	}, nil
+}
+
+// replyTemplatesDTO maps a list of persisted reply templates to their wire shape.
 func replyTemplatesDTO(rows []sqlc.ReplyTemplate) ([]api.ReplyTemplate, error) {
 	out := make([]api.ReplyTemplate, len(rows))
 	for i, r := range rows {
-		vars := []string{}
-		if len(r.Variables) > 0 {
-			if err := json.Unmarshal(r.Variables, &vars); err != nil {
-				return nil, fmt.Errorf("reply template %s: decode variables: %w", r.ID, err)
-			}
+		dto, err := replyTemplateDTO(r)
+		if err != nil {
+			return nil, err
 		}
-		out[i] = api.ReplyTemplate{
-			Id:        r.ID,
-			Title:     r.Title,
-			Body:      r.Body,
-			Variables: vars,
-			CreatedAt: r.CreatedAt.Time,
-			UpdatedAt: r.UpdatedAt.Time,
-		}
+		out[i] = dto
 	}
 	return out, nil
 }

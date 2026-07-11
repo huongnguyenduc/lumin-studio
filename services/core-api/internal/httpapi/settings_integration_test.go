@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/pricing"
 )
 
 // --- integration (testcontainers; skips without a Docker provider) ---------------------
@@ -152,5 +154,136 @@ func TestListReplyTemplatesEndToEnd(t *testing.T) {
 	}
 	if len(list[1].Variables) != 1 || list[1].Variables[0] != "{STK}" {
 		t.Fatalf("variables decode wrong: %+v", list[1].Variables)
+	}
+}
+
+// TestUpdateShippingRulesEndToEnd drives the owner fee-table edit over real Postgres and proves the
+// PERSISTED jsonb resolves through the SAME checkout fee resolver (pricing.ShippingFee) — a shape drift
+// would silently misroute every order's shipping fee. A negative fee is rejected 400 before any write.
+func TestUpdateShippingRulesEndToEnd(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+	ownerID := seedOwnerUser(t, ctx, pool)
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
+	actorCtx := withActor(ctx, Actor{ByUser: ownerID.String(), Role: order.RoleOwner, At: time.Now().UTC()})
+
+	resp, err := srv.UpdateShippingRules(actorCtx, api.UpdateShippingRulesRequestObject{
+		Body: &api.ShippingRulesUpdate{ShippingRules: []api.ShippingRule{
+			{Province: "Nội thành TP.HCM", Fee: 25000},
+			{Province: "*", Fee: 40000},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("UpdateShippingRules: %v", err)
+	}
+	if _, ok := resp.(api.UpdateShippingRules200JSONResponse); !ok {
+		t.Fatalf("response type = %T, want 200", resp)
+	}
+
+	row, err := db.NewSettings(pool).Get(ctx)
+	if err != nil {
+		t.Fatalf("get settings: %v", err)
+	}
+	if fee, err := pricing.ShippingFee(row.ShippingRules, "Nội thành TP.HCM"); err != nil || fee != 25000 {
+		t.Fatalf("resolver on persisted rules: fee=%d err=%v", fee, err)
+	}
+	if fee, err := pricing.ShippingFee(row.ShippingRules, "Đà Nẵng"); err != nil || fee != 40000 {
+		t.Fatalf("wildcard fallback on persisted rules: fee=%d err=%v", fee, err)
+	}
+
+	bad, err := srv.UpdateShippingRules(actorCtx, api.UpdateShippingRulesRequestObject{
+		Body: &api.ShippingRulesUpdate{ShippingRules: []api.ShippingRule{{Province: "Hà Nội", Fee: -5}}},
+	})
+	if err != nil {
+		t.Fatalf("bad rules should be a 400 response, not a handler error: %v", err)
+	}
+	if _, ok := bad.(api.UpdateShippingRules400JSONResponse); !ok {
+		t.Fatalf("negative fee: response = %T, want 400", bad)
+	}
+}
+
+// TestUpdateRefundPolicyEndToEnd persists the refund-policy text (trimmed) and reads it back.
+func TestUpdateRefundPolicyEndToEnd(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+	ownerID := seedOwnerUser(t, ctx, pool)
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
+	actorCtx := withActor(ctx, Actor{ByUser: ownerID.String(), Role: order.RoleOwner, At: time.Now().UTC()})
+
+	policy := "Đổi trả trong 3 ngày nếu lỗi do shop."
+	if _, err := srv.UpdateRefundPolicy(actorCtx, api.UpdateRefundPolicyRequestObject{
+		Body: &api.RefundPolicyUpdate{RefundPolicy: "  " + policy + "  "},
+	}); err != nil {
+		t.Fatalf("UpdateRefundPolicy: %v", err)
+	}
+	gresp, err := srv.GetSettings(ctx, api.GetSettingsRequestObject{})
+	if err != nil {
+		t.Fatalf("GetSettings: %v", err)
+	}
+	gok, ok := gresp.(api.GetSettings200JSONResponse)
+	if !ok {
+		t.Fatalf("GetSettings type = %T", gresp)
+	}
+	if gok.RefundPolicy != policy {
+		t.Fatalf("refundPolicy = %q, want trimmed %q", gok.RefundPolicy, policy)
+	}
+}
+
+// TestReplyTemplateCRUDEndToEnd walks create → update → delete over real Postgres: variables are
+// derived server-side from the body on both create and update, and an unknown id → ErrNotFound (→404).
+func TestReplyTemplateCRUDEndToEnd(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+	ownerID := seedOwnerUser(t, ctx, pool)
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
+	actorCtx := withActor(ctx, Actor{ByUser: ownerID.String(), Role: order.RoleOwner, At: time.Now().UTC()})
+
+	cresp, err := srv.CreateReplyTemplate(actorCtx, api.CreateReplyTemplateRequestObject{
+		Body: &api.ReplyTemplateInput{Title: "Báo phí ship", Body: "Phí khu vực là {phí}. CK {STK} nha"},
+	})
+	if err != nil {
+		t.Fatalf("CreateReplyTemplate: %v", err)
+	}
+	created, ok := cresp.(api.CreateReplyTemplate201JSONResponse)
+	if !ok {
+		t.Fatalf("create response = %T, want 201", cresp)
+	}
+	if len(created.Variables) != 2 || created.Variables[0] != "{phí}" || created.Variables[1] != "{STK}" {
+		t.Fatalf("derived variables = %v, want [{phí} {STK}]", created.Variables)
+	}
+	id := created.Id
+
+	uresp, err := srv.UpdateReplyTemplate(actorCtx, api.UpdateReplyTemplateRequestObject{
+		Id: id, Body: &api.ReplyTemplateInput{Title: "Báo phí ship (v2)", Body: "Chỉ còn {ngày}"},
+	})
+	if err != nil {
+		t.Fatalf("UpdateReplyTemplate: %v", err)
+	}
+	updated, ok := uresp.(api.UpdateReplyTemplate200JSONResponse)
+	if !ok {
+		t.Fatalf("update response = %T, want 200", uresp)
+	}
+	if updated.Title != "Báo phí ship (v2)" || len(updated.Variables) != 1 || updated.Variables[0] != "{ngày}" {
+		t.Fatalf("updated = %+v, want title v2 + variables [{ngày}]", updated)
+	}
+
+	dresp, err := srv.DeleteReplyTemplate(actorCtx, api.DeleteReplyTemplateRequestObject{Id: id})
+	if err != nil {
+		t.Fatalf("DeleteReplyTemplate: %v", err)
+	}
+	if _, ok := dresp.(api.DeleteReplyTemplate204Response); !ok {
+		t.Fatalf("delete response = %T, want 204", dresp)
+	}
+	if _, err := db.NewSettings(pool).ReplyTemplateByID(ctx, id); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("after delete, ByID err = %v, want ErrNotFound", err)
+	}
+
+	if _, err := srv.UpdateReplyTemplate(actorCtx, api.UpdateReplyTemplateRequestObject{
+		Id: uuid.New(), Body: &api.ReplyTemplateInput{Title: "x", Body: "y"},
+	}); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("update unknown id: err = %v, want ErrNotFound (→404)", err)
+	}
+	if _, err := srv.DeleteReplyTemplate(actorCtx, api.DeleteReplyTemplateRequestObject{Id: uuid.New()}); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("delete unknown id: err = %v, want ErrNotFound (→404)", err)
 	}
 }
