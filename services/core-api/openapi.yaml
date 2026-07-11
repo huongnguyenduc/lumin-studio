@@ -1159,6 +1159,37 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /admin/products/{id}/model-view:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [admin]
+      operationId: updateProductModelView
+      summary: Save a product's default 3D-viewer camera pose (owner-only, ADR-038).
+      description: >
+        Persists the owner's saved default camera pose (the "Lưu góc mặc định" action) — the exact angle a
+        customer sees when opening the 3D viewer. The whole pose is set together (atomic). Display metadata,
+        never money; it does not touch pricing. Out-of-range values → 400 with a per-field error. Unknown id
+        → 404. On success the pose is stored and the storefront viewer opens to it (a NULL pose auto-frames).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Model3dView'
+      responses:
+        '204':
+          description: Saved.
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /admin/products/{id}/colors:
     parameters:
       - name: id
@@ -1837,6 +1868,8 @@ components:
         model3dUrl:
           type: string
           description: .glb URL for the on-demand model viewer; empty string when none.
+        model3dView:
+          $ref: '#/components/schemas/Model3dView'
         images:
           type: array
           description: Shop photos; images[0] is the card cover (sprite-first, ADR-007). May be empty.
@@ -1871,6 +1904,41 @@ components:
         createdAt:
           type: string
           format: date-time
+
+    Model3dView:
+      type: object
+      description: >
+        Owner-saved default camera pose for the storefront 3D viewer (ADR-038). Maps 1:1 to a
+        <model-viewer> camera-orbit (orbitTheta deg · orbitPhi deg · orbitRadius %) plus camera-target
+        (targetX/Y/Z metres). Absent on a Product = no saved pose, so the viewer auto-frames. Display
+        metadata, not money — plain floats (not int-VND). The worker recenters geometry, so target is
+        usually ~origin; it is kept so an off-centre framing needs no later migration.
+      required: [orbitTheta, orbitPhi, orbitRadius, targetX, targetY, targetZ]
+      properties:
+        orbitTheta:
+          type: number
+          format: double
+          description: Azimuth in degrees, [-360, 360] → camera-orbit theta.
+        orbitPhi:
+          type: number
+          format: double
+          description: Polar angle in degrees, [0, 180] (model-viewer clamps polar) → camera-orbit phi.
+        orbitRadius:
+          type: number
+          format: double
+          description: Camera distance as a percent of the auto-frame radius, (0, 1000] → camera-orbit radius%.
+        targetX:
+          type: number
+          format: double
+          description: camera-target x in metres, [-100, 100].
+        targetY:
+          type: number
+          format: double
+          description: camera-target y in metres, [-100, 100].
+        targetZ:
+          type: number
+          format: double
+          description: camera-target z in metres, [-100, 100].
 
     Part:
       type: object

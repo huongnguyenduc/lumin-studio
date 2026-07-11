@@ -355,6 +355,12 @@ type Querier interface {
 	// product editor form can never blank it. slug stays mutable — a changed slug that collides trips the
 	// UNIQUE(slug) constraint, which the handler maps to a 400 field error (never a 500).
 	UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error)
+	// UpdateProductModelView persists the owner's saved default 3D-viewer camera pose (ADR-038) as the whole
+	// atomic model3d_view jsonb blob ({orbitTheta,orbitPhi,orbitRadius,targetX,targetY,targetZ}). It is a
+	// separate write from UpdateProduct (the design's "Lưu góc mặc định" is its own button) and touches no
+	// other column — never pricing. :execrows so an unknown id (0 rows) surfaces as ErrNoRows→404; the handler
+	// returns 204 (the editor keeps the pose it just sent — nothing new to echo).
+	UpdateProductModelView(ctx context.Context, arg UpdateProductModelViewParams) (int64, error)
 	// UpdateRefundPolicy writes ONLY the refund-policy text (ADR-012), same targeted reasoning as above.
 	UpdateRefundPolicy(ctx context.Context, refundPolicy string) (Setting, error)
 	// UpdateReplyTemplate replaces a template's title/body/variables. RETURNING with no matched row yields

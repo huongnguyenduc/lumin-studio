@@ -192,7 +192,7 @@ func (q *Queries) GetPartByProduct(ctx context.Context, arg GetPartByProductPara
 }
 
 const getProductByID = `-- name: GetProductByID :one
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at FROM products WHERE id = $1
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view FROM products WHERE id = $1
 `
 
 // GetProductByID is the by-id read the checkout handler (PR-3g) needs to derive a
@@ -217,12 +217,13 @@ func (q *Queries) GetProductByID(ctx context.Context, id uuid.UUID) (Product, er
 		&i.RatingAvg,
 		&i.ReviewCount,
 		&i.CreatedAt,
+		&i.Model3dView,
 	)
 	return i, err
 }
 
 const getProductBySlug = `-- name: GetProductBySlug :one
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at FROM products WHERE slug = $1
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view FROM products WHERE slug = $1
 `
 
 func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (Product, error) {
@@ -243,6 +244,7 @@ func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (Product, e
 		&i.RatingAvg,
 		&i.ReviewCount,
 		&i.CreatedAt,
+		&i.Model3dView,
 	)
 	return i, err
 }
@@ -424,7 +426,7 @@ const insertProduct = `-- name: InsertProduct :one
 INSERT INTO products (
   id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at
+RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view
 `
 
 type InsertProductParams struct {
@@ -471,6 +473,7 @@ func (q *Queries) InsertProduct(ctx context.Context, arg InsertProductParams) (P
 		&i.RatingAvg,
 		&i.ReviewCount,
 		&i.CreatedAt,
+		&i.Model3dView,
 	)
 	return i, err
 }
@@ -613,7 +616,7 @@ func (q *Queries) ListActiveProducts(ctx context.Context, arg ListActiveProducts
 }
 
 const listAdminProducts = `-- name: ListAdminProducts :many
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at FROM products
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view FROM products
 WHERE ($1::product_status IS NULL OR status = $1::product_status)
 ORDER BY created_at DESC, id DESC
 `
@@ -649,6 +652,7 @@ func (q *Queries) ListAdminProducts(ctx context.Context, status NullProductStatu
 			&i.RatingAvg,
 			&i.ReviewCount,
 			&i.CreatedAt,
+			&i.Model3dView,
 		); err != nil {
 			return nil, err
 		}
@@ -828,7 +832,7 @@ func (q *Queries) ListPartsByProduct(ctx context.Context, productID uuid.UUID) (
 }
 
 const listProductsByStatus = `-- name: ListProductsByStatus :many
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at FROM products WHERE status = $1 ORDER BY created_at DESC
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view FROM products WHERE status = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListProductsByStatus(ctx context.Context, status ProductStatus) ([]Product, error) {
@@ -855,6 +859,7 @@ func (q *Queries) ListProductsByStatus(ctx context.Context, status ProductStatus
 			&i.RatingAvg,
 			&i.ReviewCount,
 			&i.CreatedAt,
+			&i.Model3dView,
 		); err != nil {
 			return nil, err
 		}
@@ -1085,7 +1090,7 @@ UPDATE products
 SET slug = $2, name = $3, description = $4, category_id = $5, base_price = $6,
     dimensions = $7, material = $8, images = $9, status = $10
 WHERE id = $1
-RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at
+RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view
 `
 
 type UpdateProductParams struct {
@@ -1134,6 +1139,29 @@ func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (P
 		&i.RatingAvg,
 		&i.ReviewCount,
 		&i.CreatedAt,
+		&i.Model3dView,
 	)
 	return i, err
+}
+
+const updateProductModelView = `-- name: UpdateProductModelView :execrows
+UPDATE products SET model3d_view = $2 WHERE id = $1
+`
+
+type UpdateProductModelViewParams struct {
+	ID          uuid.UUID `json:"id"`
+	Model3dView []byte    `json:"model3dView"`
+}
+
+// UpdateProductModelView persists the owner's saved default 3D-viewer camera pose (ADR-038) as the whole
+// atomic model3d_view jsonb blob ({orbitTheta,orbitPhi,orbitRadius,targetX,targetY,targetZ}). It is a
+// separate write from UpdateProduct (the design's "Lưu góc mặc định" is its own button) and touches no
+// other column — never pricing. :execrows so an unknown id (0 rows) surfaces as ErrNoRows→404; the handler
+// returns 204 (the editor keeps the pose it just sent — nothing new to echo).
+func (q *Queries) UpdateProductModelView(ctx context.Context, arg UpdateProductModelViewParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateProductModelView, arg.ID, arg.Model3dView)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

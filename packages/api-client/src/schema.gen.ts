@@ -603,6 +603,28 @@ export interface paths {
         patch: operations["updateAdminProduct"];
         trace?: never;
     };
+    "/admin/products/{id}/model-view": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Save a product's default 3D-viewer camera pose (owner-only, ADR-038).
+         * @description Persists the owner's saved default camera pose (the "Lưu góc mặc định" action) — the exact angle a customer sees when opening the 3D viewer. The whole pose is set together (atomic). Display metadata, never money; it does not touch pricing. Out-of-range values → 400 with a per-field error. Unknown id → 404. On success the pose is stored and the storefront viewer opens to it (a NULL pose auto-frames).
+         */
+        patch: operations["updateProductModelView"];
+        trace?: never;
+    };
     "/admin/products/{id}/colors": {
         parameters: {
             query?: never;
@@ -938,6 +960,7 @@ export interface components {
             material: string;
             /** @description .glb URL for the on-demand model viewer; empty string when none. */
             model3dUrl: string;
+            model3dView?: components["schemas"]["Model3dView"];
             /** @description Shop photos; images[0] is the card cover (sprite-first, ADR-007). May be empty. */
             images: string[];
             colors: components["schemas"]["Color"][];
@@ -954,6 +977,39 @@ export interface components {
             reviewCount: number;
             /** Format: date-time */
             createdAt: string;
+        };
+        /** @description Owner-saved default camera pose for the storefront 3D viewer (ADR-038). Maps 1:1 to a <model-viewer> camera-orbit (orbitTheta deg · orbitPhi deg · orbitRadius %) plus camera-target (targetX/Y/Z metres). Absent on a Product = no saved pose, so the viewer auto-frames. Display metadata, not money — plain floats (not int-VND). The worker recenters geometry, so target is usually ~origin; it is kept so an off-centre framing needs no later migration. */
+        Model3dView: {
+            /**
+             * Format: double
+             * @description Azimuth in degrees, [-360, 360] → camera-orbit theta.
+             */
+            orbitTheta: number;
+            /**
+             * Format: double
+             * @description Polar angle in degrees, [0, 180] (model-viewer clamps polar) → camera-orbit phi.
+             */
+            orbitPhi: number;
+            /**
+             * Format: double
+             * @description Camera distance as a percent of the auto-frame radius, (0, 1000] → camera-orbit radius%.
+             */
+            orbitRadius: number;
+            /**
+             * Format: double
+             * @description camera-target x in metres, [-100, 100].
+             */
+            targetX: number;
+            /**
+             * Format: double
+             * @description camera-target y in metres, [-100, 100].
+             */
+            targetY: number;
+            /**
+             * Format: double
+             * @description camera-target z in metres, [-100, 100].
+             */
+            targetZ: number;
         };
         /** @description A named part of a product (ADR-037) — e.g. "Chao đèn". colors[] belong to a part via Color.partId; the customer picks one colour per part. */
         Part: {
@@ -2720,6 +2776,34 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Product"];
                 };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateProductModelView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Model3dView"];
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
