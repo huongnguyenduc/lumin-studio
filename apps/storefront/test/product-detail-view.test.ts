@@ -33,6 +33,7 @@ function option(overrides: Partial<ApiOption> = {}): ApiOption {
     type: 'text',
     priceDelta: 0,
     maxChars: 20,
+    choices: [],
     ...overrides,
   };
 }
@@ -52,6 +53,7 @@ function apiProduct(overrides: Partial<ApiProduct> = {}): ApiProduct {
     images: ['https://cdn.example/mochi-1.webp', 'https://cdn.example/mochi-2.webp'],
     colors: [color()],
     options: [],
+    parts: [],
     status: 'active',
     ratingAvg: 4.8,
     reviewCount: 128,
