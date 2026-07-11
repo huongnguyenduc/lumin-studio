@@ -97,7 +97,7 @@ export function TransitionDialog({
       ref={ref}
       aria-labelledby={titleId}
       onClose={onClose}
-      className="w-[min(30rem,calc(100vw-2rem))] rounded-lg border-2 border-border-strong bg-surface p-0 text-text-body shadow-lg backdrop:bg-cocoa-900/40"
+      className="w-[min(30rem,calc(100vw-2rem))] rounded-lg border-2 border-border-strong bg-surface-card p-0 text-text-body shadow-lg backdrop:bg-black/40"
     >
       <form
         method="dialog"
