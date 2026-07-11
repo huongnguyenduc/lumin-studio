@@ -119,6 +119,12 @@ func TestToOrderDTOFullMapping(t *testing.T) {
 	if it.OptionLabels == nil || len(*it.OptionLabels) != 1 || (*it.OptionLabels)[0] != "Size M" {
 		t.Fatalf("optionLabels = %v, want [Size M]", it.OptionLabels)
 	}
+	// A flat line (no parts / no choices) emits NONE of the ADR-037 configurator fields, so its DTO stays
+	// byte-identical to the pre-configurator shape (the omit-when-empty contract).
+	if it.PartColors != nil || it.PartColorLabels != nil || it.OptionChoices != nil || it.OptionChoiceLabels != nil {
+		t.Fatalf("flat line carries configurator fields: partColors=%v partColorLabels=%v optionChoices=%v optionChoiceLabels=%v",
+			it.PartColors, it.PartColorLabels, it.OptionChoices, it.OptionChoiceLabels)
+	}
 
 	if len(dto.StatusHistory) != 2 {
 		t.Fatalf("statusHistory len = %d, want 2", len(dto.StatusHistory))
@@ -131,6 +137,50 @@ func TestToOrderDTOFullMapping(t *testing.T) {
 	}
 	if !dto.StatusHistory[1].At.Equal(time.Date(2026, 7, 1, 9, 30, 0, 0, time.UTC)) {
 		t.Fatalf("event At parse mismatch: %v", dto.StatusHistory[1].At)
+	}
+}
+
+// A parts line (ADR-037) round-trips BOTH the wire id-pairs (partColors/optionChoices — the contract) AND
+// the denormalized display labels built from the part/colour/option/choice NAMES frozen in the jsonb at
+// capture ("Chao đèn: Cam"), in the selection's order. The admin order-detail reads the labels straight —
+// no live catalog join — and a later catalog rename can't rewrite this sold line. Docker-free pin of the
+// label derivation the parts-product end-to-end test also proves through a real PG round-trip.
+func TestOrderItemsDTOConfiguratorLabels(t *testing.T) {
+	partA, colorA := uuid.New(), uuid.New()
+	partB, colorB := uuid.New(), uuid.New()
+	optSize, choiceM := uuid.New(), uuid.New()
+	partColors := `[{"partId":"` + partA.String() + `","partName":"Chao đèn","colorId":"` + colorA.String() + `","colorName":"Cam","hex":"#f80"},` +
+		`{"partId":"` + partB.String() + `","partName":"Đế","colorId":"` + colorB.String() + `","colorName":"Trắng","hex":"#fff"}]`
+	optionChoices := `[{"optionId":"` + optSize.String() + `","optionLabel":"Kích thước","choiceId":"` + choiceM.String() + `","choiceLabel":"M"}]`
+	items := []sqlc.ListOrderItemsRow{{
+		ID: uuid.New(), ProductID: uuid.New(), OptionIds: nil, Quantity: 1, UnitPrice: 155_000,
+		ProductName: "Đèn hai phần", PartColors: []byte(partColors), OptionChoices: []byte(optionChoices),
+	}}
+
+	got, err := orderItemsDTO(items)
+	if err != nil {
+		t.Fatalf("orderItemsDTO: %v", err)
+	}
+	it := got[0]
+
+	// id-pairs (contract, unchanged) — order preserved.
+	if it.PartColors == nil || len(*it.PartColors) != 2 ||
+		(*it.PartColors)[0].PartId != partA || (*it.PartColors)[0].ColorId != colorA ||
+		(*it.PartColors)[1].PartId != partB || (*it.PartColors)[1].ColorId != colorB {
+		t.Fatalf("partColors id-pairs = %v, want [(A) (B)] in order", it.PartColors)
+	}
+	if it.OptionChoices == nil || len(*it.OptionChoices) != 1 ||
+		(*it.OptionChoices)[0].OptionId != optSize || (*it.OptionChoices)[0].ChoiceId != choiceM {
+		t.Fatalf("optionChoices id-pairs = %v, want [(size,M)]", it.OptionChoices)
+	}
+
+	// labels (denormalized, "Name: Name", selection order).
+	if it.PartColorLabels == nil || len(*it.PartColorLabels) != 2 ||
+		(*it.PartColorLabels)[0] != "Chao đèn: Cam" || (*it.PartColorLabels)[1] != "Đế: Trắng" {
+		t.Fatalf("partColorLabels = %v, want [Chao đèn: Cam, Đế: Trắng]", it.PartColorLabels)
+	}
+	if it.OptionChoiceLabels == nil || len(*it.OptionChoiceLabels) != 1 || (*it.OptionChoiceLabels)[0] != "Kích thước: M" {
+		t.Fatalf("optionChoiceLabels = %v, want [Kích thước: M]", it.OptionChoiceLabels)
 	}
 }
 

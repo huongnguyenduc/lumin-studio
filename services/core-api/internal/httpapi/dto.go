@@ -120,21 +120,37 @@ func orderItemsDTO(items []sqlc.ListOrderItemsRow) ([]api.OrderItem, error) {
 			labels := it.OptionLabels
 			dto.OptionLabels = &labels
 		}
-		// ADR-037 snapshots (part_colors / option_choices jsonb). Omitted when empty — a flat/legacy line
-		// carries neither, so its DTO stays byte-identical to the pre-configurator shape (mirrors optionLabels).
-		partColors, err := partColorsDTO(it.PartColors)
+		// ADR-037 snapshots (part_colors / option_choices jsonb, denormalized WITH names at capture). Each
+		// yields the wire id-pairs that reconstruct the selection AND the display labels ("Chao: Đỏ") the
+		// admin detail renders straight — the names are frozen on the line, so no live catalog join. All
+		// omit-when-empty, so a flat/legacy line's DTO stays byte-identical to the pre-configurator shape.
+		pcSnap, err := partColorSnapshots(it.PartColors)
 		if err != nil {
 			return nil, fmt.Errorf("order item %s: part_colors: %w", it.ID, err)
 		}
-		if len(partColors) > 0 {
-			dto.PartColors = &partColors
+		if len(pcSnap) > 0 {
+			ids := make([]api.PartColorSelection, len(pcSnap))
+			labels := make([]string, len(pcSnap))
+			for j, s := range pcSnap {
+				ids[j] = api.PartColorSelection{PartId: s.PartID, ColorId: s.ColorID}
+				labels[j] = partColorLabel(s)
+			}
+			dto.PartColors = &ids
+			dto.PartColorLabels = &labels
 		}
-		optionChoices, err := optionChoicesDTO(it.OptionChoices)
+		ocSnap, err := optionChoiceSnapshots(it.OptionChoices)
 		if err != nil {
 			return nil, fmt.Errorf("order item %s: option_choices: %w", it.ID, err)
 		}
-		if len(optionChoices) > 0 {
-			dto.OptionChoices = &optionChoices
+		if len(ocSnap) > 0 {
+			ids := make([]api.OptionChoiceSelection, len(ocSnap))
+			labels := make([]string, len(ocSnap))
+			for j, s := range ocSnap {
+				ids[j] = api.OptionChoiceSelection{OptionId: s.OptionID, ChoiceId: s.ChoiceID}
+				labels[j] = optionChoiceLabel(s)
+			}
+			dto.OptionChoices = &ids
+			dto.OptionChoiceLabels = &labels
 		}
 		if it.Personalization != nil {
 			dto.Personalization = &api.Personalization{
@@ -147,38 +163,44 @@ func orderItemsDTO(items []sqlc.ListOrderItemsRow) ([]api.OrderItem, error) {
 	return out, nil
 }
 
-// partColorsDTO unmarshals the order_items.part_colors jsonb snapshot to the wire shape (ADR-037). A
-// nil/empty column yields a nil slice (the caller omits the field). The persisted element type is the
-// domain order.PartColorSelection; only the field casing differs from the wire type.
-func partColorsDTO(raw []byte) ([]api.PartColorSelection, error) {
+// partColorSnapshots unmarshals the order_items.part_colors jsonb into the DENORMALIZED snapshot slice
+// (ADR-037: ids + the part/colour names frozen at capture). A nil/empty column yields a nil slice. Shared
+// by the order-detail DTO (which derives both the wire id-pairs and the labels) and the print-queue card
+// (labels only) — both read the frozen names, never a live catalog join.
+func partColorSnapshots(raw []byte) ([]order.PartColorSnapshot, error) {
 	if len(raw) == 0 {
 		return nil, nil
 	}
-	var sel []order.PartColorSelection
-	if err := json.Unmarshal(raw, &sel); err != nil {
+	var snap []order.PartColorSnapshot
+	if err := json.Unmarshal(raw, &snap); err != nil {
 		return nil, err
 	}
-	out := make([]api.PartColorSelection, len(sel))
-	for i, s := range sel {
-		out[i] = api.PartColorSelection{PartId: s.PartID, ColorId: s.ColorID}
-	}
-	return out, nil
+	return snap, nil
 }
 
-// optionChoicesDTO unmarshals the order_items.option_choices jsonb snapshot to the wire shape (ADR-037).
-func optionChoicesDTO(raw []byte) ([]api.OptionChoiceSelection, error) {
+// optionChoiceSnapshots unmarshals the order_items.option_choices jsonb into the denormalized snapshot
+// slice (ADR-037: ids + option/choice labels frozen at capture). Nil/empty column → nil slice.
+func optionChoiceSnapshots(raw []byte) ([]order.OptionChoiceSnapshot, error) {
 	if len(raw) == 0 {
 		return nil, nil
 	}
-	var sel []order.OptionChoiceSelection
-	if err := json.Unmarshal(raw, &sel); err != nil {
+	var snap []order.OptionChoiceSnapshot
+	if err := json.Unmarshal(raw, &snap); err != nil {
 		return nil, err
 	}
-	out := make([]api.OptionChoiceSelection, len(sel))
-	for i, s := range sel {
-		out[i] = api.OptionChoiceSelection{OptionId: s.OptionID, ChoiceId: s.ChoiceID}
-	}
-	return out, nil
+	return snap, nil
+}
+
+// partColorLabel formats one part-colour snapshot as the display string "PartName: ColorName" (e.g.
+// "Chao: Đỏ") — the storefront cart uses the same shape, so the admin detail, the print card and the cart
+// read alike. Extends the P3-e single colorName / optionLabels display per named part.
+func partColorLabel(s order.PartColorSnapshot) string {
+	return s.PartName + ": " + s.ColorName
+}
+
+// optionChoiceLabel formats one picked-choice snapshot as "OptionLabel: ChoiceLabel" (e.g. "Kích thước: Lớn").
+func optionChoiceLabel(s order.OptionChoiceSnapshot) string {
+	return s.OptionLabel + ": " + s.ChoiceLabel
 }
 
 // statusHistoryDTO maps the appended statusHistory chain to the wire shape, parsing each event's

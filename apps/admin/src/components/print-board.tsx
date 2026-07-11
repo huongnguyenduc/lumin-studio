@@ -214,11 +214,14 @@ function DraggableCard({
   );
 }
 
-/** The card face: product (+ color) · quantity, then the order code · due date · printer meta line.
- *  Shared by the in-column card and the drag overlay. No money, no PII (a print card carries neither). */
+/** The card face: product (+ color) · quantity, the per-part colours (ADR-037), then the order code · due
+ *  date · printer meta line. Shared by the in-column card and the drag overlay. No money, no PII (a print
+ *  card carries neither). A parts product has no flat colorName; its filament-per-part shows on its own
+ *  line from partColorLabels — what to load for which part, straight off the order (names frozen at capture). */
 function CardFace({ card }: { card: PrintCard }) {
   const t = useTranslations('printQueue');
   const nameLine = card.colorName ? `${card.productName} · ${card.colorName}` : card.productName;
+  const partColors = card.partColorLabels?.length ? card.partColorLabels.join(' · ') : null;
   const meta = [
     card.orderCode,
     card.eta ? t('due', { date: formatVnDate(card.eta) }) : null,
@@ -231,6 +234,7 @@ function CardFace({ card }: { card: PrintCard }) {
         {nameLine}
         {card.quantity > 1 ? <span className="text-text-muted"> ×{card.quantity}</span> : null}
       </p>
+      {partColors ? <p className="mt-0.5 text-xs text-text-body">{partColors}</p> : null}
       <p className="mt-0.5 font-mono text-[11px] text-text-muted">{meta.join(' · ')}</p>
     </>
   );

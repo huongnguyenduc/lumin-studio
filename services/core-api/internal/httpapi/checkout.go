@@ -409,11 +409,16 @@ func (s *Server) priceLine(ctx context.Context, it api.OrderItemInput) (db.NewOr
 		return db.NewOrderItem{}, err
 	}
 
+	// PriceItem validated the selection above, so every id is known-good here: resolve each into its
+	// DENORMALIZED snapshot (ids + the part/colour/option/choice NAMES read from the catalog we already
+	// fetched to price it) and persist THAT. Freezing the names at capture is ADR-037 pt 2 — admin/print
+	// then read what-to-make with no live join, and a later rename can't rewrite this sold line. This is
+	// display metadata only; `unit` (the money) is already computed and unaffected.
 	line := db.NewOrderItem{
 		ProductID:       it.ProductId,
 		ColorID:         it.ColorId,
-		PartColors:      sel.PartColors,
-		OptionChoices:   sel.OptionChoices,
+		PartColors:      partColorSnapshotsFrom(sel.PartColors, colors, parts),
+		OptionChoices:   optionChoiceSnapshotsFrom(sel.OptionChoices, options, choices),
 		Personalization: personalization,
 		Quantity:        int32(it.Quantity), // bounds checked in validate()
 		UnitPrice:       unit,
@@ -539,7 +544,8 @@ func optionIDsFrom(ids *[]uuid.UUID) []uuid.UUID {
 }
 
 // partColorSelectionsFrom maps the optional wire partColors ([]PartColorSelection, may be absent) to the
-// domain snapshot both PriceItem and the persisted line use (ADR-037). Absent → nil (a flat product).
+// domain pricing INPUT (ids only; PriceItem validates colour ∈ part). Absent → nil (a flat product). The
+// persisted, denormalized record is built separately by partColorSnapshotsFrom after pricing.
 func partColorSelectionsFrom(sel *[]api.PartColorSelection) []order.PartColorSelection {
 	if sel == nil {
 		return nil
@@ -551,7 +557,7 @@ func partColorSelectionsFrom(sel *[]api.PartColorSelection) []order.PartColorSel
 	return out
 }
 
-// optionChoiceSelectionsFrom maps the optional wire optionChoices to the domain snapshot (ADR-037).
+// optionChoiceSelectionsFrom maps the optional wire optionChoices to the domain pricing input (ids only).
 func optionChoiceSelectionsFrom(sel *[]api.OptionChoiceSelection) []order.OptionChoiceSelection {
 	if sel == nil {
 		return nil
@@ -559,6 +565,63 @@ func optionChoiceSelectionsFrom(sel *[]api.OptionChoiceSelection) []order.Option
 	out := make([]order.OptionChoiceSelection, len(*sel))
 	for i, s := range *sel {
 		out[i] = order.OptionChoiceSelection{OptionID: s.OptionId, ChoiceID: s.ChoiceId}
+	}
+	return out
+}
+
+// partColorSnapshotsFrom resolves each VALIDATED per-part colour selection into the denormalized snapshot
+// persisted on the line (ADR-037 pt 2): the ids plus the part name + colour name/hex read from the catalog
+// the caller already fetched to PRICE the line — so no extra query, and the priced ids and the stored names
+// come from the one read. Called AFTER PriceItem, so every id resolved; a lookup miss (impossible after
+// validation) leaves that name empty rather than dropping the id. Empty selection → nil (a flat product).
+func partColorSnapshotsFrom(sel []order.PartColorSelection, colors []sqlc.Color, parts []sqlc.Part) []order.PartColorSnapshot {
+	if len(sel) == 0 {
+		return nil
+	}
+	partName := make(map[uuid.UUID]string, len(parts))
+	for _, p := range parts {
+		partName[p.ID] = p.Name
+	}
+	colorByID := make(map[uuid.UUID]sqlc.Color, len(colors))
+	for _, c := range colors {
+		colorByID[c.ID] = c
+	}
+	out := make([]order.PartColorSnapshot, len(sel))
+	for i, pc := range sel {
+		c := colorByID[pc.ColorID]
+		out[i] = order.PartColorSnapshot{
+			PartID:    pc.PartID,
+			PartName:  partName[pc.PartID],
+			ColorID:   pc.ColorID,
+			ColorName: c.Name,
+			Hex:       c.Hex,
+		}
+	}
+	return out
+}
+
+// optionChoiceSnapshotsFrom resolves each validated choice pick into its denormalized snapshot (ADR-037 pt
+// 2): ids + the option label + the picked choice's label, from the priced catalog. Empty → nil.
+func optionChoiceSnapshotsFrom(sel []order.OptionChoiceSelection, options []sqlc.Option, choices []sqlc.OptionChoice) []order.OptionChoiceSnapshot {
+	if len(sel) == 0 {
+		return nil
+	}
+	optLabel := make(map[uuid.UUID]string, len(options))
+	for _, o := range options {
+		optLabel[o.ID] = o.Label
+	}
+	choiceLabel := make(map[uuid.UUID]string, len(choices))
+	for _, c := range choices {
+		choiceLabel[c.ID] = c.Label
+	}
+	out := make([]order.OptionChoiceSnapshot, len(sel))
+	for i, oc := range sel {
+		out[i] = order.OptionChoiceSnapshot{
+			OptionID:    oc.OptionID,
+			OptionLabel: optLabel[oc.OptionID],
+			ChoiceID:    oc.ChoiceID,
+			ChoiceLabel: choiceLabel[oc.ChoiceID],
+		}
 	}
 	return out
 }

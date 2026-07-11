@@ -494,6 +494,19 @@ func TestCreateOrderPartsProductEndToEnd(t *testing.T) {
 		(*dto.Items[0].OptionChoices)[0].OptionId != fx.optSize || (*dto.Items[0].OptionChoices)[0].ChoiceId != fx.choiceM {
 		t.Fatalf("optionChoices = %v, want [{%v,%v}]", dto.Items[0].OptionChoices, fx.optSize, fx.choiceM)
 	}
+	// ADR-037 pt 2 (2d): the display labels are DENORMALIZED from the catalog NAMES at capture — resolved
+	// once from the priced catalog, frozen on the line, in the selection's order — so admin order-detail
+	// and the print card read "what to make" straight off the order with no live catalog join. The names
+	// ("Chao đèn"/"Cam"/…) are on the DB rows, never on the wire, so seeing them here proves capture-time
+	// resolution (not a client echo).
+	if dto.Items[0].PartColorLabels == nil || len(*dto.Items[0].PartColorLabels) != 2 ||
+		(*dto.Items[0].PartColorLabels)[0] != "Chao đèn: Cam" || (*dto.Items[0].PartColorLabels)[1] != "Đế: Trắng" {
+		t.Fatalf("partColorLabels = %v, want [Chao đèn: Cam, Đế: Trắng]", dto.Items[0].PartColorLabels)
+	}
+	if dto.Items[0].OptionChoiceLabels == nil || len(*dto.Items[0].OptionChoiceLabels) != 1 ||
+		(*dto.Items[0].OptionChoiceLabels)[0] != "Kích thước: M" {
+		t.Fatalf("optionChoiceLabels = %v, want [Kích thước: M]", dto.Items[0].OptionChoiceLabels)
+	}
 
 	// Quote parity (oracle note c): the SAME selection quoted returns the SAME unit price the order charged.
 	qresp, err := srv.QuotePrice(ctx, api.QuotePriceRequestObject{Body: &api.PriceQuoteInput{

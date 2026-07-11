@@ -1312,6 +1312,10 @@ export interface components {
             partColors?: components["schemas"]["PartColorSelection"][];
             /** @description The picked choice for each choice-option that offers choices (ADR-037), snapshotted from the order. Omitted when the line has none. Read-only. */
             optionChoices?: components["schemas"]["OptionChoiceSelection"][];
+            /** @description Display labels for the per-part colours ("Chao: Đỏ"), resolved from the names DENORMALIZED into the order at capture (ADR-037 — a later catalog rename can't rewrite a sold order; no live join). One per partColors entry, same order. Omitted for a flat product. Read-only. */
+            partColorLabels?: string[];
+            /** @description Display labels for the picked choices ("Kích thước: Lớn"), resolved from the names denormalized at capture (ADR-037). One per optionChoices entry, same order. Omitted when the line has none. Read-only. */
+            optionChoiceLabels?: string[];
         };
         /** @description A requested line item. Deliberately has NO unitPrice — the server re-derives every price from the catalog (always-must #2); a client price is never trusted. */
         OrderItemInput: {
@@ -1658,6 +1662,8 @@ export interface components {
             quantity: number;
             /** @description Denormalized color name for the queue card (spec colorName); absent if the line has no color. */
             colorName?: string;
+            /** @description Per-part colour labels ("Chao: Đỏ") for a product with named parts (ADR-037), from the names denormalized into the order line at capture. What filament for which part, at the printer. Absent for a flat product (which uses colorName). Read-only. */
+            partColorLabels?: string[];
             /** @description Assigned printer, when staff have set one. */
             printer?: string;
             /**
