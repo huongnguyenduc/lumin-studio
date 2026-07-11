@@ -111,24 +111,25 @@ func productDTO(p sqlc.Product, colors []sqlc.Color, options []sqlc.Option, part
 		return api.Product{}, fmt.Errorf("product %s: decode model3d_view jsonb: %w", p.Slug, err)
 	}
 	return api.Product{
-		Id:          p.ID,
-		Slug:        p.Slug,
-		Name:        p.Name,
-		Description: p.Description,
-		CategoryId:  p.CategoryID,
-		BasePrice:   p.BasePrice, // raw int-VND, never formatted server-side (always-must #2)
-		Dimensions:  dims,
-		Material:    p.Material,
-		Model3dUrl:  p.Model3dUrl,
-		Model3dView: view, // ADR-038: owner-saved default camera pose; nil = auto-frame
-		Images:      images,
-		Colors:      colorsDTO(colors),
-		Options:     optionsDTO(options, choices),
-		Parts:       partsDTO(parts),
-		Status:      api.ProductStatus(p.Status),
-		RatingAvg:   p.RatingAvg,
-		ReviewCount: int(p.ReviewCount),
-		CreatedAt:   p.CreatedAt.Time,
+		Id:             p.ID,
+		Slug:           p.Slug,
+		Name:           p.Name,
+		Description:    p.Description,
+		CategoryId:     p.CategoryID,
+		BasePrice:      p.BasePrice, // raw int-VND, never formatted server-side (always-must #2)
+		Dimensions:     dims,
+		Material:       p.Material,
+		Model3dUrl:     p.Model3dUrl,
+		Model3dView:    view, // ADR-038: owner-saved default camera pose; nil = auto-frame
+		Images:         images,
+		Colors:         colorsDTO(colors),
+		Options:        optionsDTO(options, choices),
+		Parts:          partsDTO(parts),
+		Status:         api.ProductStatus(p.Status),
+		RatingAvg:      p.RatingAvg,
+		ReviewCount:    int(p.ReviewCount),
+		CreatedAt:      p.CreatedAt.Time,
+		EstFilamentQty: int64Ptr(p.EstFilamentQty), // ADR-039: flat-product standard (admin editor; 0 omitted)
 	}, nil
 }
 
@@ -151,12 +152,13 @@ func colorsDTO(rows []sqlc.Color) []api.Color {
 	out := make([]api.Color, len(rows))
 	for i, c := range rows {
 		out[i] = api.Color{
-			Id:         c.ID,
-			Name:       c.Name,
-			Hex:        c.Hex,
-			Available:  c.Available,
-			PriceDelta: c.PriceDelta,            // raw int-VND (may be 0)
-			PartId:     uuidPtrFromPg(c.PartID), // ADR-037: null = flat product-level colour
+			Id:                 c.ID,
+			Name:               c.Name,
+			Hex:                c.Hex,
+			Available:          c.Available,
+			PriceDelta:         c.PriceDelta,                        // raw int-VND (may be 0)
+			PartId:             uuidPtrFromPg(c.PartID),             // ADR-037: null = flat product-level colour
+			FilamentMaterialId: uuidPtrFromPg(c.FilamentMaterialID), // ADR-039: null = colour not linked to a filament
 		}
 	}
 	return out
@@ -190,12 +192,13 @@ func optionsDTO(rows []sqlc.Option, choices []sqlc.OptionChoice) []api.Option {
 	return out
 }
 
-// partDTO maps one part row to the wire shape (ADR-037).
+// partDTO maps one part row to the wire shape (ADR-037; ADR-039 est_filament_qty).
 func partDTO(p sqlc.Part) api.Part {
 	return api.Part{
-		Id:           p.ID,
-		Name:         p.Name,
-		DisplayOrder: int(p.DisplayOrder),
+		Id:             p.ID,
+		Name:           p.Name,
+		DisplayOrder:   int(p.DisplayOrder),
+		EstFilamentQty: int64Ptr(p.EstFilamentQty), // ADR-039: per-part standard (0 omitted)
 	}
 }
 
@@ -217,6 +220,12 @@ func optionChoiceDTO(c sqlc.OptionChoice) api.OptionChoice {
 		PriceDelta:   c.PriceDelta, // raw int-VND (may be 0)
 		DisplayOrder: int(c.DisplayOrder),
 	}
+}
+
+// int64Ptr boxes an int64 for an optional wire field (ADR-039 est fields): a NOT-NULL DB column is always
+// present, so the pointer is always set; the `omitempty` on the wire drops a 0 (= no estimate).
+func int64Ptr(v int64) *int64 {
+	return &v
 }
 
 // maxCharsPtr widens the sqlc nullable *int32 to the wire *int (nil stays nil → JSON null).

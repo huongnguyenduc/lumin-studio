@@ -24,8 +24,8 @@ ORDER BY name, slug;
 
 -- name: InsertProduct :one
 INSERT INTO products (
-  id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+  id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, est_filament_qty
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 RETURNING *;
 
 -- name: GetProductBySlug :one
@@ -60,7 +60,7 @@ ORDER BY created_at DESC, id DESC;
 -- name: UpdateProduct :one
 UPDATE products
 SET slug = $2, name = $3, description = $4, category_id = $5, base_price = $6,
-    dimensions = $7, material = $8, images = $9, status = $10
+    dimensions = $7, material = $8, images = $9, status = $10, est_filament_qty = $11
 WHERE id = $1
 RETURNING *;
 
@@ -142,8 +142,8 @@ WHERE status = 'active'
 -- set = the colour belongs to that part. The handler validates the part ∈ the same product first
 -- (GetPartByProduct) so a colour can never be grouped under another product's part.
 -- name: InsertColor :one
-INSERT INTO colors (id, product_id, name, hex, available, price_delta, part_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO colors (id, product_id, name, hex, available, price_delta, part_id, filament_material_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
 -- name: ListColorsByProduct :many
@@ -154,7 +154,7 @@ SELECT * FROM colors WHERE product_id = $1 ORDER BY name;
 -- cross-product edit. RETURNING lets the handler 404 on a stale id.
 -- name: UpdateColor :one
 UPDATE colors
-SET name = $3, hex = $4, available = $5, price_delta = $6, part_id = $7
+SET name = $3, hex = $4, available = $5, price_delta = $6, part_id = $7, filament_material_id = $8
 WHERE id = $1 AND product_id = $2
 RETURNING *;
 
@@ -212,8 +212,8 @@ WHERE product_id = @product_id AND status = 'published';
 -- === ADR-037 configurator: parts (named part groups, each with its own colour set) ===
 
 -- name: InsertPart :one
-INSERT INTO parts (id, product_id, name, display_order)
-VALUES ($1, $2, $3, $4)
+INSERT INTO parts (id, product_id, name, display_order, est_filament_qty)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
 -- name: ListPartsByProduct :many
@@ -229,7 +229,7 @@ SELECT * FROM parts WHERE id = $1 AND product_id = $2;
 -- 404), the same cross-product guard as UpdateColor/UpdateOption. Deleting a part CASCADEs its colours
 -- (000015); a colour pinned by an order_item (FK NO ACTION) blocks the delete → 23503 → 409 (archive).
 -- name: UpdatePart :one
-UPDATE parts SET name = $3, display_order = $4
+UPDATE parts SET name = $3, display_order = $4, est_filament_qty = $5
 WHERE id = $1 AND product_id = $2
 RETURNING *;
 

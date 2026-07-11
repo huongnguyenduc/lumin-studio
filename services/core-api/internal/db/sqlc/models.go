@@ -552,13 +552,14 @@ type Category struct {
 }
 
 type Color struct {
-	ID         uuid.UUID   `json:"id"`
-	ProductID  uuid.UUID   `json:"productId"`
-	Name       string      `json:"name"`
-	Hex        string      `json:"hex"`
-	Available  bool        `json:"available"`
-	PriceDelta int64       `json:"priceDelta"`
-	PartID     pgtype.UUID `json:"partId"`
+	ID                 uuid.UUID   `json:"id"`
+	ProductID          uuid.UUID   `json:"productId"`
+	Name               string      `json:"name"`
+	Hex                string      `json:"hex"`
+	Available          bool        `json:"available"`
+	PriceDelta         int64       `json:"priceDelta"`
+	PartID             pgtype.UUID `json:"partId"`
+	FilamentMaterialID pgtype.UUID `json:"filamentMaterialId"`
 }
 
 type ConsentGrant struct {
@@ -589,6 +590,19 @@ type FilamentBatch struct {
 	QtyOriginal  int64              `json:"qtyOriginal"`
 	QtyRemaining int64              `json:"qtyRemaining"`
 	TotalCostVnd int64              `json:"totalCostVnd"`
+}
+
+type FilamentConsumption struct {
+	ID          uuid.UUID          `json:"id"`
+	MaterialID  uuid.UUID          `json:"materialId"`
+	Kind        string             `json:"kind"`
+	Qty         int64              `json:"qty"`
+	CostVnd     int64              `json:"costVnd"`
+	OrderItemID pgtype.UUID        `json:"orderItemId"`
+	ProductName *string            `json:"productName"`
+	Reason      *string            `json:"reason"`
+	Note        *string            `json:"note"`
+	At          pgtype.Timestamptz `json:"at"`
 }
 
 type FilamentMaterial struct {
@@ -672,39 +686,42 @@ type Outbox struct {
 }
 
 type Part struct {
-	ID           uuid.UUID `json:"id"`
-	ProductID    uuid.UUID `json:"productId"`
-	Name         string    `json:"name"`
-	DisplayOrder int32     `json:"displayOrder"`
+	ID             uuid.UUID `json:"id"`
+	ProductID      uuid.UUID `json:"productId"`
+	Name           string    `json:"name"`
+	DisplayOrder   int32     `json:"displayOrder"`
+	EstFilamentQty int64     `json:"estFilamentQty"`
 }
 
 type PrintJob struct {
-	ID          uuid.UUID          `json:"id"`
-	OrderItemID uuid.UUID          `json:"orderItemId"`
-	Stage       PrintStage         `json:"stage"`
-	Printer     *string            `json:"printer"`
-	ColorName   *string            `json:"colorName"`
-	Eta         pgtype.Timestamptz `json:"eta"`
-	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
-	UpdatedAt   pgtype.Timestamptz `json:"updatedAt"`
+	ID                 uuid.UUID          `json:"id"`
+	OrderItemID        uuid.UUID          `json:"orderItemId"`
+	Stage              PrintStage         `json:"stage"`
+	Printer            *string            `json:"printer"`
+	ColorName          *string            `json:"colorName"`
+	Eta                pgtype.Timestamptz `json:"eta"`
+	CreatedAt          pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt          pgtype.Timestamptz `json:"updatedAt"`
+	FilamentDeductedAt pgtype.Timestamptz `json:"filamentDeductedAt"`
 }
 
 type Product struct {
-	ID          uuid.UUID          `json:"id"`
-	Slug        string             `json:"slug"`
-	Name        string             `json:"name"`
-	Description string             `json:"description"`
-	CategoryID  uuid.UUID          `json:"categoryId"`
-	BasePrice   int64              `json:"basePrice"`
-	Dimensions  []byte             `json:"dimensions"`
-	Material    string             `json:"material"`
-	Model3dUrl  string             `json:"model3dUrl"`
-	Images      []byte             `json:"images"`
-	Status      ProductStatus      `json:"status"`
-	RatingAvg   *float32           `json:"ratingAvg"`
-	ReviewCount int32              `json:"reviewCount"`
-	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
-	Model3dView []byte             `json:"model3dView"`
+	ID             uuid.UUID          `json:"id"`
+	Slug           string             `json:"slug"`
+	Name           string             `json:"name"`
+	Description    string             `json:"description"`
+	CategoryID     uuid.UUID          `json:"categoryId"`
+	BasePrice      int64              `json:"basePrice"`
+	Dimensions     []byte             `json:"dimensions"`
+	Material       string             `json:"material"`
+	Model3dUrl     string             `json:"model3dUrl"`
+	Images         []byte             `json:"images"`
+	Status         ProductStatus      `json:"status"`
+	RatingAvg      *float32           `json:"ratingAvg"`
+	ReviewCount    int32              `json:"reviewCount"`
+	CreatedAt      pgtype.Timestamptz `json:"createdAt"`
+	Model3dView    []byte             `json:"model3dView"`
+	EstFilamentQty int64              `json:"estFilamentQty"`
 }
 
 type ReplyTemplate struct {

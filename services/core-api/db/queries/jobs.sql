@@ -56,6 +56,18 @@ SET stage = sqlc.arg('stage'),
 WHERE id = sqlc.arg('id')
 RETURNING *;
 
+-- ClaimPrintForPrinting is the atomic deduct-on-print claim (ADR-039 pt 4): it moves a job to PRINTING AND
+-- stamps filament_deducted_at in ONE conditional UPDATE, but only WHERE filament_deducted_at IS NULL — so
+-- the FIRST →PRINTING wins the row (RETURNING it → the caller draws filament), while any later move (a
+-- PACKING→PRINTING re-drag, or a second staff dragging at the same moment, serialized on the row lock)
+-- matches 0 rows → the caller reads the row back and skips re-deducting. This is the idempotency +
+-- concurrency guard that keeps one physical print from drawing filament twice.
+-- name: ClaimPrintForPrinting :one
+UPDATE print_jobs
+SET stage = 'PRINTING', filament_deducted_at = now(), updated_at = now()
+WHERE id = $1 AND filament_deducted_at IS NULL
+RETURNING *;
+
 -- ListPrintQueue is the admin kanban board read (P3-f): every print job across all stages, joined to
 -- the human-readable order code + product name + quantity so a queue card says WHAT TO MAKE for WHICH
 -- order (the bare print_jobs row carries ids only, useless at the printer). color_name is denormalized

@@ -6,15 +6,21 @@ import (
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/api"
 )
 
-// cleanPartInput trims the name, requires it non-empty within the cap, and defaults displayOrder to 0.
+// cleanPartInput trims the name, requires it non-empty within the cap, defaults displayOrder to 0, and
+// carries the ADR-039 per-part est (default 0, must be ≥ 0).
 func TestCleanPartInput(t *testing.T) {
 	order := 3
-	name, ord, fields := cleanPartInput(api.PartInput{Name: " Chao đèn ", DisplayOrder: &order})
-	if len(fields) != 0 || name != "Chao đèn" || ord != 3 {
-		t.Fatalf("valid part: name=%q order=%d fields=%v", name, ord, fields)
+	est := int64(45)
+	name, ord, gotEst, fields := cleanPartInput(api.PartInput{Name: " Chao đèn ", DisplayOrder: &order, EstFilamentQty: &est})
+	if len(fields) != 0 || name != "Chao đèn" || ord != 3 || gotEst != 45 {
+		t.Fatalf("valid part: name=%q order=%d est=%d fields=%v", name, ord, gotEst, fields)
 	}
-	if _, _, f := cleanPartInput(api.PartInput{Name: "  "}); f["name"] == "" {
+	if _, _, _, f := cleanPartInput(api.PartInput{Name: "  "}); f["name"] == "" {
 		t.Fatalf("empty name should be a field error, got %v", f)
+	}
+	neg := int64(-1)
+	if _, _, _, f := cleanPartInput(api.PartInput{Name: "x", EstFilamentQty: &neg}); f["estFilamentQty"] == "" {
+		t.Fatalf("negative estFilamentQty should be a field error, got %v", f)
 	}
 }
 

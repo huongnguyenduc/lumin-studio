@@ -57,15 +57,16 @@ func (s *Server) CreateProductPart(ctx context.Context, request api.CreateProduc
 	if request.Body == nil {
 		return api.CreateProductPart400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
 	}
-	name, order, fields := cleanPartInput(*request.Body)
+	name, order, est, fields := cleanPartInput(*request.Body)
 	if len(fields) > 0 {
 		return api.CreateProductPart400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
 	}
 	part, err := db.NewCatalog(s.pool).CreatePart(ctx, sqlc.InsertPartParams{
-		ID:           uuid.New(),
-		ProductID:    request.Id,
-		Name:         name,
-		DisplayOrder: order,
+		ID:             uuid.New(),
+		ProductID:      request.Id,
+		Name:           name,
+		DisplayOrder:   order,
+		EstFilamentQty: est, // ADR-039 per-part deduct-on-print standard
 	})
 	if pgCode(err) == pgForeignKeyViolation {
 		return nil, db.ErrNotFound // unknown product → 404
@@ -85,15 +86,16 @@ func (s *Server) UpdateProductPart(ctx context.Context, request api.UpdateProduc
 	if request.Body == nil {
 		return api.UpdateProductPart400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
 	}
-	name, order, fields := cleanPartInput(*request.Body)
+	name, order, est, fields := cleanPartInput(*request.Body)
 	if len(fields) > 0 {
 		return api.UpdateProductPart400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
 	}
 	part, err := db.NewCatalog(s.pool).UpdatePart(ctx, sqlc.UpdatePartParams{
-		ID:           request.PartId,
-		ProductID:    request.Id,
-		Name:         name,
-		DisplayOrder: order,
+		ID:             request.PartId,
+		ProductID:      request.Id,
+		Name:           name,
+		DisplayOrder:   order,
+		EstFilamentQty: est, // ADR-039 per-part deduct-on-print standard
 	})
 	if err != nil {
 		return nil, err // db.ErrNotFound → 404
@@ -199,8 +201,9 @@ func (s *Server) DeleteOptionChoice(ctx context.Context, request api.DeleteOptio
 	return api.DeleteOptionChoice204Response{}, nil
 }
 
-// cleanPartInput trims + validates a part create/replace body. displayOrder defaults to 0.
-func cleanPartInput(in api.PartInput) (name string, displayOrder int32, fields map[string]string) {
+// cleanPartInput trims + validates a part create/replace body. displayOrder defaults to 0; estFilamentQty
+// (ADR-039 per-part deduct-on-print standard) defaults to 0 (no estimate) and must be ≥ 0.
+func cleanPartInput(in api.PartInput) (name string, displayOrder int32, estFilamentQty int64, fields map[string]string) {
 	name = strings.TrimSpace(in.Name)
 	fields = map[string]string{}
 	if name == "" || utf8.RuneCountInString(name) > maxPartNameChars {
@@ -209,10 +212,25 @@ func cleanPartInput(in api.PartInput) (name string, displayOrder int32, fields m
 	if in.DisplayOrder != nil {
 		displayOrder = int32(*in.DisplayOrder)
 	}
-	if len(fields) > 0 {
-		return "", 0, fields
+	if in.EstFilamentQty != nil {
+		estFilamentQty = *in.EstFilamentQty
 	}
-	return name, displayOrder, nil
+	if estFilamentQty < 0 {
+		fields["estFilamentQty"] = msgKey(codeValidation)
+	}
+	if len(fields) > 0 {
+		return "", 0, 0, fields
+	}
+	return name, displayOrder, estFilamentQty, nil
+}
+
+// pgUUIDPtr maps an optional wire uuid (a nullable FK like colors.filament_material_id, ADR-039) to a
+// pgtype.UUID: nil → SQL NULL, set → the value.
+func pgUUIDPtr(id *uuid.UUID) pgtype.UUID {
+	if id == nil {
+		return pgtype.UUID{Valid: false}
+	}
+	return pgtype.UUID{Bytes: *id, Valid: true}
 }
 
 // cleanOptionChoiceInput trims + validates an option-choice create/replace body. priceDelta defaults to 0
