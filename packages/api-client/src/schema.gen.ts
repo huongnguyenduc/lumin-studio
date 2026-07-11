@@ -549,6 +549,146 @@ export interface paths {
         patch: operations["updateReplyTemplate"];
         trace?: never;
     };
+    "/admin/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin catalog list — every product across all statuses (admin-gated read).
+         * @description Returns the whole catalog as an admin SUMMARY projection (id, slug, name, basePrice, category, status, cover images, rating, review count, created date), newest first, optionally filtered to a single ProductStatus (omit for all, "Tất cả"). This is the INTERNAL admin projection — unlike the public GetProducts card list it shows draft/archived products too (ADR-032). NOT paginated: a made-to-order catalog is small and admin-curated, so the FE holds the whole set and searches client-side. Admin-gated (cookieAuth; owner AND staff read). Money (basePrice) is raw int-VND (always-must #2); status is an enum the client maps to an i18n label (always-must #3).
+         */
+        get: operations["getAdminProducts"];
+        put?: never;
+        /**
+         * Create a product (owner-only).
+         * @description Creates a product from the editor form (owner-only — spec §08 catalog is an owner power). A product is born with no model (model3dUrl is set later by the asset pipeline, P3-j-b) and with the colors/options added through their own nested endpoints, so the response Product has empty colors/options. A duplicate slug → 400 with a `slug` field error.
+         */
+        post: operations["createAdminProduct"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/products/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Admin product detail by id — any status, with colors and options (admin-gated read).
+         * @description Returns one product as the full Product shape (with its colors and options) for the editor to populate — ANY status, unlike the active-only public GetProductBySlug (ADR-032). Admin-gated (cookieAuth; owner AND staff read). Unknown id → 404.
+         */
+        get: operations["getAdminProduct"];
+        put?: never;
+        post?: never;
+        /**
+         * Hard-delete a product (owner-only; blocked for products with history).
+         * @description Hard-deletes a product (owner-only). Allowed only for a never-ordered, never-rendered product (its colors/options cascade away); a product referenced by an order or an asset job is retained (ON DELETE RESTRICT) and the delete returns 409 — the reversible "remove from store" path is PATCH status→archived. Unknown id → 404.
+         */
+        delete: operations["deleteAdminProduct"];
+        options?: never;
+        head?: never;
+        /**
+         * Save a product's editable fields (owner-only).
+         * @description Saves the editable fields of a product (owner-only). It does NOT touch model3dUrl — that column is owned by the asset pipeline (P3-j-b), so the editor form can never blank it. A slug changed to one already taken → 400 with a `slug` field error. Unknown id → 404. Returns the updated product with its colors and options.
+         */
+        patch: operations["updateAdminProduct"];
+        trace?: never;
+    };
+    "/admin/products/{id}/colors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a named print colour to a product (owner-only). */
+        post: operations["createProductColor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/products/{id}/colors/{colorId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                colorId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a product's colour (owner-only). */
+        delete: operations["deleteProductColor"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit a product's colour (owner-only).
+         * @description Scoped by (product, colour); a colourId under another product → 404.
+         */
+        patch: operations["updateProductColor"];
+        trace?: never;
+    };
+    "/admin/products/{id}/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a customization option to a product (owner-only). */
+        post: operations["createProductOption"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/products/{id}/options/{optionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                optionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a product's option (owner-only). */
+        delete: operations["deleteProductOption"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit a product's option (owner-only).
+         * @description Scoped by (product, option); an optionId under another product → 404.
+         */
+        patch: operations["updateProductOption"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -697,6 +837,78 @@ export interface components {
             pageSize: number;
             /** @description Total active products matching the filter, across all pages. */
             total: number;
+        };
+        /** @description Admin catalog-list projection (P3-j): the fields the admin product grid needs across ALL statuses — like ProductCard but WITH status (for the tab badges) and createdAt, and without colors/options (the list makes no per-product read → no N+1). basePrice is raw int-VND (always-must #2); the detail read (getAdminProduct) returns the full Product. */
+        AdminProductSummary: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            name: string;
+            /**
+             * Format: int64
+             * @description Starting price in int-VND (>= 0).
+             */
+            basePrice: number;
+            /** Format: uuid */
+            categoryId: string;
+            status: components["schemas"]["ProductStatus"];
+            /** @description Shop photos; images[0] is the card cover (ADR-007). May be empty. */
+            images: string[];
+            /**
+             * Format: float
+             * @description Denormalized average rating; null until the first review.
+             */
+            ratingAvg?: number | null;
+            reviewCount: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @description Create/replace body for a product (P3-j, owner-only). Same editable fields as Product MINUS the server/pipeline-owned ones: no id/createdAt/ratingAvg/reviewCount (server-owned), no colors/options (managed via their own nested endpoints), and no model3dUrl (owned by the asset pipeline, P3-j-b — the editor form can never set or blank it). basePrice is raw int-VND (always-must #2). description and images are optional (default "" / []). */
+        ProductInput: {
+            /** @description Unique URL slug (spec §02); a duplicate → 400 with a `slug` field error. */
+            slug: string;
+            name: string;
+            /** @description Markdown stored as text (spec §02). Optional; defaults to "". */
+            description?: string;
+            /** Format: uuid */
+            categoryId: string;
+            /**
+             * Format: int64
+             * @description Starting price in int-VND (>= 0).
+             */
+            basePrice: number;
+            dimensions: components["schemas"]["Dimensions"];
+            /** @description Print material (spec §02; open-ended TEXT+CHECK — PLA · PETG · recycled-PLA). */
+            material: string;
+            /** @description Shop photos; images[0] is the card cover (ADR-007). Optional; defaults to []. */
+            images?: string[];
+            status: components["schemas"]["ProductStatus"];
+        };
+        /** @description Create/replace body for a product colour (P3-j). priceDelta is int-VND (default 0). */
+        ColorInput: {
+            name: string;
+            /** @description Swatch colour as a hex string (e.g. */
+            hex: string;
+            available: boolean;
+            /**
+             * Format: int64
+             * @description Added price in int-VND (>= 0). Optional; defaults to 0.
+             */
+            priceDelta?: number;
+        };
+        /** @description Create/replace body for a customization option (P3-j). priceDelta is int-VND (default 0). */
+        OptionInput: {
+            label: string;
+            /** @description Optional; defaults to "". */
+            description?: string;
+            type: components["schemas"]["OptionType"];
+            /**
+             * Format: int64
+             * @description Added price in int-VND (>= 0). Optional; defaults to 0.
+             */
+            priceDelta?: number;
+            /** @description Engraving character limit for a `text` option; null/omitted for no limit. */
+            maxChars?: number | null;
         };
         /** @description One PUBLISHED product review as it crosses the public wire (spec §02). The author's identity is deliberately omitted — reviews carry a nullable customer_id and guests may review, so exposing a reviewer name would be public PII (PDPL); only the review content is returned. `reply` is the shop's public reply, null until the shop replies (no Phase-1 write path populates it yet). Hidden reviews are filtered at the SQL source and never appear here. */
         Review: {
@@ -2067,6 +2279,306 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReplyTemplate"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAdminProducts: {
+        parameters: {
+            query?: {
+                /** @description Filter to a single product status (spec §02). Omit for all statuses ("Tất cả"). */
+                status?: components["schemas"]["ProductStatus"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every product as an admin summary card (newest first). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminProductSummary"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createAdminProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductInput"];
+            };
+        };
+        responses: {
+            /** @description The created product. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Product"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getAdminProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The product with its colors and options. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Product"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteAdminProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateAdminProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductInput"];
+            };
+        };
+        responses: {
+            /** @description The updated product. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Product"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createProductColor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ColorInput"];
+            };
+        };
+        responses: {
+            /** @description The created colour. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Color"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteProductColor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                colorId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateProductColor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                colorId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ColorInput"];
+            };
+        };
+        responses: {
+            /** @description The updated colour. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Color"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createProductOption: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OptionInput"];
+            };
+        };
+        responses: {
+            /** @description The created option. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Option"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteProductOption: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                optionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateProductOption: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                optionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OptionInput"];
+            };
+        };
+        responses: {
+            /** @description The updated option. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Option"];
                 };
             };
             400: components["responses"]["BadRequest"];

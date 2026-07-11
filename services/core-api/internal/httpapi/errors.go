@@ -35,6 +35,10 @@ const (
 	codeTrackingReqd    = "TRACKING_CODE_REQUIRED"
 	codeQcPhotoReqd     = "QC_PHOTO_REQUIRED"
 	codeRateLimited     = "RATE_LIMITED"
+	// codeProductInUse — a hard product delete blocked because the product is referenced by an order or
+	// an asset job (ON DELETE RESTRICT, migrations 000005/000006). 409, steering the owner to archive
+	// (PATCH status→archived) instead of deleting a product with history (P3-j).
+	codeProductInUse = "PRODUCT_IN_USE"
 	// codeEmailTaken is the storefront-register 409: the login email is already registered. It is
 	// the ONE field a register form may safely surface (a login email is user-known, not a secret —
 	// unlike the login endpoint, which stays uniform to avoid enumeration). PR-P1-r.
@@ -72,6 +76,11 @@ var errTrackingCodeRequired = errors.New("httpapi: tracking code required for SH
 // an HTTP-edge concern — the domain guard models neither shipping artifact — so it lives here and
 // maps to 422 QC_PHOTO_REQUIRED.
 var errQcPhotoRequired = errors.New("httpapi: valid QC photo URL required for SHIPPING")
+
+// errProductInUse is the admin product-delete boundary rejection for a product referenced by an order or
+// an asset job (the DB raises a foreign_key_violation on the RESTRICT FK; the handler translates it here so
+// the wire answer is a stable 409, never a leaked pg error). Maps to 409 PRODUCT_IN_USE (P3-j).
+var errProductInUse = errors.New("httpapi: product has orders or render history")
 
 // Checkout (PR-3g) boundary sentinels — HTTP-edge rules the domain/db layers don't model.
 var (
@@ -148,6 +157,9 @@ func mapError(err error) (int, api.ErrorEnvelope) {
 	case errors.Is(err, errQcPhotoRequired):
 		// SHIPPING with no QC packing photo — well-formed request, unprocessable per D-P3-6.
 		return http.StatusUnprocessableEntity, envelope(codeQcPhotoReqd)
+	case errors.Is(err, errProductInUse):
+		// Hard product delete blocked by an order/asset-job RESTRICT FK — archive instead (P3-j).
+		return http.StatusConflict, envelope(codeProductInUse)
 	case errors.Is(err, errPaymentProofRequired):
 		// Web create with no usable CK-receipt URL (CHK-04). Same code the domain guard uses.
 		return http.StatusUnprocessableEntity, envelope(string(order.ErrProofRequired))

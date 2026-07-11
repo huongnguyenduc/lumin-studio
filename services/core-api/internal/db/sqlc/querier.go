@@ -79,6 +79,14 @@ type Querier interface {
 	// DashboardReviewsWaiting counts published reviews with no shop reply yet — the reviews_waiting_idx
 	// partial index (WHERE reply IS NULL) scans only the un-replied hot set.
 	DashboardReviewsWaiting(ctx context.Context) (int64, error)
+	DeleteColor(ctx context.Context, arg DeleteColorParams) (uuid.UUID, error)
+	DeleteOption(ctx context.Context, arg DeleteOptionParams) (uuid.UUID, error)
+	// DeleteProduct is a HARD delete, allowed only for never-ordered/never-rendered products (drafts, mistakes):
+	// order_items and asset_jobs reference products ON DELETE RESTRICT (migrations 000005/000006), so deleting a
+	// product with history raises a foreign_key_violation the handler maps to 409 "hãy lưu trữ thay vì xoá" — the
+	// reversible "remove from store" path is PATCH status→archived. colors/options are ON DELETE CASCADE, so a
+	// successful delete cleans them up. RETURNING id so a missing row surfaces as ErrNoRows→404.
+	DeleteProduct(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	// DeleteReplyTemplate removes a template. :execrows so the wrapper can map 0-rows → ErrNotFound (404)
 	// rather than silently succeeding on a bogus id.
 	DeleteReplyTemplate(ctx context.Context, id uuid.UUID) (int64, error)
@@ -186,6 +194,14 @@ type Querier interface {
 	// created_at DESC, id DESC give a deterministic total order so OFFSET pagination is stable across pages.
 	// Every order has ≥1 item (CreateOrderTx enforces it) so first_item_name is never NULL in practice.
 	ListAdminOrders(ctx context.Context, arg ListAdminOrdersParams) ([]ListAdminOrdersRow, error)
+	// ListAdminProducts is the admin catalog list (P3-j / P3-k) — the INTERNAL projection that shows EVERY
+	// status (active/draft/archived), unlike the storefront's active-only ListActiveProducts (ADR-032: admin
+	// may see unreleased rows). The optional status narg drives the "Tất cả/Đang bán/Nháp/Lưu trữ" tabs: NULL =
+	// all statuses, else exact-match. No pagination/count — a made-to-order catalog is small and admin-curated
+	// (same "fits one response" scale as ListCategories), so the FE lists+searches the whole set client-side;
+	// add a page window here if the catalog ever grows large. Newest first with an id tiebreak = deterministic
+	// total order.
+	ListAdminProducts(ctx context.Context, status NullProductStatus) ([]Product, error)
 	ListAssetJobsByStatus(ctx context.Context, status AssetJobStatus) ([]AssetJob, error)
 	// ListBankAudit returns the money-out config history, newest first (the owner audit view). Ordering is
 	// by seq (monotonic insertion order), so it is deterministic even when two changes share a created_at
@@ -285,6 +301,13 @@ type Querier interface {
 	// UpdateBankAccount sets the VietQR STK the server renders the static QR from. Called only inside
 	// UpdateBankAccountTx, alongside InsertBankAudit, so every change is audited (conventions §57).
 	UpdateBankAccount(ctx context.Context, bankAccount []byte) (Setting, error)
+	// UpdateColor / DeleteColor are scoped by BOTH id AND product_id (P3-j) so a colorId belonging to another
+	// product (a mismatched /products/{id}/colors/{colorId} path) matches no row → ErrNoRows→404, never a
+	// cross-product edit. RETURNING lets the handler 404 on a stale id.
+	UpdateColor(ctx context.Context, arg UpdateColorParams) (Color, error)
+	// UpdateOption / DeleteOption are scoped by BOTH id AND product_id (P3-j), same cross-product guard as the
+	// color mutations: an optionId under the wrong product → no row → 404.
+	UpdateOption(ctx context.Context, arg UpdateOptionParams) (Option, error)
 	// UpdateOrderStatus persists a transition: the new status, the full appended statusHistory,
 	// and — only when supplied — the denormalized refund_proof_url and payment_confirmed_at
 	// (COALESCE keeps the existing value when the narg is NULL). The append itself is computed in
@@ -292,6 +315,11 @@ type Querier interface {
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) (Order, error)
 	// UpdatePrintJobStage advances the print queue stage (staff drag-drop) and refreshes updated_at.
 	UpdatePrintJobStage(ctx context.Context, arg UpdatePrintJobStageParams) (PrintJob, error)
+	// UpdateProduct saves the editable fields of a product (P3-j). It deliberately does NOT touch model3d_url:
+	// that column is owned by the asset pipeline (P3-j-b sets it when a model finishes ingesting), so the
+	// product editor form can never blank it. slug stays mutable — a changed slug that collides trips the
+	// UNIQUE(slug) constraint, which the handler maps to a 400 field error (never a 500).
+	UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error)
 	// UpdateRefundPolicy writes ONLY the refund-policy text (ADR-012), same targeted reasoning as above.
 	UpdateRefundPolicy(ctx context.Context, refundPolicy string) (Setting, error)
 	// UpdateReplyTemplate replaces a template's title/body/variables. RETURNING with no matched row yields

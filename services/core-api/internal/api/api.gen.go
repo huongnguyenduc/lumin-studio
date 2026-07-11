@@ -132,6 +132,27 @@ type AdminOrderSummary struct {
 	Total  int64       `json:"total"`
 }
 
+// AdminProductSummary Admin catalog-list projection (P3-j): the fields the admin product grid needs across ALL statuses — like ProductCard but WITH status (for the tab badges) and createdAt, and without colors/options (the list makes no per-product read → no N+1). basePrice is raw int-VND (always-must #2); the detail read (getAdminProduct) returns the full Product.
+type AdminProductSummary struct {
+	// BasePrice Starting price in int-VND (>= 0).
+	BasePrice  int64              `json:"basePrice"`
+	CategoryId openapi_types.UUID `json:"categoryId"`
+	CreatedAt  time.Time          `json:"createdAt"`
+	Id         openapi_types.UUID `json:"id"`
+
+	// Images Shop photos; images[0] is the card cover (ADR-007). May be empty.
+	Images []string `json:"images"`
+	Name   string   `json:"name"`
+
+	// RatingAvg Denormalized average rating; null until the first review.
+	RatingAvg   *float32 `json:"ratingAvg"`
+	ReviewCount int      `json:"reviewCount"`
+	Slug        string   `json:"slug"`
+
+	// Status Product lifecycle (spec §02, Postgres `product_status`). The detail read returns `active` only.
+	Status ProductStatus `json:"status"`
+}
+
 // AuthUser The authenticated user (no credential material).
 type AuthUser struct {
 	Email openapi_types.Email `json:"email"`
@@ -202,6 +223,18 @@ type Color struct {
 
 	// PriceDelta Added price in int-VND (>= 0).
 	PriceDelta int64 `json:"priceDelta"`
+}
+
+// ColorInput Create/replace body for a product colour (P3-j). priceDelta is int-VND (default 0).
+type ColorInput struct {
+	Available bool `json:"available"`
+
+	// Hex Swatch colour as a hex string (e.g.
+	Hex  string `json:"hex"`
+	Name string `json:"name"`
+
+	// PriceDelta Added price in int-VND (>= 0). Optional; defaults to 0.
+	PriceDelta *int64 `json:"priceDelta,omitempty"`
 }
 
 // CreateInboxOrderInput Staff/owner-created inbox order → born PAID with no payment record (the staff already verified money landed, conventions §17). Requires a resolved staff/owner actor; no `paymentProofUrl`.
@@ -337,6 +370,22 @@ type Option struct {
 
 	// PriceDelta Added price in int-VND (>= 0).
 	PriceDelta int64 `json:"priceDelta"`
+
+	// Type Customization option kind (spec §02, Postgres `option_type`). `text` carries an engraving char limit (maxChars).
+	Type OptionType `json:"type"`
+}
+
+// OptionInput Create/replace body for a customization option (P3-j). priceDelta is int-VND (default 0).
+type OptionInput struct {
+	// Description Optional; defaults to "".
+	Description *string `json:"description,omitempty"`
+	Label       string  `json:"label"`
+
+	// MaxChars Engraving character limit for a `text` option; null/omitted for no limit.
+	MaxChars *int `json:"maxChars"`
+
+	// PriceDelta Added price in int-VND (>= 0). Optional; defaults to 0.
+	PriceDelta *int64 `json:"priceDelta,omitempty"`
 
 	// Type Customization option kind (spec §02, Postgres `option_type`). `text` carries an engraving char limit (maxChars).
 	Type OptionType `json:"type"`
@@ -580,6 +629,32 @@ type ProductCard struct {
 	Slug string `json:"slug"`
 }
 
+// ProductInput Create/replace body for a product (P3-j, owner-only). Same editable fields as Product MINUS the server/pipeline-owned ones: no id/createdAt/ratingAvg/reviewCount (server-owned), no colors/options (managed via their own nested endpoints), and no model3dUrl (owned by the asset pipeline, P3-j-b — the editor form can never set or blank it). basePrice is raw int-VND (always-must #2). description and images are optional (default "" / []).
+type ProductInput struct {
+	// BasePrice Starting price in int-VND (>= 0).
+	BasePrice  int64              `json:"basePrice"`
+	CategoryId openapi_types.UUID `json:"categoryId"`
+
+	// Description Markdown stored as text (spec §02). Optional; defaults to "".
+	Description *string `json:"description,omitempty"`
+
+	// Dimensions Product bounding size in millimetres (spec §02; displayed "180 × 180 × 240 mm").
+	Dimensions Dimensions `json:"dimensions"`
+
+	// Images Shop photos; images[0] is the card cover (ADR-007). Optional; defaults to [].
+	Images *[]string `json:"images,omitempty"`
+
+	// Material Print material (spec §02; open-ended TEXT+CHECK — PLA · PETG · recycled-PLA).
+	Material string `json:"material"`
+	Name     string `json:"name"`
+
+	// Slug Unique URL slug (spec §02); a duplicate → 400 with a `slug` field error.
+	Slug string `json:"slug"`
+
+	// Status Product lifecycle (spec §02, Postgres `product_status`). The detail read returns `active` only.
+	Status ProductStatus `json:"status"`
+}
+
 // ProductList One page of catalog cards plus the pagination envelope (spec §03 list state). `total` is the count of active products matching the filter across all pages; the client derives the page count.
 type ProductList struct {
 	Items []ProductCard `json:"items"`
@@ -780,6 +855,12 @@ type GetAdminOrdersParams struct {
 	PageSize *int `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
+// GetAdminProductsParams defines parameters for GetAdminProducts.
+type GetAdminProductsParams struct {
+	// Status Filter to a single product status (spec §02). Omit for all statuses ("Tất cả").
+	Status *ProductStatus `form:"status,omitempty" json:"status,omitempty"`
+}
+
 // GetCategoriesParams defines parameters for GetCategories.
 type GetCategoriesParams struct {
 	// IfNoneMatch Conditional GET — when it matches the current ETag the server returns 304 with no body.
@@ -842,6 +923,24 @@ type GetProductReviewsParams struct {
 
 // AdvancePrintJobStageJSONRequestBody defines body for AdvancePrintJobStage for application/json ContentType.
 type AdvancePrintJobStageJSONRequestBody = PrintStageUpdate
+
+// CreateAdminProductJSONRequestBody defines body for CreateAdminProduct for application/json ContentType.
+type CreateAdminProductJSONRequestBody = ProductInput
+
+// UpdateAdminProductJSONRequestBody defines body for UpdateAdminProduct for application/json ContentType.
+type UpdateAdminProductJSONRequestBody = ProductInput
+
+// CreateProductColorJSONRequestBody defines body for CreateProductColor for application/json ContentType.
+type CreateProductColorJSONRequestBody = ColorInput
+
+// UpdateProductColorJSONRequestBody defines body for UpdateProductColor for application/json ContentType.
+type UpdateProductColorJSONRequestBody = ColorInput
+
+// CreateProductOptionJSONRequestBody defines body for CreateProductOption for application/json ContentType.
+type CreateProductOptionJSONRequestBody = OptionInput
+
+// UpdateProductOptionJSONRequestBody defines body for UpdateProductOption for application/json ContentType.
+type UpdateProductOptionJSONRequestBody = OptionInput
 
 // CreateReplyTemplateJSONRequestBody defines body for CreateReplyTemplate for application/json ContentType.
 type CreateReplyTemplateJSONRequestBody = ReplyTemplateInput
@@ -985,6 +1084,39 @@ type ServerInterface interface {
 	// Admin print queue — every print job across all stages, enriched (admin-gated).
 	// (GET /admin/print-queue)
 	GetPrintQueue(w http.ResponseWriter, r *http.Request)
+	// Admin catalog list — every product across all statuses (admin-gated read).
+	// (GET /admin/products)
+	GetAdminProducts(w http.ResponseWriter, r *http.Request, params GetAdminProductsParams)
+	// Create a product (owner-only).
+	// (POST /admin/products)
+	CreateAdminProduct(w http.ResponseWriter, r *http.Request)
+	// Hard-delete a product (owner-only; blocked for products with history).
+	// (DELETE /admin/products/{id})
+	DeleteAdminProduct(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Admin product detail by id — any status, with colors and options (admin-gated read).
+	// (GET /admin/products/{id})
+	GetAdminProduct(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Save a product's editable fields (owner-only).
+	// (PATCH /admin/products/{id})
+	UpdateAdminProduct(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Add a named print colour to a product (owner-only).
+	// (POST /admin/products/{id}/colors)
+	CreateProductColor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Remove a product's colour (owner-only).
+	// (DELETE /admin/products/{id}/colors/{colorId})
+	DeleteProductColor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, colorId openapi_types.UUID)
+	// Edit a product's colour (owner-only).
+	// (PATCH /admin/products/{id}/colors/{colorId})
+	UpdateProductColor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, colorId openapi_types.UUID)
+	// Add a customization option to a product (owner-only).
+	// (POST /admin/products/{id}/options)
+	CreateProductOption(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Remove a product's option (owner-only).
+	// (DELETE /admin/products/{id}/options/{optionId})
+	DeleteProductOption(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, optionId openapi_types.UUID)
+	// Edit a product's option (owner-only).
+	// (PATCH /admin/products/{id}/options/{optionId})
+	UpdateProductOption(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, optionId openapi_types.UUID)
 	// List the extension reply templates (admin-gated read).
 	// (GET /admin/reply-templates)
 	ListReplyTemplates(w http.ResponseWriter, r *http.Request)
@@ -1093,6 +1225,72 @@ func (_ Unimplemented) AdvancePrintJobStage(w http.ResponseWriter, r *http.Reque
 // Admin print queue — every print job across all stages, enriched (admin-gated).
 // (GET /admin/print-queue)
 func (_ Unimplemented) GetPrintQueue(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Admin catalog list — every product across all statuses (admin-gated read).
+// (GET /admin/products)
+func (_ Unimplemented) GetAdminProducts(w http.ResponseWriter, r *http.Request, params GetAdminProductsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Create a product (owner-only).
+// (POST /admin/products)
+func (_ Unimplemented) CreateAdminProduct(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Hard-delete a product (owner-only; blocked for products with history).
+// (DELETE /admin/products/{id})
+func (_ Unimplemented) DeleteAdminProduct(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Admin product detail by id — any status, with colors and options (admin-gated read).
+// (GET /admin/products/{id})
+func (_ Unimplemented) GetAdminProduct(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Save a product's editable fields (owner-only).
+// (PATCH /admin/products/{id})
+func (_ Unimplemented) UpdateAdminProduct(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Add a named print colour to a product (owner-only).
+// (POST /admin/products/{id}/colors)
+func (_ Unimplemented) CreateProductColor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Remove a product's colour (owner-only).
+// (DELETE /admin/products/{id}/colors/{colorId})
+func (_ Unimplemented) DeleteProductColor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, colorId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Edit a product's colour (owner-only).
+// (PATCH /admin/products/{id}/colors/{colorId})
+func (_ Unimplemented) UpdateProductColor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, colorId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Add a customization option to a product (owner-only).
+// (POST /admin/products/{id}/options)
+func (_ Unimplemented) CreateProductOption(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Remove a product's option (owner-only).
+// (DELETE /admin/products/{id}/options/{optionId})
+func (_ Unimplemented) DeleteProductOption(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, optionId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Edit a product's option (owner-only).
+// (PATCH /admin/products/{id}/options/{optionId})
+func (_ Unimplemented) UpdateProductOption(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, optionId openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1397,6 +1595,374 @@ func (siw *ServerInterfaceWrapper) GetPrintQueue(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetPrintQueue(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAdminProducts operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminProducts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAdminProductsParams
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", r.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAdminProducts(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAdminProduct operation middleware
+func (siw *ServerInterfaceWrapper) CreateAdminProduct(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAdminProduct(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAdminProduct operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAdminProduct(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAdminProduct(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAdminProduct operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminProduct(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAdminProduct(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAdminProduct operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAdminProduct(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAdminProduct(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateProductColor operation middleware
+func (siw *ServerInterfaceWrapper) CreateProductColor(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateProductColor(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteProductColor operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProductColor(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "colorId" -------------
+	var colorId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "colorId", chi.URLParam(r, "colorId"), &colorId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "colorId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProductColor(w, r, id, colorId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateProductColor operation middleware
+func (siw *ServerInterfaceWrapper) UpdateProductColor(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "colorId" -------------
+	var colorId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "colorId", chi.URLParam(r, "colorId"), &colorId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "colorId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateProductColor(w, r, id, colorId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateProductOption operation middleware
+func (siw *ServerInterfaceWrapper) CreateProductOption(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateProductOption(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteProductOption operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProductOption(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "optionId" -------------
+	var optionId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "optionId", chi.URLParam(r, "optionId"), &optionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "optionId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProductOption(w, r, id, optionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateProductOption operation middleware
+func (siw *ServerInterfaceWrapper) UpdateProductOption(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "optionId" -------------
+	var optionId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "optionId", chi.URLParam(r, "optionId"), &optionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "optionId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateProductOption(w, r, id, optionId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2214,6 +2780,39 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/admin/print-queue", wrapper.GetPrintQueue)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/products", wrapper.GetAdminProducts)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/products", wrapper.CreateAdminProduct)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/admin/products/{id}", wrapper.DeleteAdminProduct)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/products/{id}", wrapper.GetAdminProduct)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/admin/products/{id}", wrapper.UpdateAdminProduct)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/products/{id}/colors", wrapper.CreateProductColor)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/admin/products/{id}/colors/{colorId}", wrapper.DeleteProductColor)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/admin/products/{id}/colors/{colorId}", wrapper.UpdateProductColor)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/products/{id}/options", wrapper.CreateProductOption)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/admin/products/{id}/options/{optionId}", wrapper.DeleteProductOption)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/admin/products/{id}/options/{optionId}", wrapper.UpdateProductOption)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/reply-templates", wrapper.ListReplyTemplates)
 	})
 	r.Group(func(r chi.Router) {
@@ -2476,6 +3075,532 @@ type GetPrintQueue401JSONResponse struct{ UnauthorizedJSONResponse }
 func (response GetPrintQueue401JSONResponse) VisitGetPrintQueueResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminProductsRequestObject struct {
+	Params GetAdminProductsParams
+}
+
+type GetAdminProductsResponseObject interface {
+	VisitGetAdminProductsResponse(w http.ResponseWriter) error
+}
+
+type GetAdminProducts200JSONResponse []AdminProductSummary
+
+func (response GetAdminProducts200JSONResponse) VisitGetAdminProductsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminProducts400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetAdminProducts400JSONResponse) VisitGetAdminProductsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminProducts401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetAdminProducts401JSONResponse) VisitGetAdminProductsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateAdminProductRequestObject struct {
+	Body *CreateAdminProductJSONRequestBody
+}
+
+type CreateAdminProductResponseObject interface {
+	VisitCreateAdminProductResponse(w http.ResponseWriter) error
+}
+
+type CreateAdminProduct201JSONResponse Product
+
+func (response CreateAdminProduct201JSONResponse) VisitCreateAdminProductResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateAdminProduct400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateAdminProduct400JSONResponse) VisitCreateAdminProductResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateAdminProduct401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateAdminProduct401JSONResponse) VisitCreateAdminProductResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateAdminProduct403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateAdminProduct403JSONResponse) VisitCreateAdminProductResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteAdminProductRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type DeleteAdminProductResponseObject interface {
+	VisitDeleteAdminProductResponse(w http.ResponseWriter) error
+}
+
+type DeleteAdminProduct204Response struct {
+}
+
+func (response DeleteAdminProduct204Response) VisitDeleteAdminProductResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteAdminProduct401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteAdminProduct401JSONResponse) VisitDeleteAdminProductResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteAdminProduct403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteAdminProduct403JSONResponse) VisitDeleteAdminProductResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteAdminProduct404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteAdminProduct404JSONResponse) VisitDeleteAdminProductResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteAdminProduct409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteAdminProduct409JSONResponse) VisitDeleteAdminProductResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminProductRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type GetAdminProductResponseObject interface {
+	VisitGetAdminProductResponse(w http.ResponseWriter) error
+}
+
+type GetAdminProduct200JSONResponse Product
+
+func (response GetAdminProduct200JSONResponse) VisitGetAdminProductResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminProduct401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetAdminProduct401JSONResponse) VisitGetAdminProductResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminProduct404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetAdminProduct404JSONResponse) VisitGetAdminProductResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAdminProductRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *UpdateAdminProductJSONRequestBody
+}
+
+type UpdateAdminProductResponseObject interface {
+	VisitUpdateAdminProductResponse(w http.ResponseWriter) error
+}
+
+type UpdateAdminProduct200JSONResponse Product
+
+func (response UpdateAdminProduct200JSONResponse) VisitUpdateAdminProductResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAdminProduct400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateAdminProduct400JSONResponse) VisitUpdateAdminProductResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAdminProduct401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateAdminProduct401JSONResponse) VisitUpdateAdminProductResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAdminProduct403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateAdminProduct403JSONResponse) VisitUpdateAdminProductResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAdminProduct404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateAdminProduct404JSONResponse) VisitUpdateAdminProductResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProductColorRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *CreateProductColorJSONRequestBody
+}
+
+type CreateProductColorResponseObject interface {
+	VisitCreateProductColorResponse(w http.ResponseWriter) error
+}
+
+type CreateProductColor201JSONResponse Color
+
+func (response CreateProductColor201JSONResponse) VisitCreateProductColorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProductColor400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateProductColor400JSONResponse) VisitCreateProductColorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProductColor401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateProductColor401JSONResponse) VisitCreateProductColorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProductColor403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateProductColor403JSONResponse) VisitCreateProductColorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProductColor404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateProductColor404JSONResponse) VisitCreateProductColorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteProductColorRequestObject struct {
+	Id      openapi_types.UUID `json:"id"`
+	ColorId openapi_types.UUID `json:"colorId"`
+}
+
+type DeleteProductColorResponseObject interface {
+	VisitDeleteProductColorResponse(w http.ResponseWriter) error
+}
+
+type DeleteProductColor204Response struct {
+}
+
+func (response DeleteProductColor204Response) VisitDeleteProductColorResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteProductColor401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteProductColor401JSONResponse) VisitDeleteProductColorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteProductColor403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteProductColor403JSONResponse) VisitDeleteProductColorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteProductColor404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteProductColor404JSONResponse) VisitDeleteProductColorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProductColorRequestObject struct {
+	Id      openapi_types.UUID `json:"id"`
+	ColorId openapi_types.UUID `json:"colorId"`
+	Body    *UpdateProductColorJSONRequestBody
+}
+
+type UpdateProductColorResponseObject interface {
+	VisitUpdateProductColorResponse(w http.ResponseWriter) error
+}
+
+type UpdateProductColor200JSONResponse Color
+
+func (response UpdateProductColor200JSONResponse) VisitUpdateProductColorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProductColor400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateProductColor400JSONResponse) VisitUpdateProductColorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProductColor401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateProductColor401JSONResponse) VisitUpdateProductColorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProductColor403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateProductColor403JSONResponse) VisitUpdateProductColorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProductColor404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateProductColor404JSONResponse) VisitUpdateProductColorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProductOptionRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *CreateProductOptionJSONRequestBody
+}
+
+type CreateProductOptionResponseObject interface {
+	VisitCreateProductOptionResponse(w http.ResponseWriter) error
+}
+
+type CreateProductOption201JSONResponse Option
+
+func (response CreateProductOption201JSONResponse) VisitCreateProductOptionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProductOption400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateProductOption400JSONResponse) VisitCreateProductOptionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProductOption401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateProductOption401JSONResponse) VisitCreateProductOptionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProductOption403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateProductOption403JSONResponse) VisitCreateProductOptionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProductOption404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateProductOption404JSONResponse) VisitCreateProductOptionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteProductOptionRequestObject struct {
+	Id       openapi_types.UUID `json:"id"`
+	OptionId openapi_types.UUID `json:"optionId"`
+}
+
+type DeleteProductOptionResponseObject interface {
+	VisitDeleteProductOptionResponse(w http.ResponseWriter) error
+}
+
+type DeleteProductOption204Response struct {
+}
+
+func (response DeleteProductOption204Response) VisitDeleteProductOptionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteProductOption401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteProductOption401JSONResponse) VisitDeleteProductOptionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteProductOption403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteProductOption403JSONResponse) VisitDeleteProductOptionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteProductOption404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteProductOption404JSONResponse) VisitDeleteProductOptionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProductOptionRequestObject struct {
+	Id       openapi_types.UUID `json:"id"`
+	OptionId openapi_types.UUID `json:"optionId"`
+	Body     *UpdateProductOptionJSONRequestBody
+}
+
+type UpdateProductOptionResponseObject interface {
+	VisitUpdateProductOptionResponse(w http.ResponseWriter) error
+}
+
+type UpdateProductOption200JSONResponse Option
+
+func (response UpdateProductOption200JSONResponse) VisitUpdateProductOptionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProductOption400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateProductOption400JSONResponse) VisitUpdateProductOptionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProductOption401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateProductOption401JSONResponse) VisitUpdateProductOptionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProductOption403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateProductOption403JSONResponse) VisitUpdateProductOptionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProductOption404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateProductOption404JSONResponse) VisitUpdateProductOptionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -3507,6 +4632,39 @@ type StrictServerInterface interface {
 	// Admin print queue — every print job across all stages, enriched (admin-gated).
 	// (GET /admin/print-queue)
 	GetPrintQueue(ctx context.Context, request GetPrintQueueRequestObject) (GetPrintQueueResponseObject, error)
+	// Admin catalog list — every product across all statuses (admin-gated read).
+	// (GET /admin/products)
+	GetAdminProducts(ctx context.Context, request GetAdminProductsRequestObject) (GetAdminProductsResponseObject, error)
+	// Create a product (owner-only).
+	// (POST /admin/products)
+	CreateAdminProduct(ctx context.Context, request CreateAdminProductRequestObject) (CreateAdminProductResponseObject, error)
+	// Hard-delete a product (owner-only; blocked for products with history).
+	// (DELETE /admin/products/{id})
+	DeleteAdminProduct(ctx context.Context, request DeleteAdminProductRequestObject) (DeleteAdminProductResponseObject, error)
+	// Admin product detail by id — any status, with colors and options (admin-gated read).
+	// (GET /admin/products/{id})
+	GetAdminProduct(ctx context.Context, request GetAdminProductRequestObject) (GetAdminProductResponseObject, error)
+	// Save a product's editable fields (owner-only).
+	// (PATCH /admin/products/{id})
+	UpdateAdminProduct(ctx context.Context, request UpdateAdminProductRequestObject) (UpdateAdminProductResponseObject, error)
+	// Add a named print colour to a product (owner-only).
+	// (POST /admin/products/{id}/colors)
+	CreateProductColor(ctx context.Context, request CreateProductColorRequestObject) (CreateProductColorResponseObject, error)
+	// Remove a product's colour (owner-only).
+	// (DELETE /admin/products/{id}/colors/{colorId})
+	DeleteProductColor(ctx context.Context, request DeleteProductColorRequestObject) (DeleteProductColorResponseObject, error)
+	// Edit a product's colour (owner-only).
+	// (PATCH /admin/products/{id}/colors/{colorId})
+	UpdateProductColor(ctx context.Context, request UpdateProductColorRequestObject) (UpdateProductColorResponseObject, error)
+	// Add a customization option to a product (owner-only).
+	// (POST /admin/products/{id}/options)
+	CreateProductOption(ctx context.Context, request CreateProductOptionRequestObject) (CreateProductOptionResponseObject, error)
+	// Remove a product's option (owner-only).
+	// (DELETE /admin/products/{id}/options/{optionId})
+	DeleteProductOption(ctx context.Context, request DeleteProductOptionRequestObject) (DeleteProductOptionResponseObject, error)
+	// Edit a product's option (owner-only).
+	// (PATCH /admin/products/{id}/options/{optionId})
+	UpdateProductOption(ctx context.Context, request UpdateProductOptionRequestObject) (UpdateProductOptionResponseObject, error)
 	// List the extension reply templates (admin-gated read).
 	// (GET /admin/reply-templates)
 	ListReplyTemplates(ctx context.Context, request ListReplyTemplatesRequestObject) (ListReplyTemplatesResponseObject, error)
@@ -3739,6 +4897,336 @@ func (sh *strictHandler) GetPrintQueue(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetPrintQueueResponseObject); ok {
 		if err := validResponse.VisitGetPrintQueueResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAdminProducts operation middleware
+func (sh *strictHandler) GetAdminProducts(w http.ResponseWriter, r *http.Request, params GetAdminProductsParams) {
+	var request GetAdminProductsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAdminProducts(ctx, request.(GetAdminProductsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAdminProducts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAdminProductsResponseObject); ok {
+		if err := validResponse.VisitGetAdminProductsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAdminProduct operation middleware
+func (sh *strictHandler) CreateAdminProduct(w http.ResponseWriter, r *http.Request) {
+	var request CreateAdminProductRequestObject
+
+	var body CreateAdminProductJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAdminProduct(ctx, request.(CreateAdminProductRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAdminProduct")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAdminProductResponseObject); ok {
+		if err := validResponse.VisitCreateAdminProductResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteAdminProduct operation middleware
+func (sh *strictHandler) DeleteAdminProduct(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request DeleteAdminProductRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAdminProduct(ctx, request.(DeleteAdminProductRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAdminProduct")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAdminProductResponseObject); ok {
+		if err := validResponse.VisitDeleteAdminProductResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAdminProduct operation middleware
+func (sh *strictHandler) GetAdminProduct(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request GetAdminProductRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAdminProduct(ctx, request.(GetAdminProductRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAdminProduct")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAdminProductResponseObject); ok {
+		if err := validResponse.VisitGetAdminProductResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAdminProduct operation middleware
+func (sh *strictHandler) UpdateAdminProduct(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request UpdateAdminProductRequestObject
+
+	request.Id = id
+
+	var body UpdateAdminProductJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAdminProduct(ctx, request.(UpdateAdminProductRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAdminProduct")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAdminProductResponseObject); ok {
+		if err := validResponse.VisitUpdateAdminProductResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateProductColor operation middleware
+func (sh *strictHandler) CreateProductColor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request CreateProductColorRequestObject
+
+	request.Id = id
+
+	var body CreateProductColorJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateProductColor(ctx, request.(CreateProductColorRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateProductColor")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateProductColorResponseObject); ok {
+		if err := validResponse.VisitCreateProductColorResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteProductColor operation middleware
+func (sh *strictHandler) DeleteProductColor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, colorId openapi_types.UUID) {
+	var request DeleteProductColorRequestObject
+
+	request.Id = id
+	request.ColorId = colorId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteProductColor(ctx, request.(DeleteProductColorRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteProductColor")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteProductColorResponseObject); ok {
+		if err := validResponse.VisitDeleteProductColorResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateProductColor operation middleware
+func (sh *strictHandler) UpdateProductColor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, colorId openapi_types.UUID) {
+	var request UpdateProductColorRequestObject
+
+	request.Id = id
+	request.ColorId = colorId
+
+	var body UpdateProductColorJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateProductColor(ctx, request.(UpdateProductColorRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateProductColor")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateProductColorResponseObject); ok {
+		if err := validResponse.VisitUpdateProductColorResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateProductOption operation middleware
+func (sh *strictHandler) CreateProductOption(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request CreateProductOptionRequestObject
+
+	request.Id = id
+
+	var body CreateProductOptionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateProductOption(ctx, request.(CreateProductOptionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateProductOption")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateProductOptionResponseObject); ok {
+		if err := validResponse.VisitCreateProductOptionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteProductOption operation middleware
+func (sh *strictHandler) DeleteProductOption(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, optionId openapi_types.UUID) {
+	var request DeleteProductOptionRequestObject
+
+	request.Id = id
+	request.OptionId = optionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteProductOption(ctx, request.(DeleteProductOptionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteProductOption")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteProductOptionResponseObject); ok {
+		if err := validResponse.VisitDeleteProductOptionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateProductOption operation middleware
+func (sh *strictHandler) UpdateProductOption(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, optionId openapi_types.UUID) {
+	var request UpdateProductOptionRequestObject
+
+	request.Id = id
+	request.OptionId = optionId
+
+	var body UpdateProductOptionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateProductOption(ctx, request.(UpdateProductOptionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateProductOption")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateProductOptionResponseObject); ok {
+		if err := validResponse.VisitUpdateProductOptionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
