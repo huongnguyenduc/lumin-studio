@@ -277,6 +277,18 @@ func TestClassifyFailsClosed(t *testing.T) {
 		"GetSettings":              authRequired,
 		"ListReplyTemplates":       authRequired,
 		"TransitionOrder":          authRequired,
+		// P3-j catalog: reads owner+staff (default), every write owner-only (spec §08).
+		"GetAdminProducts":    authRequired,
+		"GetAdminProduct":     authRequired,
+		"CreateAdminProduct":  authOwnerOnly,
+		"UpdateAdminProduct":  authOwnerOnly,
+		"DeleteAdminProduct":  authOwnerOnly,
+		"CreateProductColor":  authOwnerOnly,
+		"UpdateProductColor":  authOwnerOnly,
+		"DeleteProductColor":  authOwnerOnly,
+		"CreateProductOption": authOwnerOnly,
+		"UpdateProductOption": authOwnerOnly,
+		"DeleteProductOption": authOwnerOnly,
 	}
 	for op, want := range cases {
 		if got := classify(op); got != want {

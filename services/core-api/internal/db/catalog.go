@@ -48,6 +48,17 @@ func (c *Catalog) ProductsByStatus(ctx context.Context, status sqlc.ProductStatu
 	return c.q.ListProductsByStatus(ctx, status)
 }
 
+// AdminProducts lists the whole catalog for the admin (every status), newest first. A nil status = all
+// statuses (the "Tất cả" tab); a non-nil status narrows to one. No pagination — the catalog is small and
+// admin-curated, so the FE holds the full set and searches client-side (see ListAdminProducts).
+func (c *Catalog) AdminProducts(ctx context.Context, status *sqlc.ProductStatus) ([]sqlc.Product, error) {
+	var filter sqlc.NullProductStatus
+	if status != nil {
+		filter = sqlc.NullProductStatus{ProductStatus: *status, Valid: true}
+	}
+	return c.q.ListAdminProducts(ctx, filter)
+}
+
 // ProductCardFilter narrows the storefront catalog list. CategorySlug nil = all categories; Search nil =
 // no full-text filter (PR-P1-e — a length-bounded, ""→nil-normalized term the SQL matches accent-folded via
 // plainto_tsquery, never interpolated); Sort is a whitelisted token already validated at the HTTP edge
@@ -151,14 +162,73 @@ func (c *Catalog) CreateProduct(ctx context.Context, arg sqlc.InsertProductParam
 	return c.q.InsertProduct(ctx, arg)
 }
 
+// UpdateProduct saves the editable fields of a product (never model3d_url — the asset pipeline owns it),
+// returning the persisted row or ErrNotFound if the id is unknown. A slug collision surfaces as the raw
+// UNIQUE-violation error (pgx code 23505) for the handler to map to a 400 field error.
+func (c *Catalog) UpdateProduct(ctx context.Context, arg sqlc.UpdateProductParams) (sqlc.Product, error) {
+	p, err := c.q.UpdateProduct(ctx, arg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Product{}, ErrNotFound
+	}
+	return p, err
+}
+
+// DeleteProduct hard-deletes a product, or returns ErrNotFound for an unknown id. A product with orders or
+// render history raises a foreign_key_violation (pgx code 23503) — passed through RAW (not swallowed) so the
+// handler can map it to a 409 steering the owner to archive instead.
+func (c *Catalog) DeleteProduct(ctx context.Context, id uuid.UUID) error {
+	_, err := c.q.DeleteProduct(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
+}
+
 // CreateColor inserts a color and returns the persisted row.
 func (c *Catalog) CreateColor(ctx context.Context, arg sqlc.InsertColorParams) (sqlc.Color, error) {
 	return c.q.InsertColor(ctx, arg)
 }
 
+// UpdateColor saves a color scoped by (id, product_id); a colorId under the wrong product → ErrNotFound.
+func (c *Catalog) UpdateColor(ctx context.Context, arg sqlc.UpdateColorParams) (sqlc.Color, error) {
+	col, err := c.q.UpdateColor(ctx, arg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Color{}, ErrNotFound
+	}
+	return col, err
+}
+
+// DeleteColor removes a color scoped by (id, product_id), or ErrNotFound. colors have no inbound FK, so no
+// RESTRICT case — a delete always succeeds when the row exists.
+func (c *Catalog) DeleteColor(ctx context.Context, arg sqlc.DeleteColorParams) error {
+	_, err := c.q.DeleteColor(ctx, arg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
+}
+
 // CreateOption inserts an option and returns the persisted row.
 func (c *Catalog) CreateOption(ctx context.Context, arg sqlc.InsertOptionParams) (sqlc.Option, error) {
 	return c.q.InsertOption(ctx, arg)
+}
+
+// UpdateOption saves an option scoped by (id, product_id); an optionId under the wrong product → ErrNotFound.
+func (c *Catalog) UpdateOption(ctx context.Context, arg sqlc.UpdateOptionParams) (sqlc.Option, error) {
+	opt, err := c.q.UpdateOption(ctx, arg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Option{}, ErrNotFound
+	}
+	return opt, err
+}
+
+// DeleteOption removes an option scoped by (id, product_id), or ErrNotFound.
+func (c *Catalog) DeleteOption(ctx context.Context, arg sqlc.DeleteOptionParams) error {
+	_, err := c.q.DeleteOption(ctx, arg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
 }
 
 // CreateReview inserts a review and returns the persisted row.

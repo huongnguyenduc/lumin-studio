@@ -108,6 +108,13 @@ func classify(operationID string) authClass {
 		// Shipping rules are money-adjacent (checkout fee); the rest is shop config. Reads
 		// (GetSettings/ListReplyTemplates) stay authRequired (owner+staff) via the default.
 		return authOwnerOnly
+	case "CreateAdminProduct", "UpdateAdminProduct", "DeleteAdminProduct",
+		"CreateProductColor", "UpdateProductColor", "DeleteProductColor",
+		"CreateProductOption", "UpdateProductOption", "DeleteProductOption":
+		// Every catalog WRITE is owner-only (spec §08: sản phẩm is an owner power; staff manages orders/
+		// print-queue/reviews, not the catalog). The reads (GetAdminProducts/GetAdminProduct) stay
+		// authRequired (owner+staff) via the default, mirroring the settings read/write split.
+		return authOwnerOnly
 	case "RegisterCustomer", "LoginCustomer", "LogoutCustomer":
 		// Storefront customer auth entry points (PR-P1-r) — issuing or clearing a customer cookie
 		// can't itself require one (mirrors LoginUser/LogoutUser). Register/login gate on the

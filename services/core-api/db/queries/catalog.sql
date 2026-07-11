@@ -41,6 +41,37 @@ SELECT * FROM products WHERE id = $1;
 -- name: ListProductsByStatus :many
 SELECT * FROM products WHERE status = $1 ORDER BY created_at DESC;
 
+-- ListAdminProducts is the admin catalog list (P3-j / P3-k) — the INTERNAL projection that shows EVERY
+-- status (active/draft/archived), unlike the storefront's active-only ListActiveProducts (ADR-032: admin
+-- may see unreleased rows). The optional status narg drives the "Tất cả/Đang bán/Nháp/Lưu trữ" tabs: NULL =
+-- all statuses, else exact-match. No pagination/count — a made-to-order catalog is small and admin-curated
+-- (same "fits one response" scale as ListCategories), so the FE lists+searches the whole set client-side;
+-- add a page window here if the catalog ever grows large. Newest first with an id tiebreak = deterministic
+-- total order.
+-- name: ListAdminProducts :many
+SELECT * FROM products
+WHERE (sqlc.narg('status')::product_status IS NULL OR status = sqlc.narg('status')::product_status)
+ORDER BY created_at DESC, id DESC;
+
+-- UpdateProduct saves the editable fields of a product (P3-j). It deliberately does NOT touch model3d_url:
+-- that column is owned by the asset pipeline (P3-j-b sets it when a model finishes ingesting), so the
+-- product editor form can never blank it. slug stays mutable — a changed slug that collides trips the
+-- UNIQUE(slug) constraint, which the handler maps to a 400 field error (never a 500).
+-- name: UpdateProduct :one
+UPDATE products
+SET slug = $2, name = $3, description = $4, category_id = $5, base_price = $6,
+    dimensions = $7, material = $8, images = $9, status = $10
+WHERE id = $1
+RETURNING *;
+
+-- DeleteProduct is a HARD delete, allowed only for never-ordered/never-rendered products (drafts, mistakes):
+-- order_items and asset_jobs reference products ON DELETE RESTRICT (migrations 000005/000006), so deleting a
+-- product with history raises a foreign_key_violation the handler maps to 409 "hãy lưu trữ thay vì xoá" — the
+-- reversible "remove from store" path is PATCH status→archived. colors/options are ON DELETE CASCADE, so a
+-- successful delete cleans them up. RETURNING id so a missing row surfaces as ErrNoRows→404.
+-- name: DeleteProduct :one
+DELETE FROM products WHERE id = $1 RETURNING id;
+
 -- ListActiveProducts is the storefront catalog list (PR-P1-c). It returns ACTIVE products ONLY as a
 -- CARD projection (a subset of columns — no description/model3d_url, and no colors/options join → no
 -- N+1). The optional category filter matches by category SLUG via an UNCORRELATED subquery (Postgres
@@ -107,6 +138,18 @@ RETURNING *;
 -- name: ListColorsByProduct :many
 SELECT * FROM colors WHERE product_id = $1 ORDER BY name;
 
+-- UpdateColor / DeleteColor are scoped by BOTH id AND product_id (P3-j) so a colorId belonging to another
+-- product (a mismatched /products/{id}/colors/{colorId} path) matches no row → ErrNoRows→404, never a
+-- cross-product edit. RETURNING lets the handler 404 on a stale id.
+-- name: UpdateColor :one
+UPDATE colors
+SET name = $3, hex = $4, available = $5, price_delta = $6
+WHERE id = $1 AND product_id = $2
+RETURNING *;
+
+-- name: DeleteColor :one
+DELETE FROM colors WHERE id = $1 AND product_id = $2 RETURNING id;
+
 -- name: InsertOption :one
 INSERT INTO options (id, product_id, label, description, type, price_delta, max_chars)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -114,6 +157,17 @@ RETURNING *;
 
 -- name: ListOptionsByProduct :many
 SELECT * FROM options WHERE product_id = $1 ORDER BY label;
+
+-- UpdateOption / DeleteOption are scoped by BOTH id AND product_id (P3-j), same cross-product guard as the
+-- color mutations: an optionId under the wrong product → no row → 404.
+-- name: UpdateOption :one
+UPDATE options
+SET label = $3, description = $4, type = $5, price_delta = $6, max_chars = $7
+WHERE id = $1 AND product_id = $2
+RETURNING *;
+
+-- name: DeleteOption :one
+DELETE FROM options WHERE id = $1 AND product_id = $2 RETURNING id;
 
 -- name: InsertReview :one
 INSERT INTO reviews (id, product_id, customer_id, rating, body, images, reply, status)

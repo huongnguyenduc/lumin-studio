@@ -1026,6 +1026,293 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /admin/products:
+    get:
+      tags: [admin]
+      operationId: getAdminProducts
+      summary: Admin catalog list — every product across all statuses (admin-gated read).
+      description: >
+        Returns the whole catalog as an admin SUMMARY projection (id, slug, name, basePrice, category,
+        status, cover images, rating, review count, created date), newest first, optionally filtered to a
+        single ProductStatus (omit for all, "Tất cả"). This is the INTERNAL admin projection — unlike the
+        public GetProducts card list it shows draft/archived products too (ADR-032). NOT paginated: a
+        made-to-order catalog is small and admin-curated, so the FE holds the whole set and searches
+        client-side. Admin-gated (cookieAuth; owner AND staff read). Money (basePrice) is raw int-VND
+        (always-must #2); status is an enum the client maps to an i18n label (always-must #3).
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Filter to a single product status (spec §02). Omit for all statuses ("Tất cả").
+          schema:
+            $ref: '#/components/schemas/ProductStatus'
+      responses:
+        '200':
+          description: Every product as an admin summary card (newest first).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminProductSummary'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [admin]
+      operationId: createAdminProduct
+      summary: Create a product (owner-only).
+      description: >
+        Creates a product from the editor form (owner-only — spec §08 catalog is an owner power). A
+        product is born with no model (model3dUrl is set later by the asset pipeline, P3-j-b) and with the
+        colors/options added through their own nested endpoints, so the response Product has empty
+        colors/options. A duplicate slug → 400 with a `slug` field error.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductInput'
+      responses:
+        '201':
+          description: The created product.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/products/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [admin]
+      operationId: getAdminProduct
+      summary: Admin product detail by id — any status, with colors and options (admin-gated read).
+      description: >
+        Returns one product as the full Product shape (with its colors and options) for the editor to
+        populate — ANY status, unlike the active-only public GetProductBySlug (ADR-032). Admin-gated
+        (cookieAuth; owner AND staff read). Unknown id → 404.
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: The product with its colors and options.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [admin]
+      operationId: updateAdminProduct
+      summary: Save a product's editable fields (owner-only).
+      description: >
+        Saves the editable fields of a product (owner-only). It does NOT touch model3dUrl — that column is
+        owned by the asset pipeline (P3-j-b), so the editor form can never blank it. A slug changed to one
+        already taken → 400 with a `slug` field error. Unknown id → 404. Returns the updated product with
+        its colors and options.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductInput'
+      responses:
+        '200':
+          description: The updated product.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [admin]
+      operationId: deleteAdminProduct
+      summary: Hard-delete a product (owner-only; blocked for products with history).
+      description: >
+        Hard-deletes a product (owner-only). Allowed only for a never-ordered, never-rendered product
+        (its colors/options cascade away); a product referenced by an order or an asset job is retained
+        (ON DELETE RESTRICT) and the delete returns 409 — the reversible "remove from store" path is
+        PATCH status→archived. Unknown id → 404.
+      security:
+        - cookieAuth: []
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /admin/products/{id}/colors:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [admin]
+      operationId: createProductColor
+      summary: Add a named print colour to a product (owner-only).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ColorInput'
+      responses:
+        '201':
+          description: The created colour.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Color'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/products/{id}/colors/{colorId}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: colorId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [admin]
+      operationId: updateProductColor
+      summary: Edit a product's colour (owner-only).
+      description: Scoped by (product, colour); a colourId under another product → 404.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ColorInput'
+      responses:
+        '200':
+          description: The updated colour.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Color'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [admin]
+      operationId: deleteProductColor
+      summary: Remove a product's colour (owner-only).
+      security:
+        - cookieAuth: []
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/products/{id}/options:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [admin]
+      operationId: createProductOption
+      summary: Add a customization option to a product (owner-only).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OptionInput'
+      responses:
+        '201':
+          description: The created option.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Option'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/products/{id}/options/{optionId}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: optionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [admin]
+      operationId: updateProductOption
+      summary: Edit a product's option (owner-only).
+      description: Scoped by (product, option); an optionId under another product → 404.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OptionInput'
+      responses:
+        '200':
+          description: The updated option.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Option'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [admin]
+      operationId: deleteProductOption
+      summary: Remove a product's option (owner-only).
+      security:
+        - cookieAuth: []
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 components:
   securitySchemes:
     cookieAuth:
@@ -1363,6 +1650,141 @@ components:
         total:
           type: integer
           description: Total active products matching the filter, across all pages.
+
+    AdminProductSummary:
+      type: object
+      description: >
+        Admin catalog-list projection (P3-j): the fields the admin product grid needs across ALL statuses —
+        like ProductCard but WITH status (for the tab badges) and createdAt, and without colors/options (the
+        list makes no per-product read → no N+1). basePrice is raw int-VND (always-must #2); the detail read
+        (getAdminProduct) returns the full Product.
+      required:
+        - id
+        - slug
+        - name
+        - basePrice
+        - categoryId
+        - status
+        - images
+        - reviewCount
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        basePrice:
+          type: integer
+          format: int64
+          description: Starting price in int-VND (>= 0).
+        categoryId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/ProductStatus'
+        images:
+          type: array
+          description: Shop photos; images[0] is the card cover (ADR-007). May be empty.
+          items:
+            type: string
+            format: uri
+        ratingAvg:
+          type: number
+          format: float
+          nullable: true
+          description: Denormalized average rating; null until the first review.
+        reviewCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    ProductInput:
+      type: object
+      description: >
+        Create/replace body for a product (P3-j, owner-only). Same editable fields as Product MINUS the
+        server/pipeline-owned ones: no id/createdAt/ratingAvg/reviewCount (server-owned), no colors/options
+        (managed via their own nested endpoints), and no model3dUrl (owned by the asset pipeline, P3-j-b —
+        the editor form can never set or blank it). basePrice is raw int-VND (always-must #2). description
+        and images are optional (default "" / []).
+      required:
+        - slug
+        - name
+        - categoryId
+        - basePrice
+        - dimensions
+        - material
+        - status
+      properties:
+        slug:
+          type: string
+          description: Unique URL slug (spec §02); a duplicate → 400 with a `slug` field error.
+        name:
+          type: string
+        description:
+          type: string
+          description: Markdown stored as text (spec §02). Optional; defaults to "".
+        categoryId:
+          type: string
+          format: uuid
+        basePrice:
+          type: integer
+          format: int64
+          description: Starting price in int-VND (>= 0).
+        dimensions:
+          $ref: '#/components/schemas/Dimensions'
+        material:
+          type: string
+          description: Print material (spec §02; open-ended TEXT+CHECK — PLA · PETG · recycled-PLA).
+        images:
+          type: array
+          description: Shop photos; images[0] is the card cover (ADR-007). Optional; defaults to [].
+          items:
+            type: string
+            format: uri
+        status:
+          $ref: '#/components/schemas/ProductStatus'
+
+    ColorInput:
+      type: object
+      description: Create/replace body for a product colour (P3-j). priceDelta is int-VND (default 0).
+      required: [name, hex, available]
+      properties:
+        name:
+          type: string
+        hex:
+          type: string
+          description: Swatch colour as a hex string (e.g. #C9A24B).
+        available:
+          type: boolean
+        priceDelta:
+          type: integer
+          format: int64
+          description: Added price in int-VND (>= 0). Optional; defaults to 0.
+
+    OptionInput:
+      type: object
+      description: Create/replace body for a customization option (P3-j). priceDelta is int-VND (default 0).
+      required: [label, type]
+      properties:
+        label:
+          type: string
+        description:
+          type: string
+          description: Optional; defaults to "".
+        type:
+          $ref: '#/components/schemas/OptionType'
+        priceDelta:
+          type: integer
+          format: int64
+          description: Added price in int-VND (>= 0). Optional; defaults to 0.
+        maxChars:
+          type: integer
+          nullable: true
+          description: Engraving character limit for a `text` option; null/omitted for no limit.
 
     Review:
       type: object

@@ -61,6 +61,53 @@ func (q *Queries) CountPublishedReviewsByProduct(ctx context.Context, productID 
 	return count, err
 }
 
+const deleteColor = `-- name: DeleteColor :one
+DELETE FROM colors WHERE id = $1 AND product_id = $2 RETURNING id
+`
+
+type DeleteColorParams struct {
+	ID        uuid.UUID `json:"id"`
+	ProductID uuid.UUID `json:"productId"`
+}
+
+func (q *Queries) DeleteColor(ctx context.Context, arg DeleteColorParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, deleteColor, arg.ID, arg.ProductID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deleteOption = `-- name: DeleteOption :one
+DELETE FROM options WHERE id = $1 AND product_id = $2 RETURNING id
+`
+
+type DeleteOptionParams struct {
+	ID        uuid.UUID `json:"id"`
+	ProductID uuid.UUID `json:"productId"`
+}
+
+func (q *Queries) DeleteOption(ctx context.Context, arg DeleteOptionParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, deleteOption, arg.ID, arg.ProductID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deleteProduct = `-- name: DeleteProduct :one
+DELETE FROM products WHERE id = $1 RETURNING id
+`
+
+// DeleteProduct is a HARD delete, allowed only for never-ordered/never-rendered products (drafts, mistakes):
+// order_items and asset_jobs reference products ON DELETE RESTRICT (migrations 000005/000006), so deleting a
+// product with history raises a foreign_key_violation the handler maps to 409 "hãy lưu trữ thay vì xoá" — the
+// reversible "remove from store" path is PATCH status→archived. colors/options are ON DELETE CASCADE, so a
+// successful delete cleans them up. RETURNING id so a missing row surfaces as ErrNoRows→404.
+func (q *Queries) DeleteProduct(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, deleteProduct, id)
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getProductByID = `-- name: GetProductByID :one
 SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at FROM products WHERE id = $1
 `
@@ -406,6 +453,54 @@ func (q *Queries) ListActiveProducts(ctx context.Context, arg ListActiveProducts
 	return items, nil
 }
 
+const listAdminProducts = `-- name: ListAdminProducts :many
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at FROM products
+WHERE ($1::product_status IS NULL OR status = $1::product_status)
+ORDER BY created_at DESC, id DESC
+`
+
+// ListAdminProducts is the admin catalog list (P3-j / P3-k) — the INTERNAL projection that shows EVERY
+// status (active/draft/archived), unlike the storefront's active-only ListActiveProducts (ADR-032: admin
+// may see unreleased rows). The optional status narg drives the "Tất cả/Đang bán/Nháp/Lưu trữ" tabs: NULL =
+// all statuses, else exact-match. No pagination/count — a made-to-order catalog is small and admin-curated
+// (same "fits one response" scale as ListCategories), so the FE lists+searches the whole set client-side;
+// add a page window here if the catalog ever grows large. Newest first with an id tiebreak = deterministic
+// total order.
+func (q *Queries) ListAdminProducts(ctx context.Context, status NullProductStatus) ([]Product, error) {
+	rows, err := q.db.Query(ctx, listAdminProducts, status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Product
+	for rows.Next() {
+		var i Product
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Name,
+			&i.Description,
+			&i.CategoryID,
+			&i.BasePrice,
+			&i.Dimensions,
+			&i.Material,
+			&i.Model3dUrl,
+			&i.Images,
+			&i.Status,
+			&i.RatingAvg,
+			&i.ReviewCount,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCategories = `-- name: ListCategories :many
 SELECT id, slug, name FROM categories
 WHERE EXISTS (SELECT 1 FROM products WHERE products.category_id = categories.id AND products.status = 'active')
@@ -601,4 +696,144 @@ func (q *Queries) ListReviewsByProduct(ctx context.Context, arg ListReviewsByPro
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateColor = `-- name: UpdateColor :one
+UPDATE colors
+SET name = $3, hex = $4, available = $5, price_delta = $6
+WHERE id = $1 AND product_id = $2
+RETURNING id, product_id, name, hex, available, price_delta
+`
+
+type UpdateColorParams struct {
+	ID         uuid.UUID `json:"id"`
+	ProductID  uuid.UUID `json:"productId"`
+	Name       string    `json:"name"`
+	Hex        string    `json:"hex"`
+	Available  bool      `json:"available"`
+	PriceDelta int64     `json:"priceDelta"`
+}
+
+// UpdateColor / DeleteColor are scoped by BOTH id AND product_id (P3-j) so a colorId belonging to another
+// product (a mismatched /products/{id}/colors/{colorId} path) matches no row → ErrNoRows→404, never a
+// cross-product edit. RETURNING lets the handler 404 on a stale id.
+func (q *Queries) UpdateColor(ctx context.Context, arg UpdateColorParams) (Color, error) {
+	row := q.db.QueryRow(ctx, updateColor,
+		arg.ID,
+		arg.ProductID,
+		arg.Name,
+		arg.Hex,
+		arg.Available,
+		arg.PriceDelta,
+	)
+	var i Color
+	err := row.Scan(
+		&i.ID,
+		&i.ProductID,
+		&i.Name,
+		&i.Hex,
+		&i.Available,
+		&i.PriceDelta,
+	)
+	return i, err
+}
+
+const updateOption = `-- name: UpdateOption :one
+UPDATE options
+SET label = $3, description = $4, type = $5, price_delta = $6, max_chars = $7
+WHERE id = $1 AND product_id = $2
+RETURNING id, product_id, label, description, type, price_delta, max_chars
+`
+
+type UpdateOptionParams struct {
+	ID          uuid.UUID  `json:"id"`
+	ProductID   uuid.UUID  `json:"productId"`
+	Label       string     `json:"label"`
+	Description string     `json:"description"`
+	Type        OptionType `json:"type"`
+	PriceDelta  int64      `json:"priceDelta"`
+	MaxChars    *int32     `json:"maxChars"`
+}
+
+// UpdateOption / DeleteOption are scoped by BOTH id AND product_id (P3-j), same cross-product guard as the
+// color mutations: an optionId under the wrong product → no row → 404.
+func (q *Queries) UpdateOption(ctx context.Context, arg UpdateOptionParams) (Option, error) {
+	row := q.db.QueryRow(ctx, updateOption,
+		arg.ID,
+		arg.ProductID,
+		arg.Label,
+		arg.Description,
+		arg.Type,
+		arg.PriceDelta,
+		arg.MaxChars,
+	)
+	var i Option
+	err := row.Scan(
+		&i.ID,
+		&i.ProductID,
+		&i.Label,
+		&i.Description,
+		&i.Type,
+		&i.PriceDelta,
+		&i.MaxChars,
+	)
+	return i, err
+}
+
+const updateProduct = `-- name: UpdateProduct :one
+UPDATE products
+SET slug = $2, name = $3, description = $4, category_id = $5, base_price = $6,
+    dimensions = $7, material = $8, images = $9, status = $10
+WHERE id = $1
+RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at
+`
+
+type UpdateProductParams struct {
+	ID          uuid.UUID     `json:"id"`
+	Slug        string        `json:"slug"`
+	Name        string        `json:"name"`
+	Description string        `json:"description"`
+	CategoryID  uuid.UUID     `json:"categoryId"`
+	BasePrice   int64         `json:"basePrice"`
+	Dimensions  []byte        `json:"dimensions"`
+	Material    string        `json:"material"`
+	Images      []byte        `json:"images"`
+	Status      ProductStatus `json:"status"`
+}
+
+// UpdateProduct saves the editable fields of a product (P3-j). It deliberately does NOT touch model3d_url:
+// that column is owned by the asset pipeline (P3-j-b sets it when a model finishes ingesting), so the
+// product editor form can never blank it. slug stays mutable — a changed slug that collides trips the
+// UNIQUE(slug) constraint, which the handler maps to a 400 field error (never a 500).
+func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error) {
+	row := q.db.QueryRow(ctx, updateProduct,
+		arg.ID,
+		arg.Slug,
+		arg.Name,
+		arg.Description,
+		arg.CategoryID,
+		arg.BasePrice,
+		arg.Dimensions,
+		arg.Material,
+		arg.Images,
+		arg.Status,
+	)
+	var i Product
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.Description,
+		&i.CategoryID,
+		&i.BasePrice,
+		&i.Dimensions,
+		&i.Material,
+		&i.Model3dUrl,
+		&i.Images,
+		&i.Status,
+		&i.RatingAvg,
+		&i.ReviewCount,
+		&i.CreatedAt,
+	)
+	return i, err
 }
