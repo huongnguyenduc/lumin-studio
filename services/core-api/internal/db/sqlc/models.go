@@ -582,6 +582,27 @@ type Customer struct {
 	PasswordHash *string            `json:"passwordHash"`
 }
 
+type FilamentBatch struct {
+	ID           uuid.UUID          `json:"id"`
+	MaterialID   uuid.UUID          `json:"materialId"`
+	ImportedAt   pgtype.Timestamptz `json:"importedAt"`
+	QtyOriginal  int64              `json:"qtyOriginal"`
+	QtyRemaining int64              `json:"qtyRemaining"`
+	TotalCostVnd int64              `json:"totalCostVnd"`
+}
+
+type FilamentMaterial struct {
+	ID                uuid.UUID          `json:"id"`
+	Name              string             `json:"name"`
+	Material          string             `json:"material"`
+	Unit              string             `json:"unit"`
+	Hex               *string            `json:"hex"`
+	LowStockThreshold int64              `json:"lowStockThreshold"`
+	Archived          bool               `json:"archived"`
+	CreatedAt         pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt         pgtype.Timestamptz `json:"updatedAt"`
+}
+
 type Option struct {
 	ID          uuid.UUID  `json:"id"`
 	ProductID   uuid.UUID  `json:"productId"`

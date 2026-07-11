@@ -128,6 +128,13 @@ Thời gian lưu **ISO-8601 UTC**.
 | `ReplyTemplate` (extension) | `id` · `title` · `body` · `variables[]` (vd `{tên}`, `{mã đơn}`, `{STK}`) |
 | `Setting` | `shopInfo` · `bankAccount(VietQR)` · `shippingRules` · `refundPolicy` |
 
+### Vật tư & chi phí (costing engine — ADR-039)
+Mô hình giá vốn động (`/vat-tu`, design Admin screen 8). Tồn + giá vốn **derive từ lô** (không lưu), tiền int-VND, giá vốn/biên **tách khỏi giá khách**. Toàn bộ model ở **ADR-039**; các thực thể tiếp (ledger tiêu hao, định-mức per-part, máy, chi phí phụ, `OrderItem.costSnapshot` chốt-lúc-in) land theo slice 4b/4c.
+| Thực thể | Trường chính |
+|---|---|
+| `FilamentMaterial` (cuộn theo màu, shop-wide) | `id` · `name` (màu có tên) · `material` (PLA/PETG/Resin…) · `unit` (gram/ml) · `hex?` · `lowStockThreshold` · `archived` — **tồn + giá vốn/đơn-vị (bình quân gia quyền) DERIVE từ batches** |
+| `FilamentBatch` (lô "nhập cuộn") | `id` · `materialId` · `importedAt` · `qtyOriginal` · `qtyRemaining` · `totalCostVnd` — ₫/đơn-vị-lô = total/original (derive); bình quân màu = `Σ(qtyRemaining × ₫/lô) ÷ Σ(qtyRemaining)` |
+
 ---
 
 ## 03 · Luồng & state từng màn

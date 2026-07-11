@@ -421,6 +421,82 @@ type ErrorEnvelope struct {
 	MessageKey string             `json:"messageKey"`
 }
 
+// FilamentBatch One import lot of a filament material (ADR-039). qtyOriginal/qtyRemaining are unit qty; totalCostVnd is the lot's int-VND cost. Per-unit ₫ = totalCostVnd / qtyOriginal (derived, never stored).
+type FilamentBatch struct {
+	Id           openapi_types.UUID `json:"id"`
+	ImportedAt   time.Time          `json:"importedAt"`
+	MaterialId   openapi_types.UUID `json:"materialId"`
+	QtyOriginal  int64              `json:"qtyOriginal"`
+	QtyRemaining int64              `json:"qtyRemaining"`
+
+	// TotalCostVnd Lot cost in int-VND (>= 0).
+	TotalCostVnd int64 `json:"totalCostVnd"`
+}
+
+// FilamentImportInput A "nhập cuộn" import (ADR-039, owner-only): spoolCount spools × qtyPerSpool unit each, at pricePerSpoolVnd int-VND per spool. The server derives the lot qtyOriginal = spoolCount × qtyPerSpool and totalCostVnd = spoolCount × pricePerSpoolVnd.
+type FilamentImportInput struct {
+	// PricePerSpoolVnd Price per spool in int-VND (>= 0).
+	PricePerSpoolVnd int64 `json:"pricePerSpoolVnd"`
+
+	// QtyPerSpool Unit qty per spool (grams/ml, >= 1).
+	QtyPerSpool int64 `json:"qtyPerSpool"`
+
+	// SpoolCount Number of spools imported (>= 1).
+	SpoolCount int64 `json:"spoolCount"`
+}
+
+// FilamentMaterial A shop-wide filament colour (ADR-039). stockQty + avgCostPerUnit are DERIVED from the import batches (weighted average by remaining qty). stockQty is int unit-qty (grams/ml); avgCostPerUnit is a display RATE (₫ per unit, may be fractional), NOT stored money (frozen to int only at the print-time snapshot, slice 4b). lowStockThreshold drives the "sắp hết" badge; hex is an optional swatch. material/unit are validated server-side against a fixed set (ADR-028: TEXT+CHECK, not a native enum).
+type FilamentMaterial struct {
+	Archived bool `json:"archived"`
+
+	// AvgCostPerUnit Weighted-average ₫ per unit (derived display rate).
+	AvgCostPerUnit float64   `json:"avgCostPerUnit"`
+	CreatedAt      time.Time `json:"createdAt"`
+
+	// Hex Swatch hex (#rgb/#rrggbb); null = no chip.
+	Hex *string            `json:"hex"`
+	Id  openapi_types.UUID `json:"id"`
+
+	// LowStockThreshold Warn below this stock (unit qty, >= 0).
+	LowStockThreshold int64 `json:"lowStockThreshold"`
+
+	// Material One of PLA · PETG · recycled-PLA · Resin.
+	Material string `json:"material"`
+
+	// Name Display colour name, e.g. "Cam Lumin".
+	Name string `json:"name"`
+
+	// StockQty Remaining stock in unit qty (Σ batch remaining).
+	StockQty int64 `json:"stockQty"`
+
+	// Unit gram or ml.
+	Unit      string    `json:"unit"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// FilamentMaterialDetail A filament material plus its import-lot breakdown (the weighted-average panel).
+type FilamentMaterialDetail struct {
+	// Batches Import lots, oldest first. Empty until the first import.
+	Batches []FilamentBatch `json:"batches"`
+
+	// Material A shop-wide filament colour (ADR-039). stockQty + avgCostPerUnit are DERIVED from the import batches (weighted average by remaining qty). stockQty is int unit-qty (grams/ml); avgCostPerUnit is a display RATE (₫ per unit, may be fractional), NOT stored money (frozen to int only at the print-time snapshot, slice 4b). lowStockThreshold drives the "sắp hết" badge; hex is an optional swatch. material/unit are validated server-side against a fixed set (ADR-028: TEXT+CHECK, not a native enum).
+	Material FilamentMaterial `json:"material"`
+}
+
+// FilamentMaterialInput Create/replace body for a filament material (ADR-039, owner-only). archived is optional (default false on create; set true to soft-delete). Cost/stock are never set here — they come from imports.
+type FilamentMaterialInput struct {
+	Archived          *bool   `json:"archived,omitempty"`
+	Hex               *string `json:"hex"`
+	LowStockThreshold int64   `json:"lowStockThreshold"`
+
+	// Material One of PLA · PETG · recycled-PLA · Resin.
+	Material string `json:"material"`
+	Name     string `json:"name"`
+
+	// Unit gram or ml.
+	Unit string `json:"unit"`
+}
+
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
 	Email    openapi_types.Email `json:"email"`
@@ -1048,6 +1124,12 @@ type Unauthorized = ErrorEnvelope
 // Unprocessable The one error shape every endpoint returns (ADR-032). `code` is a stable machine code (e.g. NOT_FOUND, INVALID_EDGE, RBAC, REASON_REQUIRED, VALIDATION); `messageKey` is a next-intl key (the domain's Vietnamese prose is NEVER forwarded). `fields` maps a field path → messageKey for per-field validation errors.
 type Unprocessable = ErrorEnvelope
 
+// ListFilamentMaterialsParams defines parameters for ListFilamentMaterials.
+type ListFilamentMaterialsParams struct {
+	// IncludeArchived Include archived materials (default false → active only).
+	IncludeArchived *bool `form:"includeArchived,omitempty" json:"includeArchived,omitempty"`
+}
+
 // GetAdminOrdersParams defines parameters for GetAdminOrders.
 type GetAdminOrdersParams struct {
 	// Status Filter to a single order status (spec §04). Omit for all statuses ("Tất cả").
@@ -1125,6 +1207,15 @@ type GetProductReviewsParams struct {
 	// IfNoneMatch Conditional GET — when it matches the current ETag the server returns 304 with no body.
 	IfNoneMatch *string `json:"If-None-Match,omitempty"`
 }
+
+// CreateFilamentMaterialJSONRequestBody defines body for CreateFilamentMaterial for application/json ContentType.
+type CreateFilamentMaterialJSONRequestBody = FilamentMaterialInput
+
+// UpdateFilamentMaterialJSONRequestBody defines body for UpdateFilamentMaterial for application/json ContentType.
+type UpdateFilamentMaterialJSONRequestBody = FilamentMaterialInput
+
+// ImportFilamentJSONRequestBody defines body for ImportFilament for application/json ContentType.
+type ImportFilamentJSONRequestBody = FilamentImportInput
 
 // AdvancePrintJobStageJSONRequestBody defines body for AdvancePrintJobStage for application/json ContentType.
 type AdvancePrintJobStageJSONRequestBody = PrintStageUpdate
@@ -1298,6 +1389,21 @@ type ServerInterface interface {
 	// Admin dashboard aggregates (counts + net revenue + recent orders + todos).
 	// (GET /admin/dashboard)
 	GetDashboard(w http.ResponseWriter, r *http.Request)
+	// List the filament palette with derived stock + weighted-average cost (admin-gated read).
+	// (GET /admin/filament-materials)
+	ListFilamentMaterials(w http.ResponseWriter, r *http.Request, params ListFilamentMaterialsParams)
+	// Add a filament material / colour (owner-only).
+	// (POST /admin/filament-materials)
+	CreateFilamentMaterial(w http.ResponseWriter, r *http.Request)
+	// One filament material with its import-lot breakdown (admin-gated read).
+	// (GET /admin/filament-materials/{id})
+	GetFilamentMaterial(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Edit a filament material (owner-only). Set archived true to soft-delete.
+	// (PATCH /admin/filament-materials/{id})
+	UpdateFilamentMaterial(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Record a "nhập cuộn" import lot for a material (owner-only) — moves the weighted average.
+	// (POST /admin/filament-materials/{id}/import)
+	ImportFilament(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// Admin orders list — paginated, optionally filtered by status (admin-gated).
 	// (GET /admin/orders)
 	GetAdminOrders(w http.ResponseWriter, r *http.Request, params GetAdminOrdersParams)
@@ -1457,6 +1563,36 @@ type Unimplemented struct{}
 // Admin dashboard aggregates (counts + net revenue + recent orders + todos).
 // (GET /admin/dashboard)
 func (_ Unimplemented) GetDashboard(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List the filament palette with derived stock + weighted-average cost (admin-gated read).
+// (GET /admin/filament-materials)
+func (_ Unimplemented) ListFilamentMaterials(w http.ResponseWriter, r *http.Request, params ListFilamentMaterialsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Add a filament material / colour (owner-only).
+// (POST /admin/filament-materials)
+func (_ Unimplemented) CreateFilamentMaterial(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// One filament material with its import-lot breakdown (admin-gated read).
+// (GET /admin/filament-materials/{id})
+func (_ Unimplemented) GetFilamentMaterial(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Edit a filament material (owner-only). Set archived true to soft-delete.
+// (PATCH /admin/filament-materials/{id})
+func (_ Unimplemented) UpdateFilamentMaterial(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Record a "nhập cuộn" import lot for a material (owner-only) — moves the weighted average.
+// (POST /admin/filament-materials/{id}/import)
+func (_ Unimplemented) ImportFilament(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1780,6 +1916,152 @@ func (siw *ServerInterfaceWrapper) GetDashboard(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetDashboard(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListFilamentMaterials operation middleware
+func (siw *ServerInterfaceWrapper) ListFilamentMaterials(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListFilamentMaterialsParams
+
+	// ------------- Optional query parameter "includeArchived" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "includeArchived", r.URL.Query(), &params.IncludeArchived)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeArchived", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListFilamentMaterials(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateFilamentMaterial operation middleware
+func (siw *ServerInterfaceWrapper) CreateFilamentMaterial(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateFilamentMaterial(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFilamentMaterial operation middleware
+func (siw *ServerInterfaceWrapper) GetFilamentMaterial(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFilamentMaterial(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateFilamentMaterial operation middleware
+func (siw *ServerInterfaceWrapper) UpdateFilamentMaterial(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateFilamentMaterial(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ImportFilament operation middleware
+func (siw *ServerInterfaceWrapper) ImportFilament(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ImportFilament(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3457,6 +3739,21 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/admin/dashboard", wrapper.GetDashboard)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/filament-materials", wrapper.ListFilamentMaterials)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/filament-materials", wrapper.CreateFilamentMaterial)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/filament-materials/{id}", wrapper.GetFilamentMaterial)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/admin/filament-materials/{id}", wrapper.UpdateFilamentMaterial)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/filament-materials/{id}/import", wrapper.ImportFilament)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/orders", wrapper.GetAdminOrders)
 	})
 	r.Group(func(r chi.Router) {
@@ -3645,6 +3942,219 @@ type GetDashboard401JSONResponse struct{ UnauthorizedJSONResponse }
 func (response GetDashboard401JSONResponse) VisitGetDashboardResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListFilamentMaterialsRequestObject struct {
+	Params ListFilamentMaterialsParams
+}
+
+type ListFilamentMaterialsResponseObject interface {
+	VisitListFilamentMaterialsResponse(w http.ResponseWriter) error
+}
+
+type ListFilamentMaterials200JSONResponse []FilamentMaterial
+
+func (response ListFilamentMaterials200JSONResponse) VisitListFilamentMaterialsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListFilamentMaterials401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListFilamentMaterials401JSONResponse) VisitListFilamentMaterialsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateFilamentMaterialRequestObject struct {
+	Body *CreateFilamentMaterialJSONRequestBody
+}
+
+type CreateFilamentMaterialResponseObject interface {
+	VisitCreateFilamentMaterialResponse(w http.ResponseWriter) error
+}
+
+type CreateFilamentMaterial201JSONResponse FilamentMaterial
+
+func (response CreateFilamentMaterial201JSONResponse) VisitCreateFilamentMaterialResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateFilamentMaterial400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateFilamentMaterial400JSONResponse) VisitCreateFilamentMaterialResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateFilamentMaterial401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateFilamentMaterial401JSONResponse) VisitCreateFilamentMaterialResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateFilamentMaterial403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateFilamentMaterial403JSONResponse) VisitCreateFilamentMaterialResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetFilamentMaterialRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type GetFilamentMaterialResponseObject interface {
+	VisitGetFilamentMaterialResponse(w http.ResponseWriter) error
+}
+
+type GetFilamentMaterial200JSONResponse FilamentMaterialDetail
+
+func (response GetFilamentMaterial200JSONResponse) VisitGetFilamentMaterialResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetFilamentMaterial401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetFilamentMaterial401JSONResponse) VisitGetFilamentMaterialResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetFilamentMaterial404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetFilamentMaterial404JSONResponse) VisitGetFilamentMaterialResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateFilamentMaterialRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *UpdateFilamentMaterialJSONRequestBody
+}
+
+type UpdateFilamentMaterialResponseObject interface {
+	VisitUpdateFilamentMaterialResponse(w http.ResponseWriter) error
+}
+
+type UpdateFilamentMaterial200JSONResponse FilamentMaterial
+
+func (response UpdateFilamentMaterial200JSONResponse) VisitUpdateFilamentMaterialResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateFilamentMaterial400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateFilamentMaterial400JSONResponse) VisitUpdateFilamentMaterialResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateFilamentMaterial401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateFilamentMaterial401JSONResponse) VisitUpdateFilamentMaterialResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateFilamentMaterial403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateFilamentMaterial403JSONResponse) VisitUpdateFilamentMaterialResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateFilamentMaterial404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateFilamentMaterial404JSONResponse) VisitUpdateFilamentMaterialResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ImportFilamentRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *ImportFilamentJSONRequestBody
+}
+
+type ImportFilamentResponseObject interface {
+	VisitImportFilamentResponse(w http.ResponseWriter) error
+}
+
+type ImportFilament200JSONResponse FilamentMaterialDetail
+
+func (response ImportFilament200JSONResponse) VisitImportFilamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ImportFilament400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ImportFilament400JSONResponse) VisitImportFilamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ImportFilament401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ImportFilament401JSONResponse) VisitImportFilamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ImportFilament403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ImportFilament403JSONResponse) VisitImportFilamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ImportFilament404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ImportFilament404JSONResponse) VisitImportFilamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -5853,6 +6363,21 @@ type StrictServerInterface interface {
 	// Admin dashboard aggregates (counts + net revenue + recent orders + todos).
 	// (GET /admin/dashboard)
 	GetDashboard(ctx context.Context, request GetDashboardRequestObject) (GetDashboardResponseObject, error)
+	// List the filament palette with derived stock + weighted-average cost (admin-gated read).
+	// (GET /admin/filament-materials)
+	ListFilamentMaterials(ctx context.Context, request ListFilamentMaterialsRequestObject) (ListFilamentMaterialsResponseObject, error)
+	// Add a filament material / colour (owner-only).
+	// (POST /admin/filament-materials)
+	CreateFilamentMaterial(ctx context.Context, request CreateFilamentMaterialRequestObject) (CreateFilamentMaterialResponseObject, error)
+	// One filament material with its import-lot breakdown (admin-gated read).
+	// (GET /admin/filament-materials/{id})
+	GetFilamentMaterial(ctx context.Context, request GetFilamentMaterialRequestObject) (GetFilamentMaterialResponseObject, error)
+	// Edit a filament material (owner-only). Set archived true to soft-delete.
+	// (PATCH /admin/filament-materials/{id})
+	UpdateFilamentMaterial(ctx context.Context, request UpdateFilamentMaterialRequestObject) (UpdateFilamentMaterialResponseObject, error)
+	// Record a "nhập cuộn" import lot for a material (owner-only) — moves the weighted average.
+	// (POST /admin/filament-materials/{id}/import)
+	ImportFilament(ctx context.Context, request ImportFilamentRequestObject) (ImportFilamentResponseObject, error)
 	// Admin orders list — paginated, optionally filtered by status (admin-gated).
 	// (GET /admin/orders)
 	GetAdminOrders(ctx context.Context, request GetAdminOrdersRequestObject) (GetAdminOrdersResponseObject, error)
@@ -6051,6 +6576,155 @@ func (sh *strictHandler) GetDashboard(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetDashboardResponseObject); ok {
 		if err := validResponse.VisitGetDashboardResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListFilamentMaterials operation middleware
+func (sh *strictHandler) ListFilamentMaterials(w http.ResponseWriter, r *http.Request, params ListFilamentMaterialsParams) {
+	var request ListFilamentMaterialsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListFilamentMaterials(ctx, request.(ListFilamentMaterialsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListFilamentMaterials")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListFilamentMaterialsResponseObject); ok {
+		if err := validResponse.VisitListFilamentMaterialsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateFilamentMaterial operation middleware
+func (sh *strictHandler) CreateFilamentMaterial(w http.ResponseWriter, r *http.Request) {
+	var request CreateFilamentMaterialRequestObject
+
+	var body CreateFilamentMaterialJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateFilamentMaterial(ctx, request.(CreateFilamentMaterialRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateFilamentMaterial")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateFilamentMaterialResponseObject); ok {
+		if err := validResponse.VisitCreateFilamentMaterialResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetFilamentMaterial operation middleware
+func (sh *strictHandler) GetFilamentMaterial(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request GetFilamentMaterialRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetFilamentMaterial(ctx, request.(GetFilamentMaterialRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetFilamentMaterial")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetFilamentMaterialResponseObject); ok {
+		if err := validResponse.VisitGetFilamentMaterialResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateFilamentMaterial operation middleware
+func (sh *strictHandler) UpdateFilamentMaterial(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request UpdateFilamentMaterialRequestObject
+
+	request.Id = id
+
+	var body UpdateFilamentMaterialJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateFilamentMaterial(ctx, request.(UpdateFilamentMaterialRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateFilamentMaterial")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateFilamentMaterialResponseObject); ok {
+		if err := validResponse.VisitUpdateFilamentMaterialResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ImportFilament operation middleware
+func (sh *strictHandler) ImportFilament(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request ImportFilamentRequestObject
+
+	request.Id = id
+
+	var body ImportFilamentJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ImportFilament(ctx, request.(ImportFilamentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ImportFilament")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ImportFilamentResponseObject); ok {
+		if err := validResponse.VisitImportFilamentResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

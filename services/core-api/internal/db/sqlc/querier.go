@@ -100,6 +100,9 @@ type Querier interface {
 	// credential, possibly duplicate email) can never be logged into.
 	GetCustomerByLoginEmail(ctx context.Context, lower string) (Customer, error)
 	GetCustomerByPhone(ctx context.Context, phone string) (Customer, error)
+	// GetFilamentMaterial is the by-id read with the same derived stock/avg (LEFT JOIN → exists with no lots
+	// still returns one row). Batches for the weighted-avg breakdown panel come from ListFilamentBatchesByMaterial.
+	GetFilamentMaterial(ctx context.Context, id uuid.UUID) (GetFilamentMaterialRow, error)
 	// GetOptionByProduct scopes an option to its product — the choice handlers call it to validate the
 	// {optionId} in the path belongs to {id} before touching its choices (a choice under another product's
 	// option → 404), the option-level analogue of the (id, product_id) scoping on colours/options.
@@ -165,6 +168,14 @@ type Querier interface {
 	// customers_login_email_uq partial unique index (23505 → 409 in the handler), so there is no
 	// find-then-insert race — the DB is the single arbiter of login-email uniqueness.
 	InsertCustomerWithCredential(ctx context.Context, arg InsertCustomerWithCredentialParams) (Customer, error)
+	// InsertFilamentBatch records one import lot; qty_remaining starts equal to qty_original (a fresh lot is
+	// untouched). The handler computes qty_original = spoolCount × qtyPerSpool and total_cost = spoolCount ×
+	// pricePerSpool from the "nhập cuộn" dialog.
+	InsertFilamentBatch(ctx context.Context, arg InsertFilamentBatchParams) (FilamentBatch, error)
+	// filament.sql — Vật tư inventory (ADR-039 slice 4a). filament_materials = shop-wide palette;
+	// filament_batches = import lots. Stock + weighted-average cost/unit are DERIVED here (never stored): the
+	// list/get queries LEFT JOIN batches so a never-imported material reads stock 0, avg 0.
+	InsertFilamentMaterial(ctx context.Context, arg InsertFilamentMaterialParams) (FilamentMaterial, error)
 	InsertOption(ctx context.Context, arg InsertOptionParams) (Option, error)
 	// === ADR-037 configurator: option choices (enumerated values for a `choice` option) ===
 	InsertOptionChoice(ctx context.Context, arg InsertOptionChoiceParams) (OptionChoice, error)
@@ -245,6 +256,13 @@ type Querier interface {
 	// Ordered by option then display_order for a deterministic nesting.
 	ListChoicesByProduct(ctx context.Context, productID uuid.UUID) ([]OptionChoice, error)
 	ListColorsByProduct(ctx context.Context, productID uuid.UUID) ([]Color, error)
+	ListFilamentBatchesByMaterial(ctx context.Context, materialID uuid.UUID) ([]FilamentBatch, error)
+	// ListFilamentMaterials returns the palette with DERIVED stock + weighted-average cost/unit. The weighted
+	// average is Σ(qty_remaining × per-lot ₫/unit) ÷ Σ(qty_remaining) where per-lot ₫/unit = total_cost/qty_original;
+	// it is computed in ONE numeric expression (no per-lot pre-rounding → no int-VND drift, ADR-039) and cast
+	// to float8 for display (a RATE, not stored money — frozen to int only at the print-time snapshot, 4b). A
+	// material with no batches reads stock 0, avg 0. include_archived NULL → active only (archived hidden).
+	ListFilamentMaterials(ctx context.Context, includeArchived *bool) ([]ListFilamentMaterialsRow, error)
 	ListOptionsByProduct(ctx context.Context, productID uuid.UUID) ([]Option, error)
 	// ListOrderItems returns an order's line items enriched with the human-readable product name, color
 	// name and selected option labels (P3-e admin detail) — joined here so the admin order-detail page
@@ -333,6 +351,7 @@ type Querier interface {
 	// product (a mismatched /products/{id}/colors/{colorId} path) matches no row → ErrNoRows→404, never a
 	// cross-product edit. RETURNING lets the handler 404 on a stale id.
 	UpdateColor(ctx context.Context, arg UpdateColorParams) (Color, error)
+	UpdateFilamentMaterial(ctx context.Context, arg UpdateFilamentMaterialParams) (FilamentMaterial, error)
 	// UpdateOption / DeleteOption are scoped by BOTH id AND product_id (P3-j), same cross-product guard as the
 	// color mutations: an optionId under the wrong product → no row → 404.
 	UpdateOption(ctx context.Context, arg UpdateOptionParams) (Option, error)
