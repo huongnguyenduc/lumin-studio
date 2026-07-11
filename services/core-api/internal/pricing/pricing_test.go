@@ -41,7 +41,7 @@ type ids struct {
 
 func TestPriceItemBaseOnly(t *testing.T) {
 	p, colors, options, _ := fixture()
-	got, err := PriceItem(p, colors, options, Selection{})
+	got, err := PriceItem(p, colors, options, nil, nil, Selection{})
 	if err != nil {
 		t.Fatalf("PriceItem: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestPriceItemBaseOnly(t *testing.T) {
 
 func TestPriceItemColorAndOptions(t *testing.T) {
 	p, colors, options, i := fixture()
-	got, err := PriceItem(p, colors, options, Selection{
+	got, err := PriceItem(p, colors, options, nil, nil, Selection{
 		ColorID:         &i.colorOK,
 		OptionIDs:       []uuid.UUID{i.optSize, i.optText},
 		Personalization: &order.Personalization{Text: "An", ZoneID: "front"},
@@ -89,7 +89,7 @@ func TestPriceItemRejectsInvalidSelection(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			if _, err := PriceItem(p, colors, options, tc.sel); !errors.Is(err, tc.want) {
+			if _, err := PriceItem(p, colors, options, nil, nil, tc.sel); !errors.Is(err, tc.want) {
 				t.Fatalf("err = %v, want %v", err, tc.want)
 			}
 		})
@@ -101,7 +101,7 @@ func TestPriceItemRejectsInvalidSelection(t *testing.T) {
 func TestPriceItemEngraveBoundary(t *testing.T) {
 	p, colors, options, i := fixture()
 	twelve := "ĐặngThuHằng!" // 12 runes
-	if _, err := PriceItem(p, colors, options, Selection{
+	if _, err := PriceItem(p, colors, options, nil, nil, Selection{
 		OptionIDs:       []uuid.UUID{i.optText},
 		Personalization: &order.Personalization{Text: twelve, ZoneID: "front"},
 	}); err != nil {
@@ -115,7 +115,7 @@ func TestPriceItemOverflow(t *testing.T) {
 	i := ids{product: uuid.New(), optSize: uuid.New()}
 	p := sqlc.Product{ID: i.product, BasePrice: math.MaxInt64 - 10}
 	options := []sqlc.Option{{ID: i.optSize, ProductID: i.product, Type: sqlc.OptionTypeChoice, PriceDelta: 100}}
-	if _, err := PriceItem(p, nil, options, Selection{OptionIDs: []uuid.UUID{i.optSize}}); !errors.Is(err, ErrPriceOverflow) {
+	if _, err := PriceItem(p, nil, options, nil, nil, Selection{OptionIDs: []uuid.UUID{i.optSize}}); !errors.Is(err, ErrPriceOverflow) {
 		t.Fatalf("err = %v, want ErrPriceOverflow", err)
 	}
 }
@@ -170,7 +170,7 @@ func TestPriceItemIsSumOfCatalogParts(t *testing.T) {
 			want += int64(d)
 		}
 
-		got, err := PriceItem(p, colors, options, Selection{ColorID: &colorID, OptionIDs: optIDs})
+		got, err := PriceItem(p, colors, options, nil, nil, Selection{ColorID: &colorID, OptionIDs: optIDs})
 		return err == nil && got == want && got >= 0
 	}
 	if err := quick.Check(f, &quick.Config{MaxCount: 500}); err != nil {

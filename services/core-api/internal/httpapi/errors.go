@@ -174,7 +174,12 @@ func mapError(err error) (int, api.ErrorEnvelope) {
 		// recoverable config state the storefront shows as "checkout tạm đóng".
 		return http.StatusUnprocessableEntity, envelope(codeNoSTK)
 	case errors.Is(err, pricing.ErrColorNotForProduct), errors.Is(err, pricing.ErrOptionNotForProduct),
-		errors.Is(err, pricing.ErrDuplicateOption), errors.Is(err, pricing.ErrEngraveNotAllowed):
+		errors.Is(err, pricing.ErrDuplicateOption), errors.Is(err, pricing.ErrEngraveNotAllowed),
+		// ADR-037 configurator: per-part colour + per-option choice selection faults (client bug/hostile).
+		errors.Is(err, pricing.ErrColorForPartsProduct), errors.Is(err, pricing.ErrPartColorForFlatProduct),
+		errors.Is(err, pricing.ErrMissingPartColor), errors.Is(err, pricing.ErrDuplicatePartColor),
+		errors.Is(err, pricing.ErrColorNotForPart), errors.Is(err, pricing.ErrOptionNeedsChoice),
+		errors.Is(err, pricing.ErrChoiceNotForOption), errors.Is(err, pricing.ErrDuplicateOptionChoice):
 		// A selection referencing catalog rows that don't belong together — client bug/hostile.
 		return http.StatusUnprocessableEntity, envelope(codeInvalidSelection)
 	case errors.Is(err, pricing.ErrColorUnavailable):
