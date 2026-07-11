@@ -148,15 +148,23 @@ func (s *Server) quoteLine(ctx context.Context, cat *db.Catalog, it api.OrderIte
 	if err != nil {
 		return api.PriceQuoteLine{}, err
 	}
-	return priceQuoteLine(product, colors, options, it)
+	parts, err := cat.PartsByProduct(ctx, product.ID)
+	if err != nil {
+		return api.PriceQuoteLine{}, err
+	}
+	choices, err := cat.ChoicesByProduct(ctx, product.ID)
+	if err != nil {
+		return api.PriceQuoteLine{}, err
+	}
+	return priceQuoteLine(product, colors, options, parts, choices, it)
 }
 
 // priceQuoteLine derives one line's server-authoritative unit price and line total. It is PURE
 // (no DB) so the pricing + money math is unit-tested without a database. It routes the selection
 // through pricing.PriceItem (validates color/option membership, engrave maxChars by rune count,
 // unit overflow) and computes the line total with the guarded money math — never a raw multiply.
-func priceQuoteLine(product sqlc.Product, colors []sqlc.Color, options []sqlc.Option, it api.OrderItemInput) (api.PriceQuoteLine, error) {
-	unit, err := pricing.PriceItem(product, colors, options, pricing.Selection{
+func priceQuoteLine(product sqlc.Product, colors []sqlc.Color, options []sqlc.Option, parts []sqlc.Part, choices []sqlc.OptionChoice, it api.OrderItemInput) (api.PriceQuoteLine, error) {
+	unit, err := pricing.PriceItem(product, colors, options, parts, choices, pricing.Selection{
 		ColorID:         it.ColorId,
 		OptionIDs:       optionIDsFrom(it.OptionIds),
 		Personalization: personalizationFrom(it.Personalization),

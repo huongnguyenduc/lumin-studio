@@ -382,10 +382,21 @@ func (s *Server) priceLine(ctx context.Context, it api.OrderItemInput) (db.NewOr
 	if err != nil {
 		return db.NewOrderItem{}, err
 	}
+	parts, err := cat.PartsByProduct(ctx, product.ID)
+	if err != nil {
+		return db.NewOrderItem{}, err
+	}
+	choices, err := cat.ChoicesByProduct(ctx, product.ID)
+	if err != nil {
+		return db.NewOrderItem{}, err
+	}
 
 	personalization := personalizationFrom(it.Personalization)
 	optionIDs := optionIDsFrom(it.OptionIds)
-	unit, err := pricing.PriceItem(product, colors, options, pricing.Selection{
+	// ponytail: PartColors/OptionChoices stay empty — the wire (OrderItemInput) does not carry the
+	// per-part/per-choice selection until Stage 2b-2, so a parts product is not orderable yet (PriceItem
+	// 422s a missing part colour). Flat products are unchanged.
+	unit, err := pricing.PriceItem(product, colors, options, parts, choices, pricing.Selection{
 		ColorID:         it.ColorId,
 		OptionIDs:       optionIDs,
 		Personalization: personalization,

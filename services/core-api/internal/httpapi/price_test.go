@@ -47,7 +47,7 @@ type quoteIDs struct {
 
 func TestPriceQuoteLineBaseOnly(t *testing.T) {
 	p, colors, options, i := quoteFixture()
-	line, err := priceQuoteLine(p, colors, options, api.OrderItemInput{ProductId: i.product, Quantity: 1})
+	line, err := priceQuoteLine(p, colors, options, nil, nil, api.OrderItemInput{ProductId: i.product, Quantity: 1})
 	if err != nil {
 		t.Fatalf("priceQuoteLine: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestPriceQuoteLineBaseOnly(t *testing.T) {
 
 func TestPriceQuoteLineColorAndOptions(t *testing.T) {
 	p, colors, options, i := quoteFixture()
-	line, err := priceQuoteLine(p, colors, options, api.OrderItemInput{
+	line, err := priceQuoteLine(p, colors, options, nil, nil, api.OrderItemInput{
 		ProductId:       i.product,
 		ColorId:         &i.colorOK,
 		OptionIds:       &[]uuid.UUID{i.optSize, i.optText},
@@ -104,7 +104,7 @@ func TestPriceQuoteLineRejectsInvalidSelection(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			if _, err := priceQuoteLine(p, colors, options, tc.it); !errors.Is(err, tc.want) {
+			if _, err := priceQuoteLine(p, colors, options, nil, nil, tc.it); !errors.Is(err, tc.want) {
 				t.Fatalf("err = %v, want %v", err, tc.want)
 			}
 		})
@@ -119,7 +119,7 @@ func TestPriceQuoteLineUnitOverflow(t *testing.T) {
 	p := sqlc.Product{ID: productID, Status: sqlc.ProductStatusActive, BasePrice: math.MaxInt64 - 10}
 	options := []sqlc.Option{{ID: optID, ProductID: productID, Type: sqlc.OptionTypeChoice, PriceDelta: 100}}
 	it := api.OrderItemInput{ProductId: productID, OptionIds: &[]uuid.UUID{optID}, Quantity: 1}
-	if _, err := priceQuoteLine(p, nil, options, it); !errors.Is(err, pricing.ErrPriceOverflow) {
+	if _, err := priceQuoteLine(p, nil, options, nil, nil, it); !errors.Is(err, pricing.ErrPriceOverflow) {
 		t.Fatalf("err = %v, want ErrPriceOverflow", err)
 	}
 }
@@ -130,7 +130,7 @@ func TestPriceQuoteLineQuantityOverflow(t *testing.T) {
 	p, colors, options, i := quoteFixture()
 	p.BasePrice = math.MaxInt64
 	it := api.OrderItemInput{ProductId: i.product, Quantity: 2}
-	if _, err := priceQuoteLine(p, colors, options, it); !errors.Is(err, money.ErrInvalidAmount) {
+	if _, err := priceQuoteLine(p, colors, options, nil, nil, it); !errors.Is(err, money.ErrInvalidAmount) {
 		t.Fatalf("err = %v, want money.ErrInvalidAmount", err)
 	}
 }
@@ -140,7 +140,7 @@ func TestPriceQuoteLineQuantityOverflow(t *testing.T) {
 func TestPriceQuoteLineNonPositiveQuantity(t *testing.T) {
 	p, colors, options, i := quoteFixture()
 	it := api.OrderItemInput{ProductId: i.product, Quantity: 0}
-	if _, err := priceQuoteLine(p, colors, options, it); !errors.Is(err, money.ErrInvalidAmount) {
+	if _, err := priceQuoteLine(p, colors, options, nil, nil, it); !errors.Is(err, money.ErrInvalidAmount) {
 		t.Fatalf("err = %v, want money.ErrInvalidAmount", err)
 	}
 }
