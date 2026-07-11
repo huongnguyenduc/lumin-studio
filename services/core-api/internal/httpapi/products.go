@@ -129,8 +129,20 @@ func productDTO(p sqlc.Product, colors []sqlc.Color, options []sqlc.Option, part
 		RatingAvg:      p.RatingAvg,
 		ReviewCount:    int(p.ReviewCount),
 		CreatedAt:      p.CreatedAt.Time,
-		EstFilamentQty: int64Ptr(p.EstFilamentQty), // ADR-039: flat-product standard (admin editor; 0 omitted)
+		EstFilamentQty: int64Ptr(p.EstFilamentQty),          // ADR-039: flat-product standard (admin editor; 0 omitted)
+		EstPrintHours:  estPrintHoursPtr(p.EstPrintMinutes), // ADR-039 pt 3: machine-time standard, minutes→hours (0 omitted)
 	}, nil
+}
+
+// estPrintHoursPtr maps the stored exact minutes back to the wire's estPrintHours (hours), omitting a 0
+// estimate (nil → the field is absent, mirroring int64Ptr for est_filament_qty). Display precision only —
+// the money freeze uses the minutes directly (db.ComputeCostSnapshot), never this float.
+func estPrintHoursPtr(minutes int32) *float64 {
+	if minutes == 0 {
+		return nil
+	}
+	h := float64(minutes) / 60
+	return &h
 }
 
 // model3dViewFromJSON parses the nullable model3d_view jsonb into the wire camera pose (ADR-038), or nil when

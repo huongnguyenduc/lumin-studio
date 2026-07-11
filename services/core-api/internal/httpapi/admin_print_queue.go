@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/api"
@@ -67,6 +68,7 @@ func (s *Server) AdvancePrintJobStage(ctx context.Context, request api.AdvancePr
 	}
 
 	var card api.PrintQueueJob
+	var snapshotItemID *uuid.UUID // set when THIS call drew filament → its COGS is rolled up post-commit (4c-2)
 	err := withTx(ctx, s.pool, func(tx pgx.Tx) error {
 		jobs := db.NewJobs(tx)
 		if stage == sqlc.PrintStagePRINTING {
@@ -79,6 +81,8 @@ func (s *Server) AdvancePrintJobStage(ctx context.Context, request api.AdvancePr
 				if err := s.deductFilamentForPrint(ctx, tx, job.OrderItemID); err != nil {
 					return err // rolls back the claim too → retryable, no half-draw
 				}
+				itemID := job.OrderItemID
+				snapshotItemID = &itemID // freeze the full COGS post-commit (filament is now frozen in-tx)
 			}
 		} else if _, err := jobs.AdvancePrintStage(ctx, request.Id, stage); err != nil {
 			return err // ErrNotFound → 404
@@ -98,6 +102,16 @@ func (s *Server) AdvancePrintJobStage(ctx context.Context, request api.AdvancePr
 	// publish-on-commit (ADR-006 spirit); non-blocking and best-effort (a missed frame self-heals via the
 	// client's re-read/poll), so it never affects the PATCH's own 200 response.
 	s.printHub.broadcast(card)
+	// COGS snapshot rollup (ADR-039 pt 5, 4c-2): only when THIS call drew filament (first →PRINTING). Runs
+	// BEST-EFFORT post-commit off the committed filament cost — a fault just leaves cost_snapshot NULL
+	// ("chưa chốt", backfillable), never failing the move or blocking the board (costing NEVER cascades onto
+	// a paid order). Same spirit as the broadcast above.
+	if snapshotItemID != nil {
+		if err := db.NewCosting(s.pool).SnapshotOrderItem(ctx, *snapshotItemID); err != nil {
+			s.logger.Warn("cost snapshot rollup failed (cost_snapshot left NULL, backfillable)",
+				"orderItem", *snapshotItemID, "err", err)
+		}
+	}
 	return api.AdvancePrintJobStage200JSONResponse(card), nil
 }
 

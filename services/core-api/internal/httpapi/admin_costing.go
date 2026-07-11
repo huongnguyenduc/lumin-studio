@@ -361,3 +361,22 @@ func auxCostsDTO(rows []sqlc.AuxCost) []api.AuxCost {
 	}
 	return out
 }
+
+// ── Costing summary (KPI read) ──────────────────────────────────────────────────────────────────────────
+
+// GetCostingSummary handles GET /admin/costing-summary (admin-gated: owner+staff, classify default). The
+// derived /vat-tu dashboard KPIs (waste factor, per-order overhead, real-orders-30d, primary ₫/hour) — the
+// SAME rolling-30-day inputs + formulas the per-order COGS snapshot uses, so the dashboard cannot drift from
+// a frozen margin (ADR-039 pt 7). Rates are floats (not stored money); the aux allocation is int-VND.
+func (s *Server) GetCostingSummary(ctx context.Context, _ api.GetCostingSummaryRequestObject) (api.GetCostingSummaryResponseObject, error) {
+	sum, err := db.NewCosting(s.pool).Summary(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return api.GetCostingSummary200JSONResponse{
+		WasteFactor:              sum.WasteFactor,
+		AuxPerOrderVnd:           sum.AuxPerOrderVnd,
+		RealOrders30d:            sum.RealOrders30d,
+		PrimaryMachineVndPerHour: sum.PrimaryMachineVndPerHour,
+	}, nil
+}

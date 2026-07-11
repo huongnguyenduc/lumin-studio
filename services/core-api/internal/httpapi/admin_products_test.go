@@ -120,10 +120,11 @@ func TestAdminProductWritesAreOwnerOnly(t *testing.T) {
 func TestCleanProductInput(t *testing.T) {
 	desc := "  ấm áp  "
 	imgs := []string{"https://x/1.jpg"}
+	estHours := 6.5
 	c, fields, err := cleanProductInput(api.ProductInput{
 		Slug: " den-de-ban ", Name: " Đèn để bàn ", Description: &desc, CategoryId: uuid.New(),
 		BasePrice: 390_000, Dimensions: api.Dimensions{W: 180, D: 180, H: 240}, Material: "PLA",
-		Images: &imgs, Status: api.ProductStatus("active"),
+		Images: &imgs, Status: api.ProductStatus("active"), EstPrintHours: &estHours,
 	})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -133,6 +134,9 @@ func TestCleanProductInput(t *testing.T) {
 	}
 	if c.Slug != "den-de-ban" || c.Name != "Đèn để bàn" || c.Description != "ấm áp" {
 		t.Fatalf("trim wrong: %+v", c)
+	}
+	if c.EstPrintMinutes != 390 { // 6.5h → exact 390 minutes
+		t.Fatalf("estPrintHours 6.5 → %d minutes, want 390", c.EstPrintMinutes)
 	}
 	var gotDims api.Dimensions // jsonb key order is irrelevant (Postgres normalizes; readback is key-based)
 	if err := json.Unmarshal(c.Dimensions, &gotDims); err != nil || gotDims != (api.Dimensions{W: 180, D: 180, H: 240}) {
@@ -158,6 +162,9 @@ func TestCleanProductInput(t *testing.T) {
 		"zero dimension":   {func(p *api.ProductInput) { p.Dimensions.H = 0 }, "dimensions"},
 		"nil category":     {func(p *api.ProductInput) { p.CategoryId = uuid.Nil }, "categoryId"},
 		"bad status":       {func(p *api.ProductInput) { p.Status = api.ProductStatus("sold") }, "status"},
+		"negative hours":   {func(p *api.ProductInput) { h := -1.0; p.EstPrintHours = &h }, "estPrintHours"},
+		"NaN hours":        {func(p *api.ProductInput) { h := math.NaN(); p.EstPrintHours = &h }, "estPrintHours"},
+		"over-cap hours":   {func(p *api.ProductInput) { h := 2000.0; p.EstPrintHours = &h }, "estPrintHours"},
 	}
 	for name, tc := range bad {
 		t.Run(name, func(t *testing.T) {
