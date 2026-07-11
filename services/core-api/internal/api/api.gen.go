@@ -225,6 +225,27 @@ type AuthUser struct {
 	Role UserRole `json:"role"`
 }
 
+// AuxCost An auxiliary/overhead cost line (ADR-039 pt 7). amountVnd is int-VND; the per-order allocation is derived at rollup time.
+type AuxCost struct {
+	// AmountVnd Amount in int-VND (>= 0).
+	AmountVnd int64              `json:"amountVnd"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// Kind per_order (a flat cost each order) | per_month (amortized over the 30-day order count). Validated server-side (ADR-028), not a wire enum.
+	Kind  string `json:"kind"`
+	Label string `json:"label"`
+}
+
+// AuxCostInput Create/replace body for an overhead line (ADR-039, owner-only).
+type AuxCostInput struct {
+	// AmountVnd Amount in int-VND (>= 0).
+	AmountVnd int64 `json:"amountVnd"`
+
+	// Kind per_order | per_month.
+	Kind  string `json:"kind"`
+	Label string `json:"label"`
+}
+
 // BankAccount VietQR STK the server renders the static QR from (conventions §57). May be unset.
 type BankAccount struct {
 	AccountName   *string `json:"accountName,omitempty"`
@@ -503,10 +524,64 @@ type FilamentMaterialInput struct {
 	Unit string `json:"unit"`
 }
 
+// FilamentScrapInput Log a scrap draw against a material (ADR-039 hao-hụt tab, owner-only). Draws qty FIFO through the deduct helper (kind='scrap') so scrap moves stock + writes the same consumption ledger; a shortfall clamps to available stock (never errors).
+type FilamentScrapInput struct {
+	// Note Optional note.
+	Note *string `json:"note,omitempty"`
+
+	// Qty Scrap quantity in the material unit (>= 1).
+	Qty int64 `json:"qty"`
+
+	// Reason Optional scrap reason.
+	Reason *string `json:"reason,omitempty"`
+}
+
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
 	Email    openapi_types.Email `json:"email"`
 	Password string              `json:"password"`
+}
+
+// Machine A printer for machine-hour costing (ADR-039 pt 6). costPerHour is DERIVED = purchasePriceVnd / (depreciationMonths × expectedHoursPerMonth) — a rate (float, not stored money); the 4c snapshot attributes hours to the primary machine. active=false hides it from the cost rollup.
+type Machine struct {
+	// Active Excluded from the cost rollup when false.
+	Active bool `json:"active"`
+
+	// CostPerHour Derived ₫/hour = purchasePriceVnd / (depreciationMonths × expectedHoursPerMonth). A rate, not stored money.
+	CostPerHour float64 `json:"costPerHour"`
+
+	// DepreciationMonths Depreciation window in months (> 0).
+	DepreciationMonths int `json:"depreciationMonths"`
+
+	// ExpectedHoursPerMonth Expected run hours per month (> 0).
+	ExpectedHoursPerMonth int                `json:"expectedHoursPerMonth"`
+	Id                    openapi_types.UUID `json:"id"`
+
+	// IsPrimary The machine the snapshot attributes hours to.
+	IsPrimary bool   `json:"isPrimary"`
+	Name      string `json:"name"`
+
+	// PurchasePriceVnd Purchase price in int-VND (>= 0).
+	PurchasePriceVnd int64 `json:"purchasePriceVnd"`
+}
+
+// MachineInput Create/replace body for a machine (ADR-039, owner-only). isPrimary/active default false/true.
+type MachineInput struct {
+	// Active Optional, defaults true.
+	Active *bool `json:"active,omitempty"`
+
+	// DepreciationMonths Depreciation window in months (> 0).
+	DepreciationMonths int `json:"depreciationMonths"`
+
+	// ExpectedHoursPerMonth Expected run hours per month (> 0).
+	ExpectedHoursPerMonth int `json:"expectedHoursPerMonth"`
+
+	// IsPrimary Mark as the primary machine; optional, defaults false.
+	IsPrimary *bool  `json:"isPrimary,omitempty"`
+	Name      string `json:"name"`
+
+	// PurchasePriceVnd Purchase price in int-VND (>= 0).
+	PurchasePriceVnd int64 `json:"purchasePriceVnd"`
 }
 
 // Model3dView Owner-saved default camera pose for the storefront 3D viewer (ADR-038). Maps 1:1 to a <model-viewer> camera-orbit (orbitTheta deg · orbitPhi deg · orbitRadius %) plus camera-target (targetX/Y/Z metres). Absent on a Product = no saved pose, so the viewer auto-frames. Display metadata, not money — plain floats (not int-VND). The worker recenters geometry, so target is usually ~origin; it is kept so an off-centre framing needs no later migration.
@@ -1226,6 +1301,12 @@ type GetProductReviewsParams struct {
 	IfNoneMatch *string `json:"If-None-Match,omitempty"`
 }
 
+// CreateAuxCostJSONRequestBody defines body for CreateAuxCost for application/json ContentType.
+type CreateAuxCostJSONRequestBody = AuxCostInput
+
+// UpdateAuxCostJSONRequestBody defines body for UpdateAuxCost for application/json ContentType.
+type UpdateAuxCostJSONRequestBody = AuxCostInput
+
 // CreateFilamentMaterialJSONRequestBody defines body for CreateFilamentMaterial for application/json ContentType.
 type CreateFilamentMaterialJSONRequestBody = FilamentMaterialInput
 
@@ -1234,6 +1315,15 @@ type UpdateFilamentMaterialJSONRequestBody = FilamentMaterialInput
 
 // ImportFilamentJSONRequestBody defines body for ImportFilament for application/json ContentType.
 type ImportFilamentJSONRequestBody = FilamentImportInput
+
+// ScrapFilamentJSONRequestBody defines body for ScrapFilament for application/json ContentType.
+type ScrapFilamentJSONRequestBody = FilamentScrapInput
+
+// CreateMachineJSONRequestBody defines body for CreateMachine for application/json ContentType.
+type CreateMachineJSONRequestBody = MachineInput
+
+// UpdateMachineJSONRequestBody defines body for UpdateMachine for application/json ContentType.
+type UpdateMachineJSONRequestBody = MachineInput
 
 // AdvancePrintJobStageJSONRequestBody defines body for AdvancePrintJobStage for application/json ContentType.
 type AdvancePrintJobStageJSONRequestBody = PrintStageUpdate
@@ -1404,6 +1494,18 @@ func (t *CreateOrderInput) UnmarshalJSON(b []byte) error {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// List auxiliary/overhead cost lines (admin-gated read; owner+staff).
+	// (GET /admin/aux-costs)
+	ListAuxCosts(w http.ResponseWriter, r *http.Request)
+	// Add an overhead cost line (owner-only).
+	// (POST /admin/aux-costs)
+	CreateAuxCost(w http.ResponseWriter, r *http.Request)
+	// Delete an overhead cost line (owner-only).
+	// (DELETE /admin/aux-costs/{id})
+	DeleteAuxCost(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Edit an overhead cost line (owner-only).
+	// (PATCH /admin/aux-costs/{id})
+	UpdateAuxCost(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// Admin dashboard aggregates (counts + net revenue + recent orders + todos).
 	// (GET /admin/dashboard)
 	GetDashboard(w http.ResponseWriter, r *http.Request)
@@ -1422,6 +1524,21 @@ type ServerInterface interface {
 	// Record a "nhập cuộn" import lot for a material (owner-only) — moves the weighted average.
 	// (POST /admin/filament-materials/{id}/import)
 	ImportFilament(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Log a scrap draw against a material (owner-only) — the hao-hụt tab (ADR-039).
+	// (POST /admin/filament-materials/{id}/scrap)
+	ScrapFilament(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// List machines with derived ₫/hour (admin-gated read; owner+staff).
+	// (GET /admin/machines)
+	ListMachines(w http.ResponseWriter, r *http.Request)
+	// Add a machine (owner-only).
+	// (POST /admin/machines)
+	CreateMachine(w http.ResponseWriter, r *http.Request)
+	// Delete a machine (owner-only).
+	// (DELETE /admin/machines/{id})
+	DeleteMachine(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Edit a machine (owner-only).
+	// (PATCH /admin/machines/{id})
+	UpdateMachine(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// Admin orders list — paginated, optionally filtered by status (admin-gated).
 	// (GET /admin/orders)
 	GetAdminOrders(w http.ResponseWriter, r *http.Request, params GetAdminOrdersParams)
@@ -1578,6 +1695,30 @@ type ServerInterface interface {
 
 type Unimplemented struct{}
 
+// List auxiliary/overhead cost lines (admin-gated read; owner+staff).
+// (GET /admin/aux-costs)
+func (_ Unimplemented) ListAuxCosts(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Add an overhead cost line (owner-only).
+// (POST /admin/aux-costs)
+func (_ Unimplemented) CreateAuxCost(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete an overhead cost line (owner-only).
+// (DELETE /admin/aux-costs/{id})
+func (_ Unimplemented) DeleteAuxCost(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Edit an overhead cost line (owner-only).
+// (PATCH /admin/aux-costs/{id})
+func (_ Unimplemented) UpdateAuxCost(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Admin dashboard aggregates (counts + net revenue + recent orders + todos).
 // (GET /admin/dashboard)
 func (_ Unimplemented) GetDashboard(w http.ResponseWriter, r *http.Request) {
@@ -1611,6 +1752,36 @@ func (_ Unimplemented) UpdateFilamentMaterial(w http.ResponseWriter, r *http.Req
 // Record a "nhập cuộn" import lot for a material (owner-only) — moves the weighted average.
 // (POST /admin/filament-materials/{id}/import)
 func (_ Unimplemented) ImportFilament(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Log a scrap draw against a material (owner-only) — the hao-hụt tab (ADR-039).
+// (POST /admin/filament-materials/{id}/scrap)
+func (_ Unimplemented) ScrapFilament(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List machines with derived ₫/hour (admin-gated read; owner+staff).
+// (GET /admin/machines)
+func (_ Unimplemented) ListMachines(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Add a machine (owner-only).
+// (POST /admin/machines)
+func (_ Unimplemented) CreateMachine(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete a machine (owner-only).
+// (DELETE /admin/machines/{id})
+func (_ Unimplemented) DeleteMachine(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Edit a machine (owner-only).
+// (PATCH /admin/machines/{id})
+func (_ Unimplemented) UpdateMachine(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1923,6 +2094,108 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// ListAuxCosts operation middleware
+func (siw *ServerInterfaceWrapper) ListAuxCosts(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAuxCosts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAuxCost operation middleware
+func (siw *ServerInterfaceWrapper) CreateAuxCost(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAuxCost(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAuxCost operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAuxCost(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAuxCost(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAuxCost operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAuxCost(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAuxCost(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetDashboard operation middleware
 func (siw *ServerInterfaceWrapper) GetDashboard(w http.ResponseWriter, r *http.Request) {
 
@@ -2080,6 +2353,139 @@ func (siw *ServerInterfaceWrapper) ImportFilament(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ImportFilament(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ScrapFilament operation middleware
+func (siw *ServerInterfaceWrapper) ScrapFilament(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ScrapFilament(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMachines operation middleware
+func (siw *ServerInterfaceWrapper) ListMachines(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMachines(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateMachine operation middleware
+func (siw *ServerInterfaceWrapper) CreateMachine(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateMachine(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteMachine operation middleware
+func (siw *ServerInterfaceWrapper) DeleteMachine(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteMachine(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateMachine operation middleware
+func (siw *ServerInterfaceWrapper) UpdateMachine(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateMachine(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3754,6 +4160,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/aux-costs", wrapper.ListAuxCosts)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/aux-costs", wrapper.CreateAuxCost)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/admin/aux-costs/{id}", wrapper.DeleteAuxCost)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/admin/aux-costs/{id}", wrapper.UpdateAuxCost)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/dashboard", wrapper.GetDashboard)
 	})
 	r.Group(func(r chi.Router) {
@@ -3770,6 +4188,21 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/admin/filament-materials/{id}/import", wrapper.ImportFilament)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/filament-materials/{id}/scrap", wrapper.ScrapFilament)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/machines", wrapper.ListMachines)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/machines", wrapper.CreateMachine)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/admin/machines/{id}", wrapper.DeleteMachine)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/admin/machines/{id}", wrapper.UpdateMachine)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/orders", wrapper.GetAdminOrders)
@@ -3938,6 +4371,172 @@ type TooManyRequestsJSONResponse ErrorEnvelope
 type UnauthorizedJSONResponse ErrorEnvelope
 
 type UnprocessableJSONResponse ErrorEnvelope
+
+type ListAuxCostsRequestObject struct {
+}
+
+type ListAuxCostsResponseObject interface {
+	VisitListAuxCostsResponse(w http.ResponseWriter) error
+}
+
+type ListAuxCosts200JSONResponse []AuxCost
+
+func (response ListAuxCosts200JSONResponse) VisitListAuxCostsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListAuxCosts401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListAuxCosts401JSONResponse) VisitListAuxCostsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateAuxCostRequestObject struct {
+	Body *CreateAuxCostJSONRequestBody
+}
+
+type CreateAuxCostResponseObject interface {
+	VisitCreateAuxCostResponse(w http.ResponseWriter) error
+}
+
+type CreateAuxCost201JSONResponse AuxCost
+
+func (response CreateAuxCost201JSONResponse) VisitCreateAuxCostResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateAuxCost400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateAuxCost400JSONResponse) VisitCreateAuxCostResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateAuxCost401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateAuxCost401JSONResponse) VisitCreateAuxCostResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateAuxCost403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateAuxCost403JSONResponse) VisitCreateAuxCostResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteAuxCostRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type DeleteAuxCostResponseObject interface {
+	VisitDeleteAuxCostResponse(w http.ResponseWriter) error
+}
+
+type DeleteAuxCost204Response struct {
+}
+
+func (response DeleteAuxCost204Response) VisitDeleteAuxCostResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteAuxCost401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteAuxCost401JSONResponse) VisitDeleteAuxCostResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteAuxCost403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteAuxCost403JSONResponse) VisitDeleteAuxCostResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteAuxCost404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteAuxCost404JSONResponse) VisitDeleteAuxCostResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAuxCostRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *UpdateAuxCostJSONRequestBody
+}
+
+type UpdateAuxCostResponseObject interface {
+	VisitUpdateAuxCostResponse(w http.ResponseWriter) error
+}
+
+type UpdateAuxCost200JSONResponse AuxCost
+
+func (response UpdateAuxCost200JSONResponse) VisitUpdateAuxCostResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAuxCost400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateAuxCost400JSONResponse) VisitUpdateAuxCostResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAuxCost401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateAuxCost401JSONResponse) VisitUpdateAuxCostResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAuxCost403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateAuxCost403JSONResponse) VisitUpdateAuxCostResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAuxCost404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateAuxCost404JSONResponse) VisitUpdateAuxCostResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
 
 type GetDashboardRequestObject struct {
 }
@@ -4171,6 +4770,226 @@ func (response ImportFilament403JSONResponse) VisitImportFilamentResponse(w http
 type ImportFilament404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response ImportFilament404JSONResponse) VisitImportFilamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ScrapFilamentRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *ScrapFilamentJSONRequestBody
+}
+
+type ScrapFilamentResponseObject interface {
+	VisitScrapFilamentResponse(w http.ResponseWriter) error
+}
+
+type ScrapFilament200JSONResponse FilamentMaterialDetail
+
+func (response ScrapFilament200JSONResponse) VisitScrapFilamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ScrapFilament400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ScrapFilament400JSONResponse) VisitScrapFilamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ScrapFilament401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ScrapFilament401JSONResponse) VisitScrapFilamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ScrapFilament403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ScrapFilament403JSONResponse) VisitScrapFilamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ScrapFilament404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ScrapFilament404JSONResponse) VisitScrapFilamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListMachinesRequestObject struct {
+}
+
+type ListMachinesResponseObject interface {
+	VisitListMachinesResponse(w http.ResponseWriter) error
+}
+
+type ListMachines200JSONResponse []Machine
+
+func (response ListMachines200JSONResponse) VisitListMachinesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListMachines401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListMachines401JSONResponse) VisitListMachinesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateMachineRequestObject struct {
+	Body *CreateMachineJSONRequestBody
+}
+
+type CreateMachineResponseObject interface {
+	VisitCreateMachineResponse(w http.ResponseWriter) error
+}
+
+type CreateMachine201JSONResponse Machine
+
+func (response CreateMachine201JSONResponse) VisitCreateMachineResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateMachine400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateMachine400JSONResponse) VisitCreateMachineResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateMachine401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateMachine401JSONResponse) VisitCreateMachineResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateMachine403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateMachine403JSONResponse) VisitCreateMachineResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteMachineRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type DeleteMachineResponseObject interface {
+	VisitDeleteMachineResponse(w http.ResponseWriter) error
+}
+
+type DeleteMachine204Response struct {
+}
+
+func (response DeleteMachine204Response) VisitDeleteMachineResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteMachine401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteMachine401JSONResponse) VisitDeleteMachineResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteMachine403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteMachine403JSONResponse) VisitDeleteMachineResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteMachine404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteMachine404JSONResponse) VisitDeleteMachineResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateMachineRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *UpdateMachineJSONRequestBody
+}
+
+type UpdateMachineResponseObject interface {
+	VisitUpdateMachineResponse(w http.ResponseWriter) error
+}
+
+type UpdateMachine200JSONResponse Machine
+
+func (response UpdateMachine200JSONResponse) VisitUpdateMachineResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateMachine400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateMachine400JSONResponse) VisitUpdateMachineResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateMachine401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateMachine401JSONResponse) VisitUpdateMachineResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateMachine403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateMachine403JSONResponse) VisitUpdateMachineResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateMachine404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateMachine404JSONResponse) VisitUpdateMachineResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
 
@@ -6378,6 +7197,18 @@ func (response GetProductReviews404JSONResponse) VisitGetProductReviewsResponse(
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// List auxiliary/overhead cost lines (admin-gated read; owner+staff).
+	// (GET /admin/aux-costs)
+	ListAuxCosts(ctx context.Context, request ListAuxCostsRequestObject) (ListAuxCostsResponseObject, error)
+	// Add an overhead cost line (owner-only).
+	// (POST /admin/aux-costs)
+	CreateAuxCost(ctx context.Context, request CreateAuxCostRequestObject) (CreateAuxCostResponseObject, error)
+	// Delete an overhead cost line (owner-only).
+	// (DELETE /admin/aux-costs/{id})
+	DeleteAuxCost(ctx context.Context, request DeleteAuxCostRequestObject) (DeleteAuxCostResponseObject, error)
+	// Edit an overhead cost line (owner-only).
+	// (PATCH /admin/aux-costs/{id})
+	UpdateAuxCost(ctx context.Context, request UpdateAuxCostRequestObject) (UpdateAuxCostResponseObject, error)
 	// Admin dashboard aggregates (counts + net revenue + recent orders + todos).
 	// (GET /admin/dashboard)
 	GetDashboard(ctx context.Context, request GetDashboardRequestObject) (GetDashboardResponseObject, error)
@@ -6396,6 +7227,21 @@ type StrictServerInterface interface {
 	// Record a "nhập cuộn" import lot for a material (owner-only) — moves the weighted average.
 	// (POST /admin/filament-materials/{id}/import)
 	ImportFilament(ctx context.Context, request ImportFilamentRequestObject) (ImportFilamentResponseObject, error)
+	// Log a scrap draw against a material (owner-only) — the hao-hụt tab (ADR-039).
+	// (POST /admin/filament-materials/{id}/scrap)
+	ScrapFilament(ctx context.Context, request ScrapFilamentRequestObject) (ScrapFilamentResponseObject, error)
+	// List machines with derived ₫/hour (admin-gated read; owner+staff).
+	// (GET /admin/machines)
+	ListMachines(ctx context.Context, request ListMachinesRequestObject) (ListMachinesResponseObject, error)
+	// Add a machine (owner-only).
+	// (POST /admin/machines)
+	CreateMachine(ctx context.Context, request CreateMachineRequestObject) (CreateMachineResponseObject, error)
+	// Delete a machine (owner-only).
+	// (DELETE /admin/machines/{id})
+	DeleteMachine(ctx context.Context, request DeleteMachineRequestObject) (DeleteMachineResponseObject, error)
+	// Edit a machine (owner-only).
+	// (PATCH /admin/machines/{id})
+	UpdateMachine(ctx context.Context, request UpdateMachineRequestObject) (UpdateMachineResponseObject, error)
 	// Admin orders list — paginated, optionally filtered by status (admin-gated).
 	// (GET /admin/orders)
 	GetAdminOrders(ctx context.Context, request GetAdminOrdersRequestObject) (GetAdminOrdersResponseObject, error)
@@ -6577,6 +7423,120 @@ type strictHandler struct {
 	options     StrictHTTPServerOptions
 }
 
+// ListAuxCosts operation middleware
+func (sh *strictHandler) ListAuxCosts(w http.ResponseWriter, r *http.Request) {
+	var request ListAuxCostsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAuxCosts(ctx, request.(ListAuxCostsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAuxCosts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAuxCostsResponseObject); ok {
+		if err := validResponse.VisitListAuxCostsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAuxCost operation middleware
+func (sh *strictHandler) CreateAuxCost(w http.ResponseWriter, r *http.Request) {
+	var request CreateAuxCostRequestObject
+
+	var body CreateAuxCostJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAuxCost(ctx, request.(CreateAuxCostRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAuxCost")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAuxCostResponseObject); ok {
+		if err := validResponse.VisitCreateAuxCostResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteAuxCost operation middleware
+func (sh *strictHandler) DeleteAuxCost(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request DeleteAuxCostRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAuxCost(ctx, request.(DeleteAuxCostRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAuxCost")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAuxCostResponseObject); ok {
+		if err := validResponse.VisitDeleteAuxCostResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAuxCost operation middleware
+func (sh *strictHandler) UpdateAuxCost(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request UpdateAuxCostRequestObject
+
+	request.Id = id
+
+	var body UpdateAuxCostJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAuxCost(ctx, request.(UpdateAuxCostRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAuxCost")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAuxCostResponseObject); ok {
+		if err := validResponse.VisitUpdateAuxCostResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetDashboard operation middleware
 func (sh *strictHandler) GetDashboard(w http.ResponseWriter, r *http.Request) {
 	var request GetDashboardRequestObject
@@ -6743,6 +7703,153 @@ func (sh *strictHandler) ImportFilament(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ImportFilamentResponseObject); ok {
 		if err := validResponse.VisitImportFilamentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ScrapFilament operation middleware
+func (sh *strictHandler) ScrapFilament(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request ScrapFilamentRequestObject
+
+	request.Id = id
+
+	var body ScrapFilamentJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ScrapFilament(ctx, request.(ScrapFilamentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ScrapFilament")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ScrapFilamentResponseObject); ok {
+		if err := validResponse.VisitScrapFilamentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListMachines operation middleware
+func (sh *strictHandler) ListMachines(w http.ResponseWriter, r *http.Request) {
+	var request ListMachinesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListMachines(ctx, request.(ListMachinesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListMachines")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListMachinesResponseObject); ok {
+		if err := validResponse.VisitListMachinesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateMachine operation middleware
+func (sh *strictHandler) CreateMachine(w http.ResponseWriter, r *http.Request) {
+	var request CreateMachineRequestObject
+
+	var body CreateMachineJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateMachine(ctx, request.(CreateMachineRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateMachine")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateMachineResponseObject); ok {
+		if err := validResponse.VisitCreateMachineResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteMachine operation middleware
+func (sh *strictHandler) DeleteMachine(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request DeleteMachineRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteMachine(ctx, request.(DeleteMachineRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteMachine")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteMachineResponseObject); ok {
+		if err := validResponse.VisitDeleteMachineResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateMachine operation middleware
+func (sh *strictHandler) UpdateMachine(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request UpdateMachineRequestObject
+
+	request.Id = id
+
+	var body UpdateMachineJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateMachine(ctx, request.(UpdateMachineRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateMachine")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateMachineResponseObject); ok {
+		if err := validResponse.VisitUpdateMachineResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

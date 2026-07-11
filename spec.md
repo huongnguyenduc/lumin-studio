@@ -129,13 +129,15 @@ Thời gian lưu **ISO-8601 UTC**.
 | `Setting` | `shopInfo` · `bankAccount(VietQR)` · `shippingRules` · `refundPolicy` |
 
 ### Vật tư & chi phí (costing engine — ADR-039)
-Mô hình giá vốn động (`/vat-tu`, design Admin screen 8). Tồn + giá vốn **derive từ lô** (không lưu), tiền int-VND, giá vốn/biên **tách khỏi giá khách**. Toàn bộ model ở **ADR-039**. Slice 4a land palette+lô; **slice 4b** land ledger tiêu hao + định-mức catalog + trừ-khi-in (dưới); máy, chi phí phụ, hao-hụt, `OrderItem.costSnapshot` chốt-lúc-in (rollup) land theo slice **4c**.
+Mô hình giá vốn động (`/vat-tu`, design Admin screen 8). Tồn + giá vốn **derive từ lô** (không lưu), tiền int-VND, giá vốn/biên **tách khỏi giá khách**. Toàn bộ model ở **ADR-039**. Slice 4a land palette+lô; 4b land ledger tiêu hao + định-mức catalog + trừ-khi-in; **slice 4c-1** land máy + chi phí phụ + scrap-log (dưới); `OrderItem.costSnapshot` chốt-lúc-in (rollup máy/phụ/hao-hụt) + KPI/margin land theo **slice 4c-2**.
 | Thực thể | Trường chính |
 |---|---|
 | `FilamentMaterial` (cuộn theo màu, shop-wide) | `id` · `name` (màu có tên) · `material` (PLA/PETG/Resin…) · `unit` (gram/ml) · `hex?` · `lowStockThreshold` · `archived` — **tồn + giá vốn/đơn-vị (bình quân gia quyền) DERIVE từ batches** |
 | `FilamentBatch` (lô "nhập cuộn") | `id` · `materialId` · `importedAt` · `qtyOriginal` · `qtyRemaining` · `totalCostVnd` — ₫/đơn-vị-lô = total/original (derive); bình quân màu = `Σ(qtyRemaining × ₫/lô) ÷ Σ(qtyRemaining)` |
-| `FilamentConsumption` (ledger tiêu hao — 4b) | `id` · `materialId` · `kind` (print\|scrap) · `qty` (**thực** đã trừ, clamp) · `costVnd` (FIFO thực, **đóng băng**) · `orderItemId?` · `productName?` · `reason?` · `note?` · `at` — nguồn chân lý; `qtyRemaining` = cache dựng-lại-được |
+| `FilamentConsumption` (ledger tiêu hao — 4b) | `id` · `materialId` · `kind` (print\|scrap) · `qty` (**thực** đã trừ, clamp) · `costVnd` (FIFO thực, **đóng băng**) · `orderItemId?` · `productName?` · `reason?` · `note?` · `at` — nguồn chân lý; `qtyRemaining` = cache dựng-lại-được. Scrap (hao-hụt) = row `kind='scrap'` (4c-1, cùng helper trừ FIFO) |
 | Định-mức catalog (4b) | `products.estFilamentQty` (SP phẳng) · `parts.estFilamentQty` (per-part, ADR-037 two-tone) · `colors.filamentMaterialId?` (màu → cuộn shop). Trừ-khi-in đọc để trừ FIFO khi print job **lần đầu** vào PRINTING (`filament_deducted_at` claim atomic idempotent) |
+| `Machine` (giờ máy — 4c-1) | `id` · `name` · `purchasePriceVnd` · `depreciationMonths` · `expectedHoursPerMonth` · `isPrimary` · `active` — **₫/giờ DERIVE** = purchase ÷ (months × hours). Snapshot (4c-2) tính giờ máy theo máy `isPrimary` |
+| `AuxCost` (chi phí phụ — 4c-1) | `id` · `label` · `kind` (per_order\|per_month) · `amountVnd`. Phân bổ/đơn **DERIVE** (4c-2) = `Σper_order + Σper_month ÷ max(1, đơn-thực-30d)` |
 
 ---
 
