@@ -289,6 +289,10 @@ func TestClassifyFailsClosed(t *testing.T) {
 		"CreateProductOption": authOwnerOnly,
 		"UpdateProductOption": authOwnerOnly,
 		"DeleteProductOption": authOwnerOnly,
+
+		"GetProductAssetJobs":      authRequired,  // owner+staff read (mirrors product reads)
+		"CreateProductModelUpload": authOwnerOnly, // owner-only catalog-asset write
+		"CreateProductAssetJob":    authOwnerOnly,
 	}
 	for op, want := range cases {
 		if got := classify(op); got != want {

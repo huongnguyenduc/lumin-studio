@@ -22,6 +22,7 @@ import (
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/config"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/httpapi"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/modelstore"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/natsx"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/proofstore"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/relay"
@@ -136,6 +137,15 @@ func main() {
 		proofStore = nil
 	}
 
+	// Build the source-model upload signer once (P3-j-b, ADR-036) for the owner-only editor upload +
+	// asset-job host-pin. Separate public catalog-asset bucket (no retention sweeper — models are
+	// permanent). Invalid/absent config disables model uploads (endpoint fails closed); main.go boots.
+	modelStore, err := modelstore.New(cfg.ModelUploads)
+	if err != nil {
+		logger.Warn("model uploads disabled (invalid or absent S3/Garage config)", "err", err)
+		modelStore = nil
+	}
+
 	// Start the payment-proof retention sweeper: one goroutine deleting receipts ~90 days after their
 	// order reaches a terminal status (ADR-035, PDPL). It only runs when uploads are configured (there
 	// is nothing to delete otherwise) and is joined on shutdown BEFORE pool.Close()/proofStore go away,
@@ -160,6 +170,7 @@ func main() {
 		Handler: httpapi.NewRouter(logger, pool, nc, authIssuer,
 			httpapi.WithCustomerAuth(customerAuthIssuer),
 			httpapi.WithPaymentProofUploads(proofStore),
+			httpapi.WithModelUploads(modelStore),
 			httpapi.WithTrackingSecret(cfg.TrackingSecret),
 		),
 		// ReadHeaderTimeout covers the Slowloris header vector. Read/Write/Idle

@@ -13,6 +13,7 @@ import (
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/auth"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/modelstore"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/proofstore"
 )
 
@@ -59,6 +60,11 @@ type Server struct {
 	// still the per-IP layer; this in-process bucket keeps a missing/misconfigured edge rule from
 	// turning one unauthenticated endpoint into unlimited valid 10MB upload policies.
 	proofUploadLimiter *paymentProofUploadLimiter
+	// modelUploads signs presigned POST policies for admin source-model uploads (.glb/.stl/.3mf,
+	// P3-j-b/ADR-036) and host-pins the asset-job sourceModelUrl. Nil means the environment has not
+	// wired the catalog-asset bucket credentials; the owner-only endpoint then fails closed with a 500.
+	// No rate limiter twin: the endpoint is owner-authenticated, not public like proofUploads.
+	modelUploads *modelstore.Store
 	// tracking mints/verifies the phone-less order-tracking capability token (P2-i, D-P2-8). Never nil:
 	// NewServer defaults it to a dev-secret signer so unit tests need no wiring, and WithTrackingSecret
 	// (called by main.go with the real TRACKING_SECRET) overrides it. See track.go.
@@ -87,6 +93,14 @@ func WithCustomerAuth(issuer *auth.Issuer) ServerOption {
 // main.go still boots because local development may not exercise checkout uploads.
 func WithPaymentProofUploads(store *proofstore.Store) ServerOption {
 	return func(s *Server) { s.proofUploads = store }
+}
+
+// WithModelUploads wires the Garage/S3 signer used by POST /admin/products/{id}/model-upload (P3-j-b).
+// main.go builds the store once; a nil store — invalid/absent catalog-asset bucket config — makes the
+// owner-only endpoint fail closed at request time, while main.go still boots (local dev may not upload
+// models). The same store host-pins the sourceModelUrl an asset-job create references.
+func WithModelUploads(store *modelstore.Store) ServerOption {
+	return func(s *Server) { s.modelUploads = store }
 }
 
 // WithTrackingSecret sets the HMAC key for the phone-less order-tracking token (P2-i, D-P2-8).

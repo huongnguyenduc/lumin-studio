@@ -110,10 +110,12 @@ func classify(operationID string) authClass {
 		return authOwnerOnly
 	case "CreateAdminProduct", "UpdateAdminProduct", "DeleteAdminProduct",
 		"CreateProductColor", "UpdateProductColor", "DeleteProductColor",
-		"CreateProductOption", "UpdateProductOption", "DeleteProductOption":
+		"CreateProductOption", "UpdateProductOption", "DeleteProductOption",
+		"CreateProductModelUpload", "CreateProductAssetJob":
 		// Every catalog WRITE is owner-only (spec §08: sản phẩm is an owner power; staff manages orders/
-		// print-queue/reviews, not the catalog). The reads (GetAdminProducts/GetAdminProduct) stay
-		// authRequired (owner+staff) via the default, mirroring the settings read/write split.
+		// print-queue/reviews, not the catalog). Model upload + asset-job enqueue mutate the catalog's
+		// asset pipeline, so they are owner-only too (P3-j-b). The reads (GetAdminProducts/GetAdminProduct/
+		// GetProductAssetJobs) stay authRequired (owner+staff) via the default, mirroring settings.
 		return authOwnerOnly
 	case "RegisterCustomer", "LoginCustomer", "LogoutCustomer":
 		// Storefront customer auth entry points (PR-P1-r) — issuing or clearing a customer cookie

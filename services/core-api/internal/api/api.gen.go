@@ -22,6 +22,20 @@ const (
 	CustomerAuthScopes = "customerAuth.Scopes"
 )
 
+// Defines values for AssetJobStatus.
+const (
+	Failed     AssetJobStatus = "failed"
+	Processing AssetJobStatus = "processing"
+	Queued     AssetJobStatus = "queued"
+	Ready      AssetJobStatus = "ready"
+)
+
+// Defines values for AssetJobType.
+const (
+	ModelIngest  AssetJobType = "model_ingest"
+	SpriteRender AssetJobType = "sprite_render"
+)
+
 // Defines values for Channel.
 const (
 	ChannelInbox Channel = "inbox"
@@ -36,6 +50,13 @@ const (
 // Defines values for CreateWebOrderInputChannel.
 const (
 	Web CreateWebOrderInputChannel = "web"
+)
+
+// Defines values for ModelUploadInputContentType.
+const (
+	Model3mf        ModelUploadInputContentType = "model/3mf"
+	ModelgltfBinary ModelUploadInputContentType = "model/gltf-binary"
+	Modelstl        ModelUploadInputContentType = "model/stl"
 )
 
 // Defines values for OptionType.
@@ -152,6 +173,47 @@ type AdminProductSummary struct {
 	// Status Product lifecycle (spec §02, Postgres `product_status`). The detail read returns `active` only.
 	Status ProductStatus `json:"status"`
 }
+
+// AssetJob One render/ingest job for a product (migration 000006). The admin editor reads this to show render status. attempts/lastError/completedAt are written by the slice-3 worker; a freshly enqueued job is `queued` with 0 attempts and null lastError/completedAt.
+type AssetJob struct {
+	// Attempts Worker retry count (0 until the worker runs).
+	Attempts int `json:"attempts"`
+
+	// CompletedAt Set when the job reaches `ready` or `failed`; null while pending.
+	CompletedAt *time.Time         `json:"completedAt"`
+	CreatedAt   time.Time          `json:"createdAt"`
+	Id          openapi_types.UUID `json:"id"`
+
+	// JobType Which asset pipeline a job runs (D3): `model_ingest` normalizes geometry + builds the LOD .glb, `sprite_render` renders the 360° sprite alone. The client maps it to an i18n label.
+	JobType AssetJobType `json:"jobType"`
+
+	// LastError Failure reason; set on `failed`, cleared on `ready`, null otherwise.
+	LastError      *string            `json:"lastError"`
+	ProductId      openapi_types.UUID `json:"productId"`
+	SourceModelUrl string             `json:"sourceModelUrl"`
+	SourceVersion  string             `json:"sourceVersion"`
+
+	// Status Lifecycle of a render/ingest job (migration 000006). The client maps it to an i18n label.
+	Status AssetJobStatus `json:"status"`
+}
+
+// AssetJobInput Enqueue body for one render/ingest job. `sourceModelUrl` MUST be a host-pinned URL minted by POST /admin/products/{id}/model-upload; `sourceVersion` is the content hash of that uploaded object (ADR-004). The productId comes from the path, not the body.
+type AssetJobInput struct {
+	// JobType Which asset pipeline a job runs (D3): `model_ingest` normalizes geometry + builds the LOD .glb, `sprite_render` renders the 360° sprite alone. The client maps it to an i18n label.
+	JobType AssetJobType `json:"jobType"`
+
+	// SourceModelUrl Host-pinned URL of the uploaded source model (from the model-upload finalUrl).
+	SourceModelUrl string `json:"sourceModelUrl"`
+
+	// SourceVersion Content hash of the uploaded source object (ADR-004 — Garage has no versioning).
+	SourceVersion string `json:"sourceVersion"`
+}
+
+// AssetJobStatus Lifecycle of a render/ingest job (migration 000006). The client maps it to an i18n label.
+type AssetJobStatus string
+
+// AssetJobType Which asset pipeline a job runs (D3): `model_ingest` normalizes geometry + builds the LOD .glb, `sprite_render` renders the 360° sprite alone. The client maps it to an i18n label.
+type AssetJobType string
 
 // AuthUser The authenticated user (no credential material).
 type AuthUser struct {
@@ -358,6 +420,33 @@ type LoginRequest struct {
 	Email    openapi_types.Email `json:"email"`
 	Password string              `json:"password"`
 }
+
+// ModelUpload A short-lived, browser-ready S3/Garage POST form for one source model. Submit every `fields` entry and the file part to `uploadUrl`; after a successful direct upload, send `finalUrl` as `sourceModelUrl` to POST /admin/products/{id}/asset-jobs. `finalUrl` is host-pinned by the server and never derived from browser input.
+type ModelUpload struct {
+	// ExpiresAt Policy expiration timestamp.
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// Fields Exact form fields to include before the file part.
+	Fields map[string]string `json:"fields"`
+
+	// FinalUrl Host-pinned object URL later passed as `sourceModelUrl` to the asset-job create.
+	FinalUrl string `json:"finalUrl"`
+
+	// MaxBytes Maximum object size enforced by the signed POST policy (≤100MB).
+	MaxBytes int64 `json:"maxBytes"`
+
+	// UploadUrl S3/Garage form POST target, usually the bucket endpoint.
+	UploadUrl string `json:"uploadUrl"`
+}
+
+// ModelUploadInput Admin editor upload bootstrap for one source 3D model. No file name or client-declared size: the object key is generated server-side with no PII, and the size/type gate lives in the signed S3 POST policy. The editor maps the file extension (.glb/.stl/.3mf) to the exact model MIME below.
+type ModelUploadInput struct {
+	// ContentType Exact source-model MIME type the returned POST policy will allow.
+	ContentType ModelUploadInputContentType `json:"contentType"`
+}
+
+// ModelUploadInputContentType Exact source-model MIME type the returned POST policy will allow.
+type ModelUploadInputContentType string
 
 // Option A customization option (spec §02). type: text carries an engraving char limit (maxChars).
 type Option struct {
@@ -930,11 +1019,17 @@ type CreateAdminProductJSONRequestBody = ProductInput
 // UpdateAdminProductJSONRequestBody defines body for UpdateAdminProduct for application/json ContentType.
 type UpdateAdminProductJSONRequestBody = ProductInput
 
+// CreateProductAssetJobJSONRequestBody defines body for CreateProductAssetJob for application/json ContentType.
+type CreateProductAssetJobJSONRequestBody = AssetJobInput
+
 // CreateProductColorJSONRequestBody defines body for CreateProductColor for application/json ContentType.
 type CreateProductColorJSONRequestBody = ColorInput
 
 // UpdateProductColorJSONRequestBody defines body for UpdateProductColor for application/json ContentType.
 type UpdateProductColorJSONRequestBody = ColorInput
+
+// CreateProductModelUploadJSONRequestBody defines body for CreateProductModelUpload for application/json ContentType.
+type CreateProductModelUploadJSONRequestBody = ModelUploadInput
 
 // CreateProductOptionJSONRequestBody defines body for CreateProductOption for application/json ContentType.
 type CreateProductOptionJSONRequestBody = OptionInput
@@ -1099,6 +1194,12 @@ type ServerInterface interface {
 	// Save a product's editable fields (owner-only).
 	// (PATCH /admin/products/{id})
 	UpdateAdminProduct(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// List a product's render/ingest jobs, newest first (admin-gated read).
+	// (GET /admin/products/{id}/asset-jobs)
+	GetProductAssetJobs(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Enqueue a render/ingest job from an uploaded source model (owner-only).
+	// (POST /admin/products/{id}/asset-jobs)
+	CreateProductAssetJob(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// Add a named print colour to a product (owner-only).
 	// (POST /admin/products/{id}/colors)
 	CreateProductColor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -1108,6 +1209,9 @@ type ServerInterface interface {
 	// Edit a product's colour (owner-only).
 	// (PATCH /admin/products/{id}/colors/{colorId})
 	UpdateProductColor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, colorId openapi_types.UUID)
+	// Create a presigned POST form for one source-model upload (owner-only).
+	// (POST /admin/products/{id}/model-upload)
+	CreateProductModelUpload(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// Add a customization option to a product (owner-only).
 	// (POST /admin/products/{id}/options)
 	CreateProductOption(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -1258,6 +1362,18 @@ func (_ Unimplemented) UpdateAdminProduct(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// List a product's render/ingest jobs, newest first (admin-gated read).
+// (GET /admin/products/{id}/asset-jobs)
+func (_ Unimplemented) GetProductAssetJobs(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Enqueue a render/ingest job from an uploaded source model (owner-only).
+// (POST /admin/products/{id}/asset-jobs)
+func (_ Unimplemented) CreateProductAssetJob(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Add a named print colour to a product (owner-only).
 // (POST /admin/products/{id}/colors)
 func (_ Unimplemented) CreateProductColor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
@@ -1273,6 +1389,12 @@ func (_ Unimplemented) DeleteProductColor(w http.ResponseWriter, r *http.Request
 // Edit a product's colour (owner-only).
 // (PATCH /admin/products/{id}/colors/{colorId})
 func (_ Unimplemented) UpdateProductColor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, colorId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Create a presigned POST form for one source-model upload (owner-only).
+// (POST /admin/products/{id}/model-upload)
+func (_ Unimplemented) CreateProductModelUpload(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1750,6 +1872,68 @@ func (siw *ServerInterfaceWrapper) UpdateAdminProduct(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// GetProductAssetJobs operation middleware
+func (siw *ServerInterfaceWrapper) GetProductAssetJobs(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProductAssetJobs(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateProductAssetJob operation middleware
+func (siw *ServerInterfaceWrapper) CreateProductAssetJob(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateProductAssetJob(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateProductColor operation middleware
 func (siw *ServerInterfaceWrapper) CreateProductColor(w http.ResponseWriter, r *http.Request) {
 
@@ -1852,6 +2036,37 @@ func (siw *ServerInterfaceWrapper) UpdateProductColor(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateProductColor(w, r, id, colorId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateProductModelUpload operation middleware
+func (siw *ServerInterfaceWrapper) CreateProductModelUpload(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateProductModelUpload(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2795,6 +3010,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Patch(options.BaseURL+"/admin/products/{id}", wrapper.UpdateAdminProduct)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/products/{id}/asset-jobs", wrapper.GetProductAssetJobs)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/products/{id}/asset-jobs", wrapper.CreateProductAssetJob)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/admin/products/{id}/colors", wrapper.CreateProductColor)
 	})
 	r.Group(func(r chi.Router) {
@@ -2802,6 +3023,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/admin/products/{id}/colors/{colorId}", wrapper.UpdateProductColor)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/products/{id}/model-upload", wrapper.CreateProductModelUpload)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/admin/products/{id}/options", wrapper.CreateProductOption)
@@ -3299,6 +3523,95 @@ func (response UpdateAdminProduct404JSONResponse) VisitUpdateAdminProductRespons
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetProductAssetJobsRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type GetProductAssetJobsResponseObject interface {
+	VisitGetProductAssetJobsResponse(w http.ResponseWriter) error
+}
+
+type GetProductAssetJobs200JSONResponse []AssetJob
+
+func (response GetProductAssetJobs200JSONResponse) VisitGetProductAssetJobsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProductAssetJobs401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetProductAssetJobs401JSONResponse) VisitGetProductAssetJobsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProductAssetJobs404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetProductAssetJobs404JSONResponse) VisitGetProductAssetJobsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProductAssetJobRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *CreateProductAssetJobJSONRequestBody
+}
+
+type CreateProductAssetJobResponseObject interface {
+	VisitCreateProductAssetJobResponse(w http.ResponseWriter) error
+}
+
+type CreateProductAssetJob201JSONResponse AssetJob
+
+func (response CreateProductAssetJob201JSONResponse) VisitCreateProductAssetJobResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProductAssetJob400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateProductAssetJob400JSONResponse) VisitCreateProductAssetJobResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProductAssetJob401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateProductAssetJob401JSONResponse) VisitCreateProductAssetJobResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProductAssetJob403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateProductAssetJob403JSONResponse) VisitCreateProductAssetJobResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProductAssetJob404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateProductAssetJob404JSONResponse) VisitCreateProductAssetJobResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type CreateProductColorRequestObject struct {
 	Id   openapi_types.UUID `json:"id"`
 	Body *CreateProductColorJSONRequestBody
@@ -3446,6 +3759,60 @@ func (response UpdateProductColor403JSONResponse) VisitUpdateProductColorRespons
 type UpdateProductColor404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateProductColor404JSONResponse) VisitUpdateProductColorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProductModelUploadRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *CreateProductModelUploadJSONRequestBody
+}
+
+type CreateProductModelUploadResponseObject interface {
+	VisitCreateProductModelUploadResponse(w http.ResponseWriter) error
+}
+
+type CreateProductModelUpload200JSONResponse ModelUpload
+
+func (response CreateProductModelUpload200JSONResponse) VisitCreateProductModelUploadResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProductModelUpload400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateProductModelUpload400JSONResponse) VisitCreateProductModelUploadResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProductModelUpload401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateProductModelUpload401JSONResponse) VisitCreateProductModelUploadResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProductModelUpload403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateProductModelUpload403JSONResponse) VisitCreateProductModelUploadResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProductModelUpload404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateProductModelUpload404JSONResponse) VisitCreateProductModelUploadResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
 
@@ -4647,6 +5014,12 @@ type StrictServerInterface interface {
 	// Save a product's editable fields (owner-only).
 	// (PATCH /admin/products/{id})
 	UpdateAdminProduct(ctx context.Context, request UpdateAdminProductRequestObject) (UpdateAdminProductResponseObject, error)
+	// List a product's render/ingest jobs, newest first (admin-gated read).
+	// (GET /admin/products/{id}/asset-jobs)
+	GetProductAssetJobs(ctx context.Context, request GetProductAssetJobsRequestObject) (GetProductAssetJobsResponseObject, error)
+	// Enqueue a render/ingest job from an uploaded source model (owner-only).
+	// (POST /admin/products/{id}/asset-jobs)
+	CreateProductAssetJob(ctx context.Context, request CreateProductAssetJobRequestObject) (CreateProductAssetJobResponseObject, error)
 	// Add a named print colour to a product (owner-only).
 	// (POST /admin/products/{id}/colors)
 	CreateProductColor(ctx context.Context, request CreateProductColorRequestObject) (CreateProductColorResponseObject, error)
@@ -4656,6 +5029,9 @@ type StrictServerInterface interface {
 	// Edit a product's colour (owner-only).
 	// (PATCH /admin/products/{id}/colors/{colorId})
 	UpdateProductColor(ctx context.Context, request UpdateProductColorRequestObject) (UpdateProductColorResponseObject, error)
+	// Create a presigned POST form for one source-model upload (owner-only).
+	// (POST /admin/products/{id}/model-upload)
+	CreateProductModelUpload(ctx context.Context, request CreateProductModelUploadRequestObject) (CreateProductModelUploadResponseObject, error)
 	// Add a customization option to a product (owner-only).
 	// (POST /admin/products/{id}/options)
 	CreateProductOption(ctx context.Context, request CreateProductOptionRequestObject) (CreateProductOptionResponseObject, error)
@@ -5046,6 +5422,65 @@ func (sh *strictHandler) UpdateAdminProduct(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// GetProductAssetJobs operation middleware
+func (sh *strictHandler) GetProductAssetJobs(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request GetProductAssetJobsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProductAssetJobs(ctx, request.(GetProductAssetJobsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProductAssetJobs")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProductAssetJobsResponseObject); ok {
+		if err := validResponse.VisitGetProductAssetJobsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateProductAssetJob operation middleware
+func (sh *strictHandler) CreateProductAssetJob(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request CreateProductAssetJobRequestObject
+
+	request.Id = id
+
+	var body CreateProductAssetJobJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateProductAssetJob(ctx, request.(CreateProductAssetJobRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateProductAssetJob")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateProductAssetJobResponseObject); ok {
+		if err := validResponse.VisitCreateProductAssetJobResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // CreateProductColor operation middleware
 func (sh *strictHandler) CreateProductColor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	var request CreateProductColorRequestObject
@@ -5133,6 +5568,39 @@ func (sh *strictHandler) UpdateProductColor(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateProductColorResponseObject); ok {
 		if err := validResponse.VisitUpdateProductColorResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateProductModelUpload operation middleware
+func (sh *strictHandler) CreateProductModelUpload(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request CreateProductModelUploadRequestObject
+
+	request.Id = id
+
+	var body CreateProductModelUploadJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateProductModelUpload(ctx, request.(CreateProductModelUploadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateProductModelUpload")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateProductModelUploadResponseObject); ok {
+		if err := validResponse.VisitCreateProductModelUploadResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

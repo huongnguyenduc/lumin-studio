@@ -202,6 +202,10 @@ type Querier interface {
 	// add a page window here if the catalog ever grows large. Newest first with an id tiebreak = deterministic
 	// total order.
 	ListAdminProducts(ctx context.Context, status NullProductStatus) ([]Product, error)
+	// ListAssetJobsByProduct powers the admin product editor's render-status panel (P3-j-b GET
+	// /admin/products/{id}/asset-jobs): every render/ingest job for one product, newest first so the
+	// editor shows the latest attempt's status at the top. id breaks created_at ties for stable ordering.
+	ListAssetJobsByProduct(ctx context.Context, productID uuid.UUID) ([]AssetJob, error)
 	ListAssetJobsByStatus(ctx context.Context, status AssetJobStatus) ([]AssetJob, error)
 	// ListBankAudit returns the money-out config history, newest first (the owner audit view). Ordering is
 	// by seq (monotonic insertion order), so it is deterministic even when two changes share a created_at

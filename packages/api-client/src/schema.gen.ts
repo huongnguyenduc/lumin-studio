@@ -689,6 +689,54 @@ export interface paths {
         patch: operations["updateProductOption"];
         trace?: never;
     };
+    "/admin/products/{id}/model-upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a presigned POST form for one source-model upload (owner-only).
+         * @description Admin editor upload bootstrap (P3-j-b, ADR-036). Returns a browser-ready S3/Garage presigned POST form for exactly one source 3D model (.glb/.stl/.3mf), plus the host-pinned `finalUrl` the editor later sends as `sourceModelUrl` to POST /admin/products/{id}/asset-jobs. The server generates a random, non-PII object key and signs a POST policy with `content-length-range` (≤100MB — the Cloudflare Tunnel body cap, ADR-005) and an exact model `Content-Type` (`model/gltf-binary`, `model/stl`, or `model/3mf`). A single POST, NOT S3 multipart (ADR-036): a web-ready model sits well under 100MB and minio-go cannot presign multipart parts. The policy TTL is short (≤5 minutes). The browser MUST upload directly to `uploadUrl` with every returned field and the file part; core-api never proxies the model body through the tunnel. Owner-only (spec §08 — catalog is an owner power). Unknown product id → 404.
+         */
+        post: operations["createProductModelUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/products/{id}/asset-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List a product's render/ingest jobs, newest first (admin-gated read).
+         * @description Returns every asset job (model ingest / sprite render) for one product, newest first, so the editor can show the current render status (queued / processing / ready / failed). Admin-gated (cookieAuth; owner AND staff read — mirrors the product reads). Unknown product id → 404.
+         */
+        get: operations["getProductAssetJobs"];
+        put?: never;
+        /**
+         * Enqueue a render/ingest job from an uploaded source model (owner-only).
+         * @description Enqueues one asset job (`model_ingest` or `sprite_render`) for a product from a model already uploaded via POST /admin/products/{id}/model-upload (owner-only — spec §08). The `sourceModelUrl` MUST be a host-pinned URL this server minted (else 400); `sourceVersion` is the content hash of the uploaded object (ADR-004 — Garage has no versioning). The job is created `queued` and its `asset_job.created` event is enqueued on the same tx (publish-on-commit, ADR-006); the slice-3 worker drains it and later writes the rendered outputs onto the product. Unknown product id → 404.
+         */
+        post: operations["createProductAssetJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -909,6 +957,85 @@ export interface components {
             priceDelta?: number;
             /** @description Engraving character limit for a `text` option; null/omitted for no limit. */
             maxChars?: number | null;
+        };
+        /**
+         * @description Lifecycle of a render/ingest job (migration 000006). The client maps it to an i18n label.
+         * @enum {string}
+         */
+        AssetJobStatus: "queued" | "processing" | "ready" | "failed";
+        /**
+         * @description Which asset pipeline a job runs (D3): `model_ingest` normalizes geometry + builds the LOD .glb, `sprite_render` renders the 360° sprite alone. The client maps it to an i18n label.
+         * @enum {string}
+         */
+        AssetJobType: "model_ingest" | "sprite_render";
+        /** @description Admin editor upload bootstrap for one source 3D model. No file name or client-declared size: the object key is generated server-side with no PII, and the size/type gate lives in the signed S3 POST policy. The editor maps the file extension (.glb/.stl/.3mf) to the exact model MIME below. */
+        ModelUploadInput: {
+            /**
+             * @description Exact source-model MIME type the returned POST policy will allow.
+             * @enum {string}
+             */
+            contentType: "model/gltf-binary" | "model/stl" | "model/3mf";
+        };
+        /** @description A short-lived, browser-ready S3/Garage POST form for one source model. Submit every `fields` entry and the file part to `uploadUrl`; after a successful direct upload, send `finalUrl` as `sourceModelUrl` to POST /admin/products/{id}/asset-jobs. `finalUrl` is host-pinned by the server and never derived from browser input. */
+        ModelUpload: {
+            /**
+             * Format: uri
+             * @description S3/Garage form POST target, usually the bucket endpoint.
+             */
+            uploadUrl: string;
+            /** @description Exact form fields to include before the file part. */
+            fields: {
+                [key: string]: string;
+            };
+            /**
+             * Format: uri
+             * @description Host-pinned object URL later passed as `sourceModelUrl` to the asset-job create.
+             */
+            finalUrl: string;
+            /**
+             * Format: date-time
+             * @description Policy expiration timestamp.
+             */
+            expiresAt: string;
+            /**
+             * Format: int64
+             * @description Maximum object size enforced by the signed POST policy (≤100MB).
+             */
+            maxBytes: number;
+        };
+        /** @description Enqueue body for one render/ingest job. `sourceModelUrl` MUST be a host-pinned URL minted by POST /admin/products/{id}/model-upload; `sourceVersion` is the content hash of that uploaded object (ADR-004). The productId comes from the path, not the body. */
+        AssetJobInput: {
+            jobType: components["schemas"]["AssetJobType"];
+            /**
+             * Format: uri
+             * @description Host-pinned URL of the uploaded source model (from the model-upload finalUrl).
+             */
+            sourceModelUrl: string;
+            /** @description Content hash of the uploaded source object (ADR-004 — Garage has no versioning). */
+            sourceVersion: string;
+        };
+        /** @description One render/ingest job for a product (migration 000006). The admin editor reads this to show render status. attempts/lastError/completedAt are written by the slice-3 worker; a freshly enqueued job is `queued` with 0 attempts and null lastError/completedAt. */
+        AssetJob: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            productId: string;
+            jobType: components["schemas"]["AssetJobType"];
+            status: components["schemas"]["AssetJobStatus"];
+            /** Format: uri */
+            sourceModelUrl: string;
+            sourceVersion: string;
+            /** @description Worker retry count (0 until the worker runs). */
+            attempts: number;
+            /** @description Failure reason; set on `failed`, cleared on `ready`, null otherwise. */
+            lastError?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Set when the job reaches `ready` or `failed`; null while pending.
+             */
+            completedAt?: string | null;
         };
         /** @description One PUBLISHED product review as it crosses the public wire (spec §02). The author's identity is deliberately omitted — reviews carry a nullable customer_id and guests may review, so exposing a reviewer name would be public PII (PDPL); only the review content is returned. `reply` is the shop's public reply, null until the shop replies (no Phase-1 write path populates it yet). Hidden reviews are filtered at the SQL source and never appear here. */
         Review: {
@@ -2579,6 +2706,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Option"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createProductModelUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelUploadInput"];
+            };
+        };
+        responses: {
+            /** @description Browser-ready POST target, form fields, and the host-pinned final object URL. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelUpload"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getProductAssetJobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The product's asset jobs (newest first). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetJob"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createProductAssetJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssetJobInput"];
+            };
+        };
+        responses: {
+            /** @description The queued asset job. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetJob"];
                 };
             };
             400: components["responses"]["BadRequest"];
