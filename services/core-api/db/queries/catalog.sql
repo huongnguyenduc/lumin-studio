@@ -64,6 +64,14 @@ SET slug = $2, name = $3, description = $4, category_id = $5, base_price = $6,
 WHERE id = $1
 RETURNING *;
 
+-- UpdateProductModelView persists the owner's saved default 3D-viewer camera pose (ADR-038) as the whole
+-- atomic model3d_view jsonb blob ({orbitTheta,orbitPhi,orbitRadius,targetX,targetY,targetZ}). It is a
+-- separate write from UpdateProduct (the design's "Lưu góc mặc định" is its own button) and touches no
+-- other column — never pricing. :execrows so an unknown id (0 rows) surfaces as ErrNoRows→404; the handler
+-- returns 204 (the editor keeps the pose it just sent — nothing new to echo).
+-- name: UpdateProductModelView :execrows
+UPDATE products SET model3d_view = $2 WHERE id = $1;
+
 -- DeleteProduct is a HARD delete, allowed only for never-ordered/never-rendered products (drafts, mistakes):
 -- order_items and asset_jobs reference products ON DELETE RESTRICT (migrations 000005/000006), so deleting a
 -- product with history raises a foreign_key_violation the handler maps to 409 "hãy lưu trữ thay vì xoá" — the

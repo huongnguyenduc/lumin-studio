@@ -41,6 +41,7 @@ Thời gian lưu **ISO-8601 UTC**.
 | `dimensions` | {w,d,h} mm | Hiển thị `180 × 180 × 240 mm` |
 | `material` | enum | PLA · PETG · recycled-PLA … |
 | `model3dUrl` | url | `.glb` để xem, `.stl`/`.3mf` để in |
+| `model3dView` | {orbit θ,φ,radius · target x,y,z}? | Góc xem mặc định shop lưu cho viewer 3D (camera pose, map model-viewer `camera-orbit`/`camera-target`); không có = auto-frame. ADR-038 |
 | `images[]` | Image[] | **Ảnh shop chụp**; ảnh đầu (`images[0]`) là ảnh đại diện trên card/list (hover/dừng-2s → 360° sprite) |
 | `colors[]` | Color[] | Màu in **có tên** (xem dưới) |
 | `parts[]` | Part[]? | Bộ phận có tên (Chao đèn/Đế/Nút bấm); mỗi part có bộ màu riêng. Không có = SP một-khối (màu phẳng). ADR-037 |

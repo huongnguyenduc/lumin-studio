@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -213,6 +214,50 @@ func (s *Server) DeleteAdminProduct(ctx context.Context, request api.DeleteAdmin
 		return nil, err // db.ErrNotFound → 404
 	}
 	return api.DeleteAdminProduct204Response{}, nil
+}
+
+// UpdateProductModelView handles PATCH /admin/products/{id}/model-view (owner-only, ADR-038). It persists the
+// owner's saved default camera pose for the 3D viewer — a separate write from the core-fields PATCH (the
+// design's "Lưu góc mặc định" is its own button). Display metadata only: it never touches pricing. Out-of-
+// range values → 400 field-map; unknown id → 404; success → 204 (the editor keeps the pose it just sent).
+func (s *Server) UpdateProductModelView(ctx context.Context, request api.UpdateProductModelViewRequestObject) (api.UpdateProductModelViewResponseObject, error) {
+	if err := assertOwner(ctx); err != nil {
+		return nil, err
+	}
+	if request.Body == nil {
+		return api.UpdateProductModelView400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
+	}
+	if fields := cleanModelView(*request.Body); len(fields) > 0 {
+		return api.UpdateProductModelView400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
+	}
+	raw, err := json.Marshal(*request.Body)
+	if err != nil {
+		return nil, fmt.Errorf("model3d_view: marshal: %w", err)
+	}
+	if err := db.NewCatalog(s.pool).UpdateProductModelView(ctx, request.Id, raw); err != nil {
+		return nil, err // db.ErrNotFound → 404
+	}
+	return api.UpdateProductModelView204Response{}, nil
+}
+
+// cleanModelView validates a saved camera pose (ADR-038): returns a per-field error map (empty = ok). Ranges
+// mirror the openapi doc + model-viewer's grammar (radius must be positive); every field must be finite — a
+// NaN/Inf can't arrive as valid JSON, but the guard keeps a non-finite value from ever reaching the DB. This
+// is display metadata, not money — plain floats, so the int-VND rule does not apply.
+func cleanModelView(v api.Model3dView) map[string]string {
+	fields := map[string]string{}
+	check := func(name string, val, lo, hi float64, loInclusive bool) {
+		if math.IsNaN(val) || math.IsInf(val, 0) || val > hi || val < lo || (!loInclusive && val == lo) {
+			fields[name] = msgKey(codeValidation)
+		}
+	}
+	check("orbitTheta", v.OrbitTheta, -360, 360, true)
+	check("orbitPhi", v.OrbitPhi, 0, 180, true)
+	check("orbitRadius", v.OrbitRadius, 0, 1000, false) // (0, 1000] — a camera radius must be positive
+	check("targetX", v.TargetX, -100, 100, true)
+	check("targetY", v.TargetY, -100, 100, true)
+	check("targetZ", v.TargetZ, -100, 100, true)
+	return fields
 }
 
 // CreateProductColor handles POST /admin/products/{id}/colors (owner-only). An unknown product id raises a

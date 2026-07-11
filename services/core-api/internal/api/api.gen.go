@@ -427,6 +427,27 @@ type LoginRequest struct {
 	Password string              `json:"password"`
 }
 
+// Model3dView Owner-saved default camera pose for the storefront 3D viewer (ADR-038). Maps 1:1 to a <model-viewer> camera-orbit (orbitTheta deg · orbitPhi deg · orbitRadius %) plus camera-target (targetX/Y/Z metres). Absent on a Product = no saved pose, so the viewer auto-frames. Display metadata, not money — plain floats (not int-VND). The worker recenters geometry, so target is usually ~origin; it is kept so an off-centre framing needs no later migration.
+type Model3dView struct {
+	// OrbitPhi Polar angle in degrees, [0, 180] (model-viewer clamps polar) → camera-orbit phi.
+	OrbitPhi float64 `json:"orbitPhi"`
+
+	// OrbitRadius Camera distance as a percent of the auto-frame radius, (0, 1000] → camera-orbit radius%.
+	OrbitRadius float64 `json:"orbitRadius"`
+
+	// OrbitTheta Azimuth in degrees, [-360, 360] → camera-orbit theta.
+	OrbitTheta float64 `json:"orbitTheta"`
+
+	// TargetX camera-target x in metres, [-100, 100].
+	TargetX float64 `json:"targetX"`
+
+	// TargetY camera-target y in metres, [-100, 100].
+	TargetY float64 `json:"targetY"`
+
+	// TargetZ camera-target z in metres, [-100, 100].
+	TargetZ float64 `json:"targetZ"`
+}
+
 // ModelUpload A short-lived, browser-ready S3/Garage POST form for one source model. Submit every `fields` entry and the file part to `uploadUrl`; after a successful direct upload, send `finalUrl` as `sourceModelUrl` to POST /admin/products/{id}/asset-jobs. `finalUrl` is host-pinned by the server and never derived from browser input.
 type ModelUpload struct {
 	// ExpiresAt Policy expiration timestamp.
@@ -769,9 +790,12 @@ type Product struct {
 	Material string `json:"material"`
 
 	// Model3dUrl .glb URL for the on-demand model viewer; empty string when none.
-	Model3dUrl string   `json:"model3dUrl"`
-	Name       string   `json:"name"`
-	Options    []Option `json:"options"`
+	Model3dUrl string `json:"model3dUrl"`
+
+	// Model3dView Owner-saved default camera pose for the storefront 3D viewer (ADR-038). Maps 1:1 to a <model-viewer> camera-orbit (orbitTheta deg · orbitPhi deg · orbitRadius %) plus camera-target (targetX/Y/Z metres). Absent on a Product = no saved pose, so the viewer auto-frames. Display metadata, not money — plain floats (not int-VND). The worker recenters geometry, so target is usually ~origin; it is kept so an off-centre framing needs no later migration.
+	Model3dView *Model3dView `json:"model3dView,omitempty"`
+	Name        string       `json:"name"`
+	Options     []Option     `json:"options"`
 
 	// Parts Named parts (ADR-037), each grouping a subset of colors[] via Color.partId. Empty = a single-piece product (flat colours). The customer picks one colour per part.
 	Parts []Part `json:"parts"`
@@ -1123,6 +1147,9 @@ type UpdateProductColorJSONRequestBody = ColorInput
 // CreateProductModelUploadJSONRequestBody defines body for CreateProductModelUpload for application/json ContentType.
 type CreateProductModelUploadJSONRequestBody = ModelUploadInput
 
+// UpdateProductModelViewJSONRequestBody defines body for UpdateProductModelView for application/json ContentType.
+type UpdateProductModelViewJSONRequestBody = Model3dView
+
 // CreateProductOptionJSONRequestBody defines body for CreateProductOption for application/json ContentType.
 type CreateProductOptionJSONRequestBody = OptionInput
 
@@ -1316,6 +1343,9 @@ type ServerInterface interface {
 	// Create a presigned POST form for one source-model upload (owner-only).
 	// (POST /admin/products/{id}/model-upload)
 	CreateProductModelUpload(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Save a product's default 3D-viewer camera pose (owner-only, ADR-038).
+	// (PATCH /admin/products/{id}/model-view)
+	UpdateProductModelView(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// Add a customization option to a product (owner-only).
 	// (POST /admin/products/{id}/options)
 	CreateProductOption(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -1517,6 +1547,12 @@ func (_ Unimplemented) UpdateProductColor(w http.ResponseWriter, r *http.Request
 // Create a presigned POST form for one source-model upload (owner-only).
 // (POST /admin/products/{id}/model-upload)
 func (_ Unimplemented) CreateProductModelUpload(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Save a product's default 3D-viewer camera pose (owner-only, ADR-038).
+// (PATCH /admin/products/{id}/model-view)
+func (_ Unimplemented) UpdateProductModelView(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2225,6 +2261,37 @@ func (siw *ServerInterfaceWrapper) CreateProductModelUpload(w http.ResponseWrite
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateProductModelUpload(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateProductModelView operation middleware
+func (siw *ServerInterfaceWrapper) UpdateProductModelView(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateProductModelView(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3435,6 +3502,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/admin/products/{id}/model-upload", wrapper.CreateProductModelUpload)
 	})
 	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/admin/products/{id}/model-view", wrapper.UpdateProductModelView)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/admin/products/{id}/options", wrapper.CreateProductOption)
 	})
 	r.Group(func(r chi.Router) {
@@ -4238,6 +4308,59 @@ func (response CreateProductModelUpload403JSONResponse) VisitCreateProductModelU
 type CreateProductModelUpload404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response CreateProductModelUpload404JSONResponse) VisitCreateProductModelUploadResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProductModelViewRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *UpdateProductModelViewJSONRequestBody
+}
+
+type UpdateProductModelViewResponseObject interface {
+	VisitUpdateProductModelViewResponse(w http.ResponseWriter) error
+}
+
+type UpdateProductModelView204Response struct {
+}
+
+func (response UpdateProductModelView204Response) VisitUpdateProductModelViewResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type UpdateProductModelView400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateProductModelView400JSONResponse) VisitUpdateProductModelViewResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProductModelView401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateProductModelView401JSONResponse) VisitUpdateProductModelViewResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProductModelView403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateProductModelView403JSONResponse) VisitUpdateProductModelViewResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProductModelView404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateProductModelView404JSONResponse) VisitUpdateProductModelViewResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
 
@@ -5775,6 +5898,9 @@ type StrictServerInterface interface {
 	// Create a presigned POST form for one source-model upload (owner-only).
 	// (POST /admin/products/{id}/model-upload)
 	CreateProductModelUpload(ctx context.Context, request CreateProductModelUploadRequestObject) (CreateProductModelUploadResponseObject, error)
+	// Save a product's default 3D-viewer camera pose (owner-only, ADR-038).
+	// (PATCH /admin/products/{id}/model-view)
+	UpdateProductModelView(ctx context.Context, request UpdateProductModelViewRequestObject) (UpdateProductModelViewResponseObject, error)
 	// Add a customization option to a product (owner-only).
 	// (POST /admin/products/{id}/options)
 	CreateProductOption(ctx context.Context, request CreateProductOptionRequestObject) (CreateProductOptionResponseObject, error)
@@ -6362,6 +6488,39 @@ func (sh *strictHandler) CreateProductModelUpload(w http.ResponseWriter, r *http
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateProductModelUploadResponseObject); ok {
 		if err := validResponse.VisitCreateProductModelUploadResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateProductModelView operation middleware
+func (sh *strictHandler) UpdateProductModelView(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request UpdateProductModelViewRequestObject
+
+	request.Id = id
+
+	var body UpdateProductModelViewJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateProductModelView(ctx, request.(UpdateProductModelViewRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateProductModelView")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateProductModelViewResponseObject); ok {
+		if err := validResponse.VisitUpdateProductModelViewResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

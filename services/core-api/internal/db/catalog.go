@@ -184,6 +184,20 @@ func (c *Catalog) DeleteProduct(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+// UpdateProductModelView persists a product's saved default 3D-viewer camera pose (ADR-038), or returns
+// ErrNotFound for an unknown id. The query is :execrows, so an unknown id updates 0 rows (never ErrNoRows) —
+// a 0 count is the 404 signal. view is the marshalled + range-validated jsonb pose.
+func (c *Catalog) UpdateProductModelView(ctx context.Context, id uuid.UUID, view []byte) error {
+	rows, err := c.q.UpdateProductModelView(ctx, sqlc.UpdateProductModelViewParams{ID: id, Model3dView: view})
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // CreateColor inserts a color and returns the persisted row.
 func (c *Catalog) CreateColor(ctx context.Context, arg sqlc.InsertColorParams) (sqlc.Color, error) {
 	return c.q.InsertColor(ctx, arg)

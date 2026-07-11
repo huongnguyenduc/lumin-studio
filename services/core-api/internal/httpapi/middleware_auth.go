@@ -108,7 +108,7 @@ func classify(operationID string) authClass {
 		// Shipping rules are money-adjacent (checkout fee); the rest is shop config. Reads
 		// (GetSettings/ListReplyTemplates) stay authRequired (owner+staff) via the default.
 		return authOwnerOnly
-	case "CreateAdminProduct", "UpdateAdminProduct", "DeleteAdminProduct",
+	case "CreateAdminProduct", "UpdateAdminProduct", "DeleteAdminProduct", "UpdateProductModelView",
 		"CreateProductColor", "UpdateProductColor", "DeleteProductColor",
 		"CreateProductOption", "UpdateProductOption", "DeleteProductOption",
 		"CreateProductPart", "UpdateProductPart", "DeleteProductPart",

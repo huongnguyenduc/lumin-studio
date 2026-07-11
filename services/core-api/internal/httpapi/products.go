@@ -106,6 +106,10 @@ func productDTO(p sqlc.Product, colors []sqlc.Color, options []sqlc.Option, part
 			return api.Product{}, fmt.Errorf("product %s: decode images jsonb: %w", p.Slug, err)
 		}
 	}
+	view, err := model3dViewFromJSON(p.Model3dView)
+	if err != nil {
+		return api.Product{}, fmt.Errorf("product %s: decode model3d_view jsonb: %w", p.Slug, err)
+	}
 	return api.Product{
 		Id:          p.ID,
 		Slug:        p.Slug,
@@ -116,6 +120,7 @@ func productDTO(p sqlc.Product, colors []sqlc.Color, options []sqlc.Option, part
 		Dimensions:  dims,
 		Material:    p.Material,
 		Model3dUrl:  p.Model3dUrl,
+		Model3dView: view, // ADR-038: owner-saved default camera pose; nil = auto-frame
 		Images:      images,
 		Colors:      colorsDTO(colors),
 		Options:     optionsDTO(options, choices),
@@ -125,6 +130,19 @@ func productDTO(p sqlc.Product, colors []sqlc.Color, options []sqlc.Option, part
 		ReviewCount: int(p.ReviewCount),
 		CreatedAt:   p.CreatedAt.Time,
 	}, nil
+}
+
+// model3dViewFromJSON parses the nullable model3d_view jsonb into the wire camera pose (ADR-038), or nil when
+// the column is NULL/empty — no saved pose, so the storefront viewer auto-frames (today's default, unchanged).
+func model3dViewFromJSON(raw []byte) (*api.Model3dView, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var v api.Model3dView
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return nil, err
+	}
+	return &v, nil
 }
 
 // colorsDTO maps color rows to the wire shape, dropping the internal productId. A nil/empty result yields

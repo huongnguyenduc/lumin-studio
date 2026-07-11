@@ -683,6 +683,7 @@ type Product struct {
 	RatingAvg   *float32           `json:"ratingAvg"`
 	ReviewCount int32              `json:"reviewCount"`
 	CreatedAt   pgtype.Timestamptz `json:"createdAt"`
+	Model3dView []byte             `json:"model3dView"`
 }
 
 type ReplyTemplate struct {

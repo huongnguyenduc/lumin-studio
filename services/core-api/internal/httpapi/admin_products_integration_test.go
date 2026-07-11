@@ -27,6 +27,86 @@ func ownerCtx() context.Context {
 	return withActor(context.Background(), Actor{ByUser: uuid.NewString(), Role: order.RoleOwner, At: time.Now().UTC()})
 }
 
+// ADR-038: the owner saves a default camera pose via PATCH /admin/products/{id}/model-view; both the admin
+// detail and the public storefront read return it (shared productDTO), a fresh product returns none (viewer
+// auto-frames), an unknown id → 404, and an out-of-range value → 400 leaving the stored pose untouched. Real
+// Postgres proves the jsonb round-trip through the DB, not just the in-memory DTO. Values are exact-in-binary
+// (0.5, -0.25) so the readback compares equal without float drift.
+func TestProductModelViewEndToEnd(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+	owner := ownerCtx()
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
+
+	cat, err := db.NewCatalog(pool).CreateCategory(ctx, sqlc.InsertCategoryParams{ID: uuid.New(), Slug: "cat-view", Name: "Danh mục"})
+	if err != nil {
+		t.Fatalf("seed category: %v", err)
+	}
+	createResp, err := srv.CreateAdminProduct(owner, api.CreateAdminProductRequestObject{Body: &api.ProductInput{
+		Slug: "den-view", Name: "Đèn View", CategoryId: cat.ID, BasePrice: 100_000,
+		Dimensions: api.Dimensions{W: 100, D: 100, H: 200}, Material: "PLA", Status: api.ProductStatus("active"),
+	}})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	pid := createResp.(api.CreateAdminProduct201JSONResponse).Id
+
+	getDetail := func() api.Product {
+		t.Helper()
+		r, err := srv.GetAdminProduct(owner, api.GetAdminProductRequestObject{Id: pid})
+		if err != nil {
+			t.Fatalf("get detail: %v", err)
+		}
+		return api.Product(r.(api.GetAdminProduct200JSONResponse))
+	}
+
+	// A fresh product has NO saved pose → model3dView absent (the viewer auto-frames).
+	if v := getDetail().Model3dView; v != nil {
+		t.Fatalf("fresh product model3dView = %+v, want nil (auto-frame)", v)
+	}
+
+	// Save a pose → 204.
+	want := api.Model3dView{OrbitTheta: 30, OrbitPhi: 75, OrbitRadius: 105, TargetX: 0, TargetY: 0.5, TargetZ: -0.25}
+	saveResp, err := srv.UpdateProductModelView(owner, api.UpdateProductModelViewRequestObject{Id: pid, Body: &want})
+	if err != nil {
+		t.Fatalf("save pose: %v", err)
+	}
+	if _, ok := saveResp.(api.UpdateProductModelView204Response); !ok {
+		t.Fatalf("save resp = %T, want 204", saveResp)
+	}
+
+	// Admin detail returns the pose, read back through the DB jsonb.
+	if v := getDetail().Model3dView; v == nil || *v != want {
+		t.Fatalf("admin model3dView = %+v, want %+v", v, want)
+	}
+
+	// The public storefront read (active product) carries the same pose via the shared productDTO.
+	pubResp, err := srv.GetProductBySlug(ctx, api.GetProductBySlugRequestObject{Slug: "den-view"})
+	if err != nil {
+		t.Fatalf("public get: %v", err)
+	}
+	if v := api.Product(pubResp.(api.GetProductBySlug200JSONResponse)).Model3dView; v == nil || *v != want {
+		t.Fatalf("public model3dView = %+v, want %+v", v, want)
+	}
+
+	// Unknown id → 404.
+	if _, err := srv.UpdateProductModelView(owner, api.UpdateProductModelViewRequestObject{Id: uuid.New(), Body: &want}); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("unknown id: err = %v, want ErrNotFound", err)
+	}
+
+	// Out-of-range (phi 200) → 400 response (not an error), and the stored pose is unchanged.
+	badResp, err := srv.UpdateProductModelView(owner, api.UpdateProductModelViewRequestObject{Id: pid, Body: &api.Model3dView{OrbitTheta: 0, OrbitPhi: 200, OrbitRadius: 100}})
+	if err != nil {
+		t.Fatalf("out-of-range should be a 400 response, not an error: %v", err)
+	}
+	if _, ok := badResp.(api.UpdateProductModelView400JSONResponse); !ok {
+		t.Fatalf("out-of-range resp = %T, want 400", badResp)
+	}
+	if v := getDetail().Model3dView; v == nil || *v != want {
+		t.Fatalf("after rejected save, model3dView = %+v, want unchanged %+v", v, want)
+	}
+}
+
 func TestAdminProductCRUDEndToEnd(t *testing.T) {
 	pool := startPostgres(t)
 	ctx := context.Background()

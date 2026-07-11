@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -42,6 +43,11 @@ func TestAdminProductWritesAreOwnerOnly(t *testing.T) {
 		},
 		"DeleteAdminProduct": func(ctx context.Context) error {
 			_, err := srv.DeleteAdminProduct(ctx, api.DeleteAdminProductRequestObject{Id: id})
+			return err
+		},
+		"UpdateProductModelView": func(ctx context.Context) error {
+			view := api.Model3dView{OrbitPhi: 75, OrbitRadius: 100}
+			_, err := srv.UpdateProductModelView(ctx, api.UpdateProductModelViewRequestObject{Id: id, Body: &view})
 			return err
 		},
 		"CreateProductColor": func(ctx context.Context) error {
@@ -162,6 +168,51 @@ func TestCleanProductInput(t *testing.T) {
 				t.Fatalf("unexpected marshal error: %v", err)
 			}
 			if _, ok := f[tc.field]; !ok {
+				t.Fatalf("%s: expected %q field error, got %v", name, tc.field, f)
+			}
+		})
+	}
+}
+
+// cleanModelView validates a saved camera pose (ADR-038): out-of-range or non-finite values become per-field
+// 400s so a bad pose never reaches the DB. Boundaries are inclusive except orbitRadius, which must be > 0.
+// This is display metadata (plain floats), not money — the int-VND rule does not apply.
+func TestCleanModelView(t *testing.T) {
+	if f := cleanModelView(api.Model3dView{OrbitTheta: 34, OrbitPhi: 75, OrbitRadius: 105, TargetX: 0, TargetY: 0.1, TargetZ: -0.2}); len(f) != 0 {
+		t.Fatalf("valid pose rejected: %v", f)
+	}
+	// Inclusive edges: theta ±360, phi 0/180, radius up to 1000, target ±100. All accepted.
+	if f := cleanModelView(api.Model3dView{OrbitTheta: -360, OrbitPhi: 0, OrbitRadius: 1000, TargetX: -100, TargetY: 100, TargetZ: 0}); len(f) != 0 {
+		t.Fatalf("low edges rejected: %v", f)
+	}
+	if f := cleanModelView(api.Model3dView{OrbitTheta: 360, OrbitPhi: 180, OrbitRadius: 0.01, TargetX: 100, TargetY: -100, TargetZ: 0}); len(f) != 0 {
+		t.Fatalf("high edges / tiny radius rejected: %v", f)
+	}
+
+	base := func() api.Model3dView {
+		return api.Model3dView{OrbitTheta: 0, OrbitPhi: 90, OrbitRadius: 100, TargetX: 0, TargetY: 0, TargetZ: 0}
+	}
+	bad := map[string]struct {
+		mut   func(*api.Model3dView)
+		field string
+	}{
+		"theta too low":   {func(v *api.Model3dView) { v.OrbitTheta = -361 }, "orbitTheta"},
+		"theta too high":  {func(v *api.Model3dView) { v.OrbitTheta = 361 }, "orbitTheta"},
+		"phi negative":    {func(v *api.Model3dView) { v.OrbitPhi = -1 }, "orbitPhi"},
+		"phi over 180":    {func(v *api.Model3dView) { v.OrbitPhi = 181 }, "orbitPhi"},
+		"radius zero":     {func(v *api.Model3dView) { v.OrbitRadius = 0 }, "orbitRadius"},
+		"radius negative": {func(v *api.Model3dView) { v.OrbitRadius = -5 }, "orbitRadius"},
+		"radius too big":  {func(v *api.Model3dView) { v.OrbitRadius = 1001 }, "orbitRadius"},
+		"targetX far":     {func(v *api.Model3dView) { v.TargetX = 101 }, "targetX"},
+		"targetY far":     {func(v *api.Model3dView) { v.TargetY = -101 }, "targetY"},
+		"targetZ NaN":     {func(v *api.Model3dView) { v.TargetZ = math.NaN() }, "targetZ"},
+		"radius Inf":      {func(v *api.Model3dView) { v.OrbitRadius = math.Inf(1) }, "orbitRadius"},
+	}
+	for name, tc := range bad {
+		t.Run(name, func(t *testing.T) {
+			v := base()
+			tc.mut(&v)
+			if f := cleanModelView(v); f[tc.field] == "" {
 				t.Fatalf("%s: expected %q field error, got %v", name, tc.field, f)
 			}
 		})
