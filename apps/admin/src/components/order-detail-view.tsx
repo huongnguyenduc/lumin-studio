@@ -214,7 +214,7 @@ export function OrderDetailView({ order }: { order: Order }) {
       </div>
 
       {/* Action bar — sticky at the bottom on mobile, inline on desktop */}
-      <div className="sticky bottom-0 -mx-4 border-t border-border-subtle bg-surface/95 px-4 py-3 backdrop-blur md:static md:mx-0 md:border-0 md:bg-transparent md:p-0">
+      <div className="sticky bottom-0 -mx-4 border-t border-border-subtle bg-surface-card/95 px-4 py-3 backdrop-blur md:static md:mx-0 md:border-0 md:bg-transparent md:p-0">
         {errorCode && (
           <p role="alert" className="mb-2 text-sm text-danger">
             {t(`error.${errorCode}`)}
@@ -292,7 +292,7 @@ function StepCircle({ index, state }: { index: number; state: MilestoneState }) 
         'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm font-semibold',
         state === 'done' && 'border-border-strong bg-surface-brand text-on-dark',
         state === 'current' && 'border-border-strong bg-primary text-on-primary',
-        state === 'todo' && 'border-border-subtle bg-surface text-text-muted',
+        state === 'todo' && 'border-border-subtle bg-surface-card text-text-muted',
       )}
     >
       {state === 'done' ? '✓' : index + 1}
