@@ -501,6 +501,12 @@ type OptionChoiceInput struct {
 	PriceDelta *int64 `json:"priceDelta,omitempty"`
 }
 
+// OptionChoiceSelection One choice-option's picked choice (ADR-037). For an option that offers enumerated choices the client sends the picked choice here (priced by the choice's own delta — the option base is ignored); text and legacy toggle options stay in `optionIds`.
+type OptionChoiceSelection struct {
+	ChoiceId openapi_types.UUID `json:"choiceId"`
+	OptionId openapi_types.UUID `json:"optionId"`
+}
+
 // OptionInput Create/replace body for a customization option (P3-j). priceDelta is int-VND (default 0).
 type OptionInput struct {
 	// Description Optional; defaults to "".
@@ -556,11 +562,17 @@ type OrderItem struct {
 	ColorId *openapi_types.UUID `json:"colorId,omitempty"`
 
 	// ColorName Human color name when the line has a color, joined for the admin detail. Read-only.
-	ColorName *string              `json:"colorName,omitempty"`
-	OptionIds []openapi_types.UUID `json:"optionIds"`
+	ColorName *string `json:"colorName,omitempty"`
+
+	// OptionChoices The picked choice for each choice-option that offers choices (ADR-037), snapshotted from the order. Omitted when the line has none. Read-only.
+	OptionChoices *[]OptionChoiceSelection `json:"optionChoices,omitempty"`
+	OptionIds     []openapi_types.UUID     `json:"optionIds"`
 
 	// OptionLabels Selected option labels, joined for the admin detail (empty when none). Read-only.
 	OptionLabels *[]string `json:"optionLabels,omitempty"`
+
+	// PartColors The colour chosen for each named part (ADR-037), snapshotted from the order. Omitted for a flat product (which uses colorId). Read-only.
+	PartColors *[]PartColorSelection `json:"partColors,omitempty"`
 
 	// Personalization Per-item engraving (distinct from a Review's text — that field is `body`).
 	Personalization *Personalization   `json:"personalization,omitempty"`
@@ -576,8 +588,16 @@ type OrderItem struct {
 
 // OrderItemInput A requested line item. Deliberately has NO unitPrice — the server re-derives every price from the catalog (always-must #2); a client price is never trusted.
 type OrderItemInput struct {
-	ColorId   *openapi_types.UUID   `json:"colorId,omitempty"`
+	ColorId *openapi_types.UUID `json:"colorId,omitempty"`
+
+	// OptionChoices Picked choices for choice-options that offer them (ADR-037). Text/toggle options use optionIds. OPTIONAL (not defaulted): absent = the line picks no choices.
+	OptionChoices *[]OptionChoiceSelection `json:"optionChoices,omitempty"`
+
+	// OptionIds Text options + legacy toggle choice-options (no choices). A choice-option that offers choices is picked via optionChoices instead — toggling it here is rejected 422.
 	OptionIds *[]openapi_types.UUID `json:"optionIds,omitempty"`
+
+	// PartColors Per-part colour picks for a product with named parts (ADR-037): exactly one per part. A flat product uses colorId instead; mixing the two (or a per-part colour on a flat product) is 422. OPTIONAL (not defaulted): absent = a flat product with no per-part colours, so an existing flat client needs no change — the configurator storefront (Stage 2c) starts sending it.
+	PartColors *[]PartColorSelection `json:"partColors,omitempty"`
 
 	// Personalization Per-item engraving (distinct from a Review's text — that field is `body`).
 	Personalization *Personalization   `json:"personalization,omitempty"`
@@ -604,6 +624,12 @@ type Part struct {
 
 	// Name Display name, e.g. "Chao đèn".
 	Name string `json:"name"`
+}
+
+// PartColorSelection One part's chosen colour (ADR-037). For a product with named parts the client sends one of these per part instead of the flat `colorId`. The server validates the colour belongs to that part (not merely the product) before pricing — a cross-part colour is rejected 422.
+type PartColorSelection struct {
+	ColorId openapi_types.UUID `json:"colorId"`
+	PartId  openapi_types.UUID `json:"partId"`
 }
 
 // PartInput Create/replace body for a product part (ADR-037, owner-only).

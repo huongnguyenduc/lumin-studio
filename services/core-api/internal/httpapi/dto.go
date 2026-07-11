@@ -120,6 +120,22 @@ func orderItemsDTO(items []sqlc.ListOrderItemsRow) ([]api.OrderItem, error) {
 			labels := it.OptionLabels
 			dto.OptionLabels = &labels
 		}
+		// ADR-037 snapshots (part_colors / option_choices jsonb). Omitted when empty — a flat/legacy line
+		// carries neither, so its DTO stays byte-identical to the pre-configurator shape (mirrors optionLabels).
+		partColors, err := partColorsDTO(it.PartColors)
+		if err != nil {
+			return nil, fmt.Errorf("order item %s: part_colors: %w", it.ID, err)
+		}
+		if len(partColors) > 0 {
+			dto.PartColors = &partColors
+		}
+		optionChoices, err := optionChoicesDTO(it.OptionChoices)
+		if err != nil {
+			return nil, fmt.Errorf("order item %s: option_choices: %w", it.ID, err)
+		}
+		if len(optionChoices) > 0 {
+			dto.OptionChoices = &optionChoices
+		}
 		if it.Personalization != nil {
 			dto.Personalization = &api.Personalization{
 				Text:   it.Personalization.Text,
@@ -127,6 +143,40 @@ func orderItemsDTO(items []sqlc.ListOrderItemsRow) ([]api.OrderItem, error) {
 			}
 		}
 		out[i] = dto
+	}
+	return out, nil
+}
+
+// partColorsDTO unmarshals the order_items.part_colors jsonb snapshot to the wire shape (ADR-037). A
+// nil/empty column yields a nil slice (the caller omits the field). The persisted element type is the
+// domain order.PartColorSelection; only the field casing differs from the wire type.
+func partColorsDTO(raw []byte) ([]api.PartColorSelection, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var sel []order.PartColorSelection
+	if err := json.Unmarshal(raw, &sel); err != nil {
+		return nil, err
+	}
+	out := make([]api.PartColorSelection, len(sel))
+	for i, s := range sel {
+		out[i] = api.PartColorSelection{PartId: s.PartID, ColorId: s.ColorID}
+	}
+	return out, nil
+}
+
+// optionChoicesDTO unmarshals the order_items.option_choices jsonb snapshot to the wire shape (ADR-037).
+func optionChoicesDTO(raw []byte) ([]api.OptionChoiceSelection, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var sel []order.OptionChoiceSelection
+	if err := json.Unmarshal(raw, &sel); err != nil {
+		return nil, err
+	}
+	out := make([]api.OptionChoiceSelection, len(sel))
+	for i, s := range sel {
+		out[i] = api.OptionChoiceSelection{OptionId: s.OptionID, ChoiceId: s.ChoiceID}
 	}
 	return out, nil
 }

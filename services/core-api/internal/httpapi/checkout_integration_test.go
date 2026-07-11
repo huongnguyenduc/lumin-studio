@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/api"
@@ -366,5 +367,151 @@ func TestCreateOrderPricingRejectionsIntegration(t *testing.T) {
 	}
 	if n != 0 {
 		t.Fatalf("orders after rejected creates = %d, want 0", n)
+	}
+}
+
+// partsFixture is a single ADR-037 configurator product: two named parts each with its own available
+// colour, and a choice-option offering two choices (its own base deliberately huge, to prove the picked
+// choice — not the option base — prices the line).
+type partsFixture struct {
+	product                   uuid.UUID
+	partA, partB              uuid.UUID
+	colorA, colorB            uuid.UUID
+	optSize, choiceS, choiceM uuid.UUID
+}
+
+// seedPartsProduct seeds the configurator product the parts-product checkout test prices against. base
+// 100_000; partA/Cam +10_000, partB/Trắng +5_000; optSize base 999_999 (ignored — priced by the choice);
+// choiceS +0, choiceM +40_000. A happy line therefore costs 100k+10k+5k+40k = 155_000 (mirrors the
+// pricing unit test), proving the whole wire → PriceItem → persist → DTO path agrees on the money.
+func seedPartsProduct(t *testing.T, ctx context.Context, pool *pgxpool.Pool) partsFixture {
+	t.Helper()
+	cat := db.NewCatalog(pool)
+	category, err := cat.CreateCategory(ctx, sqlc.InsertCategoryParams{ID: uuid.New(), Slug: "den-parts", Name: "Đèn"})
+	if err != nil {
+		t.Fatalf("seed category: %v", err)
+	}
+	product, err := cat.CreateProduct(ctx, sqlc.InsertProductParams{
+		ID: uuid.New(), Slug: "den-2-phan", Name: "Đèn hai phần", Description: "cấu hình", CategoryID: category.ID,
+		BasePrice: 100_000, Dimensions: []byte(`{"w":180,"d":180,"h":240}`), Material: "PLA",
+		Model3dUrl: "https://x/m.glb", Images: []byte(`["https://x/1.jpg"]`), Status: sqlc.ProductStatusActive,
+	})
+	if err != nil {
+		t.Fatalf("seed product: %v", err)
+	}
+	fx := partsFixture{product: product.ID}
+
+	mkPart := func(name string, order int32) uuid.UUID {
+		p, perr := cat.CreatePart(ctx, sqlc.InsertPartParams{ID: uuid.New(), ProductID: product.ID, Name: name, DisplayOrder: order})
+		if perr != nil {
+			t.Fatalf("seed part %s: %v", name, perr)
+		}
+		return p.ID
+	}
+	fx.partA, fx.partB = mkPart("Chao đèn", 0), mkPart("Đế", 1)
+
+	mkPartColor := func(part uuid.UUID, name string, delta int64) uuid.UUID {
+		c, cerr := cat.CreateColor(ctx, sqlc.InsertColorParams{
+			ID: uuid.New(), ProductID: product.ID, Name: name, Hex: "#a8d8c8", Available: true, PriceDelta: delta,
+			PartID: pgtype.UUID{Bytes: part, Valid: true},
+		})
+		if cerr != nil {
+			t.Fatalf("seed part colour %s: %v", name, cerr)
+		}
+		return c.ID
+	}
+	fx.colorA, fx.colorB = mkPartColor(fx.partA, "Cam", 10_000), mkPartColor(fx.partB, "Trắng", 5_000)
+
+	optSize, err := cat.CreateOption(ctx, sqlc.InsertOptionParams{
+		ID: uuid.New(), ProductID: product.ID, Label: "Kích thước", Description: "chọn cỡ",
+		Type: sqlc.OptionTypeChoice, PriceDelta: 999_999, // ignored: a choice-option is priced by its picked choice
+	})
+	if err != nil {
+		t.Fatalf("seed choice option: %v", err)
+	}
+	fx.optSize = optSize.ID
+	mkChoice := func(label string, delta int64, order int32) uuid.UUID {
+		ch, cerr := cat.CreateOptionChoice(ctx, sqlc.InsertOptionChoiceParams{
+			ID: uuid.New(), OptionID: optSize.ID, Label: label, Description: "", PriceDelta: delta, DisplayOrder: order,
+		})
+		if cerr != nil {
+			t.Fatalf("seed choice %s: %v", label, cerr)
+		}
+		return ch.ID
+	}
+	fx.choiceS, fx.choiceM = mkChoice("S", 0, 0), mkChoice("M", 40_000, 1)
+	return fx
+}
+
+// ADR-037 Stage 2b-2: a parts product is now orderable end-to-end. The wire carries per-part colours +
+// a picked choice; the server prices from the catalog (155_000, ignoring the choice-option's 999_999
+// base), persists the selection snapshot, and the created-order DTO round-trips it back. A quote of the
+// SAME selection returns the SAME unit price (quote == charge, oracle note c). Before 2b-2 this order
+// 422'd (the wire could not carry the selection, so a part colour was always "missing").
+func TestCreateOrderPartsProductEndToEnd(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+	fx := seedPartsProduct(t, ctx, pool)
+	setShippingRules(t, ctx, pool, `[{"province":"Hà Nội","fee":30000}]`)
+	setBankAccount(t, ctx, pool)
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil, WithPaymentProofUploads(newTestProofStore()))
+
+	raw := webBody(map[string]any{
+		"items": []any{map[string]any{
+			"productId": fx.product.String(),
+			"partColors": []any{
+				map[string]any{"partId": fx.partA.String(), "colorId": fx.colorA.String()},
+				map[string]any{"partId": fx.partB.String(), "colorId": fx.colorB.String()},
+			},
+			"optionChoices": []any{
+				map[string]any{"optionId": fx.optSize.String(), "choiceId": fx.choiceM.String()},
+			},
+			"quantity": 2,
+		}},
+	})
+	dto := mustCreateOrder(t, srv, ctx, raw)
+
+	// 100k base + 10k (partA/Cam) + 5k (partB/Trắng) + 40k (choice M) = 155_000; ×2 + 30k fee.
+	if dto.Items[0].UnitPrice != 155_000 || dto.Subtotal != 310_000 || dto.ShippingFee != 30_000 || dto.Total != 340_000 {
+		t.Fatalf("money = unit %d subtotal %d fee %d total %d, want 155000/310000/30000/340000",
+			dto.Items[0].UnitPrice, dto.Subtotal, dto.ShippingFee, dto.Total)
+	}
+	// A flat product uses colorId; a parts line must NOT carry one.
+	if dto.Items[0].ColorId != nil {
+		t.Fatalf("parts line carries a flat colorId %v, want none", *dto.Items[0].ColorId)
+	}
+	// The persisted selection snapshot round-trips back on the DTO (order-independent membership check).
+	if dto.Items[0].PartColors == nil || len(*dto.Items[0].PartColors) != 2 {
+		t.Fatalf("partColors = %v, want 2 entries", dto.Items[0].PartColors)
+	}
+	wantPartColors := map[uuid.UUID]uuid.UUID{fx.partA: fx.colorA, fx.partB: fx.colorB}
+	for _, pc := range *dto.Items[0].PartColors {
+		if wantPartColors[pc.PartId] != pc.ColorId {
+			t.Fatalf("partColor %v→%v not in the ordered selection", pc.PartId, pc.ColorId)
+		}
+	}
+	if dto.Items[0].OptionChoices == nil || len(*dto.Items[0].OptionChoices) != 1 ||
+		(*dto.Items[0].OptionChoices)[0].OptionId != fx.optSize || (*dto.Items[0].OptionChoices)[0].ChoiceId != fx.choiceM {
+		t.Fatalf("optionChoices = %v, want [{%v,%v}]", dto.Items[0].OptionChoices, fx.optSize, fx.choiceM)
+	}
+
+	// Quote parity (oracle note c): the SAME selection quoted returns the SAME unit price the order charged.
+	qresp, err := srv.QuotePrice(ctx, api.QuotePriceRequestObject{Body: &api.PriceQuoteInput{
+		Items: []api.OrderItemInput{{
+			ProductId:     fx.product,
+			PartColors:    &[]api.PartColorSelection{{PartId: fx.partA, ColorId: fx.colorA}, {PartId: fx.partB, ColorId: fx.colorB}},
+			OptionChoices: &[]api.OptionChoiceSelection{{OptionId: fx.optSize, ChoiceId: fx.choiceM}},
+			Quantity:      2,
+		}},
+	}})
+	if err != nil {
+		t.Fatalf("QuotePrice: %v", err)
+	}
+	quote, ok := qresp.(api.QuotePrice200JSONResponse)
+	if !ok {
+		t.Fatalf("quote resp = %T, want 200", qresp)
+	}
+	if quote.Lines[0].UnitPrice != dto.Items[0].UnitPrice {
+		t.Fatalf("quote unit %d != charge unit %d (quote must equal charge)", quote.Lines[0].UnitPrice, dto.Items[0].UnitPrice)
 	}
 }
