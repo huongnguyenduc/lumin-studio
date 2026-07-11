@@ -74,7 +74,12 @@ func TestGetPrintQueueEndToEnd(t *testing.T) {
 		t.Fatalf("card 1 nullable fields wrong: printer=%v color=%v eta=%v", c1.Printer, c1.ColorName, c1.Eta)
 	}
 
-	// --- Stage PATCH: advance job1 NEED_PRINT → PRINTING; response is the SAME enriched card shape. ---
+	// --- Stage PATCH: advance job1 NEED_PRINT → PRINTING; response is the SAME enriched card shape,
+	// and the advance is broadcast to a subscribed board (P3-g SSE). Subscribe BEFORE the PATCH so the
+	// receive is deterministic (the broadcast is a synchronous buffered send inside the handler) — no
+	// goroutine or sleep race. ---
+	events, unsub := srv.printHub.subscribe()
+	defer unsub()
 	updated := advancePrintStage(t, srv, ctx, job1, api.PrintStagePRINTING)
 	if updated.Id != job1 || string(updated.Stage) != string(sqlc.PrintStagePRINTING) ||
 		updated.OrderCode != orderCode || updated.ProductName != "Đèn Mochi" || updated.Quantity != 1 {
@@ -82,6 +87,14 @@ func TestGetPrintQueueEndToEnd(t *testing.T) {
 	}
 	if updated.ColorName == nil || *updated.ColorName != "Cam" {
 		t.Fatalf("advanced card colorName = %v, want 'Cam' (join must survive the re-read)", updated.ColorName)
+	}
+	select {
+	case pushed := <-events:
+		if pushed.Id != job1 || string(pushed.Stage) != string(sqlc.PrintStagePRINTING) || pushed.ProductName != "Đèn Mochi" {
+			t.Fatalf("broadcast card = %+v, want the advanced job1/PRINTING/Đèn Mochi card", pushed)
+		}
+	default:
+		t.Fatal("stage PATCH did not broadcast the advanced card to a subscribed board (P3-g SSE)")
 	}
 
 	// --- Reject paths: bad stage → 400, nil body → 400, unknown id → db.ErrNotFound (→ 404). ---

@@ -78,9 +78,10 @@ func testAuthedRouter(srv *Server) http.Handler {
 
 func serverWithUsers(users userReader) *Server {
 	return &Server{
-		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		users:  users,
-		auth:   auth.NewIssuer("test-secret", time.Hour, true, auth.SessionCookieName),
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		users:    users,
+		auth:     auth.NewIssuer("test-secret", time.Hour, true, auth.SessionCookieName),
+		printHub: newPrintStreamHub(),
 	}
 }
 
