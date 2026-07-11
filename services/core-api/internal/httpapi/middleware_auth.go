@@ -111,6 +111,8 @@ func classify(operationID string) authClass {
 	case "CreateAdminProduct", "UpdateAdminProduct", "DeleteAdminProduct",
 		"CreateProductColor", "UpdateProductColor", "DeleteProductColor",
 		"CreateProductOption", "UpdateProductOption", "DeleteProductOption",
+		"CreateProductPart", "UpdateProductPart", "DeleteProductPart",
+		"CreateOptionChoice", "UpdateOptionChoice", "DeleteOptionChoice",
 		"CreateProductModelUpload", "CreateProductAssetJob":
 		// Every catalog WRITE is owner-only (spec §08: sản phẩm is an owner power; staff manages orders/
 		// print-queue/reviews, not the catalog). Model upload + asset-job enqueue mutate the catalog's

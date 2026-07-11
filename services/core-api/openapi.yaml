@@ -1313,6 +1313,173 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /admin/products/{id}/parts:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [admin]
+      operationId: createProductPart
+      summary: Add a named part to a product (owner-only, ADR-037).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PartInput'
+      responses:
+        '201':
+          description: The created part.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Part'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/products/{id}/parts/{partId}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: partId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [admin]
+      operationId: updateProductPart
+      summary: Edit a product's part (owner-only, ADR-037).
+      description: Scoped by (product, part); a partId under another product → 404.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PartInput'
+      responses:
+        '200':
+          description: The updated part.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Part'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [admin]
+      operationId: deleteProductPart
+      summary: Remove a product's part (owner-only, ADR-037).
+      description: >
+        Deletes the part and CASCADEs its colours (ADR-037). A colour already pinned by an order raises a
+        conflict → 409 (archive the product instead). Scoped by (product, part); unknown → 404.
+      security:
+        - cookieAuth: []
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /admin/products/{id}/options/{optionId}/choices:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: optionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [admin]
+      operationId: createOptionChoice
+      summary: Add a choice to a `choice` option (owner-only, ADR-037).
+      description: The option must belong to the product (else 404).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OptionChoiceInput'
+      responses:
+        '201':
+          description: The created choice.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OptionChoice'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/products/{id}/options/{optionId}/choices/{choiceId}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: optionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: choiceId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [admin]
+      operationId: updateOptionChoice
+      summary: Edit an option choice (owner-only, ADR-037).
+      description: Scoped by (option, choice) under the product; a mismatched id → 404.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OptionChoiceInput'
+      responses:
+        '200':
+          description: The updated choice.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OptionChoice'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [admin]
+      operationId: deleteOptionChoice
+      summary: Remove an option choice (owner-only, ADR-037).
+      security:
+        - cookieAuth: []
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /admin/products/{id}/model-upload:
     parameters:
       - name: id
@@ -1582,11 +1749,18 @@ components:
           type: integer
           format: int64
           description: Added price in int-VND (>= 0).
+        partId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Part this colour belongs to (ADR-037); null = flat product-level colour (default). When set,
+            the customer picks one colour per part.
 
     Option:
       type: object
       description: 'A customization option (spec §02). type: text carries an engraving char limit (maxChars).'
-      required: [id, label, description, type, priceDelta]
+      required: [id, label, description, type, priceDelta, choices]
       properties:
         id:
           type: string
@@ -1605,6 +1779,13 @@ components:
           type: integer
           nullable: true
           description: Engraving character limit; null unless a limit applies.
+        choices:
+          type: array
+          description: >
+            Enumerated choices for a `choice` option (ADR-037), each with its own priceDelta. Empty = a
+            legacy toggle priced by this option's priceDelta; non-empty = the customer picks exactly one.
+          items:
+            $ref: '#/components/schemas/OptionChoice'
 
     Product:
       type: object
@@ -1625,6 +1806,7 @@ components:
         - images
         - colors
         - options
+        - parts
         - status
         - reviewCount
         - createdAt
@@ -1669,6 +1851,13 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Option'
+        parts:
+          type: array
+          description: >
+            Named parts (ADR-037), each grouping a subset of colors[] via Color.partId. Empty = a
+            single-piece product (flat colours). The customer picks one colour per part.
+          items:
+            $ref: '#/components/schemas/Part'
         status:
           $ref: '#/components/schemas/ProductStatus'
         ratingAvg:
@@ -1682,6 +1871,47 @@ components:
         createdAt:
           type: string
           format: date-time
+
+    Part:
+      type: object
+      description: >
+        A named part of a product (ADR-037) — e.g. "Chao đèn". colors[] belong to a part via Color.partId;
+        the customer picks one colour per part.
+      required: [id, name, displayOrder]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Display name, e.g. "Chao đèn".
+        displayOrder:
+          type: integer
+          description: Sort order within the product's parts.
+
+    OptionChoice:
+      type: object
+      description: >
+        One enumerated choice of a `choice` option (ADR-037) — e.g. size "M". priceDelta is int-VND (may
+        be 0); the customer picks exactly one choice per choice-option.
+      required: [id, label, description, priceDelta, displayOrder]
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+          description: Display label, e.g. "M".
+        description:
+          type: string
+          description: Optional detail, e.g. "12×9 cm · ~160g".
+        priceDelta:
+          type: integer
+          format: int64
+          description: Added price in int-VND (>= 0).
+        displayOrder:
+          type: integer
+          description: Sort order within the option's choices.
 
     ProductCard:
       type: object
@@ -1863,6 +2093,13 @@ components:
           type: integer
           format: int64
           description: Added price in int-VND (>= 0). Optional; defaults to 0.
+        partId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Assign this colour to a part (ADR-037); omit/null = flat product-level colour. The part must
+            belong to the same product (else 400 partId).
 
     OptionInput:
       type: object
@@ -1884,6 +2121,35 @@ components:
           type: integer
           nullable: true
           description: Engraving character limit for a `text` option; null/omitted for no limit.
+
+    PartInput:
+      type: object
+      description: Create/replace body for a product part (ADR-037, owner-only).
+      required: [name]
+      properties:
+        name:
+          type: string
+        displayOrder:
+          type: integer
+          description: Sort order within the product's parts; optional, defaults to 0.
+
+    OptionChoiceInput:
+      type: object
+      description: Create/replace body for an option choice (ADR-037). priceDelta is int-VND (default 0).
+      required: [label]
+      properties:
+        label:
+          type: string
+        description:
+          type: string
+          description: Optional; defaults to "".
+        priceDelta:
+          type: integer
+          format: int64
+          description: Added price in int-VND (>= 0). Optional; defaults to 0.
+        displayOrder:
+          type: integer
+          description: Sort order within the option's choices; optional, defaults to 0.
 
     AssetJobStatus:
       type: string

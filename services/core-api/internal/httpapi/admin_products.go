@@ -81,7 +81,15 @@ func (s *Server) GetAdminProduct(ctx context.Context, request api.GetAdminProduc
 	if err != nil {
 		return nil, err
 	}
-	dto, err := productDTO(p, colors, options)
+	parts, err := repo.PartsByProduct(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	choices, err := repo.ChoicesByProduct(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	dto, err := productDTO(p, colors, options, parts, choices)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +132,7 @@ func (s *Server) CreateAdminProduct(ctx context.Context, request api.CreateAdmin
 	if err != nil {
 		return nil, err
 	}
-	dto, err := productDTO(p, nil, nil)
+	dto, err := productDTO(p, nil, nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +183,15 @@ func (s *Server) UpdateAdminProduct(ctx context.Context, request api.UpdateAdmin
 	if err != nil {
 		return nil, err
 	}
-	dto, err := productDTO(p, colors, options)
+	parts, err := repo.PartsByProduct(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	choices, err := repo.ChoicesByProduct(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	dto, err := productDTO(p, colors, options, parts, choices)
 	if err != nil {
 		return nil, err
 	}
@@ -212,13 +228,22 @@ func (s *Server) CreateProductColor(ctx context.Context, request api.CreateProdu
 	if len(fields) > 0 {
 		return api.CreateProductColor400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
 	}
-	col, err := db.NewCatalog(s.pool).CreateColor(ctx, sqlc.InsertColorParams{
+	repo := db.NewCatalog(s.pool)
+	partID, partFields, err := resolveColorPart(ctx, repo, request.Id, request.Body.PartId)
+	if err != nil {
+		return nil, err
+	}
+	if len(partFields) > 0 {
+		return api.CreateProductColor400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(partFields))}, nil
+	}
+	col, err := repo.CreateColor(ctx, sqlc.InsertColorParams{
 		ID:         uuid.New(),
 		ProductID:  request.Id,
 		Name:       name,
 		Hex:        hex,
 		Available:  request.Body.Available,
 		PriceDelta: priceDelta,
+		PartID:     partID,
 	})
 	if pgCode(err) == pgForeignKeyViolation {
 		return nil, db.ErrNotFound // unknown product → 404
@@ -242,13 +267,22 @@ func (s *Server) UpdateProductColor(ctx context.Context, request api.UpdateProdu
 	if len(fields) > 0 {
 		return api.UpdateProductColor400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
 	}
-	col, err := db.NewCatalog(s.pool).UpdateColor(ctx, sqlc.UpdateColorParams{
+	repo := db.NewCatalog(s.pool)
+	partID, partFields, err := resolveColorPart(ctx, repo, request.Id, request.Body.PartId)
+	if err != nil {
+		return nil, err
+	}
+	if len(partFields) > 0 {
+		return api.UpdateProductColor400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(partFields))}, nil
+	}
+	col, err := repo.UpdateColor(ctx, sqlc.UpdateColorParams{
 		ID:         request.ColorId,
 		ProductID:  request.Id,
 		Name:       name,
 		Hex:        hex,
 		Available:  request.Body.Available,
 		PriceDelta: priceDelta,
+		PartID:     partID,
 	})
 	if err != nil {
 		return nil, err // db.ErrNotFound → 404
@@ -550,6 +584,7 @@ func colorDTO(c sqlc.Color) api.Color {
 		Hex:        c.Hex,
 		Available:  c.Available,
 		PriceDelta: c.PriceDelta,
+		PartId:     uuidPtrFromPg(c.PartID), // ADR-037: null = flat product-level colour
 	}
 }
 

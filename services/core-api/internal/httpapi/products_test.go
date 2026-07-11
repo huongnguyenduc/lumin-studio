@@ -48,7 +48,7 @@ func TestProductDTO(t *testing.T) {
 		{ID: optChoiceID, ProductID: pid, Label: "Dimmer", Description: "chỉnh sáng", Type: sqlc.OptionTypeChoice, PriceDelta: 90_000, MaxChars: nil},
 	}
 
-	got, err := productDTO(p, colors, options)
+	got, err := productDTO(p, colors, options, nil, nil)
 	if err != nil {
 		t.Fatalf("productDTO: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestProductDTOZeroState(t *testing.T) {
 		Status: sqlc.ProductStatusActive, RatingAvg: nil, ReviewCount: 0,
 		CreatedAt: pgtype.Timestamptz{Time: mustParse(t, "2026-07-02T09:00:00Z"), Valid: true},
 	}
-	got, err := productDTO(p, nil, nil)
+	got, err := productDTO(p, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("productDTO: %v", err)
 	}
@@ -145,14 +145,14 @@ func TestProductDTOCorruptJSONB(t *testing.T) {
 	t.Run("dimensions", func(t *testing.T) {
 		p := base
 		p.Dimensions = []byte(`not-json`)
-		if _, err := productDTO(p, nil, nil); err == nil {
+		if _, err := productDTO(p, nil, nil, nil, nil); err == nil {
 			t.Fatal("want error on corrupt dimensions jsonb")
 		}
 	})
 	t.Run("images", func(t *testing.T) {
 		p := base
 		p.Images = []byte(`{"not":"an-array"}`)
-		if _, err := productDTO(p, nil, nil); err == nil {
+		if _, err := productDTO(p, nil, nil, nil, nil); err == nil {
 			t.Fatal("want error on corrupt images jsonb")
 		}
 	})

@@ -689,6 +689,100 @@ export interface paths {
         patch: operations["updateProductOption"];
         trace?: never;
     };
+    "/admin/products/{id}/parts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a named part to a product (owner-only, ADR-037). */
+        post: operations["createProductPart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/products/{id}/parts/{partId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                partId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a product's part (owner-only, ADR-037).
+         * @description Deletes the part and CASCADEs its colours (ADR-037). A colour already pinned by an order raises a conflict → 409 (archive the product instead). Scoped by (product, part); unknown → 404.
+         */
+        delete: operations["deleteProductPart"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit a product's part (owner-only, ADR-037).
+         * @description Scoped by (product, part); a partId under another product → 404.
+         */
+        patch: operations["updateProductPart"];
+        trace?: never;
+    };
+    "/admin/products/{id}/options/{optionId}/choices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                optionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a choice to a `choice` option (owner-only, ADR-037).
+         * @description The option must belong to the product (else 404).
+         */
+        post: operations["createOptionChoice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/products/{id}/options/{optionId}/choices/{choiceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                optionId: string;
+                choiceId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove an option choice (owner-only, ADR-037). */
+        delete: operations["deleteOptionChoice"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit an option choice (owner-only, ADR-037).
+         * @description Scoped by (option, choice) under the product; a mismatched id → 404.
+         */
+        patch: operations["updateOptionChoice"];
+        trace?: never;
+    };
     "/admin/products/{id}/model-upload": {
         parameters: {
             query?: never;
@@ -800,6 +894,11 @@ export interface components {
              * @description Added price in int-VND (>= 0).
              */
             priceDelta: number;
+            /**
+             * Format: uuid
+             * @description Part this colour belongs to (ADR-037); null = flat product-level colour (default). When set, the customer picks one colour per part.
+             */
+            partId?: string | null;
         };
         /** @description A customization option (spec §02). type: text carries an engraving char limit (maxChars). */
         Option: {
@@ -815,6 +914,8 @@ export interface components {
             priceDelta: number;
             /** @description Engraving character limit; null unless a limit applies. */
             maxChars?: number | null;
+            /** @description Enumerated choices for a `choice` option (ADR-037), each with its own priceDelta. Empty = a legacy toggle priced by this option's priceDelta; non-empty = the customer picks exactly one. */
+            choices: components["schemas"]["OptionChoice"][];
         };
         /** @description Storefront product detail (spec §02). Money fields (basePrice, colors[].priceDelta, options[].priceDelta) are raw int-VND — the client formats via @lumin/core (always-must #2). images[0] is the card cover (sprite-first, ADR-007). No productType in Phase 1 (D-P1-1). */
         Product: {
@@ -841,6 +942,8 @@ export interface components {
             images: string[];
             colors: components["schemas"]["Color"][];
             options: components["schemas"]["Option"][];
+            /** @description Named parts (ADR-037), each grouping a subset of colors[] via Color.partId. Empty = a single-piece product (flat colours). The customer picks one colour per part. */
+            parts: components["schemas"]["Part"][];
             status: components["schemas"]["ProductStatus"];
             /**
              * Format: float
@@ -851,6 +954,31 @@ export interface components {
             reviewCount: number;
             /** Format: date-time */
             createdAt: string;
+        };
+        /** @description A named part of a product (ADR-037) — e.g. "Chao đèn". colors[] belong to a part via Color.partId; the customer picks one colour per part. */
+        Part: {
+            /** Format: uuid */
+            id: string;
+            /** @description Display name, e.g. "Chao đèn". */
+            name: string;
+            /** @description Sort order within the product's parts. */
+            displayOrder: number;
+        };
+        /** @description One enumerated choice of a `choice` option (ADR-037) — e.g. size "M". priceDelta is int-VND (may be 0); the customer picks exactly one choice per choice-option. */
+        OptionChoice: {
+            /** Format: uuid */
+            id: string;
+            /** @description Display label, e.g. "M". */
+            label: string;
+            /** @description Optional detail, e.g. "12×9 cm · ~160g". */
+            description: string;
+            /**
+             * Format: int64
+             * @description Added price in int-VND (>= 0).
+             */
+            priceDelta: number;
+            /** @description Sort order within the option's choices. */
+            displayOrder: number;
         };
         /** @description Lightweight catalog-list projection of a product (spec §02) — the fields a grid card needs, WITHOUT colors/options/description body (the list avoids the per-product reads the detail read makes → no N+1). basePrice is raw int-VND; images[0] is the card cover (sprite-first, ADR-007). Only ACTIVE products are ever listed, so status is implied and omitted. */
         ProductCard: {
@@ -943,6 +1071,11 @@ export interface components {
              * @description Added price in int-VND (>= 0). Optional; defaults to 0.
              */
             priceDelta?: number;
+            /**
+             * Format: uuid
+             * @description Assign this colour to a part (ADR-037); omit/null = flat product-level colour. The part must belong to the same product (else 400 partId).
+             */
+            partId?: string | null;
         };
         /** @description Create/replace body for a customization option (P3-j). priceDelta is int-VND (default 0). */
         OptionInput: {
@@ -957,6 +1090,25 @@ export interface components {
             priceDelta?: number;
             /** @description Engraving character limit for a `text` option; null/omitted for no limit. */
             maxChars?: number | null;
+        };
+        /** @description Create/replace body for a product part (ADR-037, owner-only). */
+        PartInput: {
+            name: string;
+            /** @description Sort order within the product's parts; optional, defaults to 0. */
+            displayOrder?: number;
+        };
+        /** @description Create/replace body for an option choice (ADR-037). priceDelta is int-VND (default 0). */
+        OptionChoiceInput: {
+            label: string;
+            /** @description Optional; defaults to "". */
+            description?: string;
+            /**
+             * Format: int64
+             * @description Added price in int-VND (>= 0). Optional; defaults to 0.
+             */
+            priceDelta?: number;
+            /** @description Sort order within the option's choices; optional, defaults to 0. */
+            displayOrder?: number;
         };
         /**
          * @description Lifecycle of a render/ingest job (migration 000006). The client maps it to an i18n label.
@@ -2706,6 +2858,180 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Option"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createProductPart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PartInput"];
+            };
+        };
+        responses: {
+            /** @description The created part. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Part"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteProductPart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                partId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateProductPart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                partId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PartInput"];
+            };
+        };
+        responses: {
+            /** @description The updated part. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Part"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createOptionChoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                optionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OptionChoiceInput"];
+            };
+        };
+        responses: {
+            /** @description The created choice. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OptionChoice"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteOptionChoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                optionId: string;
+                choiceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateOptionChoice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                optionId: string;
+                choiceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OptionChoiceInput"];
+            };
+        };
+        responses: {
+            /** @description The updated choice. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OptionChoice"];
                 };
             };
             400: components["responses"]["BadRequest"];

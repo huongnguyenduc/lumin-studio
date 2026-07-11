@@ -43,6 +43,7 @@ Thời gian lưu **ISO-8601 UTC**.
 | `model3dUrl` | url | `.glb` để xem, `.stl`/`.3mf` để in |
 | `images[]` | Image[] | **Ảnh shop chụp**; ảnh đầu (`images[0]`) là ảnh đại diện trên card/list (hover/dừng-2s → 360° sprite) |
 | `colors[]` | Color[] | Màu in **có tên** (xem dưới) |
+| `parts[]` | Part[]? | Bộ phận có tên (Chao đèn/Đế/Nút bấm); mỗi part có bộ màu riêng. Không có = SP một-khối (màu phẳng). ADR-037 |
 | `options[]` | Option[] | Tuỳ chọn có mô tả (khắc tên, kích cỡ…) |
 | `status` | enum | `active` · `draft` · `archived` |
 | `ratingAvg` · `reviewCount` | float · int | Tính sẵn để hiển thị nhanh |
@@ -55,6 +56,18 @@ Thời gian lưu **ISO-8601 UTC**.
 | `hex` | string |
 | `available` | bool (còn cuộn nhựa) |
 | `priceDelta` | int (VND, có thể 0) |
+| `partId` | uuid? → Part (null = màu phẳng cấp SP, mặc định; set = màu của một bộ phận · ADR-037) |
+
+### Part (bộ phận có tên)
+| Trường | Kiểu |
+|---|---|
+| `id` | uuid |
+| `name` | string · "Chao đèn" |
+| `displayOrder` | int |
+
+> Bộ phận là **tuỳ chọn** (ADR-037): SP một-khối không có part, `colors[].partId = null`. SP nhiều bộ phận:
+> mỗi part có bộ màu riêng, khách chọn **một màu mỗi bộ phận** (đèn có chao/đế/nút khác màu). "Chọn part →
+> sáng trên model" chỉ là state viewer (không thêm dữ liệu geometry vào catalog).
 
 ### Option (tuỳ chọn)
 | Trường | Kiểu |
@@ -65,6 +78,18 @@ Thời gian lưu **ISO-8601 UTC**.
 | `type` | enum: `text` · `choice` |
 | `priceDelta` | int (VND) |
 | `maxChars` | int? (giới hạn khắc, đặt khi tạo SP) |
+| `choices[]` | OptionChoice[]? (chỉ type=choice; rỗng = toggle như cũ · ADR-037) |
+
+### OptionChoice (lựa chọn của option)
+| Trường | Kiểu |
+|---|---|
+| `id` | uuid |
+| `label` | string · "M" |
+| `description` | string · "12×9 cm · ~160g" |
+| `priceDelta` | int (VND) |
+
+> Chỉ cho option `type=choice` (ADR-037): rỗng = toggle như cũ (giá = option.priceDelta); có lựa chọn = khách
+> chọn **một**, giá lấy từ lựa chọn đó (option base bỏ qua).
 
 ### Order & OrderItem
 | Trường | Kiểu | Ghi chú |
@@ -87,6 +112,10 @@ Thời gian lưu **ISO-8601 UTC**.
 > **Personalization (khắc tên):** mỗi OrderItem có thể mang `{ text, zoneId }` — vị trí khắc là
 > một trong các "điểm khắc hợp lệ" định nghĩa trên model. Lưu cả `text` lẫn `zone` để xưởng in
 > đặt đúng chỗ.
+
+> **Cấu hình nhiều-trục (ADR-037):** với SP nhiều bộ phận / option có lựa chọn, OrderItem còn snapshot
+> `partColors[]` (màu mỗi bộ phận) + `optionChoices[]` (lựa chọn mỗi option) — jsonb denormalized (kèm
+> `colorName`/`hex`/`choiceLabel`). `color`/`options` phẳng giữ cho SP một-khối + **đơn lịch sử bất biến**.
 
 ### Các thực thể khác
 | Thực thể | Trường chính |

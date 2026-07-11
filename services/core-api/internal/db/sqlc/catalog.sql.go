@@ -93,6 +93,38 @@ func (q *Queries) DeleteOption(ctx context.Context, arg DeleteOptionParams) (uui
 	return id, err
 }
 
+const deleteOptionChoice = `-- name: DeleteOptionChoice :one
+DELETE FROM option_choices WHERE id = $1 AND option_id = $2 RETURNING id
+`
+
+type DeleteOptionChoiceParams struct {
+	ID       uuid.UUID `json:"id"`
+	OptionID uuid.UUID `json:"optionId"`
+}
+
+func (q *Queries) DeleteOptionChoice(ctx context.Context, arg DeleteOptionChoiceParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, deleteOptionChoice, arg.ID, arg.OptionID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deletePart = `-- name: DeletePart :one
+DELETE FROM parts WHERE id = $1 AND product_id = $2 RETURNING id
+`
+
+type DeletePartParams struct {
+	ID        uuid.UUID `json:"id"`
+	ProductID uuid.UUID `json:"productId"`
+}
+
+func (q *Queries) DeletePart(ctx context.Context, arg DeletePartParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, deletePart, arg.ID, arg.ProductID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const deleteProduct = `-- name: DeleteProduct :one
 DELETE FROM products WHERE id = $1 RETURNING id
 `
@@ -106,6 +138,57 @@ func (q *Queries) DeleteProduct(ctx context.Context, id uuid.UUID) (uuid.UUID, e
 	row := q.db.QueryRow(ctx, deleteProduct, id)
 	err := row.Scan(&id)
 	return id, err
+}
+
+const getOptionByProduct = `-- name: GetOptionByProduct :one
+SELECT id, product_id, label, description, type, price_delta, max_chars FROM options WHERE id = $1 AND product_id = $2
+`
+
+type GetOptionByProductParams struct {
+	ID        uuid.UUID `json:"id"`
+	ProductID uuid.UUID `json:"productId"`
+}
+
+// GetOptionByProduct scopes an option to its product — the choice handlers call it to validate the
+// {optionId} in the path belongs to {id} before touching its choices (a choice under another product's
+// option → 404), the option-level analogue of the (id, product_id) scoping on colours/options.
+func (q *Queries) GetOptionByProduct(ctx context.Context, arg GetOptionByProductParams) (Option, error) {
+	row := q.db.QueryRow(ctx, getOptionByProduct, arg.ID, arg.ProductID)
+	var i Option
+	err := row.Scan(
+		&i.ID,
+		&i.ProductID,
+		&i.Label,
+		&i.Description,
+		&i.Type,
+		&i.PriceDelta,
+		&i.MaxChars,
+	)
+	return i, err
+}
+
+const getPartByProduct = `-- name: GetPartByProduct :one
+SELECT id, product_id, name, display_order FROM parts WHERE id = $1 AND product_id = $2
+`
+
+type GetPartByProductParams struct {
+	ID        uuid.UUID `json:"id"`
+	ProductID uuid.UUID `json:"productId"`
+}
+
+// GetPartByProduct scopes a part to its product — the colour handlers call it to validate that a colour's
+// claimed partId belongs to the SAME product before assigning it (ADR-037: colour ∈ part ∈ product), so a
+// colour can never be grouped under another product's part. Missing → ErrNoRows → 400 field(partId).
+func (q *Queries) GetPartByProduct(ctx context.Context, arg GetPartByProductParams) (Part, error) {
+	row := q.db.QueryRow(ctx, getPartByProduct, arg.ID, arg.ProductID)
+	var i Part
+	err := row.Scan(
+		&i.ID,
+		&i.ProductID,
+		&i.Name,
+		&i.DisplayOrder,
+	)
+	return i, err
 }
 
 const getProductByID = `-- name: GetProductByID :one
@@ -187,20 +270,24 @@ func (q *Queries) InsertCategory(ctx context.Context, arg InsertCategoryParams) 
 }
 
 const insertColor = `-- name: InsertColor :one
-INSERT INTO colors (id, product_id, name, hex, available, price_delta)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, product_id, name, hex, available, price_delta
+INSERT INTO colors (id, product_id, name, hex, available, price_delta, part_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, product_id, name, hex, available, price_delta, part_id
 `
 
 type InsertColorParams struct {
-	ID         uuid.UUID `json:"id"`
-	ProductID  uuid.UUID `json:"productId"`
-	Name       string    `json:"name"`
-	Hex        string    `json:"hex"`
-	Available  bool      `json:"available"`
-	PriceDelta int64     `json:"priceDelta"`
+	ID         uuid.UUID   `json:"id"`
+	ProductID  uuid.UUID   `json:"productId"`
+	Name       string      `json:"name"`
+	Hex        string      `json:"hex"`
+	Available  bool        `json:"available"`
+	PriceDelta int64       `json:"priceDelta"`
+	PartID     pgtype.UUID `json:"partId"`
 }
 
+// InsertColor takes an optional part_id (ADR-037): NULL = flat product-level colour (legacy/default);
+// set = the colour belongs to that part. The handler validates the part ∈ the same product first
+// (GetPartByProduct) so a colour can never be grouped under another product's part.
 func (q *Queries) InsertColor(ctx context.Context, arg InsertColorParams) (Color, error) {
 	row := q.db.QueryRow(ctx, insertColor,
 		arg.ID,
@@ -209,6 +296,7 @@ func (q *Queries) InsertColor(ctx context.Context, arg InsertColorParams) (Color
 		arg.Hex,
 		arg.Available,
 		arg.PriceDelta,
+		arg.PartID,
 	)
 	var i Color
 	err := row.Scan(
@@ -218,6 +306,7 @@ func (q *Queries) InsertColor(ctx context.Context, arg InsertColorParams) (Color
 		&i.Hex,
 		&i.Available,
 		&i.PriceDelta,
+		&i.PartID,
 	)
 	return i, err
 }
@@ -257,6 +346,76 @@ func (q *Queries) InsertOption(ctx context.Context, arg InsertOptionParams) (Opt
 		&i.Type,
 		&i.PriceDelta,
 		&i.MaxChars,
+	)
+	return i, err
+}
+
+const insertOptionChoice = `-- name: InsertOptionChoice :one
+
+INSERT INTO option_choices (id, option_id, label, description, price_delta, display_order)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, option_id, label, description, price_delta, display_order
+`
+
+type InsertOptionChoiceParams struct {
+	ID           uuid.UUID `json:"id"`
+	OptionID     uuid.UUID `json:"optionId"`
+	Label        string    `json:"label"`
+	Description  string    `json:"description"`
+	PriceDelta   int64     `json:"priceDelta"`
+	DisplayOrder int32     `json:"displayOrder"`
+}
+
+// === ADR-037 configurator: option choices (enumerated values for a `choice` option) ===
+func (q *Queries) InsertOptionChoice(ctx context.Context, arg InsertOptionChoiceParams) (OptionChoice, error) {
+	row := q.db.QueryRow(ctx, insertOptionChoice,
+		arg.ID,
+		arg.OptionID,
+		arg.Label,
+		arg.Description,
+		arg.PriceDelta,
+		arg.DisplayOrder,
+	)
+	var i OptionChoice
+	err := row.Scan(
+		&i.ID,
+		&i.OptionID,
+		&i.Label,
+		&i.Description,
+		&i.PriceDelta,
+		&i.DisplayOrder,
+	)
+	return i, err
+}
+
+const insertPart = `-- name: InsertPart :one
+
+INSERT INTO parts (id, product_id, name, display_order)
+VALUES ($1, $2, $3, $4)
+RETURNING id, product_id, name, display_order
+`
+
+type InsertPartParams struct {
+	ID           uuid.UUID `json:"id"`
+	ProductID    uuid.UUID `json:"productId"`
+	Name         string    `json:"name"`
+	DisplayOrder int32     `json:"displayOrder"`
+}
+
+// === ADR-037 configurator: parts (named part groups, each with its own colour set) ===
+func (q *Queries) InsertPart(ctx context.Context, arg InsertPartParams) (Part, error) {
+	row := q.db.QueryRow(ctx, insertPart,
+		arg.ID,
+		arg.ProductID,
+		arg.Name,
+		arg.DisplayOrder,
+	)
+	var i Part
+	err := row.Scan(
+		&i.ID,
+		&i.ProductID,
+		&i.Name,
+		&i.DisplayOrder,
 	)
 	return i, err
 }
@@ -538,8 +697,45 @@ func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
 	return items, nil
 }
 
+const listChoicesByProduct = `-- name: ListChoicesByProduct :many
+SELECT oc.id, oc.option_id, oc.label, oc.description, oc.price_delta, oc.display_order FROM option_choices oc
+JOIN options o ON o.id = oc.option_id
+WHERE o.product_id = $1
+ORDER BY oc.option_id, oc.display_order, oc.id
+`
+
+// ListChoicesByProduct returns every option_choice for a product's options (joined via options.product_id),
+// for the editor's Product-detail assembly (the handler groups them by option_id into Option.choices[]).
+// Ordered by option then display_order for a deterministic nesting.
+func (q *Queries) ListChoicesByProduct(ctx context.Context, productID uuid.UUID) ([]OptionChoice, error) {
+	rows, err := q.db.Query(ctx, listChoicesByProduct, productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OptionChoice
+	for rows.Next() {
+		var i OptionChoice
+		if err := rows.Scan(
+			&i.ID,
+			&i.OptionID,
+			&i.Label,
+			&i.Description,
+			&i.PriceDelta,
+			&i.DisplayOrder,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listColorsByProduct = `-- name: ListColorsByProduct :many
-SELECT id, product_id, name, hex, available, price_delta FROM colors WHERE product_id = $1 ORDER BY name
+SELECT id, product_id, name, hex, available, price_delta, part_id FROM colors WHERE product_id = $1 ORDER BY name
 `
 
 func (q *Queries) ListColorsByProduct(ctx context.Context, productID uuid.UUID) ([]Color, error) {
@@ -558,6 +754,7 @@ func (q *Queries) ListColorsByProduct(ctx context.Context, productID uuid.UUID) 
 			&i.Hex,
 			&i.Available,
 			&i.PriceDelta,
+			&i.PartID,
 		); err != nil {
 			return nil, err
 		}
@@ -590,6 +787,35 @@ func (q *Queries) ListOptionsByProduct(ctx context.Context, productID uuid.UUID)
 			&i.Type,
 			&i.PriceDelta,
 			&i.MaxChars,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPartsByProduct = `-- name: ListPartsByProduct :many
+SELECT id, product_id, name, display_order FROM parts WHERE product_id = $1 ORDER BY display_order, id
+`
+
+func (q *Queries) ListPartsByProduct(ctx context.Context, productID uuid.UUID) ([]Part, error) {
+	rows, err := q.db.Query(ctx, listPartsByProduct, productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Part
+	for rows.Next() {
+		var i Part
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProductID,
+			&i.Name,
+			&i.DisplayOrder,
 		); err != nil {
 			return nil, err
 		}
@@ -700,18 +926,19 @@ func (q *Queries) ListReviewsByProduct(ctx context.Context, arg ListReviewsByPro
 
 const updateColor = `-- name: UpdateColor :one
 UPDATE colors
-SET name = $3, hex = $4, available = $5, price_delta = $6
+SET name = $3, hex = $4, available = $5, price_delta = $6, part_id = $7
 WHERE id = $1 AND product_id = $2
-RETURNING id, product_id, name, hex, available, price_delta
+RETURNING id, product_id, name, hex, available, price_delta, part_id
 `
 
 type UpdateColorParams struct {
-	ID         uuid.UUID `json:"id"`
-	ProductID  uuid.UUID `json:"productId"`
-	Name       string    `json:"name"`
-	Hex        string    `json:"hex"`
-	Available  bool      `json:"available"`
-	PriceDelta int64     `json:"priceDelta"`
+	ID         uuid.UUID   `json:"id"`
+	ProductID  uuid.UUID   `json:"productId"`
+	Name       string      `json:"name"`
+	Hex        string      `json:"hex"`
+	Available  bool        `json:"available"`
+	PriceDelta int64       `json:"priceDelta"`
+	PartID     pgtype.UUID `json:"partId"`
 }
 
 // UpdateColor / DeleteColor are scoped by BOTH id AND product_id (P3-j) so a colorId belonging to another
@@ -725,6 +952,7 @@ func (q *Queries) UpdateColor(ctx context.Context, arg UpdateColorParams) (Color
 		arg.Hex,
 		arg.Available,
 		arg.PriceDelta,
+		arg.PartID,
 	)
 	var i Color
 	err := row.Scan(
@@ -734,6 +962,7 @@ func (q *Queries) UpdateColor(ctx context.Context, arg UpdateColorParams) (Color
 		&i.Hex,
 		&i.Available,
 		&i.PriceDelta,
+		&i.PartID,
 	)
 	return i, err
 }
@@ -776,6 +1005,77 @@ func (q *Queries) UpdateOption(ctx context.Context, arg UpdateOptionParams) (Opt
 		&i.Type,
 		&i.PriceDelta,
 		&i.MaxChars,
+	)
+	return i, err
+}
+
+const updateOptionChoice = `-- name: UpdateOptionChoice :one
+UPDATE option_choices SET label = $3, description = $4, price_delta = $5, display_order = $6
+WHERE id = $1 AND option_id = $2
+RETURNING id, option_id, label, description, price_delta, display_order
+`
+
+type UpdateOptionChoiceParams struct {
+	ID           uuid.UUID `json:"id"`
+	OptionID     uuid.UUID `json:"optionId"`
+	Label        string    `json:"label"`
+	Description  string    `json:"description"`
+	PriceDelta   int64     `json:"priceDelta"`
+	DisplayOrder int32     `json:"displayOrder"`
+}
+
+// UpdateOptionChoice / DeleteOptionChoice are scoped by BOTH id AND option_id (a choiceId under another
+// option → no row → 404); the handler has already confirmed the option ∈ product via GetOptionByProduct.
+func (q *Queries) UpdateOptionChoice(ctx context.Context, arg UpdateOptionChoiceParams) (OptionChoice, error) {
+	row := q.db.QueryRow(ctx, updateOptionChoice,
+		arg.ID,
+		arg.OptionID,
+		arg.Label,
+		arg.Description,
+		arg.PriceDelta,
+		arg.DisplayOrder,
+	)
+	var i OptionChoice
+	err := row.Scan(
+		&i.ID,
+		&i.OptionID,
+		&i.Label,
+		&i.Description,
+		&i.PriceDelta,
+		&i.DisplayOrder,
+	)
+	return i, err
+}
+
+const updatePart = `-- name: UpdatePart :one
+UPDATE parts SET name = $3, display_order = $4
+WHERE id = $1 AND product_id = $2
+RETURNING id, product_id, name, display_order
+`
+
+type UpdatePartParams struct {
+	ID           uuid.UUID `json:"id"`
+	ProductID    uuid.UUID `json:"productId"`
+	Name         string    `json:"name"`
+	DisplayOrder int32     `json:"displayOrder"`
+}
+
+// UpdatePart / DeletePart are scoped by BOTH id AND product_id (a partId under another product → no row →
+// 404), the same cross-product guard as UpdateColor/UpdateOption. Deleting a part CASCADEs its colours
+// (000015); a colour pinned by an order_item (FK NO ACTION) blocks the delete → 23503 → 409 (archive).
+func (q *Queries) UpdatePart(ctx context.Context, arg UpdatePartParams) (Part, error) {
+	row := q.db.QueryRow(ctx, updatePart,
+		arg.ID,
+		arg.ProductID,
+		arg.Name,
+		arg.DisplayOrder,
+	)
+	var i Part
+	err := row.Scan(
+		&i.ID,
+		&i.ProductID,
+		&i.Name,
+		&i.DisplayOrder,
 	)
 	return i, err
 }

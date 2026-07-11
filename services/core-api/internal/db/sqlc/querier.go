@@ -81,6 +81,8 @@ type Querier interface {
 	DashboardReviewsWaiting(ctx context.Context) (int64, error)
 	DeleteColor(ctx context.Context, arg DeleteColorParams) (uuid.UUID, error)
 	DeleteOption(ctx context.Context, arg DeleteOptionParams) (uuid.UUID, error)
+	DeleteOptionChoice(ctx context.Context, arg DeleteOptionChoiceParams) (uuid.UUID, error)
+	DeletePart(ctx context.Context, arg DeletePartParams) (uuid.UUID, error)
 	// DeleteProduct is a HARD delete, allowed only for never-ordered/never-rendered products (drafts, mistakes):
 	// order_items and asset_jobs reference products ON DELETE RESTRICT (migrations 000005/000006), so deleting a
 	// product with history raises a foreign_key_violation the handler maps to 409 "hãy lưu trữ thay vì xoá" — the
@@ -98,11 +100,19 @@ type Querier interface {
 	// credential, possibly duplicate email) can never be logged into.
 	GetCustomerByLoginEmail(ctx context.Context, lower string) (Customer, error)
 	GetCustomerByPhone(ctx context.Context, phone string) (Customer, error)
+	// GetOptionByProduct scopes an option to its product — the choice handlers call it to validate the
+	// {optionId} in the path belongs to {id} before touching its choices (a choice under another product's
+	// option → 404), the option-level analogue of the (id, product_id) scoping on colours/options.
+	GetOptionByProduct(ctx context.Context, arg GetOptionByProductParams) (Option, error)
 	GetOrderByCode(ctx context.Context, code string) (Order, error)
 	GetOrderByID(ctx context.Context, id uuid.UUID) (Order, error)
 	// GetOrderForUpdate locks the row for the duration of the caller's tx so a status flip reads
 	// and writes the order atomically (no lost-update race between concurrent transitions).
 	GetOrderForUpdate(ctx context.Context, id uuid.UUID) (Order, error)
+	// GetPartByProduct scopes a part to its product — the colour handlers call it to validate that a colour's
+	// claimed partId belongs to the SAME product before assigning it (ADR-037: colour ∈ part ∈ product), so a
+	// colour can never be grouped under another product's part. Missing → ErrNoRows → 400 field(partId).
+	GetPartByProduct(ctx context.Context, arg GetPartByProductParams) (Part, error)
 	GetPrintJobByID(ctx context.Context, id uuid.UUID) (PrintJob, error)
 	// GetPrintQueueEntry is the single-card read behind the stage PATCH (P3-f): the same enriched shape as
 	// ListPrintQueue for one job, so the mutate response and the board list carry one identical card shape.
@@ -134,6 +144,9 @@ type Querier interface {
 	// catalog.sql — catalog read/write queries (PR-2c). spec.md §02. Inserts return the row so
 	// callers (slice-3 admin handlers, tests) get the persisted record back.
 	InsertCategory(ctx context.Context, arg InsertCategoryParams) (Category, error)
+	// InsertColor takes an optional part_id (ADR-037): NULL = flat product-level colour (legacy/default);
+	// set = the colour belongs to that part. The handler validates the part ∈ the same product first
+	// (GetPartByProduct) so a colour can never be grouped under another product's part.
 	InsertColor(ctx context.Context, arg InsertColorParams) (Color, error)
 	// Append a granted purpose. granted_at defaults to now(); withdrawn_at is NULL (active).
 	InsertConsentGrant(ctx context.Context, arg InsertConsentGrantParams) (ConsentGrant, error)
@@ -153,12 +166,16 @@ type Querier interface {
 	// find-then-insert race — the DB is the single arbiter of login-email uniqueness.
 	InsertCustomerWithCredential(ctx context.Context, arg InsertCustomerWithCredentialParams) (Customer, error)
 	InsertOption(ctx context.Context, arg InsertOptionParams) (Option, error)
+	// === ADR-037 configurator: option choices (enumerated values for a `choice` option) ===
+	InsertOptionChoice(ctx context.Context, arg InsertOptionChoiceParams) (OptionChoice, error)
 	InsertOrderItem(ctx context.Context, arg InsertOrderItemParams) (OrderItem, error)
 	// outbox.sql — the transactional outbox write path (PR-2b) + the slice-3 relay drain path
 	// (PR-3b). InsertOutbox is the only mutation a domain tx performs; the four relay queries
 	// below run OUTSIDE any domain tx (the relay reads committed rows only). seq/status/attempts/
 	// created_at use column defaults; published_at stays NULL until the relay publishes.
 	InsertOutbox(ctx context.Context, arg InsertOutboxParams) error
+	// === ADR-037 configurator: parts (named part groups, each with its own colour set) ===
+	InsertPart(ctx context.Context, arg InsertPartParams) (Part, error)
 	InsertPrintJob(ctx context.Context, arg InsertPrintJobParams) (PrintJob, error)
 	InsertProduct(ctx context.Context, arg InsertProductParams) (Product, error)
 	InsertReplyTemplate(ctx context.Context, arg InsertReplyTemplateParams) (ReplyTemplate, error)
@@ -223,6 +240,10 @@ type Querier interface {
 	// UNIQUE — as the tiebreak) so two categories sharing a display name never flap position; a stable order
 	// keeps the response ETag stable. No browsable category → zero rows → the handler renders `[]`, not 404.
 	ListCategories(ctx context.Context) ([]Category, error)
+	// ListChoicesByProduct returns every option_choice for a product's options (joined via options.product_id),
+	// for the editor's Product-detail assembly (the handler groups them by option_id into Option.choices[]).
+	// Ordered by option then display_order for a deterministic nesting.
+	ListChoicesByProduct(ctx context.Context, productID uuid.UUID) ([]OptionChoice, error)
 	ListColorsByProduct(ctx context.Context, productID uuid.UUID) ([]Color, error)
 	ListOptionsByProduct(ctx context.Context, productID uuid.UUID) ([]Option, error)
 	// ListOrderItems returns an order's line items enriched with the human-readable product name, color
@@ -238,6 +259,7 @@ type Querier interface {
 	// customer registered are NOT auto-linked (claiming an unverified identity's orders is deferred).
 	ListOrdersByCustomer(ctx context.Context, customerID uuid.UUID) ([]Order, error)
 	ListOrdersByStatus(ctx context.Context, status order.Status) ([]Order, error)
+	ListPartsByProduct(ctx context.Context, productID uuid.UUID) ([]Part, error)
 	ListPrintJobsByStage(ctx context.Context, stage PrintStage) ([]PrintJob, error)
 	// ListPrintQueue is the admin kanban board read (P3-f): every print job across all stages, joined to
 	// the human-readable order code + product name + quantity so a queue card says WHAT TO MAKE for WHICH
@@ -312,11 +334,18 @@ type Querier interface {
 	// UpdateOption / DeleteOption are scoped by BOTH id AND product_id (P3-j), same cross-product guard as the
 	// color mutations: an optionId under the wrong product → no row → 404.
 	UpdateOption(ctx context.Context, arg UpdateOptionParams) (Option, error)
+	// UpdateOptionChoice / DeleteOptionChoice are scoped by BOTH id AND option_id (a choiceId under another
+	// option → no row → 404); the handler has already confirmed the option ∈ product via GetOptionByProduct.
+	UpdateOptionChoice(ctx context.Context, arg UpdateOptionChoiceParams) (OptionChoice, error)
 	// UpdateOrderStatus persists a transition: the new status, the full appended statusHistory,
 	// and — only when supplied — the denormalized refund_proof_url and payment_confirmed_at
 	// (COALESCE keeps the existing value when the narg is NULL). The append itself is computed in
 	// Go by order.Transition; this statement just writes the result in one UPDATE.
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) (Order, error)
+	// UpdatePart / DeletePart are scoped by BOTH id AND product_id (a partId under another product → no row →
+	// 404), the same cross-product guard as UpdateColor/UpdateOption. Deleting a part CASCADEs its colours
+	// (000015); a colour pinned by an order_item (FK NO ACTION) blocks the delete → 23503 → 409 (archive).
+	UpdatePart(ctx context.Context, arg UpdatePartParams) (Part, error)
 	// UpdatePrintJobStage advances the print queue stage (staff drag-drop) and refreshes updated_at.
 	UpdatePrintJobStage(ctx context.Context, arg UpdatePrintJobStageParams) (PrintJob, error)
 	// UpdateProduct saves the editable fields of a product (P3-j). It deliberately does NOT touch model3d_url:
