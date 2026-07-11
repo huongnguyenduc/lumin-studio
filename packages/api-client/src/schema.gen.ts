@@ -853,6 +853,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/filament-materials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the filament palette with derived stock + weighted-average cost (admin-gated read). */
+        get: operations["listFilamentMaterials"];
+        put?: never;
+        /** Add a filament material / colour (owner-only). */
+        post: operations["createFilamentMaterial"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/filament-materials/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** One filament material with its import-lot breakdown (admin-gated read). */
+        get: operations["getFilamentMaterial"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a filament material (owner-only). Set archived true to soft-delete. */
+        patch: operations["updateFilamentMaterial"];
+        trace?: never;
+    };
+    "/admin/filament-materials/{id}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a "nhập cuộn" import lot for a material (owner-only) — moves the weighted average. */
+        post: operations["importFilament"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1094,6 +1151,93 @@ export interface components {
             reviewCount: number;
             /** Format: date-time */
             createdAt: string;
+        };
+        /** @description A shop-wide filament colour (ADR-039). stockQty + avgCostPerUnit are DERIVED from the import batches (weighted average by remaining qty). stockQty is int unit-qty (grams/ml); avgCostPerUnit is a display RATE (₫ per unit, may be fractional), NOT stored money (frozen to int only at the print-time snapshot, slice 4b). lowStockThreshold drives the "sắp hết" badge; hex is an optional swatch. material/unit are validated server-side against a fixed set (ADR-028: TEXT+CHECK, not a native enum). */
+        FilamentMaterial: {
+            /** Format: uuid */
+            id: string;
+            /** @description Display colour name, e.g. "Cam Lumin". */
+            name: string;
+            /** @description One of PLA · PETG · recycled-PLA · Resin. */
+            material: string;
+            /** @description gram or ml. */
+            unit: string;
+            /** @description Swatch hex (#rgb/#rrggbb); null = no chip. */
+            hex?: string | null;
+            /**
+             * Format: int64
+             * @description Warn below this stock (unit qty, >= 0).
+             */
+            lowStockThreshold: number;
+            archived: boolean;
+            /**
+             * Format: int64
+             * @description Remaining stock in unit qty (Σ batch remaining).
+             */
+            stockQty: number;
+            /**
+             * Format: double
+             * @description Weighted-average ₫ per unit (derived display rate).
+             */
+            avgCostPerUnit: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description One import lot of a filament material (ADR-039). qtyOriginal/qtyRemaining are unit qty; totalCostVnd is the lot's int-VND cost. Per-unit ₫ = totalCostVnd / qtyOriginal (derived, never stored). */
+        FilamentBatch: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            materialId: string;
+            /** Format: date-time */
+            importedAt: string;
+            /** Format: int64 */
+            qtyOriginal: number;
+            /** Format: int64 */
+            qtyRemaining: number;
+            /**
+             * Format: int64
+             * @description Lot cost in int-VND (>= 0).
+             */
+            totalCostVnd: number;
+        };
+        /** @description A filament material plus its import-lot breakdown (the weighted-average panel). */
+        FilamentMaterialDetail: {
+            material: components["schemas"]["FilamentMaterial"];
+            /** @description Import lots, oldest first. Empty until the first import. */
+            batches: components["schemas"]["FilamentBatch"][];
+        };
+        /** @description Create/replace body for a filament material (ADR-039, owner-only). archived is optional (default false on create; set true to soft-delete). Cost/stock are never set here — they come from imports. */
+        FilamentMaterialInput: {
+            name: string;
+            /** @description One of PLA · PETG · recycled-PLA · Resin. */
+            material: string;
+            /** @description gram or ml. */
+            unit: string;
+            hex?: string | null;
+            /** Format: int64 */
+            lowStockThreshold: number;
+            archived?: boolean;
+        };
+        /** @description A "nhập cuộn" import (ADR-039, owner-only): spoolCount spools × qtyPerSpool unit each, at pricePerSpoolVnd int-VND per spool. The server derives the lot qtyOriginal = spoolCount × qtyPerSpool and totalCostVnd = spoolCount × pricePerSpoolVnd. */
+        FilamentImportInput: {
+            /**
+             * Format: int64
+             * @description Number of spools imported (>= 1).
+             */
+            spoolCount: number;
+            /**
+             * Format: int64
+             * @description Unit qty per spool (grams/ml, >= 1).
+             */
+            qtyPerSpool: number;
+            /**
+             * Format: int64
+             * @description Price per spool in int-VND (>= 0).
+             */
+            pricePerSpoolVnd: number;
         };
         /** @description Create/replace body for a product (P3-j, owner-only). Same editable fields as Product MINUS the server/pipeline-owned ones: no id/createdAt/ratingAvg/reviewCount (server-owned), no colors/options (managed via their own nested endpoints), and no model3dUrl (owned by the asset pipeline, P3-j-b — the editor form can never set or blank it). basePrice is raw int-VND (always-must #2). description and images are optional (default "" / []). */
         ProductInput: {
@@ -3231,6 +3375,141 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AssetJob"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listFilamentMaterials: {
+        parameters: {
+            query?: {
+                /** @description Include archived materials (default false → active only). */
+                includeArchived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Filament materials, active first, then by name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilamentMaterial"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createFilamentMaterial: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FilamentMaterialInput"];
+            };
+        };
+        responses: {
+            /** @description The created material (stock 0 until the first import). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilamentMaterial"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getFilamentMaterial: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The material with derived stock/avg and its batches. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilamentMaterialDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateFilamentMaterial: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FilamentMaterialInput"];
+            };
+        };
+        responses: {
+            /** @description The updated material. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilamentMaterial"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    importFilament: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FilamentImportInput"];
+            };
+        };
+        responses: {
+            /** @description The material with the new batch, updated stock + weighted-average. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilamentMaterialDetail"];
                 };
             };
             400: components["responses"]["BadRequest"];

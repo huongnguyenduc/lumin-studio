@@ -301,6 +301,12 @@ func TestClassifyFailsClosed(t *testing.T) {
 		"GetProductAssetJobs":      authRequired,  // owner+staff read (mirrors product reads)
 		"CreateProductModelUpload": authOwnerOnly, // owner-only catalog-asset write
 		"CreateProductAssetJob":    authOwnerOnly,
+
+		"ListFilamentMaterials":  authRequired, // Vật tư reads — owner+staff (ADR-039)
+		"GetFilamentMaterial":    authRequired,
+		"CreateFilamentMaterial": authOwnerOnly, // Vật tư cost config — owner-only writes
+		"UpdateFilamentMaterial": authOwnerOnly,
+		"ImportFilament":         authOwnerOnly,
 	}
 	for op, want := range cases {
 		if got := classify(op); got != want {

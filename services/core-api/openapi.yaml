@@ -1610,6 +1610,127 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /admin/filament-materials:
+    get:
+      tags: [admin]
+      operationId: listFilamentMaterials
+      summary: List the filament palette with derived stock + weighted-average cost (admin-gated read).
+      parameters:
+        - name: includeArchived
+          in: query
+          required: false
+          schema: { type: boolean }
+          description: Include archived materials (default false → active only).
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Filament materials, active first, then by name.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FilamentMaterial'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [admin]
+      operationId: createFilamentMaterial
+      summary: Add a filament material / colour (owner-only).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FilamentMaterialInput'
+      responses:
+        '201':
+          description: The created material (stock 0 until the first import).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilamentMaterial'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/filament-materials/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [admin]
+      operationId: getFilamentMaterial
+      summary: One filament material with its import-lot breakdown (admin-gated read).
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: The material with derived stock/avg and its batches.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilamentMaterialDetail'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [admin]
+      operationId: updateFilamentMaterial
+      summary: Edit a filament material (owner-only). Set archived true to soft-delete.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FilamentMaterialInput'
+      responses:
+        '200':
+          description: The updated material.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilamentMaterial'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/filament-materials/{id}/import:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [admin]
+      operationId: importFilament
+      summary: Record a "nhập cuộn" import lot for a material (owner-only) — moves the weighted average.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FilamentImportInput'
+      responses:
+        '200':
+          description: The material with the new batch, updated stock + weighted-average.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilamentMaterialDetail'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 components:
   securitySchemes:
     cookieAuth:
@@ -2098,6 +2219,89 @@ components:
         createdAt:
           type: string
           format: date-time
+
+    FilamentMaterial:
+      type: object
+      description: >
+        A shop-wide filament colour (ADR-039). stockQty + avgCostPerUnit are DERIVED from the import batches
+        (weighted average by remaining qty). stockQty is int unit-qty (grams/ml); avgCostPerUnit is a display
+        RATE (₫ per unit, may be fractional), NOT stored money (frozen to int only at the print-time snapshot,
+        slice 4b). lowStockThreshold drives the "sắp hết" badge; hex is an optional swatch. material/unit are
+        validated server-side against a fixed set (ADR-028: TEXT+CHECK, not a native enum).
+      required:
+        - id
+        - name
+        - material
+        - unit
+        - lowStockThreshold
+        - archived
+        - stockQty
+        - avgCostPerUnit
+        - createdAt
+        - updatedAt
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, description: 'Display colour name, e.g. "Cam Lumin".' }
+        material: { type: string, description: 'One of PLA · PETG · recycled-PLA · Resin.' }
+        unit: { type: string, description: 'gram or ml.' }
+        hex: { type: string, nullable: true, description: 'Swatch hex (#rgb/#rrggbb); null = no chip.' }
+        lowStockThreshold: { type: integer, format: int64, description: 'Warn below this stock (unit qty, >= 0).' }
+        archived: { type: boolean }
+        stockQty: { type: integer, format: int64, description: 'Remaining stock in unit qty (Σ batch remaining).' }
+        avgCostPerUnit: { type: number, format: double, description: 'Weighted-average ₫ per unit (derived display rate).' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    FilamentBatch:
+      type: object
+      description: >
+        One import lot of a filament material (ADR-039). qtyOriginal/qtyRemaining are unit qty; totalCostVnd
+        is the lot's int-VND cost. Per-unit ₫ = totalCostVnd / qtyOriginal (derived, never stored).
+      required: [id, materialId, importedAt, qtyOriginal, qtyRemaining, totalCostVnd]
+      properties:
+        id: { type: string, format: uuid }
+        materialId: { type: string, format: uuid }
+        importedAt: { type: string, format: date-time }
+        qtyOriginal: { type: integer, format: int64 }
+        qtyRemaining: { type: integer, format: int64 }
+        totalCostVnd: { type: integer, format: int64, description: 'Lot cost in int-VND (>= 0).' }
+
+    FilamentMaterialDetail:
+      type: object
+      description: A filament material plus its import-lot breakdown (the weighted-average panel).
+      required: [material, batches]
+      properties:
+        material: { $ref: '#/components/schemas/FilamentMaterial' }
+        batches:
+          type: array
+          description: Import lots, oldest first. Empty until the first import.
+          items: { $ref: '#/components/schemas/FilamentBatch' }
+
+    FilamentMaterialInput:
+      type: object
+      description: >
+        Create/replace body for a filament material (ADR-039, owner-only). archived is optional (default
+        false on create; set true to soft-delete). Cost/stock are never set here — they come from imports.
+      required: [name, material, unit, lowStockThreshold]
+      properties:
+        name: { type: string }
+        material: { type: string, description: 'One of PLA · PETG · recycled-PLA · Resin.' }
+        unit: { type: string, description: 'gram or ml.' }
+        hex: { type: string, nullable: true }
+        lowStockThreshold: { type: integer, format: int64 }
+        archived: { type: boolean }
+
+    FilamentImportInput:
+      type: object
+      description: >
+        A "nhập cuộn" import (ADR-039, owner-only): spoolCount spools × qtyPerSpool unit each, at
+        pricePerSpoolVnd int-VND per spool. The server derives the lot qtyOriginal = spoolCount × qtyPerSpool
+        and totalCostVnd = spoolCount × pricePerSpoolVnd.
+      required: [spoolCount, qtyPerSpool, pricePerSpoolVnd]
+      properties:
+        spoolCount: { type: integer, format: int64, description: 'Number of spools imported (>= 1).' }
+        qtyPerSpool: { type: integer, format: int64, description: 'Unit qty per spool (grams/ml, >= 1).' }
+        pricePerSpoolVnd: { type: integer, format: int64, description: 'Price per spool in int-VND (>= 0).' }
 
     ProductInput:
       type: object
