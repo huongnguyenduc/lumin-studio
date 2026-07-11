@@ -184,6 +184,45 @@ func (q *Queries) InsertPrintJob(ctx context.Context, arg InsertPrintJobParams) 
 	return i, err
 }
 
+const listAssetJobsByProduct = `-- name: ListAssetJobsByProduct :many
+SELECT id, product_id, job_type, source_model_url, source_version, status, attempts, last_error, created_at, updated_at, completed_at FROM asset_jobs WHERE product_id = $1 ORDER BY created_at DESC, id DESC
+`
+
+// ListAssetJobsByProduct powers the admin product editor's render-status panel (P3-j-b GET
+// /admin/products/{id}/asset-jobs): every render/ingest job for one product, newest first so the
+// editor shows the latest attempt's status at the top. id breaks created_at ties for stable ordering.
+func (q *Queries) ListAssetJobsByProduct(ctx context.Context, productID uuid.UUID) ([]AssetJob, error) {
+	rows, err := q.db.Query(ctx, listAssetJobsByProduct, productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AssetJob
+	for rows.Next() {
+		var i AssetJob
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProductID,
+			&i.JobType,
+			&i.SourceModelUrl,
+			&i.SourceVersion,
+			&i.Status,
+			&i.Attempts,
+			&i.LastError,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CompletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAssetJobsByStatus = `-- name: ListAssetJobsByStatus :many
 SELECT id, product_id, job_type, source_model_url, source_version, status, attempts, last_error, created_at, updated_at, completed_at FROM asset_jobs WHERE status = $1 ORDER BY created_at
 `

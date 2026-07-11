@@ -41,6 +41,12 @@ func (j *Jobs) AssetJobsByStatus(ctx context.Context, status sqlc.AssetJobStatus
 	return j.q.ListAssetJobsByStatus(ctx, status)
 }
 
+// AssetJobsByProduct lists every render/ingest job for one product, newest first (the admin editor's
+// render-status panel, P3-j-b). An empty slice (product exists but has no jobs) is a valid result.
+func (j *Jobs) AssetJobsByProduct(ctx context.Context, productID uuid.UUID) ([]sqlc.AssetJob, error) {
+	return j.q.ListAssetJobsByProduct(ctx, productID)
+}
+
 // MarkAssetJob records a worker lifecycle transition (the slice-3 callback): the new status,
 // attempt count, last_error (nil clears it) and completed_at (nil keeps the prior value). Returns
 // ErrNotFound for an unknown job.

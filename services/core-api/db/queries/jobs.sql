@@ -17,6 +17,12 @@ SELECT * FROM asset_jobs WHERE id = $1;
 -- name: ListAssetJobsByStatus :many
 SELECT * FROM asset_jobs WHERE status = $1 ORDER BY created_at;
 
+-- ListAssetJobsByProduct powers the admin product editor's render-status panel (P3-j-b GET
+-- /admin/products/{id}/asset-jobs): every render/ingest job for one product, newest first so the
+-- editor shows the latest attempt's status at the top. id breaks created_at ties for stable ordering.
+-- name: ListAssetJobsByProduct :many
+SELECT * FROM asset_jobs WHERE product_id = $1 ORDER BY created_at DESC, id DESC;
+
 -- UpdateAssetJobStatus records a worker lifecycle transition (slice-3 callback): the new status,
 -- the attempt count, last_error (set on 'failed', NULL clears it on 'ready'), and completed_at when
 -- supplied (COALESCE keeps the prior value when the narg is NULL).

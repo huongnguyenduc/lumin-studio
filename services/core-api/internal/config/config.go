@@ -98,6 +98,41 @@ type Config struct {
 	// scan is cheap (status filter + updated_at bound + LIMIT), so a slow cadence keeps it off the
 	// hot path; a receipt outliving retention by up to one interval is harmless.
 	PaymentProofSweepInterval time.Duration
+
+	// ModelUploads configures the presigned POST surface that lets the admin editor upload a source
+	// 3D model (.glb/.stl/.3mf) directly to Garage/S3 before POST /admin/products/{id}/asset-jobs
+	// references the returned finalUrl as the render source (P3-j-b, ADR-036). A single POST capped at
+	// ≤100MB (the Cloudflare Tunnel body limit, ADR-005) — no multipart. Unlike payment proofs there is
+	// NO retention sweeper: catalog assets are permanent, so this config has no retention/interval twin.
+	ModelUploads ModelUploadConfig
+}
+
+// ModelUploadConfig holds the S3/Garage signing inputs for source 3D model uploads (ADR-036). Same
+// shape as PaymentProofUploadConfig but a SEPARATE, public catalog-asset bucket: models are permanent
+// (no PDPL retention) and world-readable through the CDN, so they must never share the private,
+// 90-day-swept payment-proof bucket.
+type ModelUploadConfig struct {
+	// S3Endpoint is the internal S3 API endpoint used as the browser POST target (e.g.
+	// http://127.0.0.1:3900 for local Garage, or the public S3 endpoint in production).
+	S3Endpoint string
+	// S3Region is the SigV4 credential-scope region. Garage accepts its configured region string.
+	S3Region string
+	// Bucket is the dedicated public catalog-asset bucket (models + rendered sprites). Kept separate
+	// from the private payment-proof bucket (different visibility + retention).
+	Bucket string
+	// PublicBaseURL is the host-pinned base URL the returned finalUrl is derived from and that the
+	// asset-job sourceModelUrl is validated against. It points at the same bucket through the CDN.
+	PublicBaseURL string
+	// AccessKeyID and SecretAccessKey sign the browser POST policy. In production they belong to a key
+	// scoped to the catalog-asset bucket.
+	AccessKeyID     string
+	SecretAccessKey string
+	// KeyPrefix namespaces generated model object keys. It must not include PII.
+	KeyPrefix string
+	// PostTTL is how long the browser form policy is valid.
+	PostTTL time.Duration
+	// MaxBytes is the S3 POST content-length-range upper bound (≤100MB, ADR-005/036).
+	MaxBytes int64
 }
 
 // PaymentProofUploadConfig holds the S3/Garage signing inputs for checkout receipt images.
@@ -217,6 +252,17 @@ func Load() Config {
 		},
 		PaymentProofRetention:     getenvDuration("PAYMENT_PROOF_RETENTION", 90*24*time.Hour),
 		PaymentProofSweepInterval: getenvDuration("PAYMENT_PROOF_SWEEP_INTERVAL", 6*time.Hour),
+		ModelUploads: ModelUploadConfig{
+			S3Endpoint:      getenv("MODEL_UPLOAD_S3_ENDPOINT", "http://127.0.0.1:3900"),
+			S3Region:        getenv("MODEL_UPLOAD_S3_REGION", "garage"),
+			Bucket:          getenv("MODEL_UPLOAD_BUCKET", "lumin-assets"),
+			PublicBaseURL:   getenv("MODEL_UPLOAD_PUBLIC_BASE_URL", "http://127.0.0.1:3900/lumin-assets"),
+			AccessKeyID:     getenv("MODEL_UPLOAD_ACCESS_KEY_ID", ""),
+			SecretAccessKey: getenv("MODEL_UPLOAD_SECRET_ACCESS_KEY", ""),
+			KeyPrefix:       getenv("MODEL_UPLOAD_KEY_PREFIX", "models"),
+			PostTTL:         getenvDuration("MODEL_UPLOAD_POST_TTL", 5*time.Minute),
+			MaxBytes:        int64(getenvInt("MODEL_UPLOAD_MAX_BYTES", 100*1024*1024)),
+		},
 	}
 }
 
