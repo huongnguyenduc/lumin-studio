@@ -5,6 +5,7 @@ import {
   filamentStatus,
   filamentStockGrams,
   lowStockCount,
+  parseIntField,
   primaryMachine,
   splitAuxCosts,
   sumAmountVnd,
@@ -133,5 +134,21 @@ describe('unitSymbol', () => {
   it('shortens gram to g, leaves ml as-is', () => {
     expect(unitSymbol('gram')).toBe('g');
     expect(unitSymbol('ml')).toBe('ml');
+  });
+});
+
+describe('parseIntField', () => {
+  it('accepts a non-negative integer (incl. 0)', () => {
+    expect(parseIntField('8400000')).toBe(8_400_000);
+    expect(parseIntField('0')).toBe(0);
+    expect(parseIntField(' 12 ')).toBe(12); // trims surrounding space
+  });
+
+  it('rejects blank, fractional, negative, or non-numeric — money/qty are ints only', () => {
+    expect(parseIntField('')).toBeNull();
+    expect(parseIntField('   ')).toBeNull();
+    expect(parseIntField('1.5')).toBeNull();
+    expect(parseIntField('-3')).toBeNull();
+    expect(parseIntField('abc')).toBeNull();
   });
 });

@@ -3,8 +3,9 @@
 import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { formatVnd, formatVnNumber, formatVnRating } from '@lumin/core';
-import { Badge } from '@lumin/ui';
+import { Badge, Button } from '@lumin/ui';
 import type { CostingBundle } from '@/lib/materials-fetch';
+import { MaterialDialog, type DialogKind } from './materials-dialog';
 import {
   COSTING_TABS,
   FILAMENT_STATUS_TONE,
@@ -20,11 +21,11 @@ import {
 } from '@/lib/materials';
 
 /**
- * Vật tư & chi phí (ADR-039, admin design screen 8) — the read-only costing dashboard: a KPI row and
- * four tabs (Filament · Giờ máy · Chi phí phụ · Hao hụt). Everything renders from four server reads
- * (materials · machines · aux-costs · costing-summary); the write dialogs (nhập cuộn / thêm vật tư /
- * thêm máy / thêm chi phí / ghi in hỏng) are a later slice, so empty states here explain rather than
- * offer a CTA.
+ * Vật tư & chi phí (ADR-039, admin design screen 8) — the costing dashboard: a KPI row and four tabs
+ * (Filament · Giờ máy · Chi phí phụ · Hao hụt). Everything renders from four server reads (materials ·
+ * machines · aux-costs · costing-summary); each tab has an action bar opening the matching write dialog
+ * (thêm vật tư / nhập cuộn / thêm máy / thêm chi phí / ghi in hỏng — see materials-dialog). Import/scrap
+ * need a material to exist, so their buttons disable until the palette is non-empty.
  *
  * Money discipline (always-must #2): int-VND amounts go straight through formatVnd; derived RATES
  * (₫/unit avg cost, ₫/hour) are floats → rounded once for the single formatter (`formatRate`); a 0 /
@@ -35,7 +36,9 @@ import {
 export function MaterialsView({ bundle }: { bundle: CostingBundle }) {
   const t = useTranslations('materials');
   const [tab, setTab] = useState<CostingTab>('filament');
+  const [dialog, setDialog] = useState<DialogKind | null>(null);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const noMaterials = bundle.materials.length === 0;
 
   function onTabKeyDown(e: KeyboardEvent, idx: number) {
     const last = COSTING_TABS.length - 1;
@@ -94,12 +97,44 @@ export function MaterialsView({ bundle }: { bundle: CostingBundle }) {
           tabIndex={0}
           className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
         >
+          <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+            {tab === 'filament' && (
+              <>
+                <Button onClick={() => setDialog('material')}>{t('filament.add')}</Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setDialog('import')}
+                  disabled={noMaterials}
+                >
+                  {t('filament.import')}
+                </Button>
+              </>
+            )}
+            {tab === 'machine' && (
+              <Button onClick={() => setDialog('machine')}>{t('machine.add')}</Button>
+            )}
+            {tab === 'aux' && <Button onClick={() => setDialog('aux')}>{t('aux.add')}</Button>}
+            {tab === 'waste' && (
+              <Button onClick={() => setDialog('scrap')} disabled={noMaterials}>
+                {t('waste.add')}
+              </Button>
+            )}
+          </div>
+
           {tab === 'filament' && <FilamentPanel materials={bundle.materials} />}
           {tab === 'machine' && <MachinePanel machines={bundle.machines} />}
           {tab === 'aux' && <AuxPanel auxCosts={bundle.auxCosts} summary={bundle.summary} />}
           {tab === 'waste' && <WastePanel summary={bundle.summary} />}
         </div>
       </div>
+
+      {dialog && (
+        <MaterialDialog
+          kind={dialog}
+          materials={bundle.materials}
+          onClose={() => setDialog(null)}
+        />
+      )}
     </div>
   );
 }
@@ -199,8 +234,8 @@ function Swatch({ hex }: { hex?: string | null }) {
   );
 }
 
-/** An informative empty state — prose only. The create CTA arrives with the write dialogs (next
- *  slice), so this explains what the tab holds rather than offering a dead button. */
+/** An informative empty state — prose only. The primary CTA lives in the always-visible action bar
+ *  above the panel, so this explains what the tab holds rather than repeating a button. */
 function EmptyPanel({ children }: { children: ReactNode }) {
   return (
     <div className="rounded-xl border-2 border-dashed border-border-subtle bg-surface-card px-6 py-12 text-center">

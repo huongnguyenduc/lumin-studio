@@ -119,3 +119,16 @@ export function sumAmountVnd(list: AuxCost[]): number {
 export function wastePercent(wasteFactor: number): number {
   return wasteFactor * 100;
 }
+
+// ── Write-form input parsing (4d-2 dialogs) ─────────────────────────────────────────────────────
+
+/** Parse a numeric dialog field to a non-negative integer, or null if blank/invalid. Every write here
+ *  is int-VND money (price/amount) or an int unit qty (grams/spools/months/hours) — never a float, so a
+ *  fractional or negative entry is rejected up front. The per-field minimum (≥ 0 vs ≥ 1) is applied at
+ *  the submit gate; this only coerces + floors at 0. The server re-validates every field regardless. */
+export function parseIntField(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === '') return null;
+  const n = Number(trimmed);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
