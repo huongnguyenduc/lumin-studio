@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
 )
 
 // cfgIDs are the ids of the configurator fixture (ADR-037): a product with two named parts (each with
@@ -59,8 +60,8 @@ func cfgFixture() (sqlc.Product, []sqlc.Color, []sqlc.Option, []sqlc.Part, []sql
 func TestPriceConfiguratorHappy(t *testing.T) {
 	p, colors, options, parts, choices, i := cfgFixture()
 	got, err := PriceItem(p, colors, options, parts, choices, Selection{
-		PartColors:    []PartColorSelection{{PartID: i.partA, ColorID: i.colorA}, {PartID: i.partB, ColorID: i.colorB}},
-		OptionChoices: []OptionChoiceSelection{{OptionID: i.optSize, ChoiceID: i.choiceM}},
+		PartColors:    []order.PartColorSelection{{PartID: i.partA, ColorID: i.colorA}, {PartID: i.partB, ColorID: i.colorB}},
+		OptionChoices: []order.OptionChoiceSelection{{OptionID: i.optSize, ChoiceID: i.choiceM}},
 	})
 	if err != nil {
 		t.Fatalf("PriceItem: %v", err)
@@ -76,8 +77,8 @@ func TestPriceConfiguratorHappy(t *testing.T) {
 func TestPriceConfiguratorChoiceIgnoresOptionBase(t *testing.T) {
 	p, colors, options, parts, choices, i := cfgFixture()
 	got, err := PriceItem(p, colors, options, parts, choices, Selection{
-		PartColors:    []PartColorSelection{{PartID: i.partA, ColorID: i.colorA}, {PartID: i.partB, ColorID: i.colorB}},
-		OptionChoices: []OptionChoiceSelection{{OptionID: i.optSize, ChoiceID: i.choiceS}},
+		PartColors:    []order.PartColorSelection{{PartID: i.partA, ColorID: i.colorA}, {PartID: i.partB, ColorID: i.colorB}},
+		OptionChoices: []order.OptionChoiceSelection{{OptionID: i.optSize, ChoiceID: i.choiceS}},
 	})
 	if err != nil {
 		t.Fatalf("PriceItem: %v", err)
@@ -91,7 +92,7 @@ func TestPriceConfiguratorChoiceIgnoresOptionBase(t *testing.T) {
 func TestPriceConfiguratorLegacyToggle(t *testing.T) {
 	p, colors, options, parts, choices, i := cfgFixture()
 	got, err := PriceItem(p, colors, options, parts, choices, Selection{
-		PartColors: []PartColorSelection{{PartID: i.partA, ColorID: i.colorA}, {PartID: i.partB, ColorID: i.colorB}},
+		PartColors: []order.PartColorSelection{{PartID: i.partA, ColorID: i.colorA}, {PartID: i.partB, ColorID: i.colorB}},
 		OptionIDs:  []uuid.UUID{i.optToggle},
 	})
 	if err != nil {
@@ -106,22 +107,22 @@ func TestPriceConfiguratorLegacyToggle(t *testing.T) {
 func TestPriceConfiguratorInvalid(t *testing.T) {
 	p, colors, options, parts, choices, i := cfgFixture()
 	bogus := uuid.New()
-	both := []PartColorSelection{{PartID: i.partA, ColorID: i.colorA}, {PartID: i.partB, ColorID: i.colorB}}
+	both := []order.PartColorSelection{{PartID: i.partA, ColorID: i.colorA}, {PartID: i.partB, ColorID: i.colorB}}
 
 	cases := map[string]struct {
 		sel  Selection
 		want error
 	}{
 		"missing part colour": {
-			Selection{PartColors: []PartColorSelection{{PartID: i.partA, ColorID: i.colorA}}}, // partB unselected
+			Selection{PartColors: []order.PartColorSelection{{PartID: i.partA, ColorID: i.colorA}}}, // partB unselected
 			ErrMissingPartColor,
 		},
 		"colour of the wrong part": {
-			Selection{PartColors: []PartColorSelection{{PartID: i.partA, ColorID: i.colorB}, {PartID: i.partB, ColorID: i.colorB}}},
+			Selection{PartColors: []order.PartColorSelection{{PartID: i.partA, ColorID: i.colorB}, {PartID: i.partB, ColorID: i.colorB}}},
 			ErrColorNotForPart,
 		},
 		"duplicate part": {
-			Selection{PartColors: []PartColorSelection{{PartID: i.partA, ColorID: i.colorA}, {PartID: i.partA, ColorID: i.colorA}}},
+			Selection{PartColors: []order.PartColorSelection{{PartID: i.partA, ColorID: i.colorA}, {PartID: i.partA, ColorID: i.colorA}}},
 			ErrDuplicatePartColor,
 		},
 		"flat ColorID on parts product": {
@@ -129,15 +130,15 @@ func TestPriceConfiguratorInvalid(t *testing.T) {
 			ErrColorForPartsProduct,
 		},
 		"extra bogus part": {
-			Selection{PartColors: append(append([]PartColorSelection{}, both...), PartColorSelection{PartID: bogus, ColorID: i.colorA})},
+			Selection{PartColors: append(append([]order.PartColorSelection{}, both...), order.PartColorSelection{PartID: bogus, ColorID: i.colorA})},
 			ErrColorNotForPart,
 		},
 		"unavailable part colour": {
-			Selection{PartColors: []PartColorSelection{{PartID: i.partA, ColorID: i.colorAout}, {PartID: i.partB, ColorID: i.colorB}}},
+			Selection{PartColors: []order.PartColorSelection{{PartID: i.partA, ColorID: i.colorAout}, {PartID: i.partB, ColorID: i.colorB}}},
 			ErrColorUnavailable,
 		},
 		"unknown colour for part": {
-			Selection{PartColors: []PartColorSelection{{PartID: i.partA, ColorID: bogus}, {PartID: i.partB, ColorID: i.colorB}}},
+			Selection{PartColors: []order.PartColorSelection{{PartID: i.partA, ColorID: bogus}, {PartID: i.partB, ColorID: i.colorB}}},
 			ErrColorNotForProduct,
 		},
 		"choice option toggled instead of chosen": {
@@ -145,19 +146,19 @@ func TestPriceConfiguratorInvalid(t *testing.T) {
 			ErrOptionNeedsChoice,
 		},
 		"unknown choice for option": {
-			Selection{PartColors: both, OptionChoices: []OptionChoiceSelection{{OptionID: i.optSize, ChoiceID: bogus}}},
+			Selection{PartColors: both, OptionChoices: []order.OptionChoiceSelection{{OptionID: i.optSize, ChoiceID: bogus}}},
 			ErrChoiceNotForOption,
 		},
 		"choice on a text option": {
-			Selection{PartColors: both, OptionChoices: []OptionChoiceSelection{{OptionID: i.optText, ChoiceID: i.choiceM}}},
+			Selection{PartColors: both, OptionChoices: []order.OptionChoiceSelection{{OptionID: i.optText, ChoiceID: i.choiceM}}},
 			ErrChoiceNotForOption,
 		},
 		"duplicate option choice": {
-			Selection{PartColors: both, OptionChoices: []OptionChoiceSelection{{OptionID: i.optSize, ChoiceID: i.choiceM}, {OptionID: i.optSize, ChoiceID: i.choiceS}}},
+			Selection{PartColors: both, OptionChoices: []order.OptionChoiceSelection{{OptionID: i.optSize, ChoiceID: i.choiceM}, {OptionID: i.optSize, ChoiceID: i.choiceS}}},
 			ErrDuplicateOptionChoice,
 		},
 		"option both toggled and choice-picked": {
-			Selection{PartColors: both, OptionIDs: []uuid.UUID{i.optToggle}, OptionChoices: []OptionChoiceSelection{{OptionID: i.optToggle, ChoiceID: i.choiceS}}},
+			Selection{PartColors: both, OptionIDs: []uuid.UUID{i.optToggle}, OptionChoices: []order.OptionChoiceSelection{{OptionID: i.optToggle, ChoiceID: i.choiceS}}},
 			ErrDuplicateOption,
 		},
 	}
@@ -174,7 +175,7 @@ func TestPriceConfiguratorInvalid(t *testing.T) {
 func TestPriceFlatRejectsPartColors(t *testing.T) {
 	p, colors, options, _ := fixture() // the flat fixture from pricing_test.go
 	if _, err := PriceItem(p, colors, options, nil, nil, Selection{
-		PartColors: []PartColorSelection{{PartID: uuid.New(), ColorID: uuid.New()}},
+		PartColors: []order.PartColorSelection{{PartID: uuid.New(), ColorID: uuid.New()}},
 	}); !errors.Is(err, ErrPartColorForFlatProduct) {
 		t.Fatalf("err = %v, want ErrPartColorForFlatProduct", err)
 	}

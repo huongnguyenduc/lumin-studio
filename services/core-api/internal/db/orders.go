@@ -159,9 +159,11 @@ var ErrNoItems = errors.New("order: at least one item required")
 // client-supplied price; this seam will faithfully snapshot whatever it is given.
 type NewOrderItem struct {
 	ProductID       uuid.UUID
-	ColorID         *uuid.UUID // nil when the product has no color choice
+	ColorID         *uuid.UUID // nil when the product has no color choice (flat product)
 	OptionIDs       []string
-	Personalization *order.Personalization // nil = no engraving
+	PartColors      []order.PartColorSelection    // ADR-037: colour picked per named part (empty for a flat product)
+	OptionChoices   []order.OptionChoiceSelection // ADR-037: picked choice per choice-option (empty when none)
+	Personalization *order.Personalization        // nil = no engraving
 	Quantity        int32
 	UnitPrice       int64
 }
@@ -270,6 +272,8 @@ func CreateOrderTx(ctx context.Context, tx pgx.Tx, in CreateOrderInput) (sqlc.Or
 			ProductID:       it.ProductID,
 			ColorID:         nullUUID(it.ColorID),
 			OptionIds:       optionIDsJSON(it.OptionIDs),
+			PartColors:      selectionsJSON(it.PartColors),
+			OptionChoices:   selectionsJSON(it.OptionChoices),
 			Personalization: it.Personalization,
 			Quantity:        it.Quantity,
 			UnitPrice:       it.UnitPrice,
@@ -437,6 +441,21 @@ func optionIDsJSON(ids []string) []byte {
 	}
 	b, err := json.Marshal(ids)
 	if err != nil { // string slices never fail to marshal; fall back to an empty array
+		return []byte("[]")
+	}
+	return b
+}
+
+// selectionsJSON marshals an ADR-037 configurator selection slice (part_colors / option_choices) to a
+// jsonb array, defaulting to `[]` for an empty selection so the NOT NULL columns never see NULL and a
+// flat/legacy line reads as "no per-part/per-choice selection". The elements are plain uuid-pair structs
+// (order.PartColorSelection / OptionChoiceSelection), which never fail to marshal.
+func selectionsJSON[T order.PartColorSelection | order.OptionChoiceSelection](sel []T) []byte {
+	if len(sel) == 0 {
+		return []byte("[]")
+	}
+	b, err := json.Marshal(sel)
+	if err != nil {
 		return []byte("[]")
 	}
 	return b

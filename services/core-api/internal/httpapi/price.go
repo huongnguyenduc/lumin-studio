@@ -164,9 +164,14 @@ func (s *Server) quoteLine(ctx context.Context, cat *db.Catalog, it api.OrderIte
 // through pricing.PriceItem (validates color/option membership, engrave maxChars by rune count,
 // unit overflow) and computes the line total with the guarded money math — never a raw multiply.
 func priceQuoteLine(product sqlc.Product, colors []sqlc.Color, options []sqlc.Option, parts []sqlc.Part, choices []sqlc.OptionChoice, it api.OrderItemInput) (api.PriceQuoteLine, error) {
+	// Same Selection shape the checkout charge path builds (checkout.go priceLine), including the ADR-037
+	// per-part colours + per-choice picks — so a quote's unit price equals what POST /orders will charge
+	// for the same configured line (quote/charge parity).
 	unit, err := pricing.PriceItem(product, colors, options, parts, choices, pricing.Selection{
 		ColorID:         it.ColorId,
 		OptionIDs:       optionIDsFrom(it.OptionIds),
+		PartColors:      partColorSelectionsFrom(it.PartColors),
+		OptionChoices:   optionChoiceSelectionsFrom(it.OptionChoices),
 		Personalization: personalizationFrom(it.Personalization),
 	})
 	if err != nil {

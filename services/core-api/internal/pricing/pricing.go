@@ -70,31 +70,20 @@ var (
 	ErrDuplicateOptionChoice = errors.New("pricing: option choice selected more than once")
 )
 
-// PartColorSelection is one part's chosen colour (ADR-037): the customer picks one colour per named
-// part of a multi-part product. PriceItem checks the colour belongs to that part, not merely the product.
-type PartColorSelection struct {
-	PartID  uuid.UUID
-	ColorID uuid.UUID
-}
-
-// OptionChoiceSelection is one `choice` option's chosen choice (ADR-037): for an option that offers
-// enumerated choices, the customer picks exactly one, priced by the choice's own delta.
-type OptionChoiceSelection struct {
-	OptionID uuid.UUID
-	ChoiceID uuid.UUID
-}
-
 // Selection is one order line's product choice as it arrives from the client. It carries NO price:
 // PriceItem derives the authoritative UnitPrice from the catalog. A flat product uses ColorID; a
 // product with parts uses PartColors (one per part, ADR-037). Options split: text options and legacy
 // toggle choice-options (no choices) go in OptionIDs; a choice-option that offers choices goes in
-// OptionChoices with the picked choice. Personalization is the per-item engraving (nil = none).
+// OptionChoices with the picked choice. Personalization is the per-item engraving (nil = none). The
+// PartColors/OptionChoices value types live in internal/order (order.PartColorSelection /
+// order.OptionChoiceSelection) — they are the SAME snapshots the checkout persists on the line, so the
+// priced selection and the stored selection can never drift.
 type Selection struct {
-	ColorID         *uuid.UUID              // flat product: the single chosen colour (nil = none)
-	PartColors      []PartColorSelection    // parts product: exactly one colour per part (ADR-037)
-	OptionIDs       []uuid.UUID             // text options + legacy toggle choice-options (no choices)
-	OptionChoices   []OptionChoiceSelection // choice-options that offer choices: the picked choice (ADR-037)
-	Personalization *order.Personalization  // nil = no engraving; Text validated against the engrave option's maxChars
+	ColorID         *uuid.UUID                    // flat product: the single chosen colour (nil = none)
+	PartColors      []order.PartColorSelection    // parts product: exactly one colour per part (ADR-037)
+	OptionIDs       []uuid.UUID                   // text options + legacy toggle choice-options (no choices)
+	OptionChoices   []order.OptionChoiceSelection // choice-options that offer choices: the picked choice (ADR-037)
+	Personalization *order.Personalization        // nil = no engraving; Text validated against the engrave option's maxChars
 }
 
 // PriceItem derives the server-authoritative per-unit VND for one line and validates the selection
@@ -206,7 +195,7 @@ func PriceItem(product sqlc.Product, colors []sqlc.Color, options []sqlc.Option,
 // pricePartColors enforces the ADR-037 per-part colour rule: every part gets EXACTLY one colour, each
 // colour ∈ its claimed part (the cross-charge guard — a colour of another part can never be pinned to
 // this one). Returns the running unit + Σ part-colour deltas.
-func pricePartColors(unit int64, parts []sqlc.Part, colors []sqlc.Color, sel []PartColorSelection) (int64, error) {
+func pricePartColors(unit int64, parts []sqlc.Part, colors []sqlc.Color, sel []order.PartColorSelection) (int64, error) {
 	chosen := make(map[uuid.UUID]uuid.UUID, len(sel)) // partID -> colorID
 	for _, pc := range sel {
 		if _, dup := chosen[pc.PartID]; dup {

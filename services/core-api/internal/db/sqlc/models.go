@@ -632,6 +632,8 @@ type OrderItem struct {
 	Personalization *order.Personalization `json:"personalization"`
 	Quantity        int32                  `json:"quantity"`
 	UnitPrice       int64                  `json:"unitPrice"`
+	PartColors      []byte                 `json:"partColors"`
+	OptionChoices   []byte                 `json:"optionChoices"`
 }
 
 type Outbox struct {

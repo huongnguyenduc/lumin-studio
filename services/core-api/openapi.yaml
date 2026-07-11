@@ -2419,6 +2419,36 @@ components:
         socialHandle:
           type: string
 
+    PartColorSelection:
+      type: object
+      description: >
+        One part's chosen colour (ADR-037). For a product with named parts the client sends one of
+        these per part instead of the flat `colorId`. The server validates the colour belongs to that
+        part (not merely the product) before pricing — a cross-part colour is rejected 422.
+      required: [partId, colorId]
+      properties:
+        partId:
+          type: string
+          format: uuid
+        colorId:
+          type: string
+          format: uuid
+
+    OptionChoiceSelection:
+      type: object
+      description: >
+        One choice-option's picked choice (ADR-037). For an option that offers enumerated choices the
+        client sends the picked choice here (priced by the choice's own delta — the option base is
+        ignored); text and legacy toggle options stay in `optionIds`.
+      required: [optionId, choiceId]
+      properties:
+        optionId:
+          type: string
+          format: uuid
+        choiceId:
+          type: string
+          format: uuid
+
     OrderItem:
       type: object
       description: A priced line item as returned in an Order (unitPrice is server-derived).
@@ -2455,6 +2485,20 @@ components:
           items:
             type: string
           description: Selected option labels, joined for the admin detail (empty when none). Read-only.
+        partColors:
+          type: array
+          items:
+            $ref: '#/components/schemas/PartColorSelection'
+          description: >
+            The colour chosen for each named part (ADR-037), snapshotted from the order. Omitted for a flat
+            product (which uses colorId). Read-only.
+        optionChoices:
+          type: array
+          items:
+            $ref: '#/components/schemas/OptionChoiceSelection'
+          description: >
+            The picked choice for each choice-option that offers choices (ADR-037), snapshotted from the
+            order. Omitted when the line has none. Read-only.
 
     OrderItemInput:
       type: object
@@ -2475,6 +2519,25 @@ components:
             type: string
             format: uuid
           default: []
+          description: >
+            Text options + legacy toggle choice-options (no choices). A choice-option that offers choices
+            is picked via optionChoices instead — toggling it here is rejected 422.
+        partColors:
+          type: array
+          items:
+            $ref: '#/components/schemas/PartColorSelection'
+          description: >
+            Per-part colour picks for a product with named parts (ADR-037): exactly one per part. A flat
+            product uses colorId instead; mixing the two (or a per-part colour on a flat product) is 422.
+            OPTIONAL (not defaulted): absent = a flat product with no per-part colours, so an existing flat
+            client needs no change — the configurator storefront (Stage 2c) starts sending it.
+        optionChoices:
+          type: array
+          items:
+            $ref: '#/components/schemas/OptionChoiceSelection'
+          description: >
+            Picked choices for choice-options that offer them (ADR-037). Text/toggle options use optionIds.
+            OPTIONAL (not defaulted): absent = the line picks no choices.
         personalization:
           $ref: '#/components/schemas/Personalization'
         quantity:

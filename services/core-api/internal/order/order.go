@@ -6,7 +6,11 @@
 // transition guard and its mutation-gate anchors; keep value types and the genesis helper here.
 package order
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/google/uuid"
+)
 
 // Address is a Vietnamese shipping address: province → ward → street, with NO district level
 // (ADR-017). Byte-identical to packages/core AddressSchema (the OpenAPI/TS contract). The
@@ -23,6 +27,25 @@ type Address struct {
 type Personalization struct {
 	Text   string `json:"text"`
 	ZoneID string `json:"zoneId"`
+}
+
+// PartColorSelection is one part's chosen colour (ADR-037): for a product with named parts the
+// customer picks one colour per part. It is BOTH the pricing input (pricing.Selection validates the
+// colour ∈ the part) and the persisted snapshot — marshaled to the order_items.part_colors jsonb
+// array so the made-to-order line records exactly which colour each part was ordered in. Byte-identical
+// to packages/core PartColorSelectionSchema and the OpenAPI PartColorSelection.
+type PartColorSelection struct {
+	PartID  uuid.UUID `json:"partId"`
+	ColorID uuid.UUID `json:"colorId"`
+}
+
+// OptionChoiceSelection is one choice-option's picked choice (ADR-037): for an option that offers
+// enumerated choices the customer picks exactly one (priced by the choice's own delta). Like
+// PartColorSelection it is both the pricing input and the persisted snapshot (order_items.option_choices
+// jsonb). Byte-identical to packages/core OptionChoiceSelectionSchema and the OpenAPI OptionChoiceSelection.
+type OptionChoiceSelection struct {
+	OptionID uuid.UUID `json:"optionId"`
+	ChoiceID uuid.UUID `json:"choiceId"`
 }
 
 // GenesisEvent builds the first statusHistory record for a newly created order: From is nil

@@ -393,14 +393,18 @@ func (s *Server) priceLine(ctx context.Context, it api.OrderItemInput) (db.NewOr
 
 	personalization := personalizationFrom(it.Personalization)
 	optionIDs := optionIDsFrom(it.OptionIds)
-	// ponytail: PartColors/OptionChoices stay empty — the wire (OrderItemInput) does not carry the
-	// per-part/per-choice selection until Stage 2b-2, so a parts product is not orderable yet (PriceItem
-	// 422s a missing part colour). Flat products are unchanged.
-	unit, err := pricing.PriceItem(product, colors, options, parts, choices, pricing.Selection{
+	// ADR-037: the wire now carries the per-part colours + per-choice picks. The SAME selection value is
+	// fed to PriceItem (the money gate — validates part/choice membership) and snapshotted onto the line,
+	// so the priced selection and the persisted selection can never drift (quote/charge parity, oracle
+	// note c). A parts product 422s here if a part colour is missing; a flat product sends none.
+	sel := pricing.Selection{
 		ColorID:         it.ColorId,
 		OptionIDs:       optionIDs,
+		PartColors:      partColorSelectionsFrom(it.PartColors),
+		OptionChoices:   optionChoiceSelectionsFrom(it.OptionChoices),
 		Personalization: personalization,
-	})
+	}
+	unit, err := pricing.PriceItem(product, colors, options, parts, choices, sel)
 	if err != nil {
 		return db.NewOrderItem{}, err
 	}
@@ -408,6 +412,8 @@ func (s *Server) priceLine(ctx context.Context, it api.OrderItemInput) (db.NewOr
 	line := db.NewOrderItem{
 		ProductID:       it.ProductId,
 		ColorID:         it.ColorId,
+		PartColors:      sel.PartColors,
+		OptionChoices:   sel.OptionChoices,
 		Personalization: personalization,
 		Quantity:        int32(it.Quantity), // bounds checked in validate()
 		UnitPrice:       unit,
@@ -530,6 +536,31 @@ func optionIDsFrom(ids *[]uuid.UUID) []uuid.UUID {
 		return nil
 	}
 	return *ids
+}
+
+// partColorSelectionsFrom maps the optional wire partColors ([]PartColorSelection, may be absent) to the
+// domain snapshot both PriceItem and the persisted line use (ADR-037). Absent → nil (a flat product).
+func partColorSelectionsFrom(sel *[]api.PartColorSelection) []order.PartColorSelection {
+	if sel == nil {
+		return nil
+	}
+	out := make([]order.PartColorSelection, len(*sel))
+	for i, s := range *sel {
+		out[i] = order.PartColorSelection{PartID: s.PartId, ColorID: s.ColorId}
+	}
+	return out
+}
+
+// optionChoiceSelectionsFrom maps the optional wire optionChoices to the domain snapshot (ADR-037).
+func optionChoiceSelectionsFrom(sel *[]api.OptionChoiceSelection) []order.OptionChoiceSelection {
+	if sel == nil {
+		return nil
+	}
+	out := make([]order.OptionChoiceSelection, len(*sel))
+	for i, s := range *sel {
+		out[i] = order.OptionChoiceSelection{OptionID: s.OptionId, ChoiceID: s.ChoiceId}
+	}
+	return out
 }
 
 // boolVal returns the pointed-to bool, false for nil (an omitted optional flag).

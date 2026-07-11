@@ -41,10 +41,28 @@ export const PersonalizationSchema = z.object({
   zoneId: z.string().min(1),
 });
 
+// ADR-037 configurator selections. A product with named parts picks one colour per part
+// (partColors) instead of the flat colorId; a choice-option that offers choices is picked via
+// optionChoices (text/toggle options stay in optionIds). Byte-identical to the OpenAPI
+// PartColorSelection / OptionChoiceSelection and the Go internal/order snapshots.
+export const PartColorSelectionSchema = z.object({
+  partId: z.string().min(1),
+  colorId: z.string().min(1),
+});
+
+export const OptionChoiceSelectionSchema = z.object({
+  optionId: z.string().min(1),
+  choiceId: z.string().min(1),
+});
+
 export const OrderItemSchema = z.object({
   productId: z.string().min(1),
   colorId: z.string().optional(),
   optionIds: z.array(z.string()).default([]),
+  // Optional (absent = a flat product / no choices), matching the OpenAPI OrderItemInput — unlike
+  // optionIds (always present, defaults to []), the configurator selections are additive: most lines omit them.
+  partColors: z.array(PartColorSelectionSchema).optional(),
+  optionChoices: z.array(OptionChoiceSelectionSchema).optional(),
   personalization: PersonalizationSchema.optional(),
   quantity: z.number().int().positive(),
   unitPrice: intVnd,
@@ -107,6 +125,8 @@ export const CreateWebOrderInput = z
 
 export type Address = z.infer<typeof AddressSchema>;
 export type Customer = z.infer<typeof CustomerSchema>;
+export type PartColorSelection = z.infer<typeof PartColorSelectionSchema>;
+export type OptionChoiceSelection = z.infer<typeof OptionChoiceSelectionSchema>;
 export type OrderItem = z.infer<typeof OrderItemSchema>;
 export type Order = z.infer<typeof OrderSchema>;
 export type CreateWebOrder = z.infer<typeof CreateWebOrderInput>;

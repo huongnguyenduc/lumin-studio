@@ -1274,6 +1274,20 @@ export interface components {
             email?: string;
             socialHandle?: string;
         };
+        /** @description One part's chosen colour (ADR-037). For a product with named parts the client sends one of these per part instead of the flat `colorId`. The server validates the colour belongs to that part (not merely the product) before pricing — a cross-part colour is rejected 422. */
+        PartColorSelection: {
+            /** Format: uuid */
+            partId: string;
+            /** Format: uuid */
+            colorId: string;
+        };
+        /** @description One choice-option's picked choice (ADR-037). For an option that offers enumerated choices the client sends the picked choice here (priced by the choice's own delta — the option base is ignored); text and legacy toggle options stay in `optionIds`. */
+        OptionChoiceSelection: {
+            /** Format: uuid */
+            optionId: string;
+            /** Format: uuid */
+            choiceId: string;
+        };
         /** @description A priced line item as returned in an Order (unitPrice is server-derived). */
         OrderItem: {
             /** Format: uuid */
@@ -1294,6 +1308,10 @@ export interface components {
             colorName?: string;
             /** @description Selected option labels, joined for the admin detail (empty when none). Read-only. */
             optionLabels?: string[];
+            /** @description The colour chosen for each named part (ADR-037), snapshotted from the order. Omitted for a flat product (which uses colorId). Read-only. */
+            partColors?: components["schemas"]["PartColorSelection"][];
+            /** @description The picked choice for each choice-option that offers choices (ADR-037), snapshotted from the order. Omitted when the line has none. Read-only. */
+            optionChoices?: components["schemas"]["OptionChoiceSelection"][];
         };
         /** @description A requested line item. Deliberately has NO unitPrice — the server re-derives every price from the catalog (always-must #2); a client price is never trusted. */
         OrderItemInput: {
@@ -1301,8 +1319,15 @@ export interface components {
             productId: string;
             /** Format: uuid */
             colorId?: string;
-            /** @default [] */
+            /**
+             * @description Text options + legacy toggle choice-options (no choices). A choice-option that offers choices is picked via optionChoices instead — toggling it here is rejected 422.
+             * @default []
+             */
             optionIds: string[];
+            /** @description Per-part colour picks for a product with named parts (ADR-037): exactly one per part. A flat product uses colorId instead; mixing the two (or a per-part colour on a flat product) is 422. OPTIONAL (not defaulted): absent = a flat product with no per-part colours, so an existing flat client needs no change — the configurator storefront (Stage 2c) starts sending it. */
+            partColors?: components["schemas"]["PartColorSelection"][];
+            /** @description Picked choices for choice-options that offer them (ADR-037). Text/toggle options use optionIds. OPTIONAL (not defaulted): absent = the line picks no choices. */
+            optionChoices?: components["schemas"]["OptionChoiceSelection"][];
             personalization?: components["schemas"]["Personalization"];
             quantity: number;
         };

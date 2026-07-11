@@ -94,8 +94,9 @@ RETURNING *;
 
 -- name: InsertOrderItem :one
 INSERT INTO order_items (
-  id, order_id, product_id, color_id, option_ids, personalization, quantity, unit_price
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+  id, order_id, product_id, color_id, option_ids, personalization, quantity, unit_price,
+  part_colors, option_choices
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- ListOrderItems returns an order's line items enriched with the human-readable product name, color
