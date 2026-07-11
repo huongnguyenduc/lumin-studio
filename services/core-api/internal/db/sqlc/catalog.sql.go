@@ -193,7 +193,7 @@ func (q *Queries) GetPartByProduct(ctx context.Context, arg GetPartByProductPara
 }
 
 const getProductByID = `-- name: GetProductByID :one
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty FROM products WHERE id = $1
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes FROM products WHERE id = $1
 `
 
 // GetProductByID is the by-id read the checkout handler (PR-3g) needs to derive a
@@ -220,12 +220,13 @@ func (q *Queries) GetProductByID(ctx context.Context, id uuid.UUID) (Product, er
 		&i.CreatedAt,
 		&i.Model3dView,
 		&i.EstFilamentQty,
+		&i.EstPrintMinutes,
 	)
 	return i, err
 }
 
 const getProductBySlug = `-- name: GetProductBySlug :one
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty FROM products WHERE slug = $1
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes FROM products WHERE slug = $1
 `
 
 func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (Product, error) {
@@ -248,6 +249,7 @@ func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (Product, e
 		&i.CreatedAt,
 		&i.Model3dView,
 		&i.EstFilamentQty,
+		&i.EstPrintMinutes,
 	)
 	return i, err
 }
@@ -433,24 +435,25 @@ func (q *Queries) InsertPart(ctx context.Context, arg InsertPartParams) (Part, e
 
 const insertProduct = `-- name: InsertProduct :one
 INSERT INTO products (
-  id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, est_filament_qty
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty
+  id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, est_filament_qty, est_print_minutes
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes
 `
 
 type InsertProductParams struct {
-	ID             uuid.UUID     `json:"id"`
-	Slug           string        `json:"slug"`
-	Name           string        `json:"name"`
-	Description    string        `json:"description"`
-	CategoryID     uuid.UUID     `json:"categoryId"`
-	BasePrice      int64         `json:"basePrice"`
-	Dimensions     []byte        `json:"dimensions"`
-	Material       string        `json:"material"`
-	Model3dUrl     string        `json:"model3dUrl"`
-	Images         []byte        `json:"images"`
-	Status         ProductStatus `json:"status"`
-	EstFilamentQty int64         `json:"estFilamentQty"`
+	ID              uuid.UUID     `json:"id"`
+	Slug            string        `json:"slug"`
+	Name            string        `json:"name"`
+	Description     string        `json:"description"`
+	CategoryID      uuid.UUID     `json:"categoryId"`
+	BasePrice       int64         `json:"basePrice"`
+	Dimensions      []byte        `json:"dimensions"`
+	Material        string        `json:"material"`
+	Model3dUrl      string        `json:"model3dUrl"`
+	Images          []byte        `json:"images"`
+	Status          ProductStatus `json:"status"`
+	EstFilamentQty  int64         `json:"estFilamentQty"`
+	EstPrintMinutes int32         `json:"estPrintMinutes"`
 }
 
 func (q *Queries) InsertProduct(ctx context.Context, arg InsertProductParams) (Product, error) {
@@ -467,6 +470,7 @@ func (q *Queries) InsertProduct(ctx context.Context, arg InsertProductParams) (P
 		arg.Images,
 		arg.Status,
 		arg.EstFilamentQty,
+		arg.EstPrintMinutes,
 	)
 	var i Product
 	err := row.Scan(
@@ -486,6 +490,7 @@ func (q *Queries) InsertProduct(ctx context.Context, arg InsertProductParams) (P
 		&i.CreatedAt,
 		&i.Model3dView,
 		&i.EstFilamentQty,
+		&i.EstPrintMinutes,
 	)
 	return i, err
 }
@@ -628,7 +633,7 @@ func (q *Queries) ListActiveProducts(ctx context.Context, arg ListActiveProducts
 }
 
 const listAdminProducts = `-- name: ListAdminProducts :many
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty FROM products
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes FROM products
 WHERE ($1::product_status IS NULL OR status = $1::product_status)
 ORDER BY created_at DESC, id DESC
 `
@@ -666,6 +671,7 @@ func (q *Queries) ListAdminProducts(ctx context.Context, status NullProductStatu
 			&i.CreatedAt,
 			&i.Model3dView,
 			&i.EstFilamentQty,
+			&i.EstPrintMinutes,
 		); err != nil {
 			return nil, err
 		}
@@ -847,7 +853,7 @@ func (q *Queries) ListPartsByProduct(ctx context.Context, productID uuid.UUID) (
 }
 
 const listProductsByStatus = `-- name: ListProductsByStatus :many
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty FROM products WHERE status = $1 ORDER BY created_at DESC
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes FROM products WHERE status = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListProductsByStatus(ctx context.Context, status ProductStatus) ([]Product, error) {
@@ -876,6 +882,7 @@ func (q *Queries) ListProductsByStatus(ctx context.Context, status ProductStatus
 			&i.CreatedAt,
 			&i.Model3dView,
 			&i.EstFilamentQty,
+			&i.EstPrintMinutes,
 		); err != nil {
 			return nil, err
 		}
@@ -1110,23 +1117,24 @@ func (q *Queries) UpdatePart(ctx context.Context, arg UpdatePartParams) (Part, e
 const updateProduct = `-- name: UpdateProduct :one
 UPDATE products
 SET slug = $2, name = $3, description = $4, category_id = $5, base_price = $6,
-    dimensions = $7, material = $8, images = $9, status = $10, est_filament_qty = $11
+    dimensions = $7, material = $8, images = $9, status = $10, est_filament_qty = $11, est_print_minutes = $12
 WHERE id = $1
-RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty
+RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes
 `
 
 type UpdateProductParams struct {
-	ID             uuid.UUID     `json:"id"`
-	Slug           string        `json:"slug"`
-	Name           string        `json:"name"`
-	Description    string        `json:"description"`
-	CategoryID     uuid.UUID     `json:"categoryId"`
-	BasePrice      int64         `json:"basePrice"`
-	Dimensions     []byte        `json:"dimensions"`
-	Material       string        `json:"material"`
-	Images         []byte        `json:"images"`
-	Status         ProductStatus `json:"status"`
-	EstFilamentQty int64         `json:"estFilamentQty"`
+	ID              uuid.UUID     `json:"id"`
+	Slug            string        `json:"slug"`
+	Name            string        `json:"name"`
+	Description     string        `json:"description"`
+	CategoryID      uuid.UUID     `json:"categoryId"`
+	BasePrice       int64         `json:"basePrice"`
+	Dimensions      []byte        `json:"dimensions"`
+	Material        string        `json:"material"`
+	Images          []byte        `json:"images"`
+	Status          ProductStatus `json:"status"`
+	EstFilamentQty  int64         `json:"estFilamentQty"`
+	EstPrintMinutes int32         `json:"estPrintMinutes"`
 }
 
 // UpdateProduct saves the editable fields of a product (P3-j). It deliberately does NOT touch model3d_url:
@@ -1146,6 +1154,7 @@ func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (P
 		arg.Images,
 		arg.Status,
 		arg.EstFilamentQty,
+		arg.EstPrintMinutes,
 	)
 	var i Product
 	err := row.Scan(
@@ -1165,6 +1174,7 @@ func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (P
 		&i.CreatedAt,
 		&i.Model3dView,
 		&i.EstFilamentQty,
+		&i.EstPrintMinutes,
 	)
 	return i, err
 }

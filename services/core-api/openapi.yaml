@@ -1926,6 +1926,26 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /admin/costing-summary:
+    get:
+      tags: [admin]
+      operationId: getCostingSummary
+      summary: Derived costing KPIs for the /vat-tu dashboard (admin-gated read; owner+staff).
+      description: >
+        The shop-wide rolling-30-day costing figures (ADR-039 pt 7): the waste factor, the per-order overhead
+        allocation, the real-orders-30d denominator and the primary machine's ₫/hour — the same inputs the
+        per-order COGS snapshot uses, so the dashboard and any frozen margin cannot diverge.
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: The derived costing KPIs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CostingSummary'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
 components:
   securitySchemes:
     cookieAuth:
@@ -2195,6 +2215,13 @@ components:
             Internal print standard (ADR-039): estimated filament per unit for a FLAT product (a product with
             parts estimates per-part instead), in the linked material's unit (gram|ml). Drives deduct-on-print
             and the admin editor; 0 = no estimate (the draw is skipped). Not shown to customers.
+        estPrintHours:
+          type: number
+          format: double
+          description: >
+            Internal print standard (ADR-039 pt 3): estimated machine hours per unit (per-item — one job = one
+            physical print). Drives the COGS snapshot's machineVnd = estPrintHours × the primary machine's
+            ₫/hour; 0 = no estimate (machineVnd 0). Stored as exact minutes server-side. Not shown to customers.
         model3dUrl:
           type: string
           description: .glb URL for the on-demand model viewer; empty string when none.
@@ -2583,6 +2610,81 @@ components:
         kind: { type: string, description: 'per_order | per_month.' }
         amountVnd: { type: integer, format: int64, description: 'Amount in int-VND (>= 0).' }
 
+    CostSnapshot:
+      type: object
+      description: >
+        The per-order-item COGS frozen when its print job first enters PRINTING (ADR-039 pt 5, /vat-tu
+        design screen 8). Money fields are int-VND, frozen — a later filament/machine price change never
+        rewrites a sold order. totalVnd = filamentVnd + machineVnd + wasteVnd + auxVnd. Read-only (owner+staff);
+        the margin (salePrice − totalVnd) is derived client-side from the line's unitPrice × quantity. Present
+        only once costed — an uncosted line (unprinted / old order) omits it entirely, which a margin read must
+        NOT treat as ₫0 COGS. The rate inputs (estPrintHours, machineVndPerHour, wasteFactor) are frozen too so
+        the card can show "6.5h × ₫2,380" / "+8.4%" exactly as at print time.
+      required: [filamentVnd, machineVnd, wasteVnd, auxVnd, totalVnd, estPrintHours, machineVndPerHour, wasteFactor, at]
+      properties:
+        filamentVnd:
+          type: integer
+          format: int64
+          description: FIFO filament cost frozen at print (Σ of the line's filament_consumption.cost_vnd). 0 if the spool was starved.
+        machineVnd:
+          type: integer
+          format: int64
+          description: Machine-depreciation cost = estPrintHours × machineVndPerHour, rounded to int-VND. 0 if no estimate or no primary machine.
+        wasteVnd:
+          type: integer
+          format: int64
+          description: Waste/reprint cost = (filamentVnd + machineVnd) × wasteFactor, rounded to int-VND.
+        auxVnd:
+          type: integer
+          format: int64
+          description: Allocated overhead = Σ(per_order) + Σ(per_month) ÷ real-orders-30d (0 when no real orders).
+        totalVnd:
+          type: integer
+          format: int64
+          description: True COGS = filamentVnd + machineVnd + wasteVnd + auxVnd (int-VND).
+        estPrintHours:
+          type: number
+          format: double
+          description: Machine hours used for machineVnd, frozen (the product's estimate at print time).
+        machineVndPerHour:
+          type: number
+          format: double
+          description: The primary machine's derived ₫/hour at print time, frozen (0 if none).
+        wasteFactor:
+          type: number
+          format: double
+          description: The 30-day waste factor (Σscrap ÷ Σprint grams) applied, frozen (e.g. 0.084 = +8.4%).
+        at:
+          type: string
+          format: date-time
+          description: When the snapshot was frozen (first →PRINTING).
+
+    CostingSummary:
+      type: object
+      description: >
+        Shop-wide derived costing KPIs for the /vat-tu dashboard (ADR-039 pt 7, design screen 8) — the same
+        rolling-30-day inputs the per-order snapshot uses, so a margin can never drift from this dashboard.
+        Read-only (owner+staff). Rates are floats (not stored money).
+      required: [wasteFactor, auxPerOrderVnd, realOrders30d]
+      properties:
+        wasteFactor:
+          type: number
+          format: double
+          description: 30-day waste factor = Σscrap ÷ Σprint grams (0 when no prints). Shown as "+8.4%".
+        auxPerOrderVnd:
+          type: integer
+          format: int64
+          description: Overhead allocated per order = Σ(per_order) + Σ(per_month) ÷ real-orders-30d (int-VND, rounded).
+        realOrders30d:
+          type: integer
+          format: int64
+          description: Paid, non-refunded orders in the last 30 days — the aux amortization denominator.
+        primaryMachineVndPerHour:
+          type: number
+          format: double
+          nullable: true
+          description: The primary machine's derived ₫/hour; null when no active primary machine is set.
+
     ProductInput:
       type: object
       description: >
@@ -2626,6 +2728,12 @@ components:
           description: >
             Estimated filament per unit for a FLAT product (ADR-039), in the linked material's unit. Optional,
             defaults to 0 (no estimate → deduct-on-print skips). A product with parts estimates per-part instead.
+        estPrintHours:
+          type: number
+          format: double
+          description: >
+            Estimated machine hours per unit (ADR-039 pt 3) — drives the COGS snapshot's machineVnd. Optional,
+            defaults to 0 (no estimate → machineVnd 0). Stored as exact minutes server-side.
         images:
           type: array
           description: Shop photos; images[0] is the card cover (ADR-007). Optional; defaults to [].
@@ -3085,6 +3193,8 @@ components:
           description: >
             Display labels for the picked choices ("Kích thước: Lớn"), resolved from the names denormalized at
             capture (ADR-037). One per optionChoices entry, same order. Omitted when the line has none. Read-only.
+        costSnapshot:
+          $ref: '#/components/schemas/CostSnapshot'
 
     OrderItemInput:
       type: object

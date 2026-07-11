@@ -1,15 +1,42 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
 )
+
+// TestCostSnapshotDTO guards the JSON-tag alignment between the writer (db.CostSnapshot) and the wire
+// (api.CostSnapshot) — a Docker-free check that the reader maps every frozen field, since a silent tag drift
+// would zero a money field with no error (the full round-trip through SQL is TestCostSnapshotEndToEnd). A NULL
+// column → nil (an uncosted line, which a margin read must not treat as ₫0 COGS).
+func TestCostSnapshotDTO(t *testing.T) {
+	if got, err := costSnapshotDTO(nil); err != nil || got != nil {
+		t.Fatalf("nil snapshot = %v, %v; want nil, nil", got, err)
+	}
+	blob, err := json.Marshal(db.CostSnapshot{
+		FilamentVnd: 58_500, MachineVnd: 12_000, WasteVnd: 7_050, AuxVnd: 18_000, TotalVnd: 95_550,
+		EstPrintHours: 6, MachineVndPerHour: 2000, WasteFactor: 0.1, At: time.Date(2026, 7, 5, 8, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got, err := costSnapshotDTO(blob)
+	if err != nil || got == nil {
+		t.Fatalf("costSnapshotDTO = %v, %v", got, err)
+	}
+	if got.FilamentVnd != 58_500 || got.MachineVnd != 12_000 || got.WasteVnd != 7_050 || got.AuxVnd != 18_000 ||
+		got.TotalVnd != 95_550 || got.EstPrintHours != 6 || got.MachineVndPerHour != 2000 || got.WasteFactor != 0.1 {
+		t.Fatalf("costSnapshotDTO mapped wrong: %+v", *got)
+	}
+}
 
 // toOrderDTO is a pure mapping (no I/O), so it is exercised Docker-free with a hand-built spine.
 

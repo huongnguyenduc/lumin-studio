@@ -215,7 +215,7 @@ INSERT INTO order_items (
   id, order_id, product_id, color_id, option_ids, personalization, quantity, unit_price,
   part_colors, option_choices
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, order_id, product_id, color_id, option_ids, personalization, quantity, unit_price, part_colors, option_choices
+RETURNING id, order_id, product_id, color_id, option_ids, personalization, quantity, unit_price, part_colors, option_choices, cost_snapshot
 `
 
 type InsertOrderItemParams struct {
@@ -256,6 +256,7 @@ func (q *Queries) InsertOrderItem(ctx context.Context, arg InsertOrderItemParams
 		&i.UnitPrice,
 		&i.PartColors,
 		&i.OptionChoices,
+		&i.CostSnapshot,
 	)
 	return i, err
 }
@@ -333,7 +334,7 @@ func (q *Queries) ListAdminOrders(ctx context.Context, arg ListAdminOrdersParams
 }
 
 const listOrderItems = `-- name: ListOrderItems :many
-SELECT oi.id, oi.order_id, oi.product_id, oi.color_id, oi.option_ids, oi.personalization, oi.quantity, oi.unit_price, oi.part_colors, oi.option_choices,
+SELECT oi.id, oi.order_id, oi.product_id, oi.color_id, oi.option_ids, oi.personalization, oi.quantity, oi.unit_price, oi.part_colors, oi.option_choices, oi.cost_snapshot,
   p.name AS product_name,
   c.name AS color_name,
   coalesce(
@@ -359,6 +360,7 @@ type ListOrderItemsRow struct {
 	UnitPrice       int64                  `json:"unitPrice"`
 	PartColors      []byte                 `json:"partColors"`
 	OptionChoices   []byte                 `json:"optionChoices"`
+	CostSnapshot    []byte                 `json:"costSnapshot"`
 	ProductName     string                 `json:"productName"`
 	ColorName       *string                `json:"colorName"`
 	OptionLabels    []string               `json:"optionLabels"`
@@ -390,6 +392,7 @@ func (q *Queries) ListOrderItems(ctx context.Context, orderID uuid.UUID) ([]List
 			&i.UnitPrice,
 			&i.PartColors,
 			&i.OptionChoices,
+			&i.CostSnapshot,
 			&i.ProductName,
 			&i.ColorName,
 			&i.OptionLabels,

@@ -1008,6 +1008,26 @@ export interface paths {
         patch: operations["updateAuxCost"];
         trace?: never;
     };
+    "/admin/costing-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Derived costing KPIs for the /vat-tu dashboard (admin-gated read; owner+staff).
+         * @description The shop-wide rolling-30-day costing figures (ADR-039 pt 7): the waste factor, the per-order overhead allocation, the real-orders-30d denominator and the primary machine's ₫/hour — the same inputs the per-order COGS snapshot uses, so the dashboard and any frozen margin cannot diverge.
+         */
+        get: operations["getCostingSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1123,6 +1143,11 @@ export interface components {
              * @description Internal print standard (ADR-039): estimated filament per unit for a FLAT product (a product with parts estimates per-part instead), in the linked material's unit (gram|ml). Drives deduct-on-print and the admin editor; 0 = no estimate (the draw is skipped). Not shown to customers.
              */
             estFilamentQty?: number;
+            /**
+             * Format: double
+             * @description Internal print standard (ADR-039 pt 3): estimated machine hours per unit (per-item — one job = one physical print). Drives the COGS snapshot's machineVnd = estPrintHours × the primary machine's ₫/hour; 0 = no estimate (machineVnd 0). Stored as exact minutes server-side. Not shown to customers.
+             */
+            estPrintHours?: number;
             /** @description .glb URL for the on-demand model viewer; empty string when none. */
             model3dUrl: string;
             model3dView?: components["schemas"]["Model3dView"];
@@ -1429,6 +1454,77 @@ export interface components {
              */
             amountVnd: number;
         };
+        /** @description The per-order-item COGS frozen when its print job first enters PRINTING (ADR-039 pt 5, /vat-tu design screen 8). Money fields are int-VND, frozen — a later filament/machine price change never rewrites a sold order. totalVnd = filamentVnd + machineVnd + wasteVnd + auxVnd. Read-only (owner+staff); the margin (salePrice − totalVnd) is derived client-side from the line's unitPrice × quantity. Present only once costed — an uncosted line (unprinted / old order) omits it entirely, which a margin read must NOT treat as ₫0 COGS. The rate inputs (estPrintHours, machineVndPerHour, wasteFactor) are frozen too so the card can show "6.5h × ₫2,380" / "+8.4%" exactly as at print time. */
+        CostSnapshot: {
+            /**
+             * Format: int64
+             * @description FIFO filament cost frozen at print (Σ of the line's filament_consumption.cost_vnd). 0 if the spool was starved.
+             */
+            filamentVnd: number;
+            /**
+             * Format: int64
+             * @description Machine-depreciation cost = estPrintHours × machineVndPerHour, rounded to int-VND. 0 if no estimate or no primary machine.
+             */
+            machineVnd: number;
+            /**
+             * Format: int64
+             * @description Waste/reprint cost = (filamentVnd + machineVnd) × wasteFactor, rounded to int-VND.
+             */
+            wasteVnd: number;
+            /**
+             * Format: int64
+             * @description Allocated overhead = Σ(per_order) + Σ(per_month) ÷ real-orders-30d (0 when no real orders).
+             */
+            auxVnd: number;
+            /**
+             * Format: int64
+             * @description True COGS = filamentVnd + machineVnd + wasteVnd + auxVnd (int-VND).
+             */
+            totalVnd: number;
+            /**
+             * Format: double
+             * @description Machine hours used for machineVnd, frozen (the product's estimate at print time).
+             */
+            estPrintHours: number;
+            /**
+             * Format: double
+             * @description The primary machine's derived ₫/hour at print time, frozen (0 if none).
+             */
+            machineVndPerHour: number;
+            /**
+             * Format: double
+             * @description The 30-day waste factor (Σscrap ÷ Σprint grams) applied, frozen (e.g. 0.084 = +8.4%).
+             */
+            wasteFactor: number;
+            /**
+             * Format: date-time
+             * @description When the snapshot was frozen (first →PRINTING).
+             */
+            at: string;
+        };
+        /** @description Shop-wide derived costing KPIs for the /vat-tu dashboard (ADR-039 pt 7, design screen 8) — the same rolling-30-day inputs the per-order snapshot uses, so a margin can never drift from this dashboard. Read-only (owner+staff). Rates are floats (not stored money). */
+        CostingSummary: {
+            /**
+             * Format: double
+             * @description 30-day waste factor = Σscrap ÷ Σprint grams (0 when no prints). Shown as "+8.4%".
+             */
+            wasteFactor: number;
+            /**
+             * Format: int64
+             * @description Overhead allocated per order = Σ(per_order) + Σ(per_month) ÷ real-orders-30d (int-VND, rounded).
+             */
+            auxPerOrderVnd: number;
+            /**
+             * Format: int64
+             * @description Paid, non-refunded orders in the last 30 days — the aux amortization denominator.
+             */
+            realOrders30d: number;
+            /**
+             * Format: double
+             * @description The primary machine's derived ₫/hour; null when no active primary machine is set.
+             */
+            primaryMachineVndPerHour?: number | null;
+        };
         /** @description Create/replace body for a product (P3-j, owner-only). Same editable fields as Product MINUS the server/pipeline-owned ones: no id/createdAt/ratingAvg/reviewCount (server-owned), no colors/options (managed via their own nested endpoints), and no model3dUrl (owned by the asset pipeline, P3-j-b — the editor form can never set or blank it). basePrice is raw int-VND (always-must #2). description and images are optional (default "" / []). */
         ProductInput: {
             /** @description Unique URL slug (spec §02); a duplicate → 400 with a `slug` field error. */
@@ -1451,6 +1547,11 @@ export interface components {
              * @description Estimated filament per unit for a FLAT product (ADR-039), in the linked material's unit. Optional, defaults to 0 (no estimate → deduct-on-print skips). A product with parts estimates per-part instead.
              */
             estFilamentQty?: number;
+            /**
+             * Format: double
+             * @description Estimated machine hours per unit (ADR-039 pt 3) — drives the COGS snapshot's machineVnd. Optional, defaults to 0 (no estimate → machineVnd 0). Stored as exact minutes server-side.
+             */
+            estPrintHours?: number;
             /** @description Shop photos; images[0] is the card cover (ADR-007). Optional; defaults to []. */
             images?: string[];
             status: components["schemas"]["ProductStatus"];
@@ -1721,6 +1822,7 @@ export interface components {
             partColorLabels?: string[];
             /** @description Display labels for the picked choices ("Kích thước: Lớn"), resolved from the names denormalized at capture (ADR-037). One per optionChoices entry, same order. Omitted when the line has none. Read-only. */
             optionChoiceLabels?: string[];
+            costSnapshot?: components["schemas"]["CostSnapshot"];
         };
         /** @description A requested line item. Deliberately has NO unitPrice — the server re-derives every price from the catalog (always-must #2); a client price is never trusted. */
         OrderItemInput: {
@@ -3953,6 +4055,27 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getCostingSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The derived costing KPIs. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CostingSummary"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
         };
     };
 }

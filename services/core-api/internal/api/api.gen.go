@@ -332,6 +332,51 @@ type ColorInput struct {
 	PriceDelta *int64 `json:"priceDelta,omitempty"`
 }
 
+// CostSnapshot The per-order-item COGS frozen when its print job first enters PRINTING (ADR-039 pt 5, /vat-tu design screen 8). Money fields are int-VND, frozen — a later filament/machine price change never rewrites a sold order. totalVnd = filamentVnd + machineVnd + wasteVnd + auxVnd. Read-only (owner+staff); the margin (salePrice − totalVnd) is derived client-side from the line's unitPrice × quantity. Present only once costed — an uncosted line (unprinted / old order) omits it entirely, which a margin read must NOT treat as ₫0 COGS. The rate inputs (estPrintHours, machineVndPerHour, wasteFactor) are frozen too so the card can show "6.5h × ₫2,380" / "+8.4%" exactly as at print time.
+type CostSnapshot struct {
+	// At When the snapshot was frozen (first →PRINTING).
+	At time.Time `json:"at"`
+
+	// AuxVnd Allocated overhead = Σ(per_order) + Σ(per_month) ÷ real-orders-30d (0 when no real orders).
+	AuxVnd int64 `json:"auxVnd"`
+
+	// EstPrintHours Machine hours used for machineVnd, frozen (the product's estimate at print time).
+	EstPrintHours float64 `json:"estPrintHours"`
+
+	// FilamentVnd FIFO filament cost frozen at print (Σ of the line's filament_consumption.cost_vnd). 0 if the spool was starved.
+	FilamentVnd int64 `json:"filamentVnd"`
+
+	// MachineVnd Machine-depreciation cost = estPrintHours × machineVndPerHour, rounded to int-VND. 0 if no estimate or no primary machine.
+	MachineVnd int64 `json:"machineVnd"`
+
+	// MachineVndPerHour The primary machine's derived ₫/hour at print time, frozen (0 if none).
+	MachineVndPerHour float64 `json:"machineVndPerHour"`
+
+	// TotalVnd True COGS = filamentVnd + machineVnd + wasteVnd + auxVnd (int-VND).
+	TotalVnd int64 `json:"totalVnd"`
+
+	// WasteFactor The 30-day waste factor (Σscrap ÷ Σprint grams) applied, frozen (e.g. 0.084 = +8.4%).
+	WasteFactor float64 `json:"wasteFactor"`
+
+	// WasteVnd Waste/reprint cost = (filamentVnd + machineVnd) × wasteFactor, rounded to int-VND.
+	WasteVnd int64 `json:"wasteVnd"`
+}
+
+// CostingSummary Shop-wide derived costing KPIs for the /vat-tu dashboard (ADR-039 pt 7, design screen 8) — the same rolling-30-day inputs the per-order snapshot uses, so a margin can never drift from this dashboard. Read-only (owner+staff). Rates are floats (not stored money).
+type CostingSummary struct {
+	// AuxPerOrderVnd Overhead allocated per order = Σ(per_order) + Σ(per_month) ÷ real-orders-30d (int-VND, rounded).
+	AuxPerOrderVnd int64 `json:"auxPerOrderVnd"`
+
+	// PrimaryMachineVndPerHour The primary machine's derived ₫/hour; null when no active primary machine is set.
+	PrimaryMachineVndPerHour *float64 `json:"primaryMachineVndPerHour"`
+
+	// RealOrders30d Paid, non-refunded orders in the last 30 days — the aux amortization denominator.
+	RealOrders30d int64 `json:"realOrders30d"`
+
+	// WasteFactor 30-day waste factor = Σscrap ÷ Σprint grams (0 when no prints). Shown as "+8.4%".
+	WasteFactor float64 `json:"wasteFactor"`
+}
+
 // CreateInboxOrderInput Staff/owner-created inbox order → born PAID with no payment record (the staff already verified money landed, conventions §17). Requires a resolved staff/owner actor; no `paymentProofUrl`.
 type CreateInboxOrderInput struct {
 	Channel  CreateInboxOrderInputChannel `json:"channel"`
@@ -742,6 +787,9 @@ type OrderItem struct {
 	// ColorName Human color name when the line has a color, joined for the admin detail. Read-only.
 	ColorName *string `json:"colorName,omitempty"`
 
+	// CostSnapshot The per-order-item COGS frozen when its print job first enters PRINTING (ADR-039 pt 5, /vat-tu design screen 8). Money fields are int-VND, frozen — a later filament/machine price change never rewrites a sold order. totalVnd = filamentVnd + machineVnd + wasteVnd + auxVnd. Read-only (owner+staff); the margin (salePrice − totalVnd) is derived client-side from the line's unitPrice × quantity. Present only once costed — an uncosted line (unprinted / old order) omits it entirely, which a margin read must NOT treat as ₫0 COGS. The rate inputs (estPrintHours, machineVndPerHour, wasteFactor) are frozen too so the card can show "6.5h × ₫2,380" / "+8.4%" exactly as at print time.
+	CostSnapshot *CostSnapshot `json:"costSnapshot,omitempty"`
+
 	// OptionChoiceLabels Display labels for the picked choices ("Kích thước: Lớn"), resolved from the names denormalized at capture (ADR-037). One per optionChoices entry, same order. Omitted when the line has none. Read-only.
 	OptionChoiceLabels *[]string `json:"optionChoiceLabels,omitempty"`
 
@@ -946,8 +994,11 @@ type Product struct {
 	Dimensions Dimensions `json:"dimensions"`
 
 	// EstFilamentQty Internal print standard (ADR-039): estimated filament per unit for a FLAT product (a product with parts estimates per-part instead), in the linked material's unit (gram|ml). Drives deduct-on-print and the admin editor; 0 = no estimate (the draw is skipped). Not shown to customers.
-	EstFilamentQty *int64             `json:"estFilamentQty,omitempty"`
-	Id             openapi_types.UUID `json:"id"`
+	EstFilamentQty *int64 `json:"estFilamentQty,omitempty"`
+
+	// EstPrintHours Internal print standard (ADR-039 pt 3): estimated machine hours per unit (per-item — one job = one physical print). Drives the COGS snapshot's machineVnd = estPrintHours × the primary machine's ₫/hour; 0 = no estimate (machineVnd 0). Stored as exact minutes server-side. Not shown to customers.
+	EstPrintHours *float64           `json:"estPrintHours,omitempty"`
+	Id            openapi_types.UUID `json:"id"`
 
 	// Images Shop photos; images[0] is the card cover (sprite-first, ADR-007). May be empty.
 	Images []string `json:"images"`
@@ -1014,6 +1065,9 @@ type ProductInput struct {
 
 	// EstFilamentQty Estimated filament per unit for a FLAT product (ADR-039), in the linked material's unit. Optional, defaults to 0 (no estimate → deduct-on-print skips). A product with parts estimates per-part instead.
 	EstFilamentQty *int64 `json:"estFilamentQty,omitempty"`
+
+	// EstPrintHours Estimated machine hours per unit (ADR-039 pt 3) — drives the COGS snapshot's machineVnd. Optional, defaults to 0 (no estimate → machineVnd 0). Stored as exact minutes server-side.
+	EstPrintHours *float64 `json:"estPrintHours,omitempty"`
 
 	// Images Shop photos; images[0] is the card cover (ADR-007). Optional; defaults to [].
 	Images *[]string `json:"images,omitempty"`
@@ -1506,6 +1560,9 @@ type ServerInterface interface {
 	// Edit an overhead cost line (owner-only).
 	// (PATCH /admin/aux-costs/{id})
 	UpdateAuxCost(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Derived costing KPIs for the /vat-tu dashboard (admin-gated read; owner+staff).
+	// (GET /admin/costing-summary)
+	GetCostingSummary(w http.ResponseWriter, r *http.Request)
 	// Admin dashboard aggregates (counts + net revenue + recent orders + todos).
 	// (GET /admin/dashboard)
 	GetDashboard(w http.ResponseWriter, r *http.Request)
@@ -1716,6 +1773,12 @@ func (_ Unimplemented) DeleteAuxCost(w http.ResponseWriter, r *http.Request, id 
 // Edit an overhead cost line (owner-only).
 // (PATCH /admin/aux-costs/{id})
 func (_ Unimplemented) UpdateAuxCost(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Derived costing KPIs for the /vat-tu dashboard (admin-gated read; owner+staff).
+// (GET /admin/costing-summary)
+func (_ Unimplemented) GetCostingSummary(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2187,6 +2250,26 @@ func (siw *ServerInterfaceWrapper) UpdateAuxCost(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateAuxCost(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCostingSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetCostingSummary(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCostingSummary(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4172,6 +4255,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Patch(options.BaseURL+"/admin/aux-costs/{id}", wrapper.UpdateAuxCost)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/costing-summary", wrapper.GetCostingSummary)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/dashboard", wrapper.GetDashboard)
 	})
 	r.Group(func(r chi.Router) {
@@ -4534,6 +4620,31 @@ type UpdateAuxCost404JSONResponse struct{ NotFoundJSONResponse }
 func (response UpdateAuxCost404JSONResponse) VisitUpdateAuxCostResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetCostingSummaryRequestObject struct {
+}
+
+type GetCostingSummaryResponseObject interface {
+	VisitGetCostingSummaryResponse(w http.ResponseWriter) error
+}
+
+type GetCostingSummary200JSONResponse CostingSummary
+
+func (response GetCostingSummary200JSONResponse) VisitGetCostingSummaryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetCostingSummary401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetCostingSummary401JSONResponse) VisitGetCostingSummaryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -7209,6 +7320,9 @@ type StrictServerInterface interface {
 	// Edit an overhead cost line (owner-only).
 	// (PATCH /admin/aux-costs/{id})
 	UpdateAuxCost(ctx context.Context, request UpdateAuxCostRequestObject) (UpdateAuxCostResponseObject, error)
+	// Derived costing KPIs for the /vat-tu dashboard (admin-gated read; owner+staff).
+	// (GET /admin/costing-summary)
+	GetCostingSummary(ctx context.Context, request GetCostingSummaryRequestObject) (GetCostingSummaryResponseObject, error)
 	// Admin dashboard aggregates (counts + net revenue + recent orders + todos).
 	// (GET /admin/dashboard)
 	GetDashboard(ctx context.Context, request GetDashboardRequestObject) (GetDashboardResponseObject, error)
@@ -7530,6 +7644,30 @@ func (sh *strictHandler) UpdateAuxCost(w http.ResponseWriter, r *http.Request, i
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateAuxCostResponseObject); ok {
 		if err := validResponse.VisitUpdateAuxCostResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCostingSummary operation middleware
+func (sh *strictHandler) GetCostingSummary(w http.ResponseWriter, r *http.Request) {
+	var request GetCostingSummaryRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCostingSummary(ctx, request.(GetCostingSummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCostingSummary")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCostingSummaryResponseObject); ok {
+		if err := validResponse.VisitGetCostingSummaryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

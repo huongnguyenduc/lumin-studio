@@ -158,9 +158,30 @@ func orderItemsDTO(items []sqlc.ListOrderItemsRow) ([]api.OrderItem, error) {
 				ZoneId: it.Personalization.ZoneID,
 			}
 		}
+		cs, err := costSnapshotDTO(it.CostSnapshot)
+		if err != nil {
+			return nil, fmt.Errorf("order item %s: cost_snapshot: %w", it.ID, err)
+		}
+		dto.CostSnapshot = cs // ADR-039 4c-2: frozen COGS; nil for an uncosted line (omit-when-empty)
 		out[i] = dto
 	}
 	return out, nil
+}
+
+// costSnapshotDTO parses the order_items.cost_snapshot jsonb (ADR-039 4c-2) into the wire COGS snapshot, or
+// nil when the column is NULL — a line not yet costed (unprinted, old order, or a best-effort rollup that
+// failed). A margin read must treat nil as "chưa chốt", NOT ₫0 COGS (which would inflate margin). The stored
+// keys are db.CostSnapshot's json tags, identical to api.CostSnapshot's, so a straight unmarshal maps them
+// (the round-trip is pinned by the compute + DTO tests). A malformed blob (never written by the rollup) → 500.
+func costSnapshotDTO(raw []byte) (*api.CostSnapshot, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var out api.CostSnapshot
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // partColorSnapshots unmarshals the order_items.part_colors jsonb into the DENORMALIZED snapshot slice

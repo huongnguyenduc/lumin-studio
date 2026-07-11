@@ -221,6 +221,14 @@ type Querier interface {
 	InsertReview(ctx context.Context, arg InsertReviewParams) (Review, error)
 	// users.sql — staff/owner account queries (PR-2d). spec.md §02 User.
 	InsertUser(ctx context.Context, arg InsertUserParams) (User, error)
+	// ── COGS snapshot rollup + KPI reads (slice 4c-2, ADR-039 pt 5/6/7) ────────────────────────────────────
+	// ItemCostInputs reads the two item-specific rollup inputs in one round-trip: the filament cost FROZEN at
+	// print (Σ of the printed line's filament_consumption.cost_vnd — oracle R2: SUM per order_item_id and read
+	// the frozen cost, NEVER re-derive from live batches; two parts sharing a material = two rows, both summed)
+	// and the product's machine-time standard (est_print_minutes → machineVnd). A starved print drew 0 filament
+	// and wrote NO ledger row, so the SUM is 0 (COALESCE) — distinct from "not costed" at the column level
+	// (oracle R1: the rollup still WRITES a non-NULL snapshot). Unknown id → ErrNoRows (never in the rollup path).
+	ItemCostInputs(ctx context.Context, id uuid.UUID) (ItemCostInputsRow, error)
 	ListActiveConsents(ctx context.Context, customerID uuid.UUID) ([]ConsentGrant, error)
 	// ListActiveProducts is the storefront catalog list (PR-P1-c). It returns ACTIVE products ONLY as a
 	// CARD projection (a subset of columns — no description/model3d_url, and no colors/options join → no
@@ -365,6 +373,11 @@ type Querier interface {
 	// proves codegen end-to-end. Readiness uses pgxpool.Ping directly, not this query.
 	// (No leading underscore in the filename — Go ignores `_`-prefixed source files.)
 	Ping(ctx context.Context) (int32, error)
+	// PrimaryMachine returns the machine the snapshot attributes machine-hours to (ADR-039 pt 6). is_primary is
+	// not enforced unique (000020 ponytail), so pick the most-recently-updated ACTIVE primary (spec-guardian
+	// 4c-1 NOTE — robust to a stray second primary or an inactivated one). No primary set → ErrNoRows → the
+	// rollup contributes machineVnd 0 (guarded), never a fault.
+	PrimaryMachine(ctx context.Context) (Machine, error)
 	// SelectPendingOutbox scans the WHOLE pending SET in commit order each tick (ADR-029). It
 	// deliberately scans `status='pending' ORDER BY seq` — NOT a `seq > watermark` cursor and NOT
 	// `FOR UPDATE SKIP LOCKED`: bigserial `seq` is assigned at INSERT, not COMMIT, so a lower-seq
@@ -372,6 +385,9 @@ type Querier interface {
 	// late-committing lower-seq row forever = silent money-event loss. Single instance (ADR-009)
 	// ⇒ no SKIP LOCKED / advisory lock. Uses the partial index outbox_unpublished_idx.
 	SelectPendingOutbox(ctx context.Context, limit int32) ([]SelectPendingOutboxRow, error)
+	// SetOrderItemCostSnapshot writes the frozen COGS blob (the rollup marshals it in Go). Best-effort,
+	// post-commit — a failure leaves cost_snapshot NULL ("chưa chốt", backfillable), never blocking the board.
+	SetOrderItemCostSnapshot(ctx context.Context, arg SetOrderItemCostSnapshotParams) error
 	// SetShippingArtifacts persists the two mandatory SHIPPING artifacts — the carrier tracking code
 	// and the QC packing photo (D-P3-6) — on the PRINTING→SHIPPING transition. The status flip itself
 	// goes through UpdateOrderStatus (order.Transition guard); the transition handler runs this in the
@@ -379,6 +395,14 @@ type Querier interface {
 	// an order can never reach SHIPPING without both. RETURNING * reflects the new status (already
 	// flipped in this tx) plus both artifacts (§3h / §6 D12 / P3-e).
 	SetShippingArtifacts(ctx context.Context, arg SetShippingArtifactsParams) (Order, error)
+	// SnapshotShopInputs reads the shop-wide, rolling-30-day rate inputs shared by the per-order rollup AND the
+	// costing-summary KPI (so the frozen COGS margins can never diverge from the /vat-tu dashboard — ADR-039
+	// pt 7). One round-trip: scrap+print grams over the last 30 days (the waste factor = scrap ÷ print, guarded
+	// print=0→0 in Go), the aux per_order/per_month totals, and the real-orders-30d count. "Real order" mirrors
+	// the dashboard net-revenue predicate (dashboard.sql): money landed and not returned — payment_confirmed_at
+	// within the window (NULL fails the range → unpaid excluded) AND status <> 'REFUNDED'. The 30-day window is
+	// a rolling now()-interval (not a TZ calendar boundary like the dashboard's "today"), so it needs no caller range.
+	SnapshotShopInputs(ctx context.Context) (SnapshotShopInputsRow, error)
 	// UpdateAssetJobStatus records a worker lifecycle transition (slice-3 callback): the new status,
 	// the attempt count, last_error (set on 'failed', NULL clears it on 'ready'), and completed_at when
 	// supplied (COALESCE keeps the prior value when the narg is NULL).

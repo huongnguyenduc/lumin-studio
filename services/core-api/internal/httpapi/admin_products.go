@@ -35,6 +35,7 @@ const (
 	maxColorNameChars   = 100
 	maxOptionLabelChars = 200
 	maxOptionDescChars  = 2000
+	maxEstPrintHours    = 1000 // a print never runs 1000h (41 days); belt against a pathological estimate
 )
 
 // slugRe accepts a URL-safe slug: lowercase alphanumerics in dash-separated groups (e.g. "den-de-ban").
@@ -115,18 +116,19 @@ func (s *Server) CreateAdminProduct(ctx context.Context, request api.CreateAdmin
 		return api.CreateAdminProduct400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
 	}
 	p, err := db.NewCatalog(s.pool).CreateProduct(ctx, sqlc.InsertProductParams{
-		ID:             uuid.New(),
-		Slug:           c.Slug,
-		Name:           c.Name,
-		Description:    c.Description,
-		CategoryID:     c.CategoryID,
-		BasePrice:      c.BasePrice,
-		Dimensions:     c.Dimensions,
-		Material:       c.Material,
-		Model3dUrl:     "", // owned by the asset pipeline (P3-j-b), never set from the editor form
-		Images:         c.Images,
-		Status:         c.Status,
-		EstFilamentQty: c.EstFilamentQty, // ADR-039 flat-product deduct-on-print standard
+		ID:              uuid.New(),
+		Slug:            c.Slug,
+		Name:            c.Name,
+		Description:     c.Description,
+		CategoryID:      c.CategoryID,
+		BasePrice:       c.BasePrice,
+		Dimensions:      c.Dimensions,
+		Material:        c.Material,
+		Model3dUrl:      "", // owned by the asset pipeline (P3-j-b), never set from the editor form
+		Images:          c.Images,
+		Status:          c.Status,
+		EstFilamentQty:  c.EstFilamentQty,  // ADR-039 flat-product deduct-on-print standard
+		EstPrintMinutes: c.EstPrintMinutes, // ADR-039 pt 3 machine-time standard (COGS machineVnd)
 	})
 	if fields, ok := productWriteConflict(err); ok {
 		return api.CreateAdminProduct400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
@@ -160,17 +162,18 @@ func (s *Server) UpdateAdminProduct(ctx context.Context, request api.UpdateAdmin
 	}
 	repo := db.NewCatalog(s.pool)
 	p, err := repo.UpdateProduct(ctx, sqlc.UpdateProductParams{
-		ID:             request.Id,
-		Slug:           c.Slug,
-		Name:           c.Name,
-		Description:    c.Description,
-		CategoryID:     c.CategoryID,
-		BasePrice:      c.BasePrice,
-		Dimensions:     c.Dimensions,
-		Material:       c.Material,
-		Images:         c.Images,
-		Status:         c.Status,
-		EstFilamentQty: c.EstFilamentQty, // ADR-039 flat-product deduct-on-print standard
+		ID:              request.Id,
+		Slug:            c.Slug,
+		Name:            c.Name,
+		Description:     c.Description,
+		CategoryID:      c.CategoryID,
+		BasePrice:       c.BasePrice,
+		Dimensions:      c.Dimensions,
+		Material:        c.Material,
+		Images:          c.Images,
+		Status:          c.Status,
+		EstFilamentQty:  c.EstFilamentQty,  // ADR-039 flat-product deduct-on-print standard
+		EstPrintMinutes: c.EstPrintMinutes, // ADR-039 pt 3 machine-time standard (COGS machineVnd)
 	})
 	if fields, ok := productWriteConflict(err); ok {
 		return api.UpdateAdminProduct400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
@@ -437,16 +440,17 @@ func (s *Server) DeleteProductOption(ctx context.Context, request api.DeleteProd
 
 // cleanedProduct is the validated, persist-ready product input (jsonb columns already marshaled).
 type cleanedProduct struct {
-	Slug           string
-	Name           string
-	Description    string
-	CategoryID     uuid.UUID
-	BasePrice      int64
-	Dimensions     []byte
-	Material       string
-	Images         []byte
-	Status         sqlc.ProductStatus
-	EstFilamentQty int64 // ADR-039: est filament per unit for a FLAT product (0 = no estimate)
+	Slug            string
+	Name            string
+	Description     string
+	CategoryID      uuid.UUID
+	BasePrice       int64
+	Dimensions      []byte
+	Material        string
+	Images          []byte
+	Status          sqlc.ProductStatus
+	EstFilamentQty  int64 // ADR-039: est filament per unit for a FLAT product (0 = no estimate)
+	EstPrintMinutes int32 // ADR-039 pt 3: est machine time per unit, exact minutes (0 = no estimate)
 }
 
 // cleanProductInput trims + validates a product create/replace body and marshals its jsonb columns
@@ -487,6 +491,14 @@ func cleanProductInput(in api.ProductInput) (cleanedProduct, map[string]string, 
 	}
 	if c.EstFilamentQty < 0 {
 		fields["estFilamentQty"] = msgKey(codeValidation)
+	}
+	if in.EstPrintHours != nil {
+		h := *in.EstPrintHours
+		if math.IsNaN(h) || math.IsInf(h, 0) || h < 0 || h > maxEstPrintHours {
+			fields["estPrintHours"] = msgKey(codeValidation)
+		} else {
+			c.EstPrintMinutes = int32(math.Round(h * 60)) // ADR-039 pt 3: hours→exact minutes (the money freeze is int)
+		}
 	}
 	if _, ok := validMaterials[c.Material]; !ok {
 		fields["material"] = msgKey(codeValidation)

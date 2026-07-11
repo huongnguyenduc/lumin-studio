@@ -317,6 +317,8 @@ func TestClassifyFailsClosed(t *testing.T) {
 		"CreateAuxCost": authOwnerOnly,
 		"UpdateAuxCost": authOwnerOnly,
 		"DeleteAuxCost": authOwnerOnly,
+
+		"GetCostingSummary": authRequired, // derived KPI read — owner+staff (ADR-039 slice 4c-2)
 	}
 	for op, want := range cases {
 		if got := classify(op); got != want {

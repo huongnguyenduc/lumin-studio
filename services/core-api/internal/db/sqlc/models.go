@@ -690,6 +690,7 @@ type OrderItem struct {
 	UnitPrice       int64                  `json:"unitPrice"`
 	PartColors      []byte                 `json:"partColors"`
 	OptionChoices   []byte                 `json:"optionChoices"`
+	CostSnapshot    []byte                 `json:"costSnapshot"`
 }
 
 type Outbox struct {
@@ -727,22 +728,23 @@ type PrintJob struct {
 }
 
 type Product struct {
-	ID             uuid.UUID          `json:"id"`
-	Slug           string             `json:"slug"`
-	Name           string             `json:"name"`
-	Description    string             `json:"description"`
-	CategoryID     uuid.UUID          `json:"categoryId"`
-	BasePrice      int64              `json:"basePrice"`
-	Dimensions     []byte             `json:"dimensions"`
-	Material       string             `json:"material"`
-	Model3dUrl     string             `json:"model3dUrl"`
-	Images         []byte             `json:"images"`
-	Status         ProductStatus      `json:"status"`
-	RatingAvg      *float32           `json:"ratingAvg"`
-	ReviewCount    int32              `json:"reviewCount"`
-	CreatedAt      pgtype.Timestamptz `json:"createdAt"`
-	Model3dView    []byte             `json:"model3dView"`
-	EstFilamentQty int64              `json:"estFilamentQty"`
+	ID              uuid.UUID          `json:"id"`
+	Slug            string             `json:"slug"`
+	Name            string             `json:"name"`
+	Description     string             `json:"description"`
+	CategoryID      uuid.UUID          `json:"categoryId"`
+	BasePrice       int64              `json:"basePrice"`
+	Dimensions      []byte             `json:"dimensions"`
+	Material        string             `json:"material"`
+	Model3dUrl      string             `json:"model3dUrl"`
+	Images          []byte             `json:"images"`
+	Status          ProductStatus      `json:"status"`
+	RatingAvg       *float32           `json:"ratingAvg"`
+	ReviewCount     int32              `json:"reviewCount"`
+	CreatedAt       pgtype.Timestamptz `json:"createdAt"`
+	Model3dView     []byte             `json:"model3dView"`
+	EstFilamentQty  int64              `json:"estFilamentQty"`
+	EstPrintMinutes int32              `json:"estPrintMinutes"`
 }
 
 type ReplyTemplate struct {

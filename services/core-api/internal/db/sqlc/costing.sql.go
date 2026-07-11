@@ -109,6 +109,37 @@ func (q *Queries) InsertMachine(ctx context.Context, arg InsertMachineParams) (M
 	return i, err
 }
 
+const itemCostInputs = `-- name: ItemCostInputs :one
+
+SELECT
+  p.est_print_minutes::integer AS est_print_minutes,
+  (SELECT COALESCE(SUM(cost_vnd), 0)
+     FROM filament_consumption
+    WHERE order_item_id = oi.id AND kind = 'print')::bigint AS filament_vnd
+FROM order_items oi
+JOIN products p ON p.id = oi.product_id
+WHERE oi.id = $1
+`
+
+type ItemCostInputsRow struct {
+	EstPrintMinutes int32 `json:"estPrintMinutes"`
+	FilamentVnd     int64 `json:"filamentVnd"`
+}
+
+// ── COGS snapshot rollup + KPI reads (slice 4c-2, ADR-039 pt 5/6/7) ────────────────────────────────────
+// ItemCostInputs reads the two item-specific rollup inputs in one round-trip: the filament cost FROZEN at
+// print (Σ of the printed line's filament_consumption.cost_vnd — oracle R2: SUM per order_item_id and read
+// the frozen cost, NEVER re-derive from live batches; two parts sharing a material = two rows, both summed)
+// and the product's machine-time standard (est_print_minutes → machineVnd). A starved print drew 0 filament
+// and wrote NO ledger row, so the SUM is 0 (COALESCE) — distinct from "not costed" at the column level
+// (oracle R1: the rollup still WRITES a non-NULL snapshot). Unknown id → ErrNoRows (never in the rollup path).
+func (q *Queries) ItemCostInputs(ctx context.Context, id uuid.UUID) (ItemCostInputsRow, error) {
+	row := q.db.QueryRow(ctx, itemCostInputs, id)
+	var i ItemCostInputsRow
+	err := row.Scan(&i.EstPrintMinutes, &i.FilamentVnd)
+	return i, err
+}
+
 const listAuxCosts = `-- name: ListAuxCosts :many
 SELECT id, label, kind, amount_vnd, created_at, updated_at FROM aux_costs ORDER BY kind, label, id
 `
@@ -175,6 +206,90 @@ func (q *Queries) ListMachines(ctx context.Context) ([]Machine, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const primaryMachine = `-- name: PrimaryMachine :one
+SELECT id, name, purchase_price_vnd, depreciation_months, expected_hours_per_month, is_primary, active, created_at, updated_at FROM machines WHERE is_primary AND active ORDER BY updated_at DESC, id LIMIT 1
+`
+
+// PrimaryMachine returns the machine the snapshot attributes machine-hours to (ADR-039 pt 6). is_primary is
+// not enforced unique (000020 ponytail), so pick the most-recently-updated ACTIVE primary (spec-guardian
+// 4c-1 NOTE — robust to a stray second primary or an inactivated one). No primary set → ErrNoRows → the
+// rollup contributes machineVnd 0 (guarded), never a fault.
+func (q *Queries) PrimaryMachine(ctx context.Context) (Machine, error) {
+	row := q.db.QueryRow(ctx, primaryMachine)
+	var i Machine
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.PurchasePriceVnd,
+		&i.DepreciationMonths,
+		&i.ExpectedHoursPerMonth,
+		&i.IsPrimary,
+		&i.Active,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const setOrderItemCostSnapshot = `-- name: SetOrderItemCostSnapshot :exec
+UPDATE order_items SET cost_snapshot = $2 WHERE id = $1
+`
+
+type SetOrderItemCostSnapshotParams struct {
+	ID           uuid.UUID `json:"id"`
+	CostSnapshot []byte    `json:"costSnapshot"`
+}
+
+// SetOrderItemCostSnapshot writes the frozen COGS blob (the rollup marshals it in Go). Best-effort,
+// post-commit — a failure leaves cost_snapshot NULL ("chưa chốt", backfillable), never blocking the board.
+func (q *Queries) SetOrderItemCostSnapshot(ctx context.Context, arg SetOrderItemCostSnapshotParams) error {
+	_, err := q.db.Exec(ctx, setOrderItemCostSnapshot, arg.ID, arg.CostSnapshot)
+	return err
+}
+
+const snapshotShopInputs = `-- name: SnapshotShopInputs :one
+SELECT
+  (SELECT COALESCE(SUM(qty) FILTER (WHERE kind = 'scrap'), 0)
+     FROM filament_consumption WHERE at >= now() - interval '30 days')::bigint AS scrap_qty_30d,
+  (SELECT COALESCE(SUM(qty) FILTER (WHERE kind = 'print'), 0)
+     FROM filament_consumption WHERE at >= now() - interval '30 days')::bigint AS print_qty_30d,
+  (SELECT COALESCE(SUM(amount_vnd) FILTER (WHERE kind = 'per_order'), 0)
+     FROM aux_costs)::bigint AS aux_per_order_vnd,
+  (SELECT COALESCE(SUM(amount_vnd) FILTER (WHERE kind = 'per_month'), 0)
+     FROM aux_costs)::bigint AS aux_per_month_vnd,
+  (SELECT count(*)
+     FROM orders
+    WHERE payment_confirmed_at >= now() - interval '30 days' AND status <> 'REFUNDED')::bigint AS real_orders_30d
+`
+
+type SnapshotShopInputsRow struct {
+	ScrapQty30d    int64 `json:"scrapQty30d"`
+	PrintQty30d    int64 `json:"printQty30d"`
+	AuxPerOrderVnd int64 `json:"auxPerOrderVnd"`
+	AuxPerMonthVnd int64 `json:"auxPerMonthVnd"`
+	RealOrders30d  int64 `json:"realOrders30d"`
+}
+
+// SnapshotShopInputs reads the shop-wide, rolling-30-day rate inputs shared by the per-order rollup AND the
+// costing-summary KPI (so the frozen COGS margins can never diverge from the /vat-tu dashboard — ADR-039
+// pt 7). One round-trip: scrap+print grams over the last 30 days (the waste factor = scrap ÷ print, guarded
+// print=0→0 in Go), the aux per_order/per_month totals, and the real-orders-30d count. "Real order" mirrors
+// the dashboard net-revenue predicate (dashboard.sql): money landed and not returned — payment_confirmed_at
+// within the window (NULL fails the range → unpaid excluded) AND status <> 'REFUNDED'. The 30-day window is
+// a rolling now()-interval (not a TZ calendar boundary like the dashboard's "today"), so it needs no caller range.
+func (q *Queries) SnapshotShopInputs(ctx context.Context) (SnapshotShopInputsRow, error) {
+	row := q.db.QueryRow(ctx, snapshotShopInputs)
+	var i SnapshotShopInputsRow
+	err := row.Scan(
+		&i.ScrapQty30d,
+		&i.PrintQty30d,
+		&i.AuxPerOrderVnd,
+		&i.AuxPerMonthVnd,
+		&i.RealOrders30d,
+	)
+	return i, err
 }
 
 const updateAuxCost = `-- name: UpdateAuxCost :one
