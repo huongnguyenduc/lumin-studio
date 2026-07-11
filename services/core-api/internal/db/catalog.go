@@ -231,6 +231,86 @@ func (c *Catalog) DeleteOption(ctx context.Context, arg sqlc.DeleteOptionParams)
 	return err
 }
 
+// --- ADR-037 configurator: parts + option choices ---
+
+// CreatePart inserts a part and returns the persisted row.
+func (c *Catalog) CreatePart(ctx context.Context, arg sqlc.InsertPartParams) (sqlc.Part, error) {
+	return c.q.InsertPart(ctx, arg)
+}
+
+// PartsByProduct lists a product's named parts (display order).
+func (c *Catalog) PartsByProduct(ctx context.Context, productID uuid.UUID) ([]sqlc.Part, error) {
+	return c.q.ListPartsByProduct(ctx, productID)
+}
+
+// PartByProduct fetches a part scoped by (id, product_id); a partId under the wrong product → ErrNotFound.
+// The color handlers call it to validate a color's claimed partId belongs to the same product (ADR-037).
+func (c *Catalog) PartByProduct(ctx context.Context, arg sqlc.GetPartByProductParams) (sqlc.Part, error) {
+	part, err := c.q.GetPartByProduct(ctx, arg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Part{}, ErrNotFound
+	}
+	return part, err
+}
+
+// UpdatePart saves a part scoped by (id, product_id); a partId under the wrong product → ErrNotFound.
+func (c *Catalog) UpdatePart(ctx context.Context, arg sqlc.UpdatePartParams) (sqlc.Part, error) {
+	part, err := c.q.UpdatePart(ctx, arg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Part{}, ErrNotFound
+	}
+	return part, err
+}
+
+// DeletePart removes a part scoped by (id, product_id), or ErrNotFound. Deleting a part CASCADEs its colors;
+// a color already pinned by an order raises a foreign_key_violation (23503) passed through RAW so the handler
+// maps it to a 409 (archive instead), mirroring DeleteProduct.
+func (c *Catalog) DeletePart(ctx context.Context, arg sqlc.DeletePartParams) error {
+	_, err := c.q.DeletePart(ctx, arg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
+}
+
+// OptionByProduct fetches an option scoped by (id, product_id); an optionId under the wrong product →
+// ErrNotFound. The choice handlers call it to validate the {optionId} path segment belongs to the product.
+func (c *Catalog) OptionByProduct(ctx context.Context, arg sqlc.GetOptionByProductParams) (sqlc.Option, error) {
+	opt, err := c.q.GetOptionByProduct(ctx, arg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Option{}, ErrNotFound
+	}
+	return opt, err
+}
+
+// ChoicesByProduct lists every option_choice for a product's options (for the editor's detail assembly).
+func (c *Catalog) ChoicesByProduct(ctx context.Context, productID uuid.UUID) ([]sqlc.OptionChoice, error) {
+	return c.q.ListChoicesByProduct(ctx, productID)
+}
+
+// CreateOptionChoice inserts a choice and returns the persisted row.
+func (c *Catalog) CreateOptionChoice(ctx context.Context, arg sqlc.InsertOptionChoiceParams) (sqlc.OptionChoice, error) {
+	return c.q.InsertOptionChoice(ctx, arg)
+}
+
+// UpdateOptionChoice saves a choice scoped by (id, option_id); a choiceId under the wrong option → ErrNotFound.
+func (c *Catalog) UpdateOptionChoice(ctx context.Context, arg sqlc.UpdateOptionChoiceParams) (sqlc.OptionChoice, error) {
+	ch, err := c.q.UpdateOptionChoice(ctx, arg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.OptionChoice{}, ErrNotFound
+	}
+	return ch, err
+}
+
+// DeleteOptionChoice removes a choice scoped by (id, option_id), or ErrNotFound.
+func (c *Catalog) DeleteOptionChoice(ctx context.Context, arg sqlc.DeleteOptionChoiceParams) error {
+	_, err := c.q.DeleteOptionChoice(ctx, arg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
+}
+
 // CreateReview inserts a review and returns the persisted row.
 func (c *Catalog) CreateReview(ctx context.Context, arg sqlc.InsertReviewParams) (sqlc.Review, error) {
 	return c.q.InsertReview(ctx, arg)

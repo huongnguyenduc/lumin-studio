@@ -552,12 +552,13 @@ type Category struct {
 }
 
 type Color struct {
-	ID         uuid.UUID `json:"id"`
-	ProductID  uuid.UUID `json:"productId"`
-	Name       string    `json:"name"`
-	Hex        string    `json:"hex"`
-	Available  bool      `json:"available"`
-	PriceDelta int64     `json:"priceDelta"`
+	ID         uuid.UUID   `json:"id"`
+	ProductID  uuid.UUID   `json:"productId"`
+	Name       string      `json:"name"`
+	Hex        string      `json:"hex"`
+	Available  bool        `json:"available"`
+	PriceDelta int64       `json:"priceDelta"`
+	PartID     pgtype.UUID `json:"partId"`
 }
 
 type ConsentGrant struct {
@@ -589,6 +590,15 @@ type Option struct {
 	Type        OptionType `json:"type"`
 	PriceDelta  int64      `json:"priceDelta"`
 	MaxChars    *int32     `json:"maxChars"`
+}
+
+type OptionChoice struct {
+	ID           uuid.UUID `json:"id"`
+	OptionID     uuid.UUID `json:"optionId"`
+	Label        string    `json:"label"`
+	Description  string    `json:"description"`
+	PriceDelta   int64     `json:"priceDelta"`
+	DisplayOrder int32     `json:"displayOrder"`
 }
 
 type Order struct {
@@ -636,6 +646,13 @@ type Outbox struct {
 	Attempts      int32              `json:"attempts"`
 	CreatedAt     pgtype.Timestamptz `json:"createdAt"`
 	PublishedAt   pgtype.Timestamptz `json:"publishedAt"`
+}
+
+type Part struct {
+	ID           uuid.UUID `json:"id"`
+	ProductID    uuid.UUID `json:"productId"`
+	Name         string    `json:"name"`
+	DisplayOrder int32     `json:"displayOrder"`
 }
 
 type PrintJob struct {

@@ -28,6 +28,8 @@ func TestAdminProductWritesAreOwnerOnly(t *testing.T) {
 		Dimensions: api.Dimensions{W: 1, D: 1, H: 1}, Material: "PLA", Status: api.ProductStatus("draft")}
 	color := api.ColorInput{Name: "x", Hex: "#fff", Available: true}
 	opt := api.OptionInput{Label: "x", Type: api.OptionType("choice")}
+	part := api.PartInput{Name: "x"}
+	choice := api.OptionChoiceInput{Label: "x"}
 
 	calls := map[string]func(context.Context) error{
 		"CreateAdminProduct": func(ctx context.Context) error {
@@ -64,6 +66,30 @@ func TestAdminProductWritesAreOwnerOnly(t *testing.T) {
 		},
 		"DeleteProductOption": func(ctx context.Context) error {
 			_, err := srv.DeleteProductOption(ctx, api.DeleteProductOptionRequestObject{Id: id, OptionId: childID})
+			return err
+		},
+		"CreateProductPart": func(ctx context.Context) error {
+			_, err := srv.CreateProductPart(ctx, api.CreateProductPartRequestObject{Id: id, Body: &part})
+			return err
+		},
+		"UpdateProductPart": func(ctx context.Context) error {
+			_, err := srv.UpdateProductPart(ctx, api.UpdateProductPartRequestObject{Id: id, PartId: childID, Body: &part})
+			return err
+		},
+		"DeleteProductPart": func(ctx context.Context) error {
+			_, err := srv.DeleteProductPart(ctx, api.DeleteProductPartRequestObject{Id: id, PartId: childID})
+			return err
+		},
+		"CreateOptionChoice": func(ctx context.Context) error {
+			_, err := srv.CreateOptionChoice(ctx, api.CreateOptionChoiceRequestObject{Id: id, OptionId: childID, Body: &choice})
+			return err
+		},
+		"UpdateOptionChoice": func(ctx context.Context) error {
+			_, err := srv.UpdateOptionChoice(ctx, api.UpdateOptionChoiceRequestObject{Id: id, OptionId: childID, ChoiceId: uuid.New(), Body: &choice})
+			return err
+		},
+		"DeleteOptionChoice": func(ctx context.Context) error {
+			_, err := srv.DeleteOptionChoice(ctx, api.DeleteOptionChoiceRequestObject{Id: id, OptionId: childID, ChoiceId: uuid.New()})
 			return err
 		},
 	}

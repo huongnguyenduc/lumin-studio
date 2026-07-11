@@ -9,6 +9,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/api"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
@@ -70,8 +73,16 @@ func (s *Server) GetProductBySlug(ctx context.Context, request api.GetProductByS
 	if err != nil {
 		return nil, err
 	}
+	parts, err := repo.PartsByProduct(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	choices, err := repo.ChoicesByProduct(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
 
-	dto, err := productDTO(p, colors, options)
+	dto, err := productDTO(p, colors, options, parts, choices)
 	if err != nil {
 		// Corrupt dimensions/images JSONB is a server data fault, not a client error → logged, 500.
 		return nil, err
@@ -84,7 +95,7 @@ func (s *Server) GetProductBySlug(ctx context.Context, request api.GetProductByS
 // Docker-free unit test. Money stays raw int VND (never formatted server-side, always-must #2). colors,
 // options and images are non-nil empty slices when absent so the JSON renders `[]`, never `null`
 // (spec §03 zero-state).
-func productDTO(p sqlc.Product, colors []sqlc.Color, options []sqlc.Option) (api.Product, error) {
+func productDTO(p sqlc.Product, colors []sqlc.Color, options []sqlc.Option, parts []sqlc.Part, choices []sqlc.OptionChoice) (api.Product, error) {
 	var dims api.Dimensions
 	if err := json.Unmarshal(p.Dimensions, &dims); err != nil {
 		return api.Product{}, fmt.Errorf("product %s: decode dimensions jsonb: %w", p.Slug, err)
@@ -107,7 +118,8 @@ func productDTO(p sqlc.Product, colors []sqlc.Color, options []sqlc.Option) (api
 		Model3dUrl:  p.Model3dUrl,
 		Images:      images,
 		Colors:      colorsDTO(colors),
-		Options:     optionsDTO(options),
+		Options:     optionsDTO(options, choices),
+		Parts:       partsDTO(parts),
 		Status:      api.ProductStatus(p.Status),
 		RatingAvg:   p.RatingAvg,
 		ReviewCount: int(p.ReviewCount),
@@ -125,17 +137,28 @@ func colorsDTO(rows []sqlc.Color) []api.Color {
 			Name:       c.Name,
 			Hex:        c.Hex,
 			Available:  c.Available,
-			PriceDelta: c.PriceDelta, // raw int-VND (may be 0)
+			PriceDelta: c.PriceDelta,            // raw int-VND (may be 0)
+			PartId:     uuidPtrFromPg(c.PartID), // ADR-037: null = flat product-level colour
 		}
 	}
 	return out
 }
 
-// optionsDTO maps option rows to the wire shape, dropping the internal productId and widening the
-// nullable max_chars (int32) to the wire *int. A nil/empty result yields a non-nil empty slice → `[]`.
-func optionsDTO(rows []sqlc.Option) []api.Option {
+// optionsDTO maps option rows to the wire shape, dropping the internal productId and widening the nullable
+// max_chars (int32) to the wire *int. Each option's enumerated choices (ADR-037) are grouped in from the
+// product-wide choices list by option_id; an option with none renders `choices: []`. A nil/empty options
+// result yields a non-nil empty slice → `[]`.
+func optionsDTO(rows []sqlc.Option, choices []sqlc.OptionChoice) []api.Option {
+	byOption := map[uuid.UUID][]api.OptionChoice{}
+	for _, ch := range choices {
+		byOption[ch.OptionID] = append(byOption[ch.OptionID], optionChoiceDTO(ch))
+	}
 	out := make([]api.Option, len(rows))
 	for i, o := range rows {
+		ch := byOption[o.ID]
+		if ch == nil {
+			ch = []api.OptionChoice{} // render [], never null (spec §03)
+		}
 		out[i] = api.Option{
 			Id:          o.ID,
 			Label:       o.Label,
@@ -143,9 +166,39 @@ func optionsDTO(rows []sqlc.Option) []api.Option {
 			Type:        api.OptionType(o.Type),
 			PriceDelta:  o.PriceDelta, // raw int-VND (may be 0)
 			MaxChars:    maxCharsPtr(o.MaxChars),
+			Choices:     ch,
 		}
 	}
 	return out
+}
+
+// partDTO maps one part row to the wire shape (ADR-037).
+func partDTO(p sqlc.Part) api.Part {
+	return api.Part{
+		Id:           p.ID,
+		Name:         p.Name,
+		DisplayOrder: int(p.DisplayOrder),
+	}
+}
+
+// partsDTO maps part rows to the wire shape (ADR-037). A nil/empty result yields a non-nil empty slice → `[]`.
+func partsDTO(rows []sqlc.Part) []api.Part {
+	out := make([]api.Part, len(rows))
+	for i, p := range rows {
+		out[i] = partDTO(p)
+	}
+	return out
+}
+
+// optionChoiceDTO maps one option-choice row to the wire shape (ADR-037). Money stays raw int-VND.
+func optionChoiceDTO(c sqlc.OptionChoice) api.OptionChoice {
+	return api.OptionChoice{
+		Id:           c.ID,
+		Label:        c.Label,
+		Description:  c.Description,
+		PriceDelta:   c.PriceDelta, // raw int-VND (may be 0)
+		DisplayOrder: int(c.DisplayOrder),
+	}
 }
 
 // maxCharsPtr widens the sqlc nullable *int32 to the wire *int (nil stays nil → JSON null).
@@ -155,6 +208,17 @@ func maxCharsPtr(v *int32) *int {
 	}
 	n := int(*v)
 	return &n
+}
+
+// uuidPtrFromPg widens a nullable pgtype.UUID (colors.part_id) to the wire *uuid pointer — nil when the
+// column is NULL (a flat, product-level colour, ADR-037). openapi_types.UUID is a type alias for
+// uuid.UUID, so the *uuid.UUID assigns straight to api.Color.PartId.
+func uuidPtrFromPg(v pgtype.UUID) *uuid.UUID {
+	if !v.Valid {
+		return nil
+	}
+	u := uuid.UUID(v.Bytes)
+	return &u
 }
 
 // GetProducts handles GET /products (PR-P1-c): the public storefront catalog list. It is authPublic

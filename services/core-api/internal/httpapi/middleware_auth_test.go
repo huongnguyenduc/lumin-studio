@@ -290,6 +290,13 @@ func TestClassifyFailsClosed(t *testing.T) {
 		"UpdateProductOption": authOwnerOnly,
 		"DeleteProductOption": authOwnerOnly,
 
+		"CreateProductPart":  authOwnerOnly, // ADR-037 configurator writes — owner-only catalog
+		"UpdateProductPart":  authOwnerOnly,
+		"DeleteProductPart":  authOwnerOnly,
+		"CreateOptionChoice": authOwnerOnly,
+		"UpdateOptionChoice": authOwnerOnly,
+		"DeleteOptionChoice": authOwnerOnly,
+
 		"GetProductAssetJobs":      authRequired,  // owner+staff read (mirrors product reads)
 		"CreateProductModelUpload": authOwnerOnly, // owner-only catalog-asset write
 		"CreateProductAssetJob":    authOwnerOnly,

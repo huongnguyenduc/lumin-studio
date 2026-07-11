@@ -130,9 +130,12 @@ WHERE status = 'active'
        @@ plainto_tsquery('simple', immutable_unaccent(sqlc.narg('search')::text))
   );
 
+-- InsertColor takes an optional part_id (ADR-037): NULL = flat product-level colour (legacy/default);
+-- set = the colour belongs to that part. The handler validates the part ∈ the same product first
+-- (GetPartByProduct) so a colour can never be grouped under another product's part.
 -- name: InsertColor :one
-INSERT INTO colors (id, product_id, name, hex, available, price_delta)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO colors (id, product_id, name, hex, available, price_delta, part_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING *;
 
 -- name: ListColorsByProduct :many
@@ -143,7 +146,7 @@ SELECT * FROM colors WHERE product_id = $1 ORDER BY name;
 -- cross-product edit. RETURNING lets the handler 404 on a stale id.
 -- name: UpdateColor :one
 UPDATE colors
-SET name = $3, hex = $4, available = $5, price_delta = $6
+SET name = $3, hex = $4, available = $5, price_delta = $6, part_id = $7
 WHERE id = $1 AND product_id = $2
 RETURNING *;
 
@@ -197,3 +200,62 @@ LIMIT @page_limit::int OFFSET @page_offset::int;
 -- name: CountPublishedReviewsByProduct :one
 SELECT count(*) FROM reviews
 WHERE product_id = @product_id AND status = 'published';
+
+-- === ADR-037 configurator: parts (named part groups, each with its own colour set) ===
+
+-- name: InsertPart :one
+INSERT INTO parts (id, product_id, name, display_order)
+VALUES ($1, $2, $3, $4)
+RETURNING *;
+
+-- name: ListPartsByProduct :many
+SELECT * FROM parts WHERE product_id = $1 ORDER BY display_order, id;
+
+-- GetPartByProduct scopes a part to its product — the colour handlers call it to validate that a colour's
+-- claimed partId belongs to the SAME product before assigning it (ADR-037: colour ∈ part ∈ product), so a
+-- colour can never be grouped under another product's part. Missing → ErrNoRows → 400 field(partId).
+-- name: GetPartByProduct :one
+SELECT * FROM parts WHERE id = $1 AND product_id = $2;
+
+-- UpdatePart / DeletePart are scoped by BOTH id AND product_id (a partId under another product → no row →
+-- 404), the same cross-product guard as UpdateColor/UpdateOption. Deleting a part CASCADEs its colours
+-- (000015); a colour pinned by an order_item (FK NO ACTION) blocks the delete → 23503 → 409 (archive).
+-- name: UpdatePart :one
+UPDATE parts SET name = $3, display_order = $4
+WHERE id = $1 AND product_id = $2
+RETURNING *;
+
+-- name: DeletePart :one
+DELETE FROM parts WHERE id = $1 AND product_id = $2 RETURNING id;
+
+-- === ADR-037 configurator: option choices (enumerated values for a `choice` option) ===
+
+-- name: InsertOptionChoice :one
+INSERT INTO option_choices (id, option_id, label, description, price_delta, display_order)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING *;
+
+-- ListChoicesByProduct returns every option_choice for a product's options (joined via options.product_id),
+-- for the editor's Product-detail assembly (the handler groups them by option_id into Option.choices[]).
+-- Ordered by option then display_order for a deterministic nesting.
+-- name: ListChoicesByProduct :many
+SELECT oc.* FROM option_choices oc
+JOIN options o ON o.id = oc.option_id
+WHERE o.product_id = $1
+ORDER BY oc.option_id, oc.display_order, oc.id;
+
+-- GetOptionByProduct scopes an option to its product — the choice handlers call it to validate the
+-- {optionId} in the path belongs to {id} before touching its choices (a choice under another product's
+-- option → 404), the option-level analogue of the (id, product_id) scoping on colours/options.
+-- name: GetOptionByProduct :one
+SELECT * FROM options WHERE id = $1 AND product_id = $2;
+
+-- UpdateOptionChoice / DeleteOptionChoice are scoped by BOTH id AND option_id (a choiceId under another
+-- option → no row → 404); the handler has already confirmed the option ∈ product via GetOptionByProduct.
+-- name: UpdateOptionChoice :one
+UPDATE option_choices SET label = $3, description = $4, price_delta = $5, display_order = $6
+WHERE id = $1 AND option_id = $2
+RETURNING *;
+
+-- name: DeleteOptionChoice :one
+DELETE FROM option_choices WHERE id = $1 AND option_id = $2 RETURNING id;
