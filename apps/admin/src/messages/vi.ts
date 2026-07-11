@@ -296,6 +296,101 @@ export const vi = {
       error: 'Mất kết nối một chút — bạn thử lại giúp mình nhé.',
     },
   },
+  materials: {
+    title: 'Vật tư & chi phí',
+    subtitle:
+      'Giá vốn động theo thời gian — filament bình quân gia quyền theo cuộn, giờ máy khấu hao, hao hụt từ log và chi phí phụ. Mỗi đơn chốt snapshot giá vốn lúc bắt đầu in.',
+    tabsLabel: 'Nhóm chi phí',
+    tabs: {
+      filament: 'Filament',
+      machine: 'Giờ máy',
+      aux: 'Chi phí phụ',
+      waste: 'Hao hụt',
+    },
+    kpi: {
+      stockLabel: 'Tồn filament',
+      stock: '{qty} g',
+      lowStock: '● {count} màu sắp hết',
+      stockOk: 'Các màu còn đủ',
+      machineRateLabel: 'Đơn giá giờ máy',
+      perHour: '{rate}/h',
+      primaryMachine: 'Máy chính',
+      noPrimary: 'Chưa đặt máy chính',
+      wasteLabel: 'Hệ số hao hụt',
+      wasteValue: '+{pct}%',
+      wasteWindow: 'Từ log 30 ngày',
+      auxLabel: 'Phân bổ phụ / đơn',
+      auxOrders: '{count} đơn thực 30 ngày',
+    },
+    filament: {
+      empty:
+        'Chưa có vật tư nào. Mỗi màu filament là một dòng giá vốn riêng, tính bình quân gia quyền theo cuộn đã nhập.',
+      colName: 'Màu (có tên)',
+      colType: 'Loại',
+      colCost: 'Giá vốn / đơn vị',
+      colStock: 'Tồn',
+      colStatus: 'Trạng thái',
+      perUnit: '{rate}/{unit}',
+      qty: '{qty}{unit}',
+      status: {
+        ok: 'Đủ',
+        low: 'Sắp hết',
+        track: 'Theo dõi',
+      },
+      explainerTitle: 'Giá vốn mỗi màu',
+      explainer:
+        'Mỗi màu gộp các cuộn còn lại rồi tính bình quân gia quyền theo gram tồn. Nhập cuộn mới giá khác thì giá vốn tự cập nhật.',
+      lotsDeferred: 'Chi tiết từng lô nhập sẽ hiện cùng thao tác nhập cuộn ở bản cập nhật tới.',
+    },
+    machine: {
+      empty: 'Chưa có máy in nào. Thêm máy để tính đơn giá giờ theo khấu hao.',
+      colMachine: 'Máy',
+      colPrice: 'Nguyên giá',
+      colDep: 'Khấu hao',
+      colHours: 'Giờ / tháng',
+      colRate: 'Đơn giá / giờ',
+      primaryTag: 'Máy chính',
+      inactiveTag: 'Nghỉ',
+      months: '{n} tháng',
+      hours: '{n} h',
+      perHour: '{rate}/h',
+      calcTitle: '{name} — cách tính',
+      price: 'Nguyên giá',
+      dep: 'Khấu hao',
+      perMonth: 'Mỗi tháng',
+      runHours: 'Giờ chạy / tháng',
+      rate: 'Đơn giá giờ máy',
+      calcNote:
+        'Đơn giá giờ = khấu hao mỗi tháng chia cho giờ chạy dự kiến. Đổi máy chính thì đơn mới dùng ngay giá này.',
+      noPrimary: 'Chưa đặt máy chính — đánh dấu một máy làm máy chính để đơn mới có đơn giá giờ.',
+    },
+    aux: {
+      empty:
+        'Chưa có chi phí phụ nào. Thêm khoản đóng gói, điện, mặt bằng… để phân bổ vào mỗi đơn.',
+      perOrderTitle: 'Theo đơn — tính thẳng mỗi đơn',
+      perOrderNote: 'mỗi đơn',
+      perMonthTitle: 'Theo tháng — phân bổ ÷ đơn thực',
+      perMonthNote: 'mỗi tháng',
+      sectionEmpty: 'Chưa có khoản nào ở nhóm này.',
+      allocTitle: 'Phân bổ / đơn',
+      allocPerOrder: 'Theo đơn',
+      allocMonthly: 'Tổng / tháng',
+      allocOrders: '÷ Đơn thực 30 ngày',
+      orders: '≈ {count} đơn',
+      allocResult: 'Cộng vào mỗi đơn',
+      allocNote:
+        'Khoản theo đơn cộng thẳng. Khoản theo tháng chia cho số đơn thực 30 ngày (tự đếm) rồi phân bổ — càng nhiều đơn, mỗi đơn gánh càng nhẹ.',
+    },
+    waste: {
+      factorTitle: 'Hệ số hao hụt',
+      factorValue: '+{pct}%',
+      factorNote: 'Trên khối lượng nhựa mỗi đơn',
+      explain:
+        'Tự tính từ log in hỏng và thải trong 30 ngày qua, cộng vào giá vốn mỗi đơn dưới dạng phần trăm. Hệ số trượt theo cửa sổ nên luôn phản ánh tình trạng máy hiện tại.',
+      logDeferred:
+        'Nhật ký in hỏng chi tiết sẽ hiện ở đây cùng thao tác ghi in hỏng ở bản cập nhật tới.',
+    },
+  },
 } as const;
 
 export type AdminMessages = typeof vi;
