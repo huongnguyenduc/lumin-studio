@@ -89,6 +89,40 @@ func (j *Jobs) AdvancePrintStage(ctx context.Context, id uuid.UUID, stage sqlc.P
 	return row, err
 }
 
+// ClaimPrintForPrinting is the atomic deduct-on-print claim (ADR-039 pt 4): it moves a job to PRINTING and
+// returns claimedNow — TRUE when THIS call won the FIRST →PRINTING (the caller MUST draw filament), FALSE when
+// the job was already deducted (a re-drag or a concurrent second mover — the caller must NOT re-draw). It runs
+// the conditional claim UPDATE (stage→PRINTING + stamp filament_deducted_at WHERE it is NULL); a 0-row result
+// is disambiguated by reading the row back — gone → ErrNotFound, else already-deducted (its stage is nudged to
+// PRINTING so a PACKING→PRINTING re-drag still lands, WITHOUT re-drawing). Enlist j over the pgx.Tx so the
+// claim, the draw and the ledger row commit as one unit.
+func (j *Jobs) ClaimPrintForPrinting(ctx context.Context, id uuid.UUID) (sqlc.PrintJob, bool, error) {
+	row, err := j.q.ClaimPrintForPrinting(ctx, id)
+	if err == nil {
+		return row, true, nil // won the claim → the caller draws filament
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.PrintJob{}, false, err
+	}
+	// 0 rows: the job is gone OR already deducted (filament_deducted_at not NULL). Read it back to tell apart.
+	existing, err := j.q.GetPrintJobByID(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.PrintJob{}, false, ErrNotFound
+	}
+	if err != nil {
+		return sqlc.PrintJob{}, false, err
+	}
+	if existing.Stage != sqlc.PrintStagePRINTING {
+		// Already deducted but sitting in another stage (PACKING→PRINTING re-drag): land the stage move
+		// without re-drawing filament.
+		existing, err = j.q.UpdatePrintJobStage(ctx, sqlc.UpdatePrintJobStageParams{ID: id, Stage: sqlc.PrintStagePRINTING})
+		if err != nil {
+			return sqlc.PrintJob{}, false, err
+		}
+	}
+	return existing, false, nil
+}
+
 // PrintQueue is the admin kanban read (P3-f): every print job across all stages, joined to the order
 // code + product name + quantity so a card says what to make for which order. Ordered stage then
 // created_at (FIFO per column); the caller groups by stage into the board columns.

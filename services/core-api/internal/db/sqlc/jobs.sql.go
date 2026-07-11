@@ -12,6 +12,36 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const claimPrintForPrinting = `-- name: ClaimPrintForPrinting :one
+UPDATE print_jobs
+SET stage = 'PRINTING', filament_deducted_at = now(), updated_at = now()
+WHERE id = $1 AND filament_deducted_at IS NULL
+RETURNING id, order_item_id, stage, printer, color_name, eta, created_at, updated_at, filament_deducted_at
+`
+
+// ClaimPrintForPrinting is the atomic deduct-on-print claim (ADR-039 pt 4): it moves a job to PRINTING AND
+// stamps filament_deducted_at in ONE conditional UPDATE, but only WHERE filament_deducted_at IS NULL — so
+// the FIRST →PRINTING wins the row (RETURNING it → the caller draws filament), while any later move (a
+// PACKING→PRINTING re-drag, or a second staff dragging at the same moment, serialized on the row lock)
+// matches 0 rows → the caller reads the row back and skips re-deducting. This is the idempotency +
+// concurrency guard that keeps one physical print from drawing filament twice.
+func (q *Queries) ClaimPrintForPrinting(ctx context.Context, id uuid.UUID) (PrintJob, error) {
+	row := q.db.QueryRow(ctx, claimPrintForPrinting, id)
+	var i PrintJob
+	err := row.Scan(
+		&i.ID,
+		&i.OrderItemID,
+		&i.Stage,
+		&i.Printer,
+		&i.ColorName,
+		&i.Eta,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.FilamentDeductedAt,
+	)
+	return i, err
+}
+
 const createAssetJob = `-- name: CreateAssetJob :one
 
 INSERT INTO asset_jobs (
@@ -85,7 +115,7 @@ func (q *Queries) GetAssetJobByID(ctx context.Context, id uuid.UUID) (AssetJob, 
 }
 
 const getPrintJobByID = `-- name: GetPrintJobByID :one
-SELECT id, order_item_id, stage, printer, color_name, eta, created_at, updated_at FROM print_jobs WHERE id = $1
+SELECT id, order_item_id, stage, printer, color_name, eta, created_at, updated_at, filament_deducted_at FROM print_jobs WHERE id = $1
 `
 
 func (q *Queries) GetPrintJobByID(ctx context.Context, id uuid.UUID) (PrintJob, error) {
@@ -100,6 +130,7 @@ func (q *Queries) GetPrintJobByID(ctx context.Context, id uuid.UUID) (PrintJob, 
 		&i.Eta,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FilamentDeductedAt,
 	)
 	return i, err
 }
@@ -152,7 +183,7 @@ const insertPrintJob = `-- name: InsertPrintJob :one
 INSERT INTO print_jobs (
   id, order_item_id, stage, printer, color_name, eta
 ) VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, order_item_id, stage, printer, color_name, eta, created_at, updated_at
+RETURNING id, order_item_id, stage, printer, color_name, eta, created_at, updated_at, filament_deducted_at
 `
 
 type InsertPrintJobParams struct {
@@ -183,6 +214,7 @@ func (q *Queries) InsertPrintJob(ctx context.Context, arg InsertPrintJobParams) 
 		&i.Eta,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FilamentDeductedAt,
 	)
 	return i, err
 }
@@ -263,7 +295,7 @@ func (q *Queries) ListAssetJobsByStatus(ctx context.Context, status AssetJobStat
 }
 
 const listPrintJobsByStage = `-- name: ListPrintJobsByStage :many
-SELECT id, order_item_id, stage, printer, color_name, eta, created_at, updated_at FROM print_jobs WHERE stage = $1 ORDER BY created_at
+SELECT id, order_item_id, stage, printer, color_name, eta, created_at, updated_at, filament_deducted_at FROM print_jobs WHERE stage = $1 ORDER BY created_at
 `
 
 func (q *Queries) ListPrintJobsByStage(ctx context.Context, stage PrintStage) ([]PrintJob, error) {
@@ -284,6 +316,7 @@ func (q *Queries) ListPrintJobsByStage(ctx context.Context, stage PrintStage) ([
 			&i.Eta,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.FilamentDeductedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -413,7 +446,7 @@ UPDATE print_jobs
 SET stage = $1,
     updated_at = now()
 WHERE id = $2
-RETURNING id, order_item_id, stage, printer, color_name, eta, created_at, updated_at
+RETURNING id, order_item_id, stage, printer, color_name, eta, created_at, updated_at, filament_deducted_at
 `
 
 type UpdatePrintJobStageParams struct {
@@ -434,6 +467,7 @@ func (q *Queries) UpdatePrintJobStage(ctx context.Context, arg UpdatePrintJobSta
 		&i.Eta,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FilamentDeductedAt,
 	)
 	return i, err
 }

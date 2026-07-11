@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/api"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
@@ -44,8 +46,14 @@ func (s *Server) GetPrintQueue(ctx context.Context, _ api.GetPrintQueueRequestOb
 // customer's OrderStatus. The print queue is STORED, staff-driven and finer-grained than order status,
 // advanced INDEPENDENTLY of it (D6); an OrderStatus change goes through POST /orders/{id}/transitions,
 // which enforces the RBAC + statusHistory + →SHIPPING QC-photo/tracking gate (P3-e) that a board drag must
-// never bypass. A missing body or a stage outside the enum → 400 (before the write); an unknown job id →
-// 404. On success it re-reads the enriched card so the mutate response carries the same shape as the list.
+// never bypass. A missing body or a stage outside the enum → 400 (before the write); an unknown job id → 404.
+//
+// A move to PRINTING also DRAWS FILAMENT (ADR-039 deduct-on-print): an atomic claim (ClaimPrintForPrinting)
+// stamps filament_deducted_at so only the FIRST →PRINTING draws — a re-drag or concurrent second mover just
+// re-lands the stage. The claim + draw run in ONE tx (withTx), so they commit atomically; a costing/DB fault
+// rolls the whole move back (retryable), while a stock shortfall clamps + logs and never blocks the board.
+// On success it re-reads the enriched card (in-tx) so the response matches the board list shape, then pushes
+// it to open boards post-commit.
 func (s *Server) AdvancePrintJobStage(ctx context.Context, request api.AdvancePrintJobStageRequestObject) (api.AdvancePrintJobStageResponseObject, error) {
 	badRequest := api.AdvancePrintJobStage400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}
 	if request.Body == nil {
@@ -58,24 +66,37 @@ func (s *Server) AdvancePrintJobStage(ctx context.Context, request api.AdvancePr
 		return badRequest, nil
 	}
 
-	jobs := db.NewJobs(s.pool)
-	if _, err := jobs.AdvancePrintStage(ctx, request.Id, stage); err != nil {
+	var card api.PrintQueueJob
+	err := withTx(ctx, s.pool, func(tx pgx.Tx) error {
+		jobs := db.NewJobs(tx)
+		if stage == sqlc.PrintStagePRINTING {
+			// Atomic deduct-on-print claim: only the FIRST →PRINTING draws filament (ADR-039 pt 4).
+			job, claimedNow, err := jobs.ClaimPrintForPrinting(ctx, request.Id)
+			if err != nil {
+				return err // ErrNotFound → 404
+			}
+			if claimedNow {
+				if err := s.deductFilamentForPrint(ctx, tx, job.OrderItemID); err != nil {
+					return err // rolls back the claim too → retryable, no half-draw
+				}
+			}
+		} else if _, err := jobs.AdvancePrintStage(ctx, request.Id, stage); err != nil {
+			return err // ErrNotFound → 404
+		}
+		// Re-read the enriched card WITHIN the tx so the mutate response matches the board list shape.
+		row, err := jobs.PrintQueueEntry(ctx, request.Id)
+		if err != nil {
+			return err
+		}
+		card, err = printQueueEntryDTO(row)
+		return err // malformed part_colors jsonb (never written by the capture seam) → 500, logged
+	})
+	if err != nil {
 		return nil, err // ErrNotFound → 404; any other db fault → 500 (mapError, no leak)
 	}
-	// Re-read the enriched card so the mutate response matches the board list shape. The job exists
-	// (AdvancePrintStage just updated it); a not-found here would be a concurrent delete → an honest 404.
-	row, err := jobs.PrintQueueEntry(ctx, request.Id)
-	if err != nil {
-		return nil, err
-	}
-	card, err := printQueueEntryDTO(row)
-	if err != nil {
-		return nil, err // malformed part_colors jsonb (never written by the capture seam) → 500, logged
-	}
-	// Push the advanced card to every open board (P3-g SSE). Post-commit — AdvancePrintStage's UPDATE
-	// is committed and PrintQueueEntry read it back — so this is publish-on-commit (ADR-006 spirit); it
-	// is non-blocking and best-effort (a missed frame self-heals via the client's re-read/poll), so it
-	// never affects the PATCH's own 200 response.
+	// Push the advanced card to every open board (P3-g SSE). Post-commit — the tx is committed — so this is
+	// publish-on-commit (ADR-006 spirit); non-blocking and best-effort (a missed frame self-heals via the
+	// client's re-read/poll), so it never affects the PATCH's own 200 response.
 	s.printHub.broadcast(card)
 	return api.AdvancePrintJobStage200JSONResponse(card), nil
 }

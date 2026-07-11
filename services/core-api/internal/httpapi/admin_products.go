@@ -115,17 +115,18 @@ func (s *Server) CreateAdminProduct(ctx context.Context, request api.CreateAdmin
 		return api.CreateAdminProduct400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
 	}
 	p, err := db.NewCatalog(s.pool).CreateProduct(ctx, sqlc.InsertProductParams{
-		ID:          uuid.New(),
-		Slug:        c.Slug,
-		Name:        c.Name,
-		Description: c.Description,
-		CategoryID:  c.CategoryID,
-		BasePrice:   c.BasePrice,
-		Dimensions:  c.Dimensions,
-		Material:    c.Material,
-		Model3dUrl:  "", // owned by the asset pipeline (P3-j-b), never set from the editor form
-		Images:      c.Images,
-		Status:      c.Status,
+		ID:             uuid.New(),
+		Slug:           c.Slug,
+		Name:           c.Name,
+		Description:    c.Description,
+		CategoryID:     c.CategoryID,
+		BasePrice:      c.BasePrice,
+		Dimensions:     c.Dimensions,
+		Material:       c.Material,
+		Model3dUrl:     "", // owned by the asset pipeline (P3-j-b), never set from the editor form
+		Images:         c.Images,
+		Status:         c.Status,
+		EstFilamentQty: c.EstFilamentQty, // ADR-039 flat-product deduct-on-print standard
 	})
 	if fields, ok := productWriteConflict(err); ok {
 		return api.CreateAdminProduct400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
@@ -159,16 +160,17 @@ func (s *Server) UpdateAdminProduct(ctx context.Context, request api.UpdateAdmin
 	}
 	repo := db.NewCatalog(s.pool)
 	p, err := repo.UpdateProduct(ctx, sqlc.UpdateProductParams{
-		ID:          request.Id,
-		Slug:        c.Slug,
-		Name:        c.Name,
-		Description: c.Description,
-		CategoryID:  c.CategoryID,
-		BasePrice:   c.BasePrice,
-		Dimensions:  c.Dimensions,
-		Material:    c.Material,
-		Images:      c.Images,
-		Status:      c.Status,
+		ID:             request.Id,
+		Slug:           c.Slug,
+		Name:           c.Name,
+		Description:    c.Description,
+		CategoryID:     c.CategoryID,
+		BasePrice:      c.BasePrice,
+		Dimensions:     c.Dimensions,
+		Material:       c.Material,
+		Images:         c.Images,
+		Status:         c.Status,
+		EstFilamentQty: c.EstFilamentQty, // ADR-039 flat-product deduct-on-print standard
 	})
 	if fields, ok := productWriteConflict(err); ok {
 		return api.UpdateAdminProduct400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
@@ -282,15 +284,20 @@ func (s *Server) CreateProductColor(ctx context.Context, request api.CreateProdu
 		return api.CreateProductColor400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(partFields))}, nil
 	}
 	col, err := repo.CreateColor(ctx, sqlc.InsertColorParams{
-		ID:         uuid.New(),
-		ProductID:  request.Id,
-		Name:       name,
-		Hex:        hex,
-		Available:  request.Body.Available,
-		PriceDelta: priceDelta,
-		PartID:     partID,
+		ID:                 uuid.New(),
+		ProductID:          request.Id,
+		Name:               name,
+		Hex:                hex,
+		Available:          request.Body.Available,
+		PriceDelta:         priceDelta,
+		PartID:             partID,
+		FilamentMaterialID: pgUUIDPtr(request.Body.FilamentMaterialId), // ADR-039: null = unlinked
 	})
 	if pgCode(err) == pgForeignKeyViolation {
+		if pgConstraint(err) == fkColorFilamentMaterial {
+			// A filamentMaterialId matching no filament → a field error, not the unknown-product 404.
+			return api.CreateProductColor400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(map[string]string{"filamentMaterialId": msgKey(codeValidation)}))}, nil
+		}
 		return nil, db.ErrNotFound // unknown product → 404
 	}
 	if err != nil {
@@ -321,14 +328,19 @@ func (s *Server) UpdateProductColor(ctx context.Context, request api.UpdateProdu
 		return api.UpdateProductColor400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(partFields))}, nil
 	}
 	col, err := repo.UpdateColor(ctx, sqlc.UpdateColorParams{
-		ID:         request.ColorId,
-		ProductID:  request.Id,
-		Name:       name,
-		Hex:        hex,
-		Available:  request.Body.Available,
-		PriceDelta: priceDelta,
-		PartID:     partID,
+		ID:                 request.ColorId,
+		ProductID:          request.Id,
+		Name:               name,
+		Hex:                hex,
+		Available:          request.Body.Available,
+		PriceDelta:         priceDelta,
+		PartID:             partID,
+		FilamentMaterialID: pgUUIDPtr(request.Body.FilamentMaterialId), // ADR-039: null = unlinked
 	})
+	if pgCode(err) == pgForeignKeyViolation && pgConstraint(err) == fkColorFilamentMaterial {
+		// A filamentMaterialId matching no filament → a field error (an update trips no product FK).
+		return api.UpdateProductColor400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(map[string]string{"filamentMaterialId": msgKey(codeValidation)}))}, nil
+	}
 	if err != nil {
 		return nil, err // db.ErrNotFound → 404
 	}
@@ -425,15 +437,16 @@ func (s *Server) DeleteProductOption(ctx context.Context, request api.DeleteProd
 
 // cleanedProduct is the validated, persist-ready product input (jsonb columns already marshaled).
 type cleanedProduct struct {
-	Slug        string
-	Name        string
-	Description string
-	CategoryID  uuid.UUID
-	BasePrice   int64
-	Dimensions  []byte
-	Material    string
-	Images      []byte
-	Status      sqlc.ProductStatus
+	Slug           string
+	Name           string
+	Description    string
+	CategoryID     uuid.UUID
+	BasePrice      int64
+	Dimensions     []byte
+	Material       string
+	Images         []byte
+	Status         sqlc.ProductStatus
+	EstFilamentQty int64 // ADR-039: est filament per unit for a FLAT product (0 = no estimate)
 }
 
 // cleanProductInput trims + validates a product create/replace body and marshals its jsonb columns
@@ -453,6 +466,9 @@ func cleanProductInput(in api.ProductInput) (cleanedProduct, map[string]string, 
 	if in.Description != nil {
 		c.Description = strings.TrimSpace(*in.Description)
 	}
+	if in.EstFilamentQty != nil {
+		c.EstFilamentQty = *in.EstFilamentQty // ADR-039 flat-product standard; nil → 0 (no estimate)
+	}
 
 	if c.Name == "" || utf8.RuneCountInString(c.Name) > maxProductNameChars {
 		fields["name"] = msgKey(codeValidation)
@@ -468,6 +484,9 @@ func cleanProductInput(in api.ProductInput) (cleanedProduct, map[string]string, 
 	}
 	if c.BasePrice < 0 {
 		fields["basePrice"] = msgKey(codeValidation)
+	}
+	if c.EstFilamentQty < 0 {
+		fields["estFilamentQty"] = msgKey(codeValidation)
 	}
 	if _, ok := validMaterials[c.Material]; !ok {
 		fields["material"] = msgKey(codeValidation)
@@ -612,6 +631,12 @@ const (
 	pgForeignKeyViolation = "23503"
 )
 
+// fkColorFilamentMaterial is the auto-named FK on colors.filament_material_id (ADR-039). A colour write can
+// now trip 23503 on EITHER the product_id FK (unknown product → 404) or this one (bad filamentMaterialId →
+// 400 field); the constraint name disambiguates. ponytail: Postgres's default name is <table>_<column>_fkey;
+// if 000019's constraint is ever named explicitly, update this string.
+const fkColorFilamentMaterial = "colors_filament_material_id_fkey"
+
 // pgCode extracts the SQLSTATE from a pgconn error, or "" if err is nil / not a pg error.
 func pgCode(err error) string {
 	var pgErr *pgconn.PgError
@@ -621,15 +646,25 @@ func pgCode(err error) string {
 	return ""
 }
 
+// pgConstraint extracts the violated constraint name from a pg error, or "" if err is nil / not a pg error.
+func pgConstraint(err error) string {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.ConstraintName
+	}
+	return ""
+}
+
 // colorDTO maps one colour row to the wire shape (drops the internal productId). Money stays raw int-VND.
 func colorDTO(c sqlc.Color) api.Color {
 	return api.Color{
-		Id:         c.ID,
-		Name:       c.Name,
-		Hex:        c.Hex,
-		Available:  c.Available,
-		PriceDelta: c.PriceDelta,
-		PartId:     uuidPtrFromPg(c.PartID), // ADR-037: null = flat product-level colour
+		Id:                 c.ID,
+		Name:               c.Name,
+		Hex:                c.Hex,
+		Available:          c.Available,
+		PriceDelta:         c.PriceDelta,
+		PartId:             uuidPtrFromPg(c.PartID),             // ADR-037: null = flat product-level colour
+		FilamentMaterialId: uuidPtrFromPg(c.FilamentMaterialID), // ADR-039: null = colour not linked to a filament
 	}
 }
 

@@ -276,6 +276,9 @@ type Color struct {
 	// Available Whether the filament is currently in stock.
 	Available bool `json:"available"`
 
+	// FilamentMaterialId Shop filament (ADR-039) this colour prints in; null = unlinked, so deduct-on-print skips it. Owner-set in the editor and used by the print-queue draw — not shown to customers.
+	FilamentMaterialId *openapi_types.UUID `json:"filamentMaterialId"`
+
 	// Hex Swatch colour as a hex string.
 	Hex string             `json:"hex"`
 	Id  openapi_types.UUID `json:"id"`
@@ -293,6 +296,9 @@ type Color struct {
 // ColorInput Create/replace body for a product colour (P3-j). priceDelta is int-VND (default 0).
 type ColorInput struct {
 	Available bool `json:"available"`
+
+	// FilamentMaterialId Link this colour to a shop filament (ADR-039) so deduct-on-print knows which spool it draws; omit/null = unlinked. An unknown id → 400 filamentMaterialId.
+	FilamentMaterialId *openapi_types.UUID `json:"filamentMaterialId"`
 
 	// Hex Swatch colour as a hex string (e.g.
 	Hex  string `json:"hex"`
@@ -722,8 +728,11 @@ type OrderStatus string
 // Part A named part of a product (ADR-037) — e.g. "Chao đèn". colors[] belong to a part via Color.partId; the customer picks one colour per part.
 type Part struct {
 	// DisplayOrder Sort order within the product's parts.
-	DisplayOrder int                `json:"displayOrder"`
-	Id           openapi_types.UUID `json:"id"`
+	DisplayOrder int `json:"displayOrder"`
+
+	// EstFilamentQty Internal print standard (ADR-039): estimated filament per unit for THIS part (ADR-037 two-tone), in the part colour's material unit (gram|ml). Drives deduct-on-print; 0 = no estimate (skipped).
+	EstFilamentQty *int64             `json:"estFilamentQty,omitempty"`
+	Id             openapi_types.UUID `json:"id"`
 
 	// Name Display name, e.g. "Chao đèn".
 	Name string `json:"name"`
@@ -738,8 +747,11 @@ type PartColorSelection struct {
 // PartInput Create/replace body for a product part (ADR-037, owner-only).
 type PartInput struct {
 	// DisplayOrder Sort order within the product's parts; optional, defaults to 0.
-	DisplayOrder *int   `json:"displayOrder,omitempty"`
-	Name         string `json:"name"`
+	DisplayOrder *int `json:"displayOrder,omitempty"`
+
+	// EstFilamentQty Estimated filament per unit for this part (ADR-039), in the part colour's material unit. Optional, defaults to 0 (no estimate → the deduct-on-print draw skips this part).
+	EstFilamentQty *int64 `json:"estFilamentQty,omitempty"`
+	Name           string `json:"name"`
 }
 
 // PaymentProofUpload A short-lived, browser-ready S3/Garage POST form. Submit every `fields` entry and the file part to `uploadUrl`; after a successful direct upload, send `finalUrl` as `paymentProofUrl` in POST /orders. `finalUrl` is host-pinned by the server and never derived from browser input.
@@ -856,8 +868,11 @@ type Product struct {
 	Description string `json:"description"`
 
 	// Dimensions Product bounding size in millimetres (spec §02; displayed "180 × 180 × 240 mm").
-	Dimensions Dimensions         `json:"dimensions"`
-	Id         openapi_types.UUID `json:"id"`
+	Dimensions Dimensions `json:"dimensions"`
+
+	// EstFilamentQty Internal print standard (ADR-039): estimated filament per unit for a FLAT product (a product with parts estimates per-part instead), in the linked material's unit (gram|ml). Drives deduct-on-print and the admin editor; 0 = no estimate (the draw is skipped). Not shown to customers.
+	EstFilamentQty *int64             `json:"estFilamentQty,omitempty"`
+	Id             openapi_types.UUID `json:"id"`
 
 	// Images Shop photos; images[0] is the card cover (sprite-first, ADR-007). May be empty.
 	Images []string `json:"images"`
@@ -921,6 +936,9 @@ type ProductInput struct {
 
 	// Dimensions Product bounding size in millimetres (spec §02; displayed "180 × 180 × 240 mm").
 	Dimensions Dimensions `json:"dimensions"`
+
+	// EstFilamentQty Estimated filament per unit for a FLAT product (ADR-039), in the linked material's unit. Optional, defaults to 0 (no estimate → deduct-on-print skips). A product with parts estimates per-part instead.
+	EstFilamentQty *int64 `json:"estFilamentQty,omitempty"`
 
 	// Images Shop photos; images[0] is the card cover (ADR-007). Optional; defaults to [].
 	Images *[]string `json:"images,omitempty"`

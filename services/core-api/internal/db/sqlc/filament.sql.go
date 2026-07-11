@@ -12,6 +12,68 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const batchesToDecrement = `-- name: BatchesToDecrement :many
+
+SELECT id, qty_remaining, qty_original, total_cost_vnd
+FROM filament_batches
+WHERE material_id = $1 AND qty_remaining > 0
+ORDER BY imported_at, id
+FOR UPDATE
+`
+
+type BatchesToDecrementRow struct {
+	ID           uuid.UUID `json:"id"`
+	QtyRemaining int64     `json:"qtyRemaining"`
+	QtyOriginal  int64     `json:"qtyOriginal"`
+	TotalCostVnd int64     `json:"totalCostVnd"`
+}
+
+// ── Deduct-on-print (slice 4b, ADR-039 pt 2/4) ────────────────────────────────────────────────────────
+// BatchesToDecrement returns a material's OPEN lots oldest-first for a FIFO draw, row-locked (FOR UPDATE)
+// so two concurrent deduct-on-print draws of the same filament serialize — the second blocks until the
+// first commits, then reads the decremented qty_remaining, so no lost update. qty_original is returned so
+// the caller derives each lot's ₫/unit = total_cost_vnd / qty_original when it freezes the FIFO cost.
+func (q *Queries) BatchesToDecrement(ctx context.Context, materialID uuid.UUID) ([]BatchesToDecrementRow, error) {
+	rows, err := q.db.Query(ctx, batchesToDecrement, materialID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BatchesToDecrementRow
+	for rows.Next() {
+		var i BatchesToDecrementRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.QtyRemaining,
+			&i.QtyOriginal,
+			&i.TotalCostVnd,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const decrementBatch = `-- name: DecrementBatch :exec
+UPDATE filament_batches SET qty_remaining = qty_remaining - $1 WHERE id = $2
+`
+
+type DecrementBatchParams struct {
+	Drawn int64     `json:"drawn"`
+	ID    uuid.UUID `json:"id"`
+}
+
+// DecrementBatch subtracts a drawn qty from one lot. The 000018 CHECK (qty_remaining >= 0) is the backstop;
+// the caller never takes more than the lot's qty_remaining (clamp), so this cannot go negative.
+func (q *Queries) DecrementBatch(ctx context.Context, arg DecrementBatchParams) error {
+	_, err := q.db.Exec(ctx, decrementBatch, arg.Drawn, arg.ID)
+	return err
+}
+
 const getFilamentMaterial = `-- name: GetFilamentMaterial :one
 SELECT
   m.id, m.name, m.material, m.unit, m.hex, m.low_stock_threshold, m.archived, m.created_at, m.updated_at,
@@ -57,6 +119,55 @@ func (q *Queries) GetFilamentMaterial(ctx context.Context, id uuid.UUID) (GetFil
 		&i.UpdatedAt,
 		&i.StockQty,
 		&i.AvgCostPerUnit,
+	)
+	return i, err
+}
+
+const insertConsumption = `-- name: InsertConsumption :one
+INSERT INTO filament_consumption (id, material_id, kind, qty, cost_vnd, order_item_id, product_name, reason, note)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, material_id, kind, qty, cost_vnd, order_item_id, product_name, reason, note, at
+`
+
+type InsertConsumptionParams struct {
+	ID          uuid.UUID   `json:"id"`
+	MaterialID  uuid.UUID   `json:"materialId"`
+	Kind        string      `json:"kind"`
+	Qty         int64       `json:"qty"`
+	CostVnd     int64       `json:"costVnd"`
+	OrderItemID pgtype.UUID `json:"orderItemId"`
+	ProductName *string     `json:"productName"`
+	Reason      *string     `json:"reason"`
+	Note        *string     `json:"note"`
+}
+
+// InsertConsumption writes ONE draw-ledger row for the ACTUAL qty drawn (never the requested qty when short).
+// cost_vnd is the FIFO actual cost the caller froze (Σ per-lot drawn × ₫/unit, rounded once). order_item_id
+// is the printed line (NULL for a scrap draw); product_name is denormalized so the row survives a catalog edit.
+func (q *Queries) InsertConsumption(ctx context.Context, arg InsertConsumptionParams) (FilamentConsumption, error) {
+	row := q.db.QueryRow(ctx, insertConsumption,
+		arg.ID,
+		arg.MaterialID,
+		arg.Kind,
+		arg.Qty,
+		arg.CostVnd,
+		arg.OrderItemID,
+		arg.ProductName,
+		arg.Reason,
+		arg.Note,
+	)
+	var i FilamentConsumption
+	err := row.Scan(
+		&i.ID,
+		&i.MaterialID,
+		&i.Kind,
+		&i.Qty,
+		&i.CostVnd,
+		&i.OrderItemID,
+		&i.ProductName,
+		&i.Reason,
+		&i.Note,
+		&i.At,
 	)
 	return i, err
 }
@@ -234,6 +345,43 @@ func (q *Queries) ListFilamentMaterials(ctx context.Context, includeArchived *bo
 		return nil, err
 	}
 	return items, nil
+}
+
+const orderItemForDeduction = `-- name: OrderItemForDeduction :one
+SELECT oi.product_id, oi.color_id, oi.part_colors, oi.quantity,
+  p.name AS product_name,
+  p.est_filament_qty AS product_est_filament_qty
+FROM order_items oi
+JOIN products p ON p.id = oi.product_id
+WHERE oi.id = $1
+`
+
+type OrderItemForDeductionRow struct {
+	ProductID             uuid.UUID   `json:"productId"`
+	ColorID               pgtype.UUID `json:"colorId"`
+	PartColors            []byte      `json:"partColors"`
+	Quantity              int32       `json:"quantity"`
+	ProductName           string      `json:"productName"`
+	ProductEstFilamentQty int64       `json:"productEstFilamentQty"`
+}
+
+// OrderItemForDeduction is the deduct-on-print resolution read (ADR-039 pt 4): the line a print job draws
+// for — product_id + color_id + the ADR-037 part_colors snapshot + quantity, plus the product's flat est +
+// name. product FK is RESTRICT (000005) so the product always resolves. The handler turns this into draw
+// lines using the product's live parts/colors (grams from parts.est_filament_qty | products.est_filament_qty,
+// material from colors.filament_material_id).
+func (q *Queries) OrderItemForDeduction(ctx context.Context, id uuid.UUID) (OrderItemForDeductionRow, error) {
+	row := q.db.QueryRow(ctx, orderItemForDeduction, id)
+	var i OrderItemForDeductionRow
+	err := row.Scan(
+		&i.ProductID,
+		&i.ColorID,
+		&i.PartColors,
+		&i.Quantity,
+		&i.ProductName,
+		&i.ProductEstFilamentQty,
+	)
+	return i, err
 }
 
 const updateFilamentMaterial = `-- name: UpdateFilamentMaterial :one

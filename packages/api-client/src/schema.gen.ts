@@ -978,6 +978,11 @@ export interface components {
              * @description Part this colour belongs to (ADR-037); null = flat product-level colour (default). When set, the customer picks one colour per part.
              */
             partId?: string | null;
+            /**
+             * Format: uuid
+             * @description Shop filament (ADR-039) this colour prints in; null = unlinked, so deduct-on-print skips it. Owner-set in the editor and used by the print-queue draw — not shown to customers.
+             */
+            filamentMaterialId?: string | null;
         };
         /** @description A customization option (spec §02). type: text carries an engraving char limit (maxChars). */
         Option: {
@@ -1015,6 +1020,11 @@ export interface components {
             dimensions: components["schemas"]["Dimensions"];
             /** @description Print material (spec §02; open-ended TEXT+CHECK, ADR-028 — not a wire enum). */
             material: string;
+            /**
+             * Format: int64
+             * @description Internal print standard (ADR-039): estimated filament per unit for a FLAT product (a product with parts estimates per-part instead), in the linked material's unit (gram|ml). Drives deduct-on-print and the admin editor; 0 = no estimate (the draw is skipped). Not shown to customers.
+             */
+            estFilamentQty?: number;
             /** @description .glb URL for the on-demand model viewer; empty string when none. */
             model3dUrl: string;
             model3dView?: components["schemas"]["Model3dView"];
@@ -1076,6 +1086,11 @@ export interface components {
             name: string;
             /** @description Sort order within the product's parts. */
             displayOrder: number;
+            /**
+             * Format: int64
+             * @description Internal print standard (ADR-039): estimated filament per unit for THIS part (ADR-037 two-tone), in the part colour's material unit (gram|ml). Drives deduct-on-print; 0 = no estimate (skipped).
+             */
+            estFilamentQty?: number;
         };
         /** @description One enumerated choice of a `choice` option (ADR-037) — e.g. size "M". priceDelta is int-VND (may be 0); the customer picks exactly one choice per choice-option. */
         OptionChoice: {
@@ -1256,6 +1271,11 @@ export interface components {
             dimensions: components["schemas"]["Dimensions"];
             /** @description Print material (spec §02; open-ended TEXT+CHECK — PLA · PETG · recycled-PLA). */
             material: string;
+            /**
+             * Format: int64
+             * @description Estimated filament per unit for a FLAT product (ADR-039), in the linked material's unit. Optional, defaults to 0 (no estimate → deduct-on-print skips). A product with parts estimates per-part instead.
+             */
+            estFilamentQty?: number;
             /** @description Shop photos; images[0] is the card cover (ADR-007). Optional; defaults to []. */
             images?: string[];
             status: components["schemas"]["ProductStatus"];
@@ -1276,6 +1296,11 @@ export interface components {
              * @description Assign this colour to a part (ADR-037); omit/null = flat product-level colour. The part must belong to the same product (else 400 partId).
              */
             partId?: string | null;
+            /**
+             * Format: uuid
+             * @description Link this colour to a shop filament (ADR-039) so deduct-on-print knows which spool it draws; omit/null = unlinked. An unknown id → 400 filamentMaterialId.
+             */
+            filamentMaterialId?: string | null;
         };
         /** @description Create/replace body for a customization option (P3-j). priceDelta is int-VND (default 0). */
         OptionInput: {
@@ -1296,6 +1321,11 @@ export interface components {
             name: string;
             /** @description Sort order within the product's parts; optional, defaults to 0. */
             displayOrder?: number;
+            /**
+             * Format: int64
+             * @description Estimated filament per unit for this part (ADR-039), in the part colour's material unit. Optional, defaults to 0 (no estimate → the deduct-on-print draw skips this part).
+             */
+            estFilamentQty?: number;
         };
         /** @description Create/replace body for an option choice (ADR-037). priceDelta is int-VND (default 0). */
         OptionChoiceInput: {

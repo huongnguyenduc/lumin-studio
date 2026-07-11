@@ -12,6 +12,19 @@ import (
 )
 
 type Querier interface {
+	// ── Deduct-on-print (slice 4b, ADR-039 pt 2/4) ────────────────────────────────────────────────────────
+	// BatchesToDecrement returns a material's OPEN lots oldest-first for a FIFO draw, row-locked (FOR UPDATE)
+	// so two concurrent deduct-on-print draws of the same filament serialize — the second blocks until the
+	// first commits, then reads the decremented qty_remaining, so no lost update. qty_original is returned so
+	// the caller derives each lot's ₫/unit = total_cost_vnd / qty_original when it freezes the FIFO cost.
+	BatchesToDecrement(ctx context.Context, materialID uuid.UUID) ([]BatchesToDecrementRow, error)
+	// ClaimPrintForPrinting is the atomic deduct-on-print claim (ADR-039 pt 4): it moves a job to PRINTING AND
+	// stamps filament_deducted_at in ONE conditional UPDATE, but only WHERE filament_deducted_at IS NULL — so
+	// the FIRST →PRINTING wins the row (RETURNING it → the caller draws filament), while any later move (a
+	// PACKING→PRINTING re-drag, or a second staff dragging at the same moment, serialized on the row lock)
+	// matches 0 rows → the caller reads the row back and skips re-deducting. This is the idempotency +
+	// concurrency guard that keeps one physical print from drawing filament twice.
+	ClaimPrintForPrinting(ctx context.Context, id uuid.UUID) (PrintJob, error)
 	// ClearOrderPaymentProof nulls the receipt reference after its Garage object has been deleted
 	// (ADR-035 retention). The payment_proof_url IS NOT NULL guard makes a re-run a no-op, so a sweep
 	// that deletes the object but crashes before clearing simply retries idempotently next pass.
@@ -79,6 +92,9 @@ type Querier interface {
 	// DashboardReviewsWaiting counts published reviews with no shop reply yet — the reviews_waiting_idx
 	// partial index (WHERE reply IS NULL) scans only the un-replied hot set.
 	DashboardReviewsWaiting(ctx context.Context) (int64, error)
+	// DecrementBatch subtracts a drawn qty from one lot. The 000018 CHECK (qty_remaining >= 0) is the backstop;
+	// the caller never takes more than the lot's qty_remaining (clamp), so this cannot go negative.
+	DecrementBatch(ctx context.Context, arg DecrementBatchParams) error
 	DeleteColor(ctx context.Context, arg DeleteColorParams) (uuid.UUID, error)
 	DeleteOption(ctx context.Context, arg DeleteOptionParams) (uuid.UUID, error)
 	DeleteOptionChoice(ctx context.Context, arg DeleteOptionChoiceParams) (uuid.UUID, error)
@@ -160,6 +176,10 @@ type Querier interface {
 	// explicit row per active purpose, never a pre-defaulted boolean; re-grant-after-withdrawal is a new
 	// row (a withdrawn grant is not "active", so it does not conflict).
 	InsertConsentGrantIfAbsent(ctx context.Context, arg InsertConsentGrantIfAbsentParams) error
+	// InsertConsumption writes ONE draw-ledger row for the ACTUAL qty drawn (never the requested qty when short).
+	// cost_vnd is the FIFO actual cost the caller froze (Σ per-lot drawn × ₫/unit, rounded once). order_item_id
+	// is the printed line (NULL for a scrap draw); product_name is denormalized so the row survives a catalog edit.
+	InsertConsumption(ctx context.Context, arg InsertConsumptionParams) (FilamentConsumption, error)
 	// customers.sql — customer + PDPL consent queries (PR-2d). spec.md §02 + vn-compliance.
 	InsertCustomer(ctx context.Context, arg InsertCustomerParams) (Customer, error)
 	// InsertCustomerWithCredential registers a storefront account (PR-P1-r): a customer row that
@@ -321,6 +341,12 @@ type Querier interface {
 	// create attempt (a rolled-back attempt simply burns its number — gaps are expected, codes are
 	// display handles, not counts).
 	NextOrderCode(ctx context.Context) (int64, error)
+	// OrderItemForDeduction is the deduct-on-print resolution read (ADR-039 pt 4): the line a print job draws
+	// for — product_id + color_id + the ADR-037 part_colors snapshot + quantity, plus the product's flat est +
+	// name. product FK is RESTRICT (000005) so the product always resolves. The handler turns this into draw
+	// lines using the product's live parts/colors (grams from parts.est_filament_qty | products.est_filament_qty,
+	// material from colors.filament_material_id).
+	OrderItemForDeduction(ctx context.Context, id uuid.UUID) (OrderItemForDeductionRow, error)
 	// ping.sql — the sqlc pipeline smoke query. It gives `sqlc vet`/`sqlc diff`
 	// substantive content before the first domain query lands (InsertOutbox, PR-2b) and
 	// proves codegen end-to-end. Readiness uses pgxpool.Ping directly, not this query.

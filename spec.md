@@ -129,11 +129,13 @@ Thời gian lưu **ISO-8601 UTC**.
 | `Setting` | `shopInfo` · `bankAccount(VietQR)` · `shippingRules` · `refundPolicy` |
 
 ### Vật tư & chi phí (costing engine — ADR-039)
-Mô hình giá vốn động (`/vat-tu`, design Admin screen 8). Tồn + giá vốn **derive từ lô** (không lưu), tiền int-VND, giá vốn/biên **tách khỏi giá khách**. Toàn bộ model ở **ADR-039**; các thực thể tiếp (ledger tiêu hao, định-mức per-part, máy, chi phí phụ, `OrderItem.costSnapshot` chốt-lúc-in) land theo slice 4b/4c.
+Mô hình giá vốn động (`/vat-tu`, design Admin screen 8). Tồn + giá vốn **derive từ lô** (không lưu), tiền int-VND, giá vốn/biên **tách khỏi giá khách**. Toàn bộ model ở **ADR-039**. Slice 4a land palette+lô; **slice 4b** land ledger tiêu hao + định-mức catalog + trừ-khi-in (dưới); máy, chi phí phụ, hao-hụt, `OrderItem.costSnapshot` chốt-lúc-in (rollup) land theo slice **4c**.
 | Thực thể | Trường chính |
 |---|---|
 | `FilamentMaterial` (cuộn theo màu, shop-wide) | `id` · `name` (màu có tên) · `material` (PLA/PETG/Resin…) · `unit` (gram/ml) · `hex?` · `lowStockThreshold` · `archived` — **tồn + giá vốn/đơn-vị (bình quân gia quyền) DERIVE từ batches** |
 | `FilamentBatch` (lô "nhập cuộn") | `id` · `materialId` · `importedAt` · `qtyOriginal` · `qtyRemaining` · `totalCostVnd` — ₫/đơn-vị-lô = total/original (derive); bình quân màu = `Σ(qtyRemaining × ₫/lô) ÷ Σ(qtyRemaining)` |
+| `FilamentConsumption` (ledger tiêu hao — 4b) | `id` · `materialId` · `kind` (print\|scrap) · `qty` (**thực** đã trừ, clamp) · `costVnd` (FIFO thực, **đóng băng**) · `orderItemId?` · `productName?` · `reason?` · `note?` · `at` — nguồn chân lý; `qtyRemaining` = cache dựng-lại-được |
+| Định-mức catalog (4b) | `products.estFilamentQty` (SP phẳng) · `parts.estFilamentQty` (per-part, ADR-037 two-tone) · `colors.filamentMaterialId?` (màu → cuộn shop). Trừ-khi-in đọc để trừ FIFO khi print job **lần đầu** vào PRINTING (`filament_deducted_at` claim atomic idempotent) |
 
 ---
 
