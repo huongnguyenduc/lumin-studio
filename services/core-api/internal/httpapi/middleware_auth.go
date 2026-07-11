@@ -101,7 +101,12 @@ func classify(operationID string) authClass {
 		return authPublic
 	case "CreateOrder":
 		return authOptional
-	case "UpdateBankAccount":
+	case "UpdateBankAccount",
+		"UpdateShippingRules", "UpdateRefundPolicy",
+		"CreateReplyTemplate", "UpdateReplyTemplate", "DeleteReplyTemplate":
+		// Every settings/config WRITE is owner-only (staff không sửa cài đặt — domain-core RBAC).
+		// Shipping rules are money-adjacent (checkout fee); the rest is shop config. Reads
+		// (GetSettings/ListReplyTemplates) stay authRequired (owner+staff) via the default.
 		return authOwnerOnly
 	case "RegisterCustomer", "LoginCustomer", "LogoutCustomer":
 		// Storefront customer auth entry points (PR-P1-r) — issuing or clearing a customer cookie

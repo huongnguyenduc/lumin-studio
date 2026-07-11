@@ -79,6 +79,9 @@ type Querier interface {
 	// DashboardReviewsWaiting counts published reviews with no shop reply yet — the reviews_waiting_idx
 	// partial index (WHERE reply IS NULL) scans only the un-replied hot set.
 	DashboardReviewsWaiting(ctx context.Context) (int64, error)
+	// DeleteReplyTemplate removes a template. :execrows so the wrapper can map 0-rows → ErrNotFound (404)
+	// rather than silently succeeding on a bogus id.
+	DeleteReplyTemplate(ctx context.Context, id uuid.UUID) (int64, error)
 	GetAssetJobByID(ctx context.Context, id uuid.UUID) (AssetJob, error)
 	GetCustomerByID(ctx context.Context, id uuid.UUID) (Customer, error)
 	// GetCustomerByLoginEmail resolves a login (PR-P1-r): only CREDENTIALED customers (password_hash
@@ -289,9 +292,20 @@ type Querier interface {
 	UpdateOrderStatus(ctx context.Context, arg UpdateOrderStatusParams) (Order, error)
 	// UpdatePrintJobStage advances the print queue stage (staff drag-drop) and refreshes updated_at.
 	UpdatePrintJobStage(ctx context.Context, arg UpdatePrintJobStageParams) (PrintJob, error)
+	// UpdateRefundPolicy writes ONLY the refund-policy text (ADR-012), same targeted reasoning as above.
+	UpdateRefundPolicy(ctx context.Context, refundPolicy string) (Setting, error)
+	// UpdateReplyTemplate replaces a template's title/body/variables. RETURNING with no matched row yields
+	// pgx.ErrNoRows → mapped to ErrNotFound (404) in the db wrapper, like GetReplyTemplateByID.
+	UpdateReplyTemplate(ctx context.Context, arg UpdateReplyTemplateParams) (ReplyTemplate, error)
 	// UpdateSettings writes the non-money config (shop info, shipping rules, refund policy). It does NOT
 	// touch bank_account — that goes through the audited UpdateBankAccountTx seam.
 	UpdateSettings(ctx context.Context, arg UpdateSettingsParams) (Setting, error)
+	// UpdateShippingRules writes ONLY the per-region fee table (settings.shipping_rules), leaving
+	// shop_info/refund_policy untouched — a targeted PATCH cannot clobber the rest of the singleton (the
+	// 3-column UpdateSettings would). The server resolves shippingFee from this jsonb (pricing.ShippingFee),
+	// so the shape MUST stay [{province, fee}]; the handler validates that before this write. Not audited
+	// (P3-i open-q #2: only the STK is a high-value money-out field worth an audit trail).
+	UpdateShippingRules(ctx context.Context, shippingRules []byte) (Setting, error)
 	// Seed or rotate the first owner's login credential (PR-3e-1, `make seed-owner`). Forces
 	// role=owner + active=true and is idempotent on the UNIQUE email, so re-running it rotates the
 	// password hash rather than failing. This is the ONLY writer of password_hash this slice; there

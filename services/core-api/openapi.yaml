@@ -891,6 +891,59 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /admin/settings/shipping-rules:
+    patch:
+      tags: [admin]
+      operationId: updateShippingRules
+      summary: Replace the per-region shipping-fee table (owner-only).
+      description: >
+        Owner-only. Replaces settings.shipping_rules wholesale with the given array — the SAME jsonb the
+        server resolves shippingFee from at checkout (pricing.ShippingFee), so a bad shape here misroutes
+        every order's fee. The handler validates province/fee before persisting. Not audited (only the STK
+        is; P3-i open-q #2).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShippingRulesUpdate'
+      responses:
+        '200':
+          description: Updated settings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/settings/refund-policy:
+    patch:
+      tags: [admin]
+      operationId: updateRefundPolicy
+      summary: Change the refund-policy text shown pre-purchase (owner-only, ADR-012).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundPolicyUpdate'
+      responses:
+        '200':
+          description: Updated settings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /admin/reply-templates:
     get:
       tags: [admin]
@@ -908,6 +961,70 @@ paths:
                 items:
                   $ref: '#/components/schemas/ReplyTemplate'
         '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [admin]
+      operationId: createReplyTemplate
+      summary: Create an extension reply template (owner-only).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplyTemplateInput'
+      responses:
+        '201':
+          description: The created template.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplyTemplate'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/reply-templates/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [admin]
+      operationId: updateReplyTemplate
+      summary: Replace an extension reply template (owner-only).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplyTemplateInput'
+      responses:
+        '200':
+          description: The updated template.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplyTemplate'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [admin]
+      operationId: deleteReplyTemplate
+      summary: Delete an extension reply template (owner-only).
+      security:
+        - cookieAuth: []
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
 components:
   securitySchemes:
@@ -1827,13 +1944,58 @@ components:
         shippingRules:
           type: array
           items:
-            type: object
-            additionalProperties: true
+            $ref: '#/components/schemas/ShippingRule'
         refundPolicy:
           type: string
         updatedAt:
           type: string
           format: date-time
+
+    ShippingRule:
+      type: object
+      description: >
+        One per-region shipping-fee row (settings.shipping_rules). VN address model, no district
+        (ADR-017). Province "*" is the wildcard default fee (applied when no exact province matches).
+      required: [province, fee]
+      properties:
+        province:
+          type: string
+          description: Destination province name, or "*" for the wildcard default.
+        fee:
+          type: integer
+          format: int64
+          description: Shipping fee for this province, raw int VND (≥ 0). Server resolves shippingFee from this table.
+
+    ShippingRulesUpdate:
+      type: object
+      description: Owner-only wholesale replace of the shipping-fee table (PATCH).
+      required: [shippingRules]
+      properties:
+        shippingRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShippingRule'
+
+    RefundPolicyUpdate:
+      type: object
+      description: Owner-only refund-policy text change (PATCH, ADR-012).
+      required: [refundPolicy]
+      properties:
+        refundPolicy:
+          type: string
+
+    ReplyTemplateInput:
+      type: object
+      description: >
+        Create/replace body for a reply template. `variables` is DERIVED server-side from the {token}
+        placeholders in `body` (spec §02) — it is NOT accepted here, so the stored hint list can never
+        drift from the body text. The client sends title + body only.
+      required: [title, body]
+      properties:
+        title:
+          type: string
+        body:
+          type: string
 
     CheckoutConfig:
       type: object

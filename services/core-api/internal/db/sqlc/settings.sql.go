@@ -11,6 +11,20 @@ import (
 	"github.com/google/uuid"
 )
 
+const deleteReplyTemplate = `-- name: DeleteReplyTemplate :execrows
+DELETE FROM reply_templates WHERE id = $1
+`
+
+// DeleteReplyTemplate removes a template. :execrows so the wrapper can map 0-rows → ErrNotFound (404)
+// rather than silently succeeding on a bogus id.
+func (q *Queries) DeleteReplyTemplate(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteReplyTemplate, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getReplyTemplateByID = `-- name: GetReplyTemplateByID :one
 SELECT id, title, body, variables, created_at, updated_at FROM reply_templates WHERE id = $1
 `
@@ -208,6 +222,64 @@ func (q *Queries) UpdateBankAccount(ctx context.Context, bankAccount []byte) (Se
 	return i, err
 }
 
+const updateRefundPolicy = `-- name: UpdateRefundPolicy :one
+UPDATE settings
+SET refund_policy = $1,
+    updated_at = now()
+WHERE id = true
+RETURNING id, shop_info, bank_account, shipping_rules, refund_policy, updated_at
+`
+
+// UpdateRefundPolicy writes ONLY the refund-policy text (ADR-012), same targeted reasoning as above.
+func (q *Queries) UpdateRefundPolicy(ctx context.Context, refundPolicy string) (Setting, error) {
+	row := q.db.QueryRow(ctx, updateRefundPolicy, refundPolicy)
+	var i Setting
+	err := row.Scan(
+		&i.ID,
+		&i.ShopInfo,
+		&i.BankAccount,
+		&i.ShippingRules,
+		&i.RefundPolicy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateReplyTemplate = `-- name: UpdateReplyTemplate :one
+UPDATE reply_templates
+SET title = $2, body = $3, variables = $4, updated_at = now()
+WHERE id = $1
+RETURNING id, title, body, variables, created_at, updated_at
+`
+
+type UpdateReplyTemplateParams struct {
+	ID        uuid.UUID `json:"id"`
+	Title     string    `json:"title"`
+	Body      string    `json:"body"`
+	Variables []byte    `json:"variables"`
+}
+
+// UpdateReplyTemplate replaces a template's title/body/variables. RETURNING with no matched row yields
+// pgx.ErrNoRows → mapped to ErrNotFound (404) in the db wrapper, like GetReplyTemplateByID.
+func (q *Queries) UpdateReplyTemplate(ctx context.Context, arg UpdateReplyTemplateParams) (ReplyTemplate, error) {
+	row := q.db.QueryRow(ctx, updateReplyTemplate,
+		arg.ID,
+		arg.Title,
+		arg.Body,
+		arg.Variables,
+	)
+	var i ReplyTemplate
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Body,
+		&i.Variables,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateSettings = `-- name: UpdateSettings :one
 UPDATE settings
 SET shop_info = $1,
@@ -228,6 +300,33 @@ type UpdateSettingsParams struct {
 // touch bank_account — that goes through the audited UpdateBankAccountTx seam.
 func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) (Setting, error) {
 	row := q.db.QueryRow(ctx, updateSettings, arg.ShopInfo, arg.ShippingRules, arg.RefundPolicy)
+	var i Setting
+	err := row.Scan(
+		&i.ID,
+		&i.ShopInfo,
+		&i.BankAccount,
+		&i.ShippingRules,
+		&i.RefundPolicy,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateShippingRules = `-- name: UpdateShippingRules :one
+UPDATE settings
+SET shipping_rules = $1,
+    updated_at = now()
+WHERE id = true
+RETURNING id, shop_info, bank_account, shipping_rules, refund_policy, updated_at
+`
+
+// UpdateShippingRules writes ONLY the per-region fee table (settings.shipping_rules), leaving
+// shop_info/refund_policy untouched — a targeted PATCH cannot clobber the rest of the singleton (the
+// 3-column UpdateSettings would). The server resolves shippingFee from this jsonb (pricing.ShippingFee),
+// so the shape MUST stay [{province, fee}]; the handler validates that before this write. Not audited
+// (P3-i open-q #2: only the STK is a high-value money-out field worth an audit trail).
+func (q *Queries) UpdateShippingRules(ctx context.Context, shippingRules []byte) (Setting, error) {
+	row := q.db.QueryRow(ctx, updateShippingRules, shippingRules)
 	var i Setting
 	err := row.Scan(
 		&i.ID,

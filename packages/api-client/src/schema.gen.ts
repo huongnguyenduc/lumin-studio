@@ -474,6 +474,43 @@ export interface paths {
         patch: operations["updateBankAccount"];
         trace?: never;
     };
+    "/admin/settings/shipping-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Replace the per-region shipping-fee table (owner-only).
+         * @description Owner-only. Replaces settings.shipping_rules wholesale with the given array — the SAME jsonb the server resolves shippingFee from at checkout (pricing.ShippingFee), so a bad shape here misroutes every order's fee. The handler validates province/fee before persisting. Not audited (only the STK is; P3-i open-q #2).
+         */
+        patch: operations["updateShippingRules"];
+        trace?: never;
+    };
+    "/admin/settings/refund-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Change the refund-policy text shown pre-purchase (owner-only, ADR-012). */
+        patch: operations["updateRefundPolicy"];
+        trace?: never;
+    };
     "/admin/reply-templates": {
         parameters: {
             query?: never;
@@ -484,11 +521,32 @@ export interface paths {
         /** List the extension reply templates (admin-gated read). */
         get: operations["listReplyTemplates"];
         put?: never;
-        post?: never;
+        /** Create an extension reply template (owner-only). */
+        post: operations["createReplyTemplate"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/admin/reply-templates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete an extension reply template (owner-only). */
+        delete: operations["deleteReplyTemplate"];
+        options?: never;
+        head?: never;
+        /** Replace an extension reply template (owner-only). */
+        patch: operations["updateReplyTemplate"];
         trace?: never;
     };
 }
@@ -928,12 +986,33 @@ export interface components {
                 [key: string]: unknown;
             };
             bankAccount: components["schemas"]["BankAccount"];
-            shippingRules?: {
-                [key: string]: unknown;
-            }[];
+            shippingRules?: components["schemas"]["ShippingRule"][];
             refundPolicy: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        /** @description One per-region shipping-fee row (settings.shipping_rules). VN address model, no district (ADR-017). Province "*" is the wildcard default fee (applied when no exact province matches). */
+        ShippingRule: {
+            /** @description Destination province name, or "*" for the wildcard default. */
+            province: string;
+            /**
+             * Format: int64
+             * @description Shipping fee for this province, raw int VND (≥ 0). Server resolves shippingFee from this table.
+             */
+            fee: number;
+        };
+        /** @description Owner-only wholesale replace of the shipping-fee table (PATCH). */
+        ShippingRulesUpdate: {
+            shippingRules: components["schemas"]["ShippingRule"][];
+        };
+        /** @description Owner-only refund-policy text change (PATCH, ADR-012). */
+        RefundPolicyUpdate: {
+            refundPolicy: string;
+        };
+        /** @description Create/replace body for a reply template. `variables` is DERIVED server-side from the {token} placeholders in `body` (spec §02) — it is NOT accepted here, so the stored hint list can never drift from the body text. The client sends title + body only. */
+        ReplyTemplateInput: {
+            title: string;
+            body: string;
         };
         /** @description Public checkout config (GET /checkout/config). A whitelist of the anonymous data the payment step and pre-purchase disclosure need — never the full Settings singleton (no shopInfo PII, no shipping-fee table). */
         CheckoutConfig: {
@@ -1841,6 +1920,60 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
+    updateShippingRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShippingRulesUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateRefundPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefundPolicyUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
     listReplyTemplates: {
         parameters: {
             query?: never;
@@ -1860,6 +1993,86 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    createReplyTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplyTemplateInput"];
+            };
+        };
+        responses: {
+            /** @description The created template. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplyTemplate"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    deleteReplyTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateReplyTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplyTemplateInput"];
+            };
+        };
+        responses: {
+            /** @description The updated template. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplyTemplate"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
 }
