@@ -343,8 +343,8 @@ function RefundPolicySection({ settings }: { settings: Settings }) {
   );
 }
 
-/** Right-column card linking to the other settings sub-pages. "Mẫu trả lời" (P3-i) and "Nhân viên"
- *  (P3-q) are live; Extension / Kênh chat are later tracks (P3-r/Phase 4), shown as coming-soon. */
+/** Right-column card linking to the other settings sub-pages. "Mẫu trả lời" (P3-i), "Nhân viên"
+ *  (P3-q) and "Kênh chat" (P3-r) are live; Extension is a Phase-4 track, shown as coming-soon. */
 function SubpagesCard() {
   const t = useTranslations('settings');
   return (
@@ -354,6 +354,7 @@ function SubpagesCard() {
         [
           { href: '/cai-dat/mau-tra-loi', label: t('subpages.replyTemplates') },
           { href: '/cai-dat/nhan-vien', label: t('subpages.staff') },
+          { href: '/cai-dat/kenh', label: t('subpages.channels') },
         ] as const
       ).map(({ href, label }) => (
         <Link
@@ -368,7 +369,7 @@ function SubpagesCard() {
         </Link>
       ))}
       <ul className="flex flex-col gap-2">
-        {(['extension', 'channels'] as const).map((key) => (
+        {(['extension'] as const).map((key) => (
           <li
             key={key}
             className="flex items-center justify-between rounded-lg border border-dashed border-border-default px-4 py-2 text-sm text-text-muted"
