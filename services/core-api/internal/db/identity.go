@@ -61,6 +61,12 @@ func (i *Identity) CustomerByLoginEmail(ctx context.Context, email string) (sqlc
 	return c, err
 }
 
+// ListAdminCustomers returns every customer with their order roll-up (count, total spent, last order),
+// most-recently-active first, for the admin Khách hàng list (P3-p). Not paginated — the base is small.
+func (i *Identity) ListAdminCustomers(ctx context.Context) ([]sqlc.ListAdminCustomersRow, error) {
+	return i.q.ListAdminCustomers(ctx)
+}
+
 // RegisterCustomer inserts a storefront account carrying a login credential (PR-P1-r). A duplicate
 // login email surfaces as ErrDuplicate (the customers_login_email_uq partial unique → 23505), which
 // the handler maps to 409 — the DB, not an app pre-check, is the single arbiter of uniqueness, so

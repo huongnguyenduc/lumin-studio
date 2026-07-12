@@ -265,6 +265,16 @@ type Querier interface {
 	// matching on a tiny catalog, so relevance ranking (ts_rank) is a deliberate non-goal (it would also mean a
 	// new sort enum value — a contract change P1-e avoids).
 	ListActiveProducts(ctx context.Context, arg ListActiveProductsParams) ([]ListActiveProductsRow, error)
+	// ListAdminCustomers rolls every customer up with their order aggregates for the admin Khách hàng
+	// list (P3-p). LEFT JOIN so a customer with no orders still appears (count 0, spent 0, last NULL).
+	// Money stays raw int-VND: sum(bigint) is numeric, cast back to bigint (coalesced to 0). Ordered
+	// most-recently-active first so a customer who just ordered floats to the top; a customer with no
+	// orders sorts last, then newest customer. NOT paginated — a made-to-order shop's base is small and
+	// the FE searches the whole set (mirrors the products list).
+	// ponytail: totalSpent/orderCount count ALL orders regardless of status (rough lifetime value);
+	// add a `WHERE o.status IN (paid..completed)` if the shop wants strict "tổng chi", and server
+	// paging + a search predicate if the base ever outgrows a single fetch.
+	ListAdminCustomers(ctx context.Context) ([]ListAdminCustomersRow, error)
 	// ListAdminOrders is the admin orders table read (P3-b, GET /admin/orders): one page of orders newest-
 	// first, optionally filtered to a single status. Unlike the public timeline it joins the customer NAME
 	// and, for the "sản phẩm" column, a representative first-item product name + the line-item count (two
