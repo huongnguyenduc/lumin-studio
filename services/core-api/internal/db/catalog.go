@@ -132,6 +132,28 @@ func (c *Catalog) ListPublishedReviews(ctx context.Context, f ReviewFilter) ([]s
 	return rows, total, nil
 }
 
+// AdminReviews lists EVERY review across all products (P3-m) — both published and hidden — as the admin
+// moderation projection (with product + reviewer names), optionally filtered to one status. nil status =
+// all (the "Tất cả" case). One autocommit read, no pagination. Mirrors AdminProducts.
+func (c *Catalog) AdminReviews(ctx context.Context, status *sqlc.ReviewStatus) ([]sqlc.ListAllReviewsRow, error) {
+	var filter sqlc.NullReviewStatus
+	if status != nil {
+		filter = sqlc.NullReviewStatus{ReviewStatus: *status, Valid: true}
+	}
+	return c.q.ListAllReviews(ctx, filter)
+}
+
+// ModerateReview applies a review moderation change (P3-m): an optional status flip and/or a reply write,
+// returning ErrNotFound for an unknown id. reply is touched only when arg.SetReply is true. No outbox —
+// moderation is an internal content decision, not a domain event.
+func (c *Catalog) ModerateReview(ctx context.Context, arg sqlc.UpdateReviewModerationParams) error {
+	_, err := c.q.UpdateReviewModeration(ctx, arg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
+}
+
 // ColorsByProduct lists a product's named print colors.
 func (c *Catalog) ColorsByProduct(ctx context.Context, productID uuid.UUID) ([]sqlc.Color, error) {
 	return c.q.ListColorsByProduct(ctx, productID)

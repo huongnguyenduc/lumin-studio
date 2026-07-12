@@ -619,6 +619,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin review-moderation list — every review across all products (admin-gated read).
+         * @description Returns EVERY review (P3-m) as the admin moderation projection — rating/body/images/reply/status/ createdAt plus the product name and the reviewer's name (customerName is null for a guest review) — newest first, optionally filtered to one status. Unlike the public GET /products/{slug}/reviews (which is published-only at the SQL source), this shows HIDDEN reviews too, so the shop can un-hide or reply. The reviewer name is admin-only PII (PDPL) — served only behind the admin auth wall. NOT paginated: a made-to-order shop's review set is small and the FE derives its tabs (pending-reply / replied / has-image) client-side. Admin-gated (cookieAuth; owner AND staff — staff moderates reviews, spec §08).
+         */
+        get: operations["getAdminReviews"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/reviews/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Moderate a review — publish/hide and/or reply (owner or staff).
+         * @description Applies a moderation change to one review (P3-m): set status (publish ↔ hide) and/or write the shop reply. At least one of `status`/`reply` must be present (an empty body is a 400). A `reply` sets the public shop reply (its timestamp is server-stamped); the FE sends `status: published` alongside a reply for "Lưu & công khai" so replying also makes the review visible. Omitting a field leaves it unchanged (a plain hide keeps any existing reply). Unknown id → 404. Owner AND staff (staff moderates reviews, spec §08). Returns 204 — the FE re-reads the list.
+         */
+        patch: operations["updateAdminReview"];
+        trace?: never;
+    };
     "/admin/products": {
         parameters: {
             query?: never;
@@ -1792,6 +1834,37 @@ export interface components {
              * @description ISO-8601 UTC when the reply was posted.
              */
             at: string;
+        };
+        /**
+         * @description Moderation state of a review (spec §02). `published` = visible on the storefront; `hidden` = moderated out (never served by the public review list). Exposed only on the admin projection — the public Review omits it (a hidden review simply never appears).
+         * @enum {string}
+         */
+        ReviewStatus: "published" | "hidden";
+        /** @description Admin review-moderation projection (P3-m) — a review with its moderation fields plus the product name and the reviewer's name for the moderation card. Unlike the public Review it carries `status` and `customerName` (admin-only PII, PDPL — a guest review has customerName null). `reply` is the shop's reply, null until replied. The FE derives its tabs (pending-reply = published & no reply, replied = has reply, has-image = images non-empty) from these fields. */
+        AdminReview: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            productId: string;
+            /** @description Name of the product this review is on (for the moderation card). */
+            productName: string;
+            /** @description Reviewer's name, or null for a guest review. Admin-only (PDPL). */
+            customerName?: string | null;
+            /** @description Star rating, 1–5. */
+            rating: number;
+            body: string;
+            /** @description Reviewer's attached image URLs (may be empty). */
+            images: string[];
+            reply?: components["schemas"]["ReviewReply"];
+            status: components["schemas"]["ReviewStatus"];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @description Moderation change for one review (P3-m). At least one field must be present (an empty body is a 400). `status` flips published ↔ hidden. `reply` sets the shop reply text (its timestamp is server-stamped); omit it to leave any existing reply untouched. The FE sends both (`status: published` + `reply`) for "Lưu & công khai" so a reply also publishes the review. */
+        ReviewModeration: {
+            status?: components["schemas"]["ReviewStatus"];
+            /** @description Shop reply text (non-empty). Server stamps the timestamp. Omit to leave the reply unchanged. */
+            reply?: string;
         };
         /** @description One page of published reviews plus the pagination envelope (spec §03 list state). `total` is the count of PUBLISHED reviews for the product across all pages; the client derives the page count. */
         ReviewList: {
@@ -3347,6 +3420,58 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    getAdminReviews: {
+        parameters: {
+            query?: {
+                /** @description Filter to a single review status (published/hidden). Omit for all ("Tất cả"). */
+                status?: components["schemas"]["ReviewStatus"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every review as an admin moderation card (newest first). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminReview"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    updateAdminReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewModeration"];
+            };
+        };
+        responses: {
+            /** @description Moderation applied. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     getAdminProducts: {

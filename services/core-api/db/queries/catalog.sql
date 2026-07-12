@@ -265,6 +265,37 @@ LIMIT @page_limit::int OFFSET @page_offset::int;
 SELECT count(*) FROM reviews
 WHERE product_id = @product_id AND status = 'published';
 
+-- ListAllReviews is the ADMIN review-moderation list (P3-m) — EVERY review across ALL products, both
+-- 'published' AND 'hidden' (the moderation surface, unlike the storefront ListReviewsByProduct which is
+-- published-only at the SQL source). It is the INTERNAL projection: it JOINs the product name (for "review
+-- on <product>") and LEFT JOINs the reviewer's name (customer_id is nullable — guests may review — so
+-- customer_name is null for a guest). Reviewer identity is admin-only PII (PDPL): it appears here behind the
+-- admin auth wall, never on the public Review. Optional status filter (nullable narg = Tất cả / a tab),
+-- mirroring ListAdminProducts. No pagination — a made-to-order shop's review set is small and the FE derives
+-- its tabs (Chờ trả lời / Đã trả lời / Có ảnh) client-side. -- ponytail: add a page window here if reviews
+-- ever grow large. Newest first with an id tiebreak = a deterministic total order.
+-- name: ListAllReviews :many
+SELECT r.id, r.product_id, p.name AS product_name, r.customer_id, c.name AS customer_name,
+       r.rating, r.body, r.images, r.reply, r.status, r.created_at
+FROM reviews r
+JOIN products p ON p.id = r.product_id
+LEFT JOIN customers c ON c.id = r.customer_id
+WHERE (sqlc.narg('status')::review_status IS NULL OR r.status = sqlc.narg('status')::review_status)
+ORDER BY r.created_at DESC, r.id DESC;
+
+-- UpdateReviewModeration is the admin moderation write (P3-m): change a review's status (publish ↔ hide)
+-- and/or set its shop reply, in one partial UPDATE. status is a nullable narg (omit ⇒ unchanged, via
+-- coalesce). reply is touched only when @set_reply is true (so a plain hide/unhide leaves an existing reply
+-- intact); the handler builds the {body, at} jsonb (or passes it through). No outbox — review moderation is
+-- an internal content decision, not a domain event (plan §5). RETURNING id so an unknown id (0 rows →
+-- ErrNoRows) surfaces as 404; the handler answers 204 (the FE re-reads the list).
+-- name: UpdateReviewModeration :one
+UPDATE reviews
+SET status = coalesce(sqlc.narg('status')::review_status, status),
+    reply  = CASE WHEN @set_reply::boolean THEN sqlc.narg('reply') ELSE reply END
+WHERE id = @id
+RETURNING id;
+
 -- === ADR-037 configurator: parts (named part groups, each with its own colour set) ===
 
 -- name: InsertPart :one

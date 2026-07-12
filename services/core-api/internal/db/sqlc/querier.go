@@ -287,6 +287,16 @@ type Querier interface {
 	// arranging), then name/slug as the deterministic tiebreak. Unlike ListCategories it does NOT filter on
 	// `visible` — the admin sees hidden categories too (with their toggle off), that is the point of the screen.
 	ListAllCategories(ctx context.Context) ([]ListAllCategoriesRow, error)
+	// ListAllReviews is the ADMIN review-moderation list (P3-m) — EVERY review across ALL products, both
+	// 'published' AND 'hidden' (the moderation surface, unlike the storefront ListReviewsByProduct which is
+	// published-only at the SQL source). It is the INTERNAL projection: it JOINs the product name (for "review
+	// on <product>") and LEFT JOINs the reviewer's name (customer_id is nullable — guests may review — so
+	// customer_name is null for a guest). Reviewer identity is admin-only PII (PDPL): it appears here behind the
+	// admin auth wall, never on the public Review. Optional status filter (nullable narg = Tất cả / a tab),
+	// mirroring ListAdminProducts. No pagination — a made-to-order shop's review set is small and the FE derives
+	// its tabs (Chờ trả lời / Đã trả lời / Có ảnh) client-side. -- ponytail: add a page window here if reviews
+	// ever grow large. Newest first with an id tiebreak = a deterministic total order.
+	ListAllReviews(ctx context.Context, status NullReviewStatus) ([]ListAllReviewsRow, error)
 	// ListAssetJobsByProduct powers the admin product editor's render-status panel (P3-j-b GET
 	// /admin/products/{id}/asset-jobs): every render/ingest job for one product, newest first so the
 	// editor shows the latest attempt's status at the top. id breaks created_at ties for stable ordering.
@@ -488,6 +498,13 @@ type Querier interface {
 	// UpdateReplyTemplate replaces a template's title/body/variables. RETURNING with no matched row yields
 	// pgx.ErrNoRows → mapped to ErrNotFound (404) in the db wrapper, like GetReplyTemplateByID.
 	UpdateReplyTemplate(ctx context.Context, arg UpdateReplyTemplateParams) (ReplyTemplate, error)
+	// UpdateReviewModeration is the admin moderation write (P3-m): change a review's status (publish ↔ hide)
+	// and/or set its shop reply, in one partial UPDATE. status is a nullable narg (omit ⇒ unchanged, via
+	// coalesce). reply is touched only when @set_reply is true (so a plain hide/unhide leaves an existing reply
+	// intact); the handler builds the {body, at} jsonb (or passes it through). No outbox — review moderation is
+	// an internal content decision, not a domain event (plan §5). RETURNING id so an unknown id (0 rows →
+	// ErrNoRows) surfaces as 404; the handler answers 204 (the FE re-reads the list).
+	UpdateReviewModeration(ctx context.Context, arg UpdateReviewModerationParams) (uuid.UUID, error)
 	// UpdateSettings writes the non-money config (shop info, shipping rules, refund policy). It does NOT
 	// touch bank_account — that goes through the audited UpdateBankAccountTx seam.
 	UpdateSettings(ctx context.Context, arg UpdateSettingsParams) (Setting, error)

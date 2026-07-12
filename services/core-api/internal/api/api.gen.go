@@ -98,6 +98,12 @@ const (
 	Draft    ProductStatus = "draft"
 )
 
+// Defines values for ReviewStatus.
+const (
+	Hidden    ReviewStatus = "hidden"
+	Published ReviewStatus = "published"
+)
+
 // Defines values for UserRole.
 const (
 	Owner UserRole = "owner"
@@ -193,6 +199,32 @@ type AdminProductSummary struct {
 
 	// Status Product lifecycle (spec §02, Postgres `product_status`). The detail read returns `active` only.
 	Status ProductStatus `json:"status"`
+}
+
+// AdminReview Admin review-moderation projection (P3-m) — a review with its moderation fields plus the product name and the reviewer's name for the moderation card. Unlike the public Review it carries `status` and `customerName` (admin-only PII, PDPL — a guest review has customerName null). `reply` is the shop's reply, null until replied. The FE derives its tabs (pending-reply = published & no reply, replied = has reply, has-image = images non-empty) from these fields.
+type AdminReview struct {
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// CustomerName Reviewer's name, or null for a guest review. Admin-only (PDPL).
+	CustomerName *string            `json:"customerName"`
+	Id           openapi_types.UUID `json:"id"`
+
+	// Images Reviewer's attached image URLs (may be empty).
+	Images    []string           `json:"images"`
+	ProductId openapi_types.UUID `json:"productId"`
+
+	// ProductName Name of the product this review is on (for the moderation card).
+	ProductName string `json:"productName"`
+
+	// Rating Star rating, 1–5.
+	Rating int `json:"rating"`
+
+	// Reply The shop's public reply to a review (spec §02 `reply?`). Null on the parent until replied.
+	Reply *ReviewReply `json:"reply,omitempty"`
+
+	// Status Moderation state of a review (spec §02). `published` = visible on the storefront; `hidden` = moderated out (never served by the public review list). Exposed only on the admin projection — the public Review omits it (a hidden review simply never appears).
+	Status ReviewStatus `json:"status"`
 }
 
 // AssetJob One render/ingest job for a product (migration 000006). The admin editor reads this to show render status. attempts/lastError/completedAt are written by the slice-3 worker; a freshly enqueued job is `queued` with 0 attempts and null lastError/completedAt.
@@ -1238,6 +1270,15 @@ type ReviewList struct {
 	Total int `json:"total"`
 }
 
+// ReviewModeration Moderation change for one review (P3-m). At least one field must be present (an empty body is a 400). `status` flips published ↔ hidden. `reply` sets the shop reply text (its timestamp is server-stamped); omit it to leave any existing reply untouched. The FE sends both (`status: published` + `reply`) for "Lưu & công khai" so a reply also publishes the review.
+type ReviewModeration struct {
+	// Reply Shop reply text (non-empty). Server stamps the timestamp. Omit to leave the reply unchanged.
+	Reply *string `json:"reply,omitempty"`
+
+	// Status Moderation state of a review (spec §02). `published` = visible on the storefront; `hidden` = moderated out (never served by the public review list). Exposed only on the admin projection — the public Review omits it (a hidden review simply never appears).
+	Status *ReviewStatus `json:"status,omitempty"`
+}
+
 // ReviewReply The shop's public reply to a review (spec §02 `reply?`). Null on the parent until replied.
 type ReviewReply struct {
 	// At ISO-8601 UTC when the reply was posted.
@@ -1246,6 +1287,9 @@ type ReviewReply struct {
 	// Body The shop reply text.
 	Body string `json:"body"`
 }
+
+// ReviewStatus Moderation state of a review (spec §02). `published` = visible on the storefront; `hidden` = moderated out (never served by the public review list). Exposed only on the admin projection — the public Review omits it (a hidden review simply never appears).
+type ReviewStatus string
 
 // Settings The settings singleton. `shopInfo` and `shippingRules` are free-form jsonb whose precise shapes are pinned in the Phase-1 storefront slice; typed loosely here on purpose.
 type Settings struct {
@@ -1347,6 +1391,12 @@ type GetAdminOrdersParams struct {
 type GetAdminProductsParams struct {
 	// Status Filter to a single product status (spec §02). Omit for all statuses ("Tất cả").
 	Status *ProductStatus `form:"status,omitempty" json:"status,omitempty"`
+}
+
+// GetAdminReviewsParams defines parameters for GetAdminReviews.
+type GetAdminReviewsParams struct {
+	// Status Filter to a single review status (published/hidden). Omit for all ("Tất cả").
+	Status *ReviewStatus `form:"status,omitempty" json:"status,omitempty"`
 }
 
 // GetCategoriesParams defines parameters for GetCategories.
@@ -1489,6 +1539,9 @@ type CreateReplyTemplateJSONRequestBody = ReplyTemplateInput
 
 // UpdateReplyTemplateJSONRequestBody defines body for UpdateReplyTemplate for application/json ContentType.
 type UpdateReplyTemplateJSONRequestBody = ReplyTemplateInput
+
+// UpdateAdminReviewJSONRequestBody defines body for UpdateAdminReview for application/json ContentType.
+type UpdateAdminReviewJSONRequestBody = ReviewModeration
 
 // UpdateBankAccountJSONRequestBody defines body for UpdateBankAccount for application/json ContentType.
 type UpdateBankAccountJSONRequestBody = BankAccountUpdate
@@ -1761,6 +1814,12 @@ type ServerInterface interface {
 	// Replace an extension reply template (owner-only).
 	// (PATCH /admin/reply-templates/{id})
 	UpdateReplyTemplate(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Admin review-moderation list — every review across all products (admin-gated read).
+	// (GET /admin/reviews)
+	GetAdminReviews(w http.ResponseWriter, r *http.Request, params GetAdminReviewsParams)
+	// Moderate a review — publish/hide and/or reply (owner or staff).
+	// (PATCH /admin/reviews/{id})
+	UpdateAdminReview(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// Read the settings singleton (admin-gated).
 	// (GET /admin/settings)
 	GetSettings(w http.ResponseWriter, r *http.Request)
@@ -2127,6 +2186,18 @@ func (_ Unimplemented) DeleteReplyTemplate(w http.ResponseWriter, r *http.Reques
 // Replace an extension reply template (owner-only).
 // (PATCH /admin/reply-templates/{id})
 func (_ Unimplemented) UpdateReplyTemplate(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Admin review-moderation list — every review across all products (admin-gated read).
+// (GET /admin/reviews)
+func (_ Unimplemented) GetAdminReviews(w http.ResponseWriter, r *http.Request, params GetAdminReviewsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Moderate a review — publish/hide and/or reply (owner or staff).
+// (PATCH /admin/reviews/{id})
+func (_ Unimplemented) UpdateAdminReview(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3782,6 +3853,70 @@ func (siw *ServerInterfaceWrapper) UpdateReplyTemplate(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// GetAdminReviews operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminReviews(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAdminReviewsParams
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", r.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAdminReviews(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAdminReview operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAdminReview(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAdminReview(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -4621,6 +4756,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/admin/reply-templates/{id}", wrapper.UpdateReplyTemplate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/reviews", wrapper.GetAdminReviews)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/admin/reviews/{id}", wrapper.UpdateAdminReview)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/settings", wrapper.GetSettings)
@@ -6925,6 +7066,85 @@ func (response UpdateReplyTemplate404JSONResponse) VisitUpdateReplyTemplateRespo
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetAdminReviewsRequestObject struct {
+	Params GetAdminReviewsParams
+}
+
+type GetAdminReviewsResponseObject interface {
+	VisitGetAdminReviewsResponse(w http.ResponseWriter) error
+}
+
+type GetAdminReviews200JSONResponse []AdminReview
+
+func (response GetAdminReviews200JSONResponse) VisitGetAdminReviewsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminReviews400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetAdminReviews400JSONResponse) VisitGetAdminReviewsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminReviews401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetAdminReviews401JSONResponse) VisitGetAdminReviewsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAdminReviewRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *UpdateAdminReviewJSONRequestBody
+}
+
+type UpdateAdminReviewResponseObject interface {
+	VisitUpdateAdminReviewResponse(w http.ResponseWriter) error
+}
+
+type UpdateAdminReview204Response struct {
+}
+
+func (response UpdateAdminReview204Response) VisitUpdateAdminReviewResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type UpdateAdminReview400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateAdminReview400JSONResponse) VisitUpdateAdminReviewResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAdminReview401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateAdminReview401JSONResponse) VisitUpdateAdminReviewResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAdminReview404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateAdminReview404JSONResponse) VisitUpdateAdminReviewResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetSettingsRequestObject struct {
 }
 
@@ -7921,6 +8141,12 @@ type StrictServerInterface interface {
 	// Replace an extension reply template (owner-only).
 	// (PATCH /admin/reply-templates/{id})
 	UpdateReplyTemplate(ctx context.Context, request UpdateReplyTemplateRequestObject) (UpdateReplyTemplateResponseObject, error)
+	// Admin review-moderation list — every review across all products (admin-gated read).
+	// (GET /admin/reviews)
+	GetAdminReviews(ctx context.Context, request GetAdminReviewsRequestObject) (GetAdminReviewsResponseObject, error)
+	// Moderate a review — publish/hide and/or reply (owner or staff).
+	// (PATCH /admin/reviews/{id})
+	UpdateAdminReview(ctx context.Context, request UpdateAdminReviewRequestObject) (UpdateAdminReviewResponseObject, error)
 	// Read the settings singleton (admin-gated).
 	// (GET /admin/settings)
 	GetSettings(ctx context.Context, request GetSettingsRequestObject) (GetSettingsResponseObject, error)
@@ -9480,6 +9706,65 @@ func (sh *strictHandler) UpdateReplyTemplate(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateReplyTemplateResponseObject); ok {
 		if err := validResponse.VisitUpdateReplyTemplateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAdminReviews operation middleware
+func (sh *strictHandler) GetAdminReviews(w http.ResponseWriter, r *http.Request, params GetAdminReviewsParams) {
+	var request GetAdminReviewsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAdminReviews(ctx, request.(GetAdminReviewsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAdminReviews")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAdminReviewsResponseObject); ok {
+		if err := validResponse.VisitGetAdminReviewsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAdminReview operation middleware
+func (sh *strictHandler) UpdateAdminReview(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request UpdateAdminReviewRequestObject
+
+	request.Id = id
+
+	var body UpdateAdminReviewJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAdminReview(ctx, request.(UpdateAdminReviewRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAdminReview")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAdminReviewResponseObject); ok {
+		if err := validResponse.VisitUpdateAdminReviewResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
