@@ -22,6 +22,35 @@ SELECT * FROM categories
 WHERE EXISTS (SELECT 1 FROM products WHERE products.category_id = categories.id AND products.status = 'active')
 ORDER BY name, slug;
 
+-- ListAllCategories is the ADMIN category list (P3-o) — the INTERNAL projection that returns EVERY category,
+-- including empty ones and those whose only products are draft/archived, unlike the storefront-facing
+-- ListCategories (which hides categories with no ACTIVE product). Each row carries product_count = the number
+-- of products referencing it across ALL statuses (LEFT JOIN so an empty category still appears, with count 0).
+-- That count is the load-bearing admin figure: it tells the owner which categories are safe to delete (a
+-- non-zero count means DeleteCategory will trip the products.category_id FK → 409). No pagination — categories
+-- are a small, admin-curated set (same "fits one response" scale as ListCategories/ListAdminProducts). Ordered
+-- name A→Z with the UNIQUE slug as tiebreak = a deterministic TOTAL order (two categories sharing a display
+-- name never flap position).
+-- name: ListAllCategories :many
+SELECT c.*, count(p.id) AS product_count
+FROM categories c
+LEFT JOIN products p ON p.category_id = c.id
+GROUP BY c.id
+ORDER BY c.name, c.slug;
+
+-- UpdateCategory saves a category's slug + name (P3-o). slug stays mutable — a changed slug that collides with
+-- another category trips the UNIQUE(slug) constraint, which the handler maps to a 400 field error (never a
+-- 500), mirroring UpdateProduct. RETURNING so an unknown id (0 rows → ErrNoRows) surfaces as 404.
+-- name: UpdateCategory :one
+UPDATE categories SET slug = $2, name = $3 WHERE id = $1 RETURNING *;
+
+-- DeleteCategory is a HARD delete, allowed only for a category no product references: products.category_id is
+-- NOT NULL REFERENCES categories(id) with the default NO ACTION (migration 000003), so deleting a category
+-- still in use raises a foreign_key_violation the handler maps to 409 CATEGORY_IN_USE (reassign or archive the
+-- products first). RETURNING id so a missing row surfaces as ErrNoRows→404, mirroring DeleteProduct.
+-- name: DeleteCategory :one
+DELETE FROM categories WHERE id = $1 RETURNING id;
+
 -- name: InsertProduct :one
 INSERT INTO products (
   id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, est_filament_qty, est_print_minutes

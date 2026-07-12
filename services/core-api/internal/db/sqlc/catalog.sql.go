@@ -61,6 +61,20 @@ func (q *Queries) CountPublishedReviewsByProduct(ctx context.Context, productID 
 	return count, err
 }
 
+const deleteCategory = `-- name: DeleteCategory :one
+DELETE FROM categories WHERE id = $1 RETURNING id
+`
+
+// DeleteCategory is a HARD delete, allowed only for a category no product references: products.category_id is
+// NOT NULL REFERENCES categories(id) with the default NO ACTION (migration 000003), so deleting a category
+// still in use raises a foreign_key_violation the handler maps to 409 CATEGORY_IN_USE (reassign or archive the
+// products first). RETURNING id so a missing row surfaces as ErrNoRows→404, mirroring DeleteProduct.
+func (q *Queries) DeleteCategory(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, deleteCategory, id)
+	err := row.Scan(&id)
+	return id, err
+}
+
 const deleteColor = `-- name: DeleteColor :one
 DELETE FROM colors WHERE id = $1 AND product_id = $2 RETURNING id
 `
@@ -683,6 +697,55 @@ func (q *Queries) ListAdminProducts(ctx context.Context, status NullProductStatu
 	return items, nil
 }
 
+const listAllCategories = `-- name: ListAllCategories :many
+SELECT c.id, c.slug, c.name, count(p.id) AS product_count
+FROM categories c
+LEFT JOIN products p ON p.category_id = c.id
+GROUP BY c.id
+ORDER BY c.name, c.slug
+`
+
+type ListAllCategoriesRow struct {
+	ID           uuid.UUID `json:"id"`
+	Slug         string    `json:"slug"`
+	Name         string    `json:"name"`
+	ProductCount int64     `json:"productCount"`
+}
+
+// ListAllCategories is the ADMIN category list (P3-o) — the INTERNAL projection that returns EVERY category,
+// including empty ones and those whose only products are draft/archived, unlike the storefront-facing
+// ListCategories (which hides categories with no ACTIVE product). Each row carries product_count = the number
+// of products referencing it across ALL statuses (LEFT JOIN so an empty category still appears, with count 0).
+// That count is the load-bearing admin figure: it tells the owner which categories are safe to delete (a
+// non-zero count means DeleteCategory will trip the products.category_id FK → 409). No pagination — categories
+// are a small, admin-curated set (same "fits one response" scale as ListCategories/ListAdminProducts). Ordered
+// name A→Z with the UNIQUE slug as tiebreak = a deterministic TOTAL order (two categories sharing a display
+// name never flap position).
+func (q *Queries) ListAllCategories(ctx context.Context) ([]ListAllCategoriesRow, error) {
+	rows, err := q.db.Query(ctx, listAllCategories)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllCategoriesRow
+	for rows.Next() {
+		var i ListAllCategoriesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Name,
+			&i.ProductCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCategories = `-- name: ListCategories :many
 SELECT id, slug, name FROM categories
 WHERE EXISTS (SELECT 1 FROM products WHERE products.category_id = categories.id AND products.status = 'active')
@@ -950,6 +1013,26 @@ func (q *Queries) ListReviewsByProduct(ctx context.Context, arg ListReviewsByPro
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateCategory = `-- name: UpdateCategory :one
+UPDATE categories SET slug = $2, name = $3 WHERE id = $1 RETURNING id, slug, name
+`
+
+type UpdateCategoryParams struct {
+	ID   uuid.UUID `json:"id"`
+	Slug string    `json:"slug"`
+	Name string    `json:"name"`
+}
+
+// UpdateCategory saves a category's slug + name (P3-o). slug stays mutable — a changed slug that collides with
+// another category trips the UNIQUE(slug) constraint, which the handler maps to a 400 field error (never a
+// 500), mirroring UpdateProduct. RETURNING so an unknown id (0 rows → ErrNoRows) surfaces as 404.
+func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (Category, error) {
+	row := q.db.QueryRow(ctx, updateCategory, arg.ID, arg.Slug, arg.Name)
+	var i Category
+	err := row.Scan(&i.ID, &i.Slug, &i.Name)
+	return i, err
 }
 
 const updateColor = `-- name: UpdateColor :one

@@ -1026,6 +1026,109 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /admin/categories:
+    get:
+      tags: [admin]
+      operationId: getAdminCategories
+      summary: Admin category list — every category with its product count (admin-gated read).
+      description: >
+        Returns EVERY category (P3-o) as the admin projection — id, slug, name, and productCount (the number
+        of products referencing it across ALL statuses) — ordered name A→Z with the slug as tiebreak. Unlike
+        the public GetCategories (which lists only categories with an ACTIVE product), this is the INTERNAL
+        admin taxonomy: it shows empty categories and draft-only categories too, so the owner can manage the
+        whole set. productCount is the deletability signal — a non-zero count means a hard delete is blocked
+        (409). NOT paginated: categories are a small, admin-curated set. Admin-gated (cookieAuth; owner AND
+        staff read).
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Every category with its product count (name A→Z).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminCategory'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [admin]
+      operationId: createAdminCategory
+      summary: Create a category (owner-only).
+      description: >
+        Creates a category from the admin taxonomy editor (owner-only — spec §08 catalog is an owner power).
+        A duplicate slug → 400 with a `slug` field error. The response is the created Category (its
+        productCount is definitionally 0, so the list shape is not needed here).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryInput'
+      responses:
+        '201':
+          description: The created category.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/categories/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [admin]
+      operationId: updateAdminCategory
+      summary: Rename or re-slug a category (owner-only).
+      description: >
+        Saves a category's slug + name (owner-only). Unknown id → 404; a slug now taken by another category →
+        400 with a `slug` field error. The response is the updated Category (productCount is unchanged by a
+        rename, so the caller keeps the count it already holds).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryInput'
+      responses:
+        '200':
+          description: The updated category.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [admin]
+      operationId: deleteAdminCategory
+      summary: Delete a category (owner-only; blocked while products reference it).
+      description: >
+        Hard-deletes a category (owner-only). Allowed only for a category no product references; a category
+        still in use is retained (products.category_id is NOT NULL with NO ACTION) and the delete returns 409
+        CATEGORY_IN_USE — reassign or archive the products first. Unknown id → 404.
+      security:
+        - cookieAuth: []
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
   /admin/products:
     get:
       tags: [admin]
@@ -3027,6 +3130,41 @@ components:
         slug:
           type: string
           description: Unique URL slug — the value passed to GET /products?category={slug}.
+        name:
+          type: string
+          description: Human-friendly display name (sentence case).
+
+    AdminCategory:
+      type: object
+      description: >
+        Admin category-list projection (P3-o): a Category plus productCount — the number of products
+        referencing it across ALL statuses. The count is the deletability signal (a non-zero count means a
+        hard delete is blocked, 409). Only the admin list carries it; the create/rename responses return the
+        plain Category (a fresh category's count is 0; a rename does not change it).
+      required: [id, slug, name, productCount]
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        productCount:
+          type: integer
+          format: int64
+          description: Products referencing this category, across all statuses (>= 0). 0 = safe to delete.
+
+    CategoryInput:
+      type: object
+      description: >
+        Create/rename body for a category (P3-o). slug is a URL-safe lowercase-dash token (validated at the
+        edge so a junk slug never reaches the storefront URL); name is a sentence-case display label.
+      required: [slug, name]
+      properties:
+        slug:
+          type: string
+          description: Unique URL slug (lowercase alphanumerics in dash-separated groups, e.g. "den-de-ban").
         name:
           type: string
           description: Human-friendly display name (sentence case).

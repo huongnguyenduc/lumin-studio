@@ -119,6 +119,16 @@ type Address struct {
 	Ward     string `json:"ward"`
 }
 
+// AdminCategory Admin category-list projection (P3-o): a Category plus productCount — the number of products referencing it across ALL statuses. The count is the deletability signal (a non-zero count means a hard delete is blocked, 409). Only the admin list carries it; the create/rename responses return the plain Category (a fresh category's count is 0; a rename does not change it).
+type AdminCategory struct {
+	Id   openapi_types.UUID `json:"id"`
+	Name string             `json:"name"`
+
+	// ProductCount Products referencing this category, across all statuses (>= 0). 0 = safe to delete.
+	ProductCount int64  `json:"productCount"`
+	Slug         string `json:"slug"`
+}
+
 // AdminOrderList One page of admin order summaries plus the pagination envelope. `total` is the count of orders matching the status filter across all pages; the client derives the page count.
 type AdminOrderList struct {
 	Items []AdminOrderSummary `json:"items"`
@@ -271,6 +281,15 @@ type Category struct {
 	Name string `json:"name"`
 
 	// Slug Unique URL slug — the value passed to GET /products?category={slug}.
+	Slug string `json:"slug"`
+}
+
+// CategoryInput Create/rename body for a category (P3-o). slug is a URL-safe lowercase-dash token (validated at the edge so a junk slug never reaches the storefront URL); name is a sentence-case display label.
+type CategoryInput struct {
+	// Name Human-friendly display name (sentence case).
+	Name string `json:"name"`
+
+	// Slug Unique URL slug (lowercase alphanumerics in dash-separated groups, e.g. "den-de-ban").
 	Slug string `json:"slug"`
 }
 
@@ -1361,6 +1380,12 @@ type CreateAuxCostJSONRequestBody = AuxCostInput
 // UpdateAuxCostJSONRequestBody defines body for UpdateAuxCost for application/json ContentType.
 type UpdateAuxCostJSONRequestBody = AuxCostInput
 
+// CreateAdminCategoryJSONRequestBody defines body for CreateAdminCategory for application/json ContentType.
+type CreateAdminCategoryJSONRequestBody = CategoryInput
+
+// UpdateAdminCategoryJSONRequestBody defines body for UpdateAdminCategory for application/json ContentType.
+type UpdateAdminCategoryJSONRequestBody = CategoryInput
+
 // CreateFilamentMaterialJSONRequestBody defines body for CreateFilamentMaterial for application/json ContentType.
 type CreateFilamentMaterialJSONRequestBody = FilamentMaterialInput
 
@@ -1560,6 +1585,18 @@ type ServerInterface interface {
 	// Edit an overhead cost line (owner-only).
 	// (PATCH /admin/aux-costs/{id})
 	UpdateAuxCost(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Admin category list — every category with its product count (admin-gated read).
+	// (GET /admin/categories)
+	GetAdminCategories(w http.ResponseWriter, r *http.Request)
+	// Create a category (owner-only).
+	// (POST /admin/categories)
+	CreateAdminCategory(w http.ResponseWriter, r *http.Request)
+	// Delete a category (owner-only; blocked while products reference it).
+	// (DELETE /admin/categories/{id})
+	DeleteAdminCategory(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Rename or re-slug a category (owner-only).
+	// (PATCH /admin/categories/{id})
+	UpdateAdminCategory(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// Derived costing KPIs for the /vat-tu dashboard (admin-gated read; owner+staff).
 	// (GET /admin/costing-summary)
 	GetCostingSummary(w http.ResponseWriter, r *http.Request)
@@ -1773,6 +1810,30 @@ func (_ Unimplemented) DeleteAuxCost(w http.ResponseWriter, r *http.Request, id 
 // Edit an overhead cost line (owner-only).
 // (PATCH /admin/aux-costs/{id})
 func (_ Unimplemented) UpdateAuxCost(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Admin category list — every category with its product count (admin-gated read).
+// (GET /admin/categories)
+func (_ Unimplemented) GetAdminCategories(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Create a category (owner-only).
+// (POST /admin/categories)
+func (_ Unimplemented) CreateAdminCategory(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete a category (owner-only; blocked while products reference it).
+// (DELETE /admin/categories/{id})
+func (_ Unimplemented) DeleteAdminCategory(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Rename or re-slug a category (owner-only).
+// (PATCH /admin/categories/{id})
+func (_ Unimplemented) UpdateAdminCategory(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2250,6 +2311,108 @@ func (siw *ServerInterfaceWrapper) UpdateAuxCost(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateAuxCost(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAdminCategories operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminCategories(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAdminCategories(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAdminCategory operation middleware
+func (siw *ServerInterfaceWrapper) CreateAdminCategory(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAdminCategory(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAdminCategory operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAdminCategory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAdminCategory(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAdminCategory operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAdminCategory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAdminCategory(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4255,6 +4418,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Patch(options.BaseURL+"/admin/aux-costs/{id}", wrapper.UpdateAuxCost)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/categories", wrapper.GetAdminCategories)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/categories", wrapper.CreateAdminCategory)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/admin/categories/{id}", wrapper.DeleteAdminCategory)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/admin/categories/{id}", wrapper.UpdateAdminCategory)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/costing-summary", wrapper.GetCostingSummary)
 	})
 	r.Group(func(r chi.Router) {
@@ -4618,6 +4793,181 @@ func (response UpdateAuxCost403JSONResponse) VisitUpdateAuxCostResponse(w http.R
 type UpdateAuxCost404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateAuxCost404JSONResponse) VisitUpdateAuxCostResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminCategoriesRequestObject struct {
+}
+
+type GetAdminCategoriesResponseObject interface {
+	VisitGetAdminCategoriesResponse(w http.ResponseWriter) error
+}
+
+type GetAdminCategories200JSONResponse []AdminCategory
+
+func (response GetAdminCategories200JSONResponse) VisitGetAdminCategoriesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminCategories401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetAdminCategories401JSONResponse) VisitGetAdminCategoriesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateAdminCategoryRequestObject struct {
+	Body *CreateAdminCategoryJSONRequestBody
+}
+
+type CreateAdminCategoryResponseObject interface {
+	VisitCreateAdminCategoryResponse(w http.ResponseWriter) error
+}
+
+type CreateAdminCategory201JSONResponse Category
+
+func (response CreateAdminCategory201JSONResponse) VisitCreateAdminCategoryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateAdminCategory400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateAdminCategory400JSONResponse) VisitCreateAdminCategoryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateAdminCategory401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateAdminCategory401JSONResponse) VisitCreateAdminCategoryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateAdminCategory403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateAdminCategory403JSONResponse) VisitCreateAdminCategoryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteAdminCategoryRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type DeleteAdminCategoryResponseObject interface {
+	VisitDeleteAdminCategoryResponse(w http.ResponseWriter) error
+}
+
+type DeleteAdminCategory204Response struct {
+}
+
+func (response DeleteAdminCategory204Response) VisitDeleteAdminCategoryResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteAdminCategory401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteAdminCategory401JSONResponse) VisitDeleteAdminCategoryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteAdminCategory403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteAdminCategory403JSONResponse) VisitDeleteAdminCategoryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteAdminCategory404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteAdminCategory404JSONResponse) VisitDeleteAdminCategoryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteAdminCategory409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteAdminCategory409JSONResponse) VisitDeleteAdminCategoryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAdminCategoryRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *UpdateAdminCategoryJSONRequestBody
+}
+
+type UpdateAdminCategoryResponseObject interface {
+	VisitUpdateAdminCategoryResponse(w http.ResponseWriter) error
+}
+
+type UpdateAdminCategory200JSONResponse Category
+
+func (response UpdateAdminCategory200JSONResponse) VisitUpdateAdminCategoryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAdminCategory400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateAdminCategory400JSONResponse) VisitUpdateAdminCategoryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAdminCategory401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateAdminCategory401JSONResponse) VisitUpdateAdminCategoryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAdminCategory403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateAdminCategory403JSONResponse) VisitUpdateAdminCategoryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAdminCategory404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateAdminCategory404JSONResponse) VisitUpdateAdminCategoryResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
 
@@ -7320,6 +7670,18 @@ type StrictServerInterface interface {
 	// Edit an overhead cost line (owner-only).
 	// (PATCH /admin/aux-costs/{id})
 	UpdateAuxCost(ctx context.Context, request UpdateAuxCostRequestObject) (UpdateAuxCostResponseObject, error)
+	// Admin category list — every category with its product count (admin-gated read).
+	// (GET /admin/categories)
+	GetAdminCategories(ctx context.Context, request GetAdminCategoriesRequestObject) (GetAdminCategoriesResponseObject, error)
+	// Create a category (owner-only).
+	// (POST /admin/categories)
+	CreateAdminCategory(ctx context.Context, request CreateAdminCategoryRequestObject) (CreateAdminCategoryResponseObject, error)
+	// Delete a category (owner-only; blocked while products reference it).
+	// (DELETE /admin/categories/{id})
+	DeleteAdminCategory(ctx context.Context, request DeleteAdminCategoryRequestObject) (DeleteAdminCategoryResponseObject, error)
+	// Rename or re-slug a category (owner-only).
+	// (PATCH /admin/categories/{id})
+	UpdateAdminCategory(ctx context.Context, request UpdateAdminCategoryRequestObject) (UpdateAdminCategoryResponseObject, error)
 	// Derived costing KPIs for the /vat-tu dashboard (admin-gated read; owner+staff).
 	// (GET /admin/costing-summary)
 	GetCostingSummary(ctx context.Context, request GetCostingSummaryRequestObject) (GetCostingSummaryResponseObject, error)
@@ -7644,6 +8006,120 @@ func (sh *strictHandler) UpdateAuxCost(w http.ResponseWriter, r *http.Request, i
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateAuxCostResponseObject); ok {
 		if err := validResponse.VisitUpdateAuxCostResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAdminCategories operation middleware
+func (sh *strictHandler) GetAdminCategories(w http.ResponseWriter, r *http.Request) {
+	var request GetAdminCategoriesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAdminCategories(ctx, request.(GetAdminCategoriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAdminCategories")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAdminCategoriesResponseObject); ok {
+		if err := validResponse.VisitGetAdminCategoriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAdminCategory operation middleware
+func (sh *strictHandler) CreateAdminCategory(w http.ResponseWriter, r *http.Request) {
+	var request CreateAdminCategoryRequestObject
+
+	var body CreateAdminCategoryJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAdminCategory(ctx, request.(CreateAdminCategoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAdminCategory")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAdminCategoryResponseObject); ok {
+		if err := validResponse.VisitCreateAdminCategoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteAdminCategory operation middleware
+func (sh *strictHandler) DeleteAdminCategory(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request DeleteAdminCategoryRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAdminCategory(ctx, request.(DeleteAdminCategoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAdminCategory")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAdminCategoryResponseObject); ok {
+		if err := validResponse.VisitDeleteAdminCategoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAdminCategory operation middleware
+func (sh *strictHandler) UpdateAdminCategory(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request UpdateAdminCategoryRequestObject
+
+	request.Id = id
+
+	var body UpdateAdminCategoryJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAdminCategory(ctx, request.(UpdateAdminCategoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAdminCategory")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAdminCategoryResponseObject); ok {
+		if err := validResponse.VisitUpdateAdminCategoryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
