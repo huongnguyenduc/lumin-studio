@@ -10,8 +10,12 @@ import { SESSION_COOKIE, coreApiBaseUrl } from './session';
 // the BE's per-field 400 (ErrorEnvelope.fields, e.g. a duplicate slug) so the editor can mark the field.
 
 type ProductInput = components['schemas']['ProductInput'];
+type ColorInput = components['schemas']['ColorInput'];
+type PartInput = components['schemas']['PartInput'];
 
 export type WriteCode = 'forbidden' | 'validation' | 'notFound' | 'inUse' | 'error';
+/** Colours/parts persist per-row (P3-l l-3); the island refreshes from the server, so no body is needed. */
+export type SubWriteResult = { ok: true } | { ok: false; code: WriteCode };
 export type ProductWriteResult =
   | { ok: true; id: string }
   | { ok: false; code: WriteCode; fields?: Record<string, string> };
@@ -66,6 +70,100 @@ export async function deleteProduct(
       params: { path: { id } },
     });
     if (!error) return { ok: true }; // 204 no body
+    return { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
+// ── Colours & parts (P3-l l-3, ADR-037) — per-row CRUD sub-resources of a product. Owner-only at the
+// server (BE authOwnerOnly). The editor island refreshes the RSC after each write, so success carries no
+// body. Delete of a part (or colour) already pinned by an order → 409 → `inUse` (archive the product).
+
+export async function createColor(productId: string, input: ColorInput): Promise<SubWriteResult> {
+  try {
+    const client = await authedClient();
+    const { error, response } = await client.POST('/admin/products/{id}/colors', {
+      params: { path: { id: productId } },
+      body: input,
+    });
+    if (!error) return { ok: true };
+    return { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
+export async function updateColor(
+  productId: string,
+  colorId: string,
+  input: ColorInput,
+): Promise<SubWriteResult> {
+  try {
+    const client = await authedClient();
+    const { error, response } = await client.PATCH('/admin/products/{id}/colors/{colorId}', {
+      params: { path: { id: productId, colorId } },
+      body: input,
+    });
+    if (!error) return { ok: true };
+    return { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
+export async function deleteColor(productId: string, colorId: string): Promise<SubWriteResult> {
+  try {
+    const client = await authedClient();
+    const { error, response } = await client.DELETE('/admin/products/{id}/colors/{colorId}', {
+      params: { path: { id: productId, colorId } },
+    });
+    if (!error) return { ok: true };
+    return { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
+export async function createPart(productId: string, input: PartInput): Promise<SubWriteResult> {
+  try {
+    const client = await authedClient();
+    const { error, response } = await client.POST('/admin/products/{id}/parts', {
+      params: { path: { id: productId } },
+      body: input,
+    });
+    if (!error) return { ok: true };
+    return { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
+export async function updatePart(
+  productId: string,
+  partId: string,
+  input: PartInput,
+): Promise<SubWriteResult> {
+  try {
+    const client = await authedClient();
+    const { error, response } = await client.PATCH('/admin/products/{id}/parts/{partId}', {
+      params: { path: { id: productId, partId } },
+      body: input,
+    });
+    if (!error) return { ok: true };
+    return { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
+export async function deletePart(productId: string, partId: string): Promise<SubWriteResult> {
+  try {
+    const client = await authedClient();
+    const { error, response } = await client.DELETE('/admin/products/{id}/parts/{partId}', {
+      params: { path: { id: productId, partId } },
+    });
+    if (!error) return { ok: true };
     return { ok: false, code: codeFor(response.status) };
   } catch {
     return { ok: false, code: 'error' };
