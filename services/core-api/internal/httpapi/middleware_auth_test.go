@@ -330,6 +330,11 @@ func TestClassifyFailsClosed(t *testing.T) {
 		"DeleteAuxCost": authOwnerOnly,
 
 		"GetCostingSummary": authRequired, // derived KPI read — owner+staff (ADR-039 slice 4c-2)
+
+		// P3-q staff & roles: owner-only for BOTH read and write (the ONE owner-only admin read —
+		// managing/seeing the team is an owner power, spec §08).
+		"GetAdminStaff": authOwnerOnly,
+		"CreateStaff":   authOwnerOnly,
 	}
 	for op, want := range cases {
 		if got := classify(op); got != want {

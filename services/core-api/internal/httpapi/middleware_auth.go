@@ -127,6 +127,12 @@ func classify(operationID string) authClass {
 		// GetProductAssetJobs/ListFilamentMaterials/GetFilamentMaterial/ListMachines/ListAuxCosts) stay
 		// authRequired (owner+staff) via the default, mirroring settings.
 		return authOwnerOnly
+	case "GetAdminStaff", "CreateStaff":
+		// Staff & roles (P3-q) is owner-only for BOTH read and write: managing the team — and even
+		// seeing the roster — is an owner power (spec §08; the design's role matrix gives staff no
+		// access to "Cài đặt & nhân viên"). This is the ONE owner-only admin READ; every other admin
+		// read stays owner+staff via the default. The RBAC matrix the FE draws is display-only.
+		return authOwnerOnly
 	case "RegisterCustomer", "LoginCustomer", "LogoutCustomer":
 		// Storefront customer auth entry points (PR-P1-r) — issuing or clearing a customer cookie
 		// can't itself require one (mirrors LoginUser/LogoutUser). Register/login gate on the

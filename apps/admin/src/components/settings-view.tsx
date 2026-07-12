@@ -343,24 +343,32 @@ function RefundPolicySection({ settings }: { settings: Settings }) {
   );
 }
 
-/** Right-column card linking to the other settings sub-pages. Only "Mẫu trả lời" is live in P3-i;
- *  Extension / Nhân viên / Kênh chat are later tracks (P3-q/P3-r/Phase 4), shown as coming-soon. */
+/** Right-column card linking to the other settings sub-pages. "Mẫu trả lời" (P3-i) and "Nhân viên"
+ *  (P3-q) are live; Extension / Kênh chat are later tracks (P3-r/Phase 4), shown as coming-soon. */
 function SubpagesCard() {
   const t = useTranslations('settings');
   return (
     <Card elevation="md" className="flex flex-col gap-3 p-5">
       <h2 className="font-display text-lg font-semibold text-text-strong">{t('subpages.title')}</h2>
-      <Link
-        href="/cai-dat/mau-tra-loi"
-        className="flex min-h-[44px] items-center justify-between rounded-lg border border-border-default px-4 py-2 text-sm text-text-body hover:bg-surface-sunken"
-      >
-        <span>{t('subpages.replyTemplates')}</span>
-        <span aria-hidden className="text-text-muted">
-          →
-        </span>
-      </Link>
+      {(
+        [
+          { href: '/cai-dat/mau-tra-loi', label: t('subpages.replyTemplates') },
+          { href: '/cai-dat/nhan-vien', label: t('subpages.staff') },
+        ] as const
+      ).map(({ href, label }) => (
+        <Link
+          key={href}
+          href={href}
+          className="flex min-h-[44px] items-center justify-between rounded-lg border border-border-default px-4 py-2 text-sm text-text-body hover:bg-surface-sunken"
+        >
+          <span>{label}</span>
+          <span aria-hidden className="text-text-muted">
+            →
+          </span>
+        </Link>
+      ))}
       <ul className="flex flex-col gap-2">
-        {(['extension', 'staff', 'channels'] as const).map((key) => (
+        {(['extension', 'channels'] as const).map((key) => (
           <li
             key={key}
             className="flex items-center justify-between rounded-lg border border-dashed border-border-default px-4 py-2 text-sm text-text-muted"
