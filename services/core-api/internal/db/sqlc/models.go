@@ -555,9 +555,13 @@ type AuxCost struct {
 }
 
 type Category struct {
-	ID   uuid.UUID `json:"id"`
-	Slug string    `json:"slug"`
-	Name string    `json:"name"`
+	ID           uuid.UUID `json:"id"`
+	Slug         string    `json:"slug"`
+	Name         string    `json:"name"`
+	DisplayOrder int32     `json:"displayOrder"`
+	Description  string    `json:"description"`
+	ImageUrl     string    `json:"imageUrl"`
+	Visible      bool      `json:"visible"`
 }
 
 type Color struct {

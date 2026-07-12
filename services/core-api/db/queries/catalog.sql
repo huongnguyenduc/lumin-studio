@@ -1,9 +1,14 @@
 -- catalog.sql — catalog read/write queries (PR-2c). spec.md §02. Inserts return the row so
 -- callers (slice-3 admin handlers, tests) get the persisted record back.
 
+-- InsertCategory creates a category and APPENDS it to the end of the menu order (display_order = current
+-- max + 1, or 0 for the first). description/image_url/visible take their column defaults ('', '', true) — a
+-- new category is shown and un-described until the owner edits it. slug/name are the only create inputs
+-- (design "+ Thêm danh mục"); the rich fields are set from the edit panel (UpdateCategory). The subquery
+-- reads the pre-insert max (the new row is not visible to its own INSERT), so appends never collide.
 -- name: InsertCategory :one
-INSERT INTO categories (id, slug, name)
-VALUES ($1, $2, $3)
+INSERT INTO categories (id, slug, name, display_order)
+VALUES ($1, $2, $3, (SELECT coalesce(max(display_order) + 1, 0) FROM categories))
 RETURNING *;
 
 -- ListCategories is the storefront category list (PR-P1-d): the BROWSABLE taxonomy the catalog-browse chips
@@ -17,10 +22,14 @@ RETURNING *;
 -- fits one response. The order is a deterministic TOTAL order (name first for a human-friendly A→Z, slug —
 -- UNIQUE — as the tiebreak) so two categories sharing a display name never flap position; a stable order
 -- keeps the response ETag stable. No browsable category → zero rows → the handler renders `[]`, not 404.
+-- Two gates now decide menu membership (P3-o slice o-2): the owner's explicit `visible` toggle AND the
+-- active-product EXISTS — a category shows iff BOTH hold (an owner hide removes a category with active
+-- products from the menu; the auto-hide still catches empty/draft-only ones). Ordered by the owner-set
+-- display_order first (the drag-to-reorder result), then name/slug as the deterministic tiebreak.
 -- name: ListCategories :many
 SELECT * FROM categories
-WHERE EXISTS (SELECT 1 FROM products WHERE products.category_id = categories.id AND products.status = 'active')
-ORDER BY name, slug;
+WHERE visible AND EXISTS (SELECT 1 FROM products WHERE products.category_id = categories.id AND products.status = 'active')
+ORDER BY display_order, name, slug;
 
 -- ListAllCategories is the ADMIN category list (P3-o) — the INTERNAL projection that returns EVERY category,
 -- including empty ones and those whose only products are draft/archived, unlike the storefront-facing
@@ -29,20 +38,38 @@ ORDER BY name, slug;
 -- That count is the load-bearing admin figure: it tells the owner which categories are safe to delete (a
 -- non-zero count means DeleteCategory will trip the products.category_id FK → 409). No pagination — categories
 -- are a small, admin-curated set (same "fits one response" scale as ListCategories/ListAdminProducts). Ordered
--- name A→Z with the UNIQUE slug as tiebreak = a deterministic TOTAL order (two categories sharing a display
--- name never flap position).
+-- by the owner-set display_order first (so the admin list mirrors the storefront menu order the owner is
+-- arranging), then name/slug as the deterministic tiebreak. Unlike ListCategories it does NOT filter on
+-- `visible` — the admin sees hidden categories too (with their toggle off), that is the point of the screen.
 -- name: ListAllCategories :many
 SELECT c.*, count(p.id) AS product_count
 FROM categories c
 LEFT JOIN products p ON p.category_id = c.id
 GROUP BY c.id
-ORDER BY c.name, c.slug;
+ORDER BY c.display_order, c.name, c.slug;
 
--- UpdateCategory saves a category's slug + name (P3-o). slug stays mutable — a changed slug that collides with
--- another category trips the UNIQUE(slug) constraint, which the handler maps to a 400 field error (never a
--- 500), mirroring UpdateProduct. RETURNING so an unknown id (0 rows → ErrNoRows) surfaces as 404.
+-- UpdateCategory saves a category's editable fields (P3-o): slug, name, and the o-2 menu metadata
+-- (description, image_url, visible). display_order is NOT set here — it moves only via ReorderCategories
+-- (the drag), so a Save from the edit panel never disturbs the menu order. slug stays mutable — a changed
+-- slug that collides with another category trips the UNIQUE(slug) constraint, which the handler maps to a
+-- 400 field error (never a 500), mirroring UpdateProduct. RETURNING so an unknown id (0 rows → ErrNoRows)
+-- surfaces as 404.
 -- name: UpdateCategory :one
-UPDATE categories SET slug = $2, name = $3 WHERE id = $1 RETURNING *;
+UPDATE categories
+SET slug = $2, name = $3, description = $4, image_url = $5, visible = $6
+WHERE id = $1
+RETURNING *;
+
+-- ReorderCategories sets each category's display_order to its position in the given id list (0-based), in
+-- one atomic statement over the whole ordered set the admin drag produced. unnest(... ) WITH ORDINALITY
+-- pairs each id with its 1-based index (ord), minus 1 for a 0-based order. Ids absent from the list keep
+-- their current order (the FE sends the FULL list after a drag, so that is a no-op in practice); an unknown
+-- id matches no row (harmless). Owner-only at the handler.
+-- name: ReorderCategories :exec
+UPDATE categories AS c
+SET display_order = v.ord - 1
+FROM (SELECT id, ord FROM unnest(@ids::uuid[]) WITH ORDINALITY AS t(id, ord)) AS v
+WHERE c.id = v.id;
 
 -- DeleteCategory is a HARD delete, allowed only for a category no product references: products.category_id is
 -- NOT NULL REFERENCES categories(id) with the default NO ACTION (migration 000003), so deleting a category

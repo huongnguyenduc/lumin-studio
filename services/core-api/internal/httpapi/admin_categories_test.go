@@ -25,6 +25,7 @@ func TestAdminCategoryWritesAreOwnerOnly(t *testing.T) {
 	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil)
 	id := uuid.New()
 	in := api.CategoryInput{Slug: "x", Name: "x"}
+	upd := api.CategoryUpdate{Slug: "x", Name: "x", Visible: true}
 
 	calls := map[string]func(context.Context) error{
 		"CreateAdminCategory": func(ctx context.Context) error {
@@ -32,11 +33,15 @@ func TestAdminCategoryWritesAreOwnerOnly(t *testing.T) {
 			return err
 		},
 		"UpdateAdminCategory": func(ctx context.Context) error {
-			_, err := srv.UpdateAdminCategory(ctx, api.UpdateAdminCategoryRequestObject{Id: id, Body: &in})
+			_, err := srv.UpdateAdminCategory(ctx, api.UpdateAdminCategoryRequestObject{Id: id, Body: &upd})
 			return err
 		},
 		"DeleteAdminCategory": func(ctx context.Context) error {
 			_, err := srv.DeleteAdminCategory(ctx, api.DeleteAdminCategoryRequestObject{Id: id})
+			return err
+		},
+		"ReorderAdminCategories": func(ctx context.Context) error {
+			_, err := srv.ReorderAdminCategories(ctx, api.ReorderAdminCategoriesRequestObject{Body: &api.CategoryReorder{Ids: []uuid.UUID{id}}})
 			return err
 		},
 	}
@@ -74,5 +79,31 @@ func TestCleanCategoryInput(t *testing.T) {
 	}
 	if _, _, f := cleanCategoryInput(api.CategoryInput{Slug: "ok", Name: strings.Repeat("a", maxCategoryNameChars+1)}); f["name"] == "" {
 		t.Errorf("over-long name should be a name field error, got %v", f)
+	}
+}
+
+// cleanCategoryUpdate reuses the slug/name rules and adds the o-2 metadata: a valid edit body is trimmed and
+// passes; an over-long description/imageUrl is a per-field 400; slug/name faults are still reported (and
+// collected ALONGSIDE the metadata faults, not short-circuited).
+func TestCleanCategoryUpdate(t *testing.T) {
+	slug, name, desc, img, visible, fields := cleanCategoryUpdate(api.CategoryUpdate{
+		Slug: " den-de-ban ", Name: " Đèn để bàn ", Description: " ánh ấm ", ImageUrl: " https://a/x.jpg ", Visible: false,
+	})
+	if len(fields) != 0 {
+		t.Fatalf("valid update rejected: %v", fields)
+	}
+	if slug != "den-de-ban" || name != "Đèn để bàn" || desc != "ánh ấm" || img != "https://a/x.jpg" || visible {
+		t.Fatalf("trim/carry wrong: slug=%q name=%q desc=%q img=%q visible=%v", slug, name, desc, img, visible)
+	}
+
+	if _, _, _, _, _, f := cleanCategoryUpdate(api.CategoryUpdate{Slug: "ok", Name: "ok", Description: strings.Repeat("a", maxCategoryDescChars+1)}); f["description"] == "" {
+		t.Errorf("over-long description should be a description field error, got %v", f)
+	}
+	if _, _, _, _, _, f := cleanCategoryUpdate(api.CategoryUpdate{Slug: "ok", Name: "ok", ImageUrl: strings.Repeat("a", maxCategoryImageURLChars+1)}); f["imageUrl"] == "" {
+		t.Errorf("over-long imageUrl should be an imageUrl field error, got %v", f)
+	}
+	// A bad slug AND a bad description both surface (all-faults-at-once, not short-circuited).
+	if _, _, _, _, _, f := cleanCategoryUpdate(api.CategoryUpdate{Slug: "Bad Slug", Name: "ok", Description: strings.Repeat("a", maxCategoryDescChars+1)}); f["slug"] == "" || f["description"] == "" {
+		t.Errorf("both slug and description faults should surface, got %v", f)
 	}
 }

@@ -4,6 +4,7 @@ import {
   slugify,
   CATEGORY_NAME_MAX,
   CATEGORY_SLUG_MAX,
+  CATEGORY_DESC_MAX,
 } from '../src/lib/categories-form';
 
 // Pure-validation tests (Docker-free) for the categories page (/danh-muc, P3-o): the client field rules that
@@ -36,6 +37,19 @@ describe('validateCategoryInput', () => {
     expect(validateCategoryInput({ name: longName, slug: 'ok' }).name).toBe('tooLong');
     const longSlug = 'a'.repeat(CATEGORY_SLUG_MAX + 1);
     expect(validateCategoryInput({ name: 'ok', slug: longSlug }).slug).toBe('tooLong');
+  });
+
+  it('validates description only when present (edit passes it, create omits it)', () => {
+    // Omitted (create path) → never a description error, even for an empty draft.
+    expect(validateCategoryInput({ name: 'ok', slug: 'ok' }).description).toBeUndefined();
+    // Within cap → valid; over cap → tooLong (counted by code point).
+    expect(
+      validateCategoryInput({ name: 'ok', slug: 'ok', description: 'ánh ấm' }).description,
+    ).toBeUndefined();
+    const longDesc = 'a'.repeat(CATEGORY_DESC_MAX + 1);
+    expect(
+      validateCategoryInput({ name: 'ok', slug: 'ok', description: longDesc }).description,
+    ).toBe('tooLong');
   });
 });
 

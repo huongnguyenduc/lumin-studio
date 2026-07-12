@@ -164,15 +164,23 @@ func (c *Catalog) AdminCategories(ctx context.Context) ([]sqlc.ListAllCategories
 	return c.q.ListAllCategories(ctx)
 }
 
-// UpdateCategory saves a category's slug + name, returning the persisted row or ErrNotFound if the id is
-// unknown. A slug collision surfaces as the raw UNIQUE-violation error (pgx code 23505) for the handler to
-// map to a 400 field error, mirroring UpdateProduct.
+// UpdateCategory saves a category's editable fields (slug, name, description, image_url, visible; NOT
+// display_order — that moves via ReorderCategories), returning the persisted row or ErrNotFound if the id
+// is unknown. A slug collision surfaces as the raw UNIQUE-violation error (pgx code 23505) for the handler
+// to map to a 400 field error, mirroring UpdateProduct.
 func (c *Catalog) UpdateCategory(ctx context.Context, arg sqlc.UpdateCategoryParams) (sqlc.Category, error) {
 	cat, err := c.q.UpdateCategory(ctx, arg)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return sqlc.Category{}, ErrNotFound
 	}
 	return cat, err
+}
+
+// ReorderCategories sets each category's display_order to its position in ids (0-based), in one atomic
+// statement (P3-o slice o-2). Ids not present keep their order; an unknown id is a harmless no-op — the
+// caller (owner-only handler) sends the full ordered list after a drag, so there is no partial-set concern.
+func (c *Catalog) ReorderCategories(ctx context.Context, ids []uuid.UUID) error {
+	return c.q.ReorderCategories(ctx, ids)
 }
 
 // DeleteCategory hard-deletes a category, or returns ErrNotFound for an unknown id. A category still

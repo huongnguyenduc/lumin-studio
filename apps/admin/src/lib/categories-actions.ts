@@ -12,6 +12,7 @@ import { SESSION_COOKIE, coreApiBaseUrl } from './session';
 // ./product-actions (same WriteCode shape).
 
 type CategoryInput = components['schemas']['CategoryInput'];
+type CategoryUpdate = components['schemas']['CategoryUpdate'];
 
 export type CategoryWriteCode = 'forbidden' | 'validation' | 'notFound' | 'inUse' | 'error';
 export type CategoryWriteResult = { ok: true } | { ok: false; code: CategoryWriteCode };
@@ -43,10 +44,14 @@ export async function createCategory(body: CategoryInput): Promise<CategoryWrite
   }
 }
 
-/** Rename/re-slug a category (PATCH /admin/categories/{id}). Unknown id → `notFound`; dup slug → `validation`. */
+/**
+ * Edit a category (PATCH /admin/categories/{id}) — name/slug plus the o-2 menu metadata (description, cover
+ * imageUrl, visible). Unknown id → `notFound`; dup slug → `validation`. Used both by the edit panel (full
+ * save) and by the list's inline visibility toggle (re-sends the row with `visible` flipped).
+ */
 export async function updateCategory(
   id: string,
-  body: CategoryInput,
+  body: CategoryUpdate,
 ): Promise<CategoryWriteResult> {
   try {
     const client = await authedClient();
@@ -55,6 +60,21 @@ export async function updateCategory(
       body,
     });
     return data ? { ok: true } : { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
+/**
+ * Save the category menu order (POST /admin/categories/reorder) after a drag. `ids` is the FULL ordered list;
+ * the server sets each category's displayOrder to its position. 204 → ok. Owner-only at the server.
+ */
+export async function reorderCategories(ids: string[]): Promise<CategoryWriteResult> {
+  try {
+    const client = await authedClient();
+    const { response } = await client.POST('/admin/categories/reorder', { body: { ids } });
+    if (response.ok) return { ok: true }; // 204 No Content
+    return { ok: false, code: codeFor(response.status) };
   } catch {
     return { ok: false, code: 'error' };
   }

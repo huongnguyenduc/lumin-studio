@@ -1032,13 +1032,14 @@ paths:
       operationId: getAdminCategories
       summary: Admin category list — every category with its product count (admin-gated read).
       description: >
-        Returns EVERY category (P3-o) as the admin projection — id, slug, name, and productCount (the number
-        of products referencing it across ALL statuses) — ordered name A→Z with the slug as tiebreak. Unlike
-        the public GetCategories (which lists only categories with an ACTIVE product), this is the INTERNAL
-        admin taxonomy: it shows empty categories and draft-only categories too, so the owner can manage the
-        whole set. productCount is the deletability signal — a non-zero count means a hard delete is blocked
-        (409). NOT paginated: categories are a small, admin-curated set. Admin-gated (cookieAuth; owner AND
-        staff read).
+        Returns EVERY category (P3-o) as the admin projection — id, slug, name, productCount (the number of
+        products referencing it across ALL statuses), plus the menu-control fields displayOrder, description,
+        imageUrl and visible (slice o-2) — ordered by displayOrder (the owner's drag-set menu order), then
+        name/slug as the tiebreak. Unlike the public GetCategories (which lists only VISIBLE categories with
+        an ACTIVE product), this is the INTERNAL admin taxonomy: it shows empty, draft-only, AND owner-hidden
+        categories too, so the owner can manage the whole set. productCount is the deletability signal — a
+        non-zero count means a hard delete is blocked (409). NOT paginated: categories are a small,
+        admin-curated set. Admin-gated (cookieAuth; owner AND staff read).
       security:
         - cookieAuth: []
       responses:
@@ -1087,11 +1088,14 @@ paths:
     patch:
       tags: [admin]
       operationId: updateAdminCategory
-      summary: Rename or re-slug a category (owner-only).
+      summary: Edit a category — name, slug, description, cover image, visibility (owner-only).
       description: >
-        Saves a category's slug + name (owner-only). Unknown id → 404; a slug now taken by another category →
-        400 with a `slug` field error. The response is the updated Category (productCount is unchanged by a
-        rename, so the caller keeps the count it already holds).
+        Saves a category's editable fields (owner-only): slug, name, description, imageUrl (a shared
+        proofstore image URL, same host as product photos) and visible (the menu-visibility toggle). Does NOT
+        change displayOrder — that moves only via the reorder endpoint (a drag), so a Save never disturbs the
+        menu order. Unknown id → 404; a slug now taken by another category → 400 with a `slug` field error.
+        The response is the updated Category (the plain public shape; productCount is unchanged, so the caller
+        keeps the count it already holds).
       security:
         - cookieAuth: []
       requestBody:
@@ -1099,7 +1103,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CategoryInput'
+              $ref: '#/components/schemas/CategoryUpdate'
       responses:
         '200':
           description: The updated category.
@@ -1128,6 +1132,32 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+
+  /admin/categories/reorder:
+    post:
+      tags: [admin]
+      operationId: reorderAdminCategories
+      summary: Set the category menu order (owner-only).
+      description: >
+        Persists the storefront menu order after an owner drags the list (P3-o slice o-2). The body is the
+        FULL ordered list of category ids; each category's displayOrder is set to its 0-based position in one
+        atomic update, so GetCategories then returns the menu in this order. Ids the client omits keep their
+        current order; an unknown id is ignored. Owner-only (spec §08 catalog is an owner power). Idempotent
+        — re-sending the same order is a no-op.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryReorder'
+      responses:
+        '204':
+          description: Order saved.
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   /admin/products:
     get:
@@ -3138,10 +3168,12 @@ components:
       type: object
       description: >
         Admin category-list projection (P3-o): a Category plus productCount — the number of products
-        referencing it across ALL statuses. The count is the deletability signal (a non-zero count means a
-        hard delete is blocked, 409). Only the admin list carries it; the create/rename responses return the
-        plain Category (a fresh category's count is 0; a rename does not change it).
-      required: [id, slug, name, productCount]
+        referencing it across ALL statuses — and the menu-control fields (slice o-2): displayOrder (the
+        owner's drag-set menu position), description + imageUrl (admin-only presentation metadata, NOT on the
+        public Category shape), and visible (the menu-visibility toggle). productCount is the deletability
+        signal (a non-zero count means a hard delete is blocked, 409). Only the admin list carries these; the
+        create/edit responses return the plain Category.
+      required: [id, slug, name, productCount, displayOrder, description, imageUrl, visible]
       properties:
         id:
           type: string
@@ -3154,12 +3186,27 @@ components:
           type: integer
           format: int64
           description: Products referencing this category, across all statuses (>= 0). 0 = safe to delete.
+        displayOrder:
+          type: integer
+          format: int32
+          description: 0-based position in the storefront browse menu (owner sets via drag-to-reorder).
+        description:
+          type: string
+          description: Admin-only short blurb (sentence case). Not surfaced on the public Category shape.
+        imageUrl:
+          type: string
+          description: Cover-image URL (a shared proofstore image, same host as product photos) or "" if none.
+        visible:
+          type: boolean
+          description: Whether the category shows in the customer menu (composes with the active-product auto-hide).
 
     CategoryInput:
       type: object
       description: >
-        Create/rename body for a category (P3-o). slug is a URL-safe lowercase-dash token (validated at the
-        edge so a junk slug never reaches the storefront URL); name is a sentence-case display label.
+        Create body for a category (P3-o). slug is a URL-safe lowercase-dash token (validated at the edge so
+        a junk slug never reaches the storefront URL); name is a sentence-case display label. A new category
+        starts visible, un-described, image-less, and appended to the end of the menu order; the rich fields
+        are set afterward via the edit body (CategoryUpdate).
       required: [slug, name]
       properties:
         slug:
@@ -3168,6 +3215,44 @@ components:
         name:
           type: string
           description: Human-friendly display name (sentence case).
+
+    CategoryUpdate:
+      type: object
+      description: >
+        Edit body for a category (P3-o slice o-2). Carries the same slug + name as create plus the menu
+        metadata (description, imageUrl, visible). displayOrder is deliberately absent — order moves only via
+        the reorder endpoint. imageUrl is "" for no cover image, else a proofstore image URL.
+      required: [slug, name, description, imageUrl, visible]
+      properties:
+        slug:
+          type: string
+          description: Unique URL slug (lowercase alphanumerics in dash-separated groups, e.g. "den-de-ban").
+        name:
+          type: string
+          description: Human-friendly display name (sentence case).
+        description:
+          type: string
+          description: Short blurb (sentence case); "" clears it. Admin-only — never on the public shape.
+        imageUrl:
+          type: string
+          description: Cover-image URL (a shared proofstore image) or "" to clear it.
+        visible:
+          type: boolean
+          description: Show this category in the customer menu (still subject to the active-product auto-hide).
+
+    CategoryReorder:
+      type: object
+      description: >
+        The full ordered list of category ids after a drag (P3-o slice o-2). Each category's displayOrder is
+        set to its 0-based index. Send every category id so no category is left with a stale order.
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          description: Category ids in the desired menu order (first = shown first).
+          items:
+            type: string
+            format: uuid
 
     # --- Value objects ----------------------------------------------------------------------------
     StatusEvent:

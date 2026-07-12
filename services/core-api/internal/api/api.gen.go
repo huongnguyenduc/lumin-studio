@@ -119,14 +119,25 @@ type Address struct {
 	Ward     string `json:"ward"`
 }
 
-// AdminCategory Admin category-list projection (P3-o): a Category plus productCount — the number of products referencing it across ALL statuses. The count is the deletability signal (a non-zero count means a hard delete is blocked, 409). Only the admin list carries it; the create/rename responses return the plain Category (a fresh category's count is 0; a rename does not change it).
+// AdminCategory Admin category-list projection (P3-o): a Category plus productCount — the number of products referencing it across ALL statuses — and the menu-control fields (slice o-2): displayOrder (the owner's drag-set menu position), description + imageUrl (admin-only presentation metadata, NOT on the public Category shape), and visible (the menu-visibility toggle). productCount is the deletability signal (a non-zero count means a hard delete is blocked, 409). Only the admin list carries these; the create/edit responses return the plain Category.
 type AdminCategory struct {
-	Id   openapi_types.UUID `json:"id"`
-	Name string             `json:"name"`
+	// Description Admin-only short blurb (sentence case). Not surfaced on the public Category shape.
+	Description string `json:"description"`
+
+	// DisplayOrder 0-based position in the storefront browse menu (owner sets via drag-to-reorder).
+	DisplayOrder int32              `json:"displayOrder"`
+	Id           openapi_types.UUID `json:"id"`
+
+	// ImageUrl Cover-image URL (a shared proofstore image, same host as product photos) or "" if none.
+	ImageUrl string `json:"imageUrl"`
+	Name     string `json:"name"`
 
 	// ProductCount Products referencing this category, across all statuses (>= 0). 0 = safe to delete.
 	ProductCount int64  `json:"productCount"`
 	Slug         string `json:"slug"`
+
+	// Visible Whether the category shows in the customer menu (composes with the active-product auto-hide).
+	Visible bool `json:"visible"`
 }
 
 // AdminOrderList One page of admin order summaries plus the pagination envelope. `total` is the count of orders matching the status filter across all pages; the client derives the page count.
@@ -284,13 +295,37 @@ type Category struct {
 	Slug string `json:"slug"`
 }
 
-// CategoryInput Create/rename body for a category (P3-o). slug is a URL-safe lowercase-dash token (validated at the edge so a junk slug never reaches the storefront URL); name is a sentence-case display label.
+// CategoryInput Create body for a category (P3-o). slug is a URL-safe lowercase-dash token (validated at the edge so a junk slug never reaches the storefront URL); name is a sentence-case display label. A new category starts visible, un-described, image-less, and appended to the end of the menu order; the rich fields are set afterward via the edit body (CategoryUpdate).
 type CategoryInput struct {
 	// Name Human-friendly display name (sentence case).
 	Name string `json:"name"`
 
 	// Slug Unique URL slug (lowercase alphanumerics in dash-separated groups, e.g. "den-de-ban").
 	Slug string `json:"slug"`
+}
+
+// CategoryReorder The full ordered list of category ids after a drag (P3-o slice o-2). Each category's displayOrder is set to its 0-based index. Send every category id so no category is left with a stale order.
+type CategoryReorder struct {
+	// Ids Category ids in the desired menu order (first = shown first).
+	Ids []openapi_types.UUID `json:"ids"`
+}
+
+// CategoryUpdate Edit body for a category (P3-o slice o-2). Carries the same slug + name as create plus the menu metadata (description, imageUrl, visible). displayOrder is deliberately absent — order moves only via the reorder endpoint. imageUrl is "" for no cover image, else a proofstore image URL.
+type CategoryUpdate struct {
+	// Description Short blurb (sentence case); "" clears it. Admin-only — never on the public shape.
+	Description string `json:"description"`
+
+	// ImageUrl Cover-image URL (a shared proofstore image) or "" to clear it.
+	ImageUrl string `json:"imageUrl"`
+
+	// Name Human-friendly display name (sentence case).
+	Name string `json:"name"`
+
+	// Slug Unique URL slug (lowercase alphanumerics in dash-separated groups, e.g. "den-de-ban").
+	Slug string `json:"slug"`
+
+	// Visible Show this category in the customer menu (still subject to the active-product auto-hide).
+	Visible bool `json:"visible"`
 }
 
 // Channel Order origin (spec §04).
@@ -1383,8 +1418,11 @@ type UpdateAuxCostJSONRequestBody = AuxCostInput
 // CreateAdminCategoryJSONRequestBody defines body for CreateAdminCategory for application/json ContentType.
 type CreateAdminCategoryJSONRequestBody = CategoryInput
 
+// ReorderAdminCategoriesJSONRequestBody defines body for ReorderAdminCategories for application/json ContentType.
+type ReorderAdminCategoriesJSONRequestBody = CategoryReorder
+
 // UpdateAdminCategoryJSONRequestBody defines body for UpdateAdminCategory for application/json ContentType.
-type UpdateAdminCategoryJSONRequestBody = CategoryInput
+type UpdateAdminCategoryJSONRequestBody = CategoryUpdate
 
 // CreateFilamentMaterialJSONRequestBody defines body for CreateFilamentMaterial for application/json ContentType.
 type CreateFilamentMaterialJSONRequestBody = FilamentMaterialInput
@@ -1591,10 +1629,13 @@ type ServerInterface interface {
 	// Create a category (owner-only).
 	// (POST /admin/categories)
 	CreateAdminCategory(w http.ResponseWriter, r *http.Request)
+	// Set the category menu order (owner-only).
+	// (POST /admin/categories/reorder)
+	ReorderAdminCategories(w http.ResponseWriter, r *http.Request)
 	// Delete a category (owner-only; blocked while products reference it).
 	// (DELETE /admin/categories/{id})
 	DeleteAdminCategory(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
-	// Rename or re-slug a category (owner-only).
+	// Edit a category — name, slug, description, cover image, visibility (owner-only).
 	// (PATCH /admin/categories/{id})
 	UpdateAdminCategory(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// Derived costing KPIs for the /vat-tu dashboard (admin-gated read; owner+staff).
@@ -1825,13 +1866,19 @@ func (_ Unimplemented) CreateAdminCategory(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Set the category menu order (owner-only).
+// (POST /admin/categories/reorder)
+func (_ Unimplemented) ReorderAdminCategories(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Delete a category (owner-only; blocked while products reference it).
 // (DELETE /admin/categories/{id})
 func (_ Unimplemented) DeleteAdminCategory(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Rename or re-slug a category (owner-only).
+// Edit a category — name, slug, description, cover image, visibility (owner-only).
 // (PATCH /admin/categories/{id})
 func (_ Unimplemented) UpdateAdminCategory(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -2351,6 +2398,26 @@ func (siw *ServerInterfaceWrapper) CreateAdminCategory(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateAdminCategory(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReorderAdminCategories operation middleware
+func (siw *ServerInterfaceWrapper) ReorderAdminCategories(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReorderAdminCategories(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4424,6 +4491,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/admin/categories", wrapper.CreateAdminCategory)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/categories/reorder", wrapper.ReorderAdminCategories)
+	})
+	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/admin/categories/{id}", wrapper.DeleteAdminCategory)
 	})
 	r.Group(func(r chi.Router) {
@@ -4862,6 +4932,49 @@ func (response CreateAdminCategory401JSONResponse) VisitCreateAdminCategoryRespo
 type CreateAdminCategory403JSONResponse struct{ ForbiddenJSONResponse }
 
 func (response CreateAdminCategory403JSONResponse) VisitCreateAdminCategoryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ReorderAdminCategoriesRequestObject struct {
+	Body *ReorderAdminCategoriesJSONRequestBody
+}
+
+type ReorderAdminCategoriesResponseObject interface {
+	VisitReorderAdminCategoriesResponse(w http.ResponseWriter) error
+}
+
+type ReorderAdminCategories204Response struct {
+}
+
+func (response ReorderAdminCategories204Response) VisitReorderAdminCategoriesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ReorderAdminCategories400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ReorderAdminCategories400JSONResponse) VisitReorderAdminCategoriesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ReorderAdminCategories401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ReorderAdminCategories401JSONResponse) VisitReorderAdminCategoriesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ReorderAdminCategories403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ReorderAdminCategories403JSONResponse) VisitReorderAdminCategoriesResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
 
@@ -7676,10 +7789,13 @@ type StrictServerInterface interface {
 	// Create a category (owner-only).
 	// (POST /admin/categories)
 	CreateAdminCategory(ctx context.Context, request CreateAdminCategoryRequestObject) (CreateAdminCategoryResponseObject, error)
+	// Set the category menu order (owner-only).
+	// (POST /admin/categories/reorder)
+	ReorderAdminCategories(ctx context.Context, request ReorderAdminCategoriesRequestObject) (ReorderAdminCategoriesResponseObject, error)
 	// Delete a category (owner-only; blocked while products reference it).
 	// (DELETE /admin/categories/{id})
 	DeleteAdminCategory(ctx context.Context, request DeleteAdminCategoryRequestObject) (DeleteAdminCategoryResponseObject, error)
-	// Rename or re-slug a category (owner-only).
+	// Edit a category — name, slug, description, cover image, visibility (owner-only).
 	// (PATCH /admin/categories/{id})
 	UpdateAdminCategory(ctx context.Context, request UpdateAdminCategoryRequestObject) (UpdateAdminCategoryResponseObject, error)
 	// Derived costing KPIs for the /vat-tu dashboard (admin-gated read; owner+staff).
@@ -8061,6 +8177,37 @@ func (sh *strictHandler) CreateAdminCategory(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateAdminCategoryResponseObject); ok {
 		if err := validResponse.VisitCreateAdminCategoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReorderAdminCategories operation middleware
+func (sh *strictHandler) ReorderAdminCategories(w http.ResponseWriter, r *http.Request) {
+	var request ReorderAdminCategoriesRequestObject
+
+	var body ReorderAdminCategoriesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReorderAdminCategories(ctx, request.(ReorderAdminCategoriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReorderAdminCategories")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReorderAdminCategoriesResponseObject); ok {
+		if err := validResponse.VisitReorderAdminCategoriesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

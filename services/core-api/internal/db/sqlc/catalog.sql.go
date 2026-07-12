@@ -270,9 +270,9 @@ func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (Product, e
 
 const insertCategory = `-- name: InsertCategory :one
 
-INSERT INTO categories (id, slug, name)
-VALUES ($1, $2, $3)
-RETURNING id, slug, name
+INSERT INTO categories (id, slug, name, display_order)
+VALUES ($1, $2, $3, (SELECT coalesce(max(display_order) + 1, 0) FROM categories))
+RETURNING id, slug, name, display_order, description, image_url, visible
 `
 
 type InsertCategoryParams struct {
@@ -283,10 +283,23 @@ type InsertCategoryParams struct {
 
 // catalog.sql — catalog read/write queries (PR-2c). spec.md §02. Inserts return the row so
 // callers (slice-3 admin handlers, tests) get the persisted record back.
+// InsertCategory creates a category and APPENDS it to the end of the menu order (display_order = current
+// max + 1, or 0 for the first). description/image_url/visible take their column defaults (”, ”, true) — a
+// new category is shown and un-described until the owner edits it. slug/name are the only create inputs
+// (design "+ Thêm danh mục"); the rich fields are set from the edit panel (UpdateCategory). The subquery
+// reads the pre-insert max (the new row is not visible to its own INSERT), so appends never collide.
 func (q *Queries) InsertCategory(ctx context.Context, arg InsertCategoryParams) (Category, error) {
 	row := q.db.QueryRow(ctx, insertCategory, arg.ID, arg.Slug, arg.Name)
 	var i Category
-	err := row.Scan(&i.ID, &i.Slug, &i.Name)
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.DisplayOrder,
+		&i.Description,
+		&i.ImageUrl,
+		&i.Visible,
+	)
 	return i, err
 }
 
@@ -698,17 +711,21 @@ func (q *Queries) ListAdminProducts(ctx context.Context, status NullProductStatu
 }
 
 const listAllCategories = `-- name: ListAllCategories :many
-SELECT c.id, c.slug, c.name, count(p.id) AS product_count
+SELECT c.id, c.slug, c.name, c.display_order, c.description, c.image_url, c.visible, count(p.id) AS product_count
 FROM categories c
 LEFT JOIN products p ON p.category_id = c.id
 GROUP BY c.id
-ORDER BY c.name, c.slug
+ORDER BY c.display_order, c.name, c.slug
 `
 
 type ListAllCategoriesRow struct {
 	ID           uuid.UUID `json:"id"`
 	Slug         string    `json:"slug"`
 	Name         string    `json:"name"`
+	DisplayOrder int32     `json:"displayOrder"`
+	Description  string    `json:"description"`
+	ImageUrl     string    `json:"imageUrl"`
+	Visible      bool      `json:"visible"`
 	ProductCount int64     `json:"productCount"`
 }
 
@@ -719,8 +736,9 @@ type ListAllCategoriesRow struct {
 // That count is the load-bearing admin figure: it tells the owner which categories are safe to delete (a
 // non-zero count means DeleteCategory will trip the products.category_id FK → 409). No pagination — categories
 // are a small, admin-curated set (same "fits one response" scale as ListCategories/ListAdminProducts). Ordered
-// name A→Z with the UNIQUE slug as tiebreak = a deterministic TOTAL order (two categories sharing a display
-// name never flap position).
+// by the owner-set display_order first (so the admin list mirrors the storefront menu order the owner is
+// arranging), then name/slug as the deterministic tiebreak. Unlike ListCategories it does NOT filter on
+// `visible` — the admin sees hidden categories too (with their toggle off), that is the point of the screen.
 func (q *Queries) ListAllCategories(ctx context.Context) ([]ListAllCategoriesRow, error) {
 	rows, err := q.db.Query(ctx, listAllCategories)
 	if err != nil {
@@ -734,6 +752,10 @@ func (q *Queries) ListAllCategories(ctx context.Context) ([]ListAllCategoriesRow
 			&i.ID,
 			&i.Slug,
 			&i.Name,
+			&i.DisplayOrder,
+			&i.Description,
+			&i.ImageUrl,
+			&i.Visible,
 			&i.ProductCount,
 		); err != nil {
 			return nil, err
@@ -747,9 +769,9 @@ func (q *Queries) ListAllCategories(ctx context.Context) ([]ListAllCategoriesRow
 }
 
 const listCategories = `-- name: ListCategories :many
-SELECT id, slug, name FROM categories
-WHERE EXISTS (SELECT 1 FROM products WHERE products.category_id = categories.id AND products.status = 'active')
-ORDER BY name, slug
+SELECT id, slug, name, display_order, description, image_url, visible FROM categories
+WHERE visible AND EXISTS (SELECT 1 FROM products WHERE products.category_id = categories.id AND products.status = 'active')
+ORDER BY display_order, name, slug
 `
 
 // ListCategories is the storefront category list (PR-P1-d): the BROWSABLE taxonomy the catalog-browse chips
@@ -763,6 +785,10 @@ ORDER BY name, slug
 // fits one response. The order is a deterministic TOTAL order (name first for a human-friendly A→Z, slug —
 // UNIQUE — as the tiebreak) so two categories sharing a display name never flap position; a stable order
 // keeps the response ETag stable. No browsable category → zero rows → the handler renders `[]`, not 404.
+// Two gates now decide menu membership (P3-o slice o-2): the owner's explicit `visible` toggle AND the
+// active-product EXISTS — a category shows iff BOTH hold (an owner hide removes a category with active
+// products from the menu; the auto-hide still catches empty/draft-only ones). Ordered by the owner-set
+// display_order first (the drag-to-reorder result), then name/slug as the deterministic tiebreak.
 func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
 	rows, err := q.db.Query(ctx, listCategories)
 	if err != nil {
@@ -772,7 +798,15 @@ func (q *Queries) ListCategories(ctx context.Context) ([]Category, error) {
 	var items []Category
 	for rows.Next() {
 		var i Category
-		if err := rows.Scan(&i.ID, &i.Slug, &i.Name); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Name,
+			&i.DisplayOrder,
+			&i.Description,
+			&i.ImageUrl,
+			&i.Visible,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1015,23 +1049,64 @@ func (q *Queries) ListReviewsByProduct(ctx context.Context, arg ListReviewsByPro
 	return items, nil
 }
 
+const reorderCategories = `-- name: ReorderCategories :exec
+UPDATE categories AS c
+SET display_order = v.ord - 1
+FROM (SELECT id, ord FROM unnest($1::uuid[]) WITH ORDINALITY AS t(id, ord)) AS v
+WHERE c.id = v.id
+`
+
+// ReorderCategories sets each category's display_order to its position in the given id list (0-based), in
+// one atomic statement over the whole ordered set the admin drag produced. unnest(... ) WITH ORDINALITY
+// pairs each id with its 1-based index (ord), minus 1 for a 0-based order. Ids absent from the list keep
+// their current order (the FE sends the FULL list after a drag, so that is a no-op in practice); an unknown
+// id matches no row (harmless). Owner-only at the handler.
+func (q *Queries) ReorderCategories(ctx context.Context, ids []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, reorderCategories, ids)
+	return err
+}
+
 const updateCategory = `-- name: UpdateCategory :one
-UPDATE categories SET slug = $2, name = $3 WHERE id = $1 RETURNING id, slug, name
+UPDATE categories
+SET slug = $2, name = $3, description = $4, image_url = $5, visible = $6
+WHERE id = $1
+RETURNING id, slug, name, display_order, description, image_url, visible
 `
 
 type UpdateCategoryParams struct {
-	ID   uuid.UUID `json:"id"`
-	Slug string    `json:"slug"`
-	Name string    `json:"name"`
+	ID          uuid.UUID `json:"id"`
+	Slug        string    `json:"slug"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	ImageUrl    string    `json:"imageUrl"`
+	Visible     bool      `json:"visible"`
 }
 
-// UpdateCategory saves a category's slug + name (P3-o). slug stays mutable — a changed slug that collides with
-// another category trips the UNIQUE(slug) constraint, which the handler maps to a 400 field error (never a
-// 500), mirroring UpdateProduct. RETURNING so an unknown id (0 rows → ErrNoRows) surfaces as 404.
+// UpdateCategory saves a category's editable fields (P3-o): slug, name, and the o-2 menu metadata
+// (description, image_url, visible). display_order is NOT set here — it moves only via ReorderCategories
+// (the drag), so a Save from the edit panel never disturbs the menu order. slug stays mutable — a changed
+// slug that collides with another category trips the UNIQUE(slug) constraint, which the handler maps to a
+// 400 field error (never a 500), mirroring UpdateProduct. RETURNING so an unknown id (0 rows → ErrNoRows)
+// surfaces as 404.
 func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (Category, error) {
-	row := q.db.QueryRow(ctx, updateCategory, arg.ID, arg.Slug, arg.Name)
+	row := q.db.QueryRow(ctx, updateCategory,
+		arg.ID,
+		arg.Slug,
+		arg.Name,
+		arg.Description,
+		arg.ImageUrl,
+		arg.Visible,
+	)
 	var i Category
-	err := row.Scan(&i.ID, &i.Slug, &i.Name)
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.DisplayOrder,
+		&i.Description,
+		&i.ImageUrl,
+		&i.Visible,
+	)
 	return i, err
 }
 

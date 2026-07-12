@@ -20,8 +20,14 @@ import (
 // a DB check/constraint surfacing as 500. Reuses slugRe/maxSlugChars/pgCode/fieldEnvelope from admin_products.
 
 // maxCategoryNameChars caps the category display name (belt against a pathological blob; the UI keeps well
-// under it). Measured in runes — Vietnamese is multibyte.
-const maxCategoryNameChars = 200
+// under it). Measured in runes — Vietnamese is multibyte. maxCategoryDescChars caps the o-2 short blurb (Mô
+// tả ngắn — the design shows a couple of lines), maxCategoryImageURLChars the cover-image URL (a proofstore
+// URL is ~80 chars; the cap is a generous belt, not a real limit). All three are rune counts.
+const (
+	maxCategoryNameChars     = 200
+	maxCategoryDescChars     = 500
+	maxCategoryImageURLChars = 512
+)
 
 // GetAdminCategories handles GET /admin/categories (admin-gated read; owner+staff). It returns EVERY category
 // with its product count (across all statuses), name A→Z — the internal admin taxonomy, unlike the public
@@ -57,8 +63,10 @@ func (s *Server) CreateAdminCategory(ctx context.Context, request api.CreateAdmi
 	return api.CreateAdminCategory201JSONResponse(categoryDTO(cat)), nil
 }
 
-// UpdateAdminCategory handles PATCH /admin/categories/{id} (owner-only). Unknown id → 404; a slug now taken by
-// another category → 400 (slug). The response is the updated Category (productCount is unchanged by a rename).
+// UpdateAdminCategory handles PATCH /admin/categories/{id} (owner-only). Saves slug/name plus the o-2 menu
+// metadata (description, imageUrl, visible); displayOrder is not touched (reorder owns it). Unknown id → 404;
+// a slug now taken by another category → 400 (slug). The response is the plain Category (the FE re-reads the
+// admin list after a save, so the rich fields need not echo back).
 func (s *Server) UpdateAdminCategory(ctx context.Context, request api.UpdateAdminCategoryRequestObject) (api.UpdateAdminCategoryResponseObject, error) {
 	if err := assertOwner(ctx); err != nil {
 		return nil, err
@@ -66,11 +74,13 @@ func (s *Server) UpdateAdminCategory(ctx context.Context, request api.UpdateAdmi
 	if request.Body == nil {
 		return api.UpdateAdminCategory400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
 	}
-	slug, name, fields := cleanCategoryInput(*request.Body)
+	slug, name, description, imageURL, visible, fields := cleanCategoryUpdate(*request.Body)
 	if len(fields) > 0 {
 		return api.UpdateAdminCategory400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
 	}
-	cat, err := db.NewCatalog(s.pool).UpdateCategory(ctx, sqlc.UpdateCategoryParams{ID: request.Id, Slug: slug, Name: name})
+	cat, err := db.NewCatalog(s.pool).UpdateCategory(ctx, sqlc.UpdateCategoryParams{
+		ID: request.Id, Slug: slug, Name: name, Description: description, ImageUrl: imageURL, Visible: visible,
+	})
 	if pgCode(err) == pgUniqueViolation {
 		return api.UpdateAdminCategory400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(map[string]string{"slug": msgKey(codeValidation)}))}, nil
 	}
@@ -78,6 +88,23 @@ func (s *Server) UpdateAdminCategory(ctx context.Context, request api.UpdateAdmi
 		return nil, err // db.ErrNotFound → 404
 	}
 	return api.UpdateAdminCategory200JSONResponse(categoryDTO(cat)), nil
+}
+
+// ReorderAdminCategories handles POST /admin/categories/reorder (owner-only). It sets each category's
+// displayOrder to its 0-based position in the posted id list — the storefront menu order after a drag. A nil
+// body is a 400 (mirrors the other writes); an empty list is a harmless no-op. Idempotent, so a repeated
+// save is fine.
+func (s *Server) ReorderAdminCategories(ctx context.Context, request api.ReorderAdminCategoriesRequestObject) (api.ReorderAdminCategoriesResponseObject, error) {
+	if err := assertOwner(ctx); err != nil {
+		return nil, err
+	}
+	if request.Body == nil {
+		return api.ReorderAdminCategories400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
+	}
+	if err := db.NewCatalog(s.pool).ReorderCategories(ctx, request.Body.Ids); err != nil {
+		return nil, err
+	}
+	return api.ReorderAdminCategories204Response{}, nil
 }
 
 // DeleteAdminCategory handles DELETE /admin/categories/{id} (owner-only). Hard delete; a category still
@@ -116,11 +143,42 @@ func cleanCategoryInput(in api.CategoryInput) (slug, name string, fields map[str
 	return slug, name, nil
 }
 
-// adminCategorySummaries maps category+count rows to the admin list projection.
+// cleanCategoryUpdate trims + validates a category EDIT body (slice o-2): slug + name (same rules as create,
+// via cleanCategoryInput) plus the menu metadata. description/imageURL are rune-capped (belt against a
+// pathological blob) and may be empty (no blurb / no cover); imageURL is trusted as-is otherwise — it is an
+// owner-supplied URL minted by our own presign, mirroring how product gallery images are stored. Returns the
+// cleaned values + a per-field error map collecting ALL field faults at once (empty ⇒ valid).
+func cleanCategoryUpdate(in api.CategoryUpdate) (slug, name, description, imageURL string, visible bool, fields map[string]string) {
+	slug, name, fields = cleanCategoryInput(api.CategoryInput{Slug: in.Slug, Name: in.Name})
+	if fields == nil {
+		fields = map[string]string{}
+	}
+	description = strings.TrimSpace(in.Description)
+	imageURL = strings.TrimSpace(in.ImageUrl)
+	if utf8.RuneCountInString(description) > maxCategoryDescChars {
+		fields["description"] = msgKey(codeValidation)
+	}
+	if utf8.RuneCountInString(imageURL) > maxCategoryImageURLChars {
+		fields["imageUrl"] = msgKey(codeValidation)
+	}
+	return slug, name, description, imageURL, in.Visible, fields
+}
+
+// adminCategorySummaries maps category+count rows to the admin list projection (slice o-2: includes the
+// menu-control fields displayOrder/description/imageUrl/visible alongside the count).
 func adminCategorySummaries(rows []sqlc.ListAllCategoriesRow) []api.AdminCategory {
 	out := make([]api.AdminCategory, len(rows))
 	for i, c := range rows {
-		out[i] = api.AdminCategory{Id: c.ID, Slug: c.Slug, Name: c.Name, ProductCount: c.ProductCount}
+		out[i] = api.AdminCategory{
+			Id:           c.ID,
+			Slug:         c.Slug,
+			Name:         c.Name,
+			ProductCount: c.ProductCount,
+			DisplayOrder: c.DisplayOrder,
+			Description:  c.Description,
+			ImageUrl:     c.ImageUrl,
+			Visible:      c.Visible,
+		}
 	}
 	return out
 }
