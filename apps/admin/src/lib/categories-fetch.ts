@@ -21,3 +21,22 @@ export async function fetchCategories(): Promise<components['schemas']['Category
   }
   return data;
 }
+
+// Server-only read for the admin categories MANAGEMENT page (/danh-muc, P3-o). Unlike fetchCategories above
+// (the editor picker, which reuses the public active-only /categories), this hits GET /admin/categories: the
+// internal projection of EVERY category with its productCount across all statuses. `no-store` so the list is
+// live after a create/rename/delete. Unauthenticated is handled by middleware; a present-but-invalid cookie
+// → core-api 401 → thrown → (app)/error.tsx.
+export async function fetchAdminCategories(): Promise<components['schemas']['AdminCategory'][]> {
+  const session = (await cookies()).get(SESSION_COOKIE)?.value;
+  const client = createApiClient({
+    baseUrl: coreApiBaseUrl(),
+    headers: session ? { cookie: `${SESSION_COOKIE}=${session}` } : {},
+  });
+
+  const { data, error, response } = await client.GET('/admin/categories', { cache: 'no-store' });
+  if (error || !data) {
+    throw new Error(`admin categories fetch failed (${response.status})`);
+  }
+  return data;
+}
