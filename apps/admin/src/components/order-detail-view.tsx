@@ -4,13 +4,14 @@ import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { formatVnd, formatVnDate, type OrderStatus, type Role } from '@lumin/core';
+import { formatVnd, formatVnDate, formatVnRating, type OrderStatus, type Role } from '@lumin/core';
 import type { components } from '@lumin/api-client';
 import { Button, Card, cn } from '@lumin/ui';
 import { OrderStatusBadge } from './order-status-badge';
 import { TransitionDialog } from './transition-dialog';
 import {
   availableTransitions,
+  lineMargin,
   progressSteps,
   type AvailableTransition,
   type MilestoneState,
@@ -160,6 +161,11 @@ export function OrderDetailView({ order }: { order: Order }) {
               </p>
             )}
           </Card>
+
+          {/* Giá vốn & lãi — the frozen COGS snapshot + margin, only once a line has been printed */}
+          {order.items.some((item) => item.costSnapshot) && (
+            <CostingCard items={order.items} t={t} />
+          )}
         </div>
 
         {/* Right: customer + proofs + note */}
@@ -270,11 +276,125 @@ function itemSpecs(item: Order['items'][number], t: ReturnType<typeof useTransla
   return parts.join(' · ') || '—';
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, hint, value }: { label: string; hint?: string; value: string }) {
   return (
-    <div className="flex items-center justify-between text-sm">
-      <span className="text-text-muted">{label}</span>
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <span className="text-text-muted">
+        {label}
+        {hint && <span className="ml-1.5 text-xs text-text-muted">· {hint}</span>}
+      </span>
       <span className="font-mono text-text-body">{value}</span>
+    </div>
+  );
+}
+
+type CostSnapshot = NonNullable<Order['items'][number]['costSnapshot']>;
+
+// The frozen COGS snapshot + margin per printed line (ADR-039, slice 4d-3). One block per item: a costed
+// line shows its cost breakdown → margin; an un-printed line shows "chưa chốt" (NOT ₫0 — a null snapshot is
+// "not costed yet", oracle 4c-2 carry-forward #1). The card is only rendered when some line is costed. Aux
+// overhead is frozen per-line, so we never sum a per-order total — with >1 costed line we note that caveat
+// (carry-forward #3). All rates shown (₫/hour, hours, waste %) come FROM the frozen blob, never recomputed
+// from live machines/aux (#2) — that's what keeps a report matching history after the shop's costs change.
+function CostingCard({
+  items,
+  t,
+}: {
+  items: Order['items'];
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const costedCount = items.filter((item) => item.costSnapshot).length;
+  return (
+    <Card elevation="md" className="flex flex-col gap-3 px-5 py-5">
+      <h2 className="font-semibold text-text-strong">{t('costing')}</h2>
+      <ul className="flex flex-col divide-y divide-border-subtle">
+        {items.map((item, i) => (
+          <li key={i} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
+            {items.length > 1 && (
+              <p className="text-sm font-semibold text-text-strong">
+                {item.productName ?? '—'}
+                {item.quantity > 1 && <span className="text-text-muted"> ×{item.quantity}</span>}
+              </p>
+            )}
+            {item.costSnapshot ? (
+              <CostingBlock
+                snap={item.costSnapshot}
+                unitPrice={item.unitPrice}
+                quantity={item.quantity}
+                t={t}
+              />
+            ) : (
+              <p className="text-sm text-text-muted">{t('costPending')}</p>
+            )}
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs leading-relaxed text-text-muted">{t('costFrozen')}</p>
+      {costedCount > 1 && (
+        <p className="text-xs leading-relaxed text-text-muted">{t('auxCaveat')}</p>
+      )}
+    </Card>
+  );
+}
+
+function CostingBlock({
+  snap,
+  unitPrice,
+  quantity,
+  t,
+}: {
+  snap: CostSnapshot;
+  unitPrice: number;
+  quantity: number;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const m = lineMargin(unitPrice, quantity, snap.totalVnd);
+  const positive = m.marginVnd >= 0;
+  // formatVnd rejects negatives (assertIntVnd) — a sold-under-cost line prints the magnitude with a minus.
+  const marginText = m.marginVnd < 0 ? `−${formatVnd(-m.marginVnd)}` : formatVnd(m.marginVnd);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Row label={t('costFilament')} value={formatVnd(snap.filamentVnd)} />
+      <Row
+        label={t('costMachine')}
+        hint={
+          snap.machineVndPerHour > 0
+            ? t('machineHint', {
+                hours: formatVnRating(snap.estPrintHours),
+                rate: formatVnd(Math.round(snap.machineVndPerHour)),
+              })
+            : undefined
+        }
+        value={formatVnd(snap.machineVnd)}
+      />
+      <Row
+        label={t('costWaste')}
+        hint={
+          snap.wasteFactor > 0 ? t('pct', { n: formatVnRating(snap.wasteFactor * 100) }) : undefined
+        }
+        value={formatVnd(snap.wasteVnd)}
+      />
+      <Row label={t('costAux')} value={formatVnd(snap.auxVnd)} />
+      <div className="mt-1 flex items-center justify-between border-t border-border-subtle pt-2">
+        <span className="font-semibold text-text-strong">{t('costTotal')}</span>
+        <span className="font-mono font-semibold text-text-strong">{formatVnd(m.cogsVnd)}</span>
+      </div>
+      <Row label={t('salePrice')} value={formatVnd(m.revenueVnd)} />
+      <div className="flex items-center justify-between gap-3">
+        <span className="font-semibold text-text-strong">{t('margin')}</span>
+        <span className="flex items-baseline gap-2">
+          {m.marginPct !== null && (
+            <span className="text-xs text-text-muted">
+              {t('marginPct', { pct: formatVnRating(m.marginPct) })}
+            </span>
+          )}
+          <span
+            className={cn('font-mono font-semibold', positive ? 'text-accent-teal' : 'text-danger')}
+          >
+            {marginText}
+          </span>
+        </span>
+      </div>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import {
   progressSteps,
   availableTransitions,
   transitionKind,
+  lineMargin,
 } from '../src/lib/order-detail';
 
 // Pure-adapter tests (Docker-free). The progress track and the offered transitions are the branchy
@@ -90,5 +91,32 @@ describe('availableTransitions', () => {
     expect(availableTransitions('COMPLETED', 'owner')).toEqual([]);
     expect(availableTransitions('CANCELLED', 'owner')).toEqual([]);
     expect(availableTransitions('REFUNDED', 'owner')).toEqual([]);
+  });
+});
+
+describe('lineMargin', () => {
+  it('computes the design snapshot: ₫320.000 sale − ₫119.178 COGS = ₫200.822 (biên ≈ 62,8%)', () => {
+    const m = lineMargin(320000, 1, 119178);
+    expect(m).toMatchObject({ revenueVnd: 320000, cogsVnd: 119178, marginVnd: 200822 });
+    expect(Math.round((m.marginPct ?? 0) * 10) / 10).toBe(62.8);
+  });
+  it('scales revenue by quantity (COGS is already a whole-line cost)', () => {
+    // unitPrice ₫100.000 ×2 = ₫200.000 revenue vs ₫50.000 COGS → ₫150.000 margin, 75%.
+    expect(lineMargin(100000, 2, 50000)).toEqual({
+      revenueVnd: 200000,
+      cogsVnd: 50000,
+      marginVnd: 150000,
+      marginPct: 75,
+    });
+  });
+  it('goes negative when a line sold under cost (never clamps)', () => {
+    const m = lineMargin(10000, 1, 15000);
+    expect(m.marginVnd).toBe(-5000);
+    expect(m.marginPct).toBe(-50);
+  });
+  it('returns a null percent for a free line (revenue 0) — no divide-by-zero', () => {
+    const m = lineMargin(0, 1, 5000);
+    expect(m.marginVnd).toBe(-5000);
+    expect(m.marginPct).toBeNull();
   });
 });
