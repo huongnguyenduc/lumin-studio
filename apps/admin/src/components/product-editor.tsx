@@ -24,6 +24,7 @@ import { createProduct, updateProduct, deleteProduct, type WriteCode } from '@/l
 import { ProductGallery } from './product-gallery';
 import { ProductModel } from './product-model';
 import { ProductColors } from './product-colors';
+import { ProductOptions } from './product-options';
 
 type Product = components['schemas']['Product'];
 type Category = components['schemas']['Category'];
@@ -279,6 +280,18 @@ export function ProductEditor({
             colors={product.colors}
             filaments={filaments}
           />
+        </Card>
+      )}
+
+      {/* Customization options (edit only — per-row sub-resources). A text option = engraving field with a
+          char limit; a choice option owns enumerated choices (ADR-037). */}
+      {isEdit && (
+        <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
+          <div>
+            <h2 className="font-semibold text-text-strong">{t('edit.sectionOptions')}</h2>
+            <p className="mt-0.5 text-sm text-text-muted">{t('edit.optionsHint')}</p>
+          </div>
+          <ProductOptions productId={product.id} options={product.options} />
         </Card>
       )}
 
