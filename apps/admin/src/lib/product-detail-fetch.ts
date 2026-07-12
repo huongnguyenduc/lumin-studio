@@ -24,3 +24,20 @@ export async function fetchAdminProductDetail(
   }
   return data;
 }
+
+// The filament palette for the editor's colour dialog (P3-l l-3): a colour may link to a shop filament
+// (ADR-039) so deduct-on-print knows its spool. Auxiliary to the editor — a miss returns [] (the link
+// dropdown just shows "unlinked"), never blocking the page the product itself loaded.
+export async function fetchFilaments(): Promise<components['schemas']['FilamentMaterial'][]> {
+  try {
+    const session = (await cookies()).get(SESSION_COOKIE)?.value;
+    const client = createApiClient({
+      baseUrl: coreApiBaseUrl(),
+      headers: session ? { cookie: `${SESSION_COOKIE}=${session}` } : {},
+    });
+    const { data } = await client.GET('/admin/filament-materials', { cache: 'no-store' });
+    return data ?? [];
+  } catch {
+    return [];
+  }
+}

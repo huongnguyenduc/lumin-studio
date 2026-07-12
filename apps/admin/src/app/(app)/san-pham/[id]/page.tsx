@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { Card } from '@lumin/ui';
-import { fetchAdminProductDetail } from '@/lib/product-detail-fetch';
+import { fetchAdminProductDetail, fetchFilaments } from '@/lib/product-detail-fetch';
 import { fetchCategories } from '@/lib/categories-fetch';
 import { ProductEditor } from '@/components/product-editor';
 
@@ -12,7 +12,11 @@ import { ProductEditor } from '@/components/product-editor';
  */
 export default async function ProductEditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [product, categories] = await Promise.all([fetchAdminProductDetail(id), fetchCategories()]);
+  const [product, categories, filaments] = await Promise.all([
+    fetchAdminProductDetail(id),
+    fetchCategories(),
+    fetchFilaments(),
+  ]);
 
   if (!product) {
     const t = await getTranslations('products');
@@ -23,5 +27,5 @@ export default async function ProductEditPage({ params }: { params: Promise<{ id
     );
   }
 
-  return <ProductEditor product={product} categories={categories} />;
+  return <ProductEditor product={product} categories={categories} filaments={filaments} />;
 }

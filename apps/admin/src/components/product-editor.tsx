@@ -23,9 +23,11 @@ import { parseIntField } from '@/lib/materials';
 import { createProduct, updateProduct, deleteProduct, type WriteCode } from '@/lib/product-actions';
 import { ProductGallery } from './product-gallery';
 import { ProductModel } from './product-model';
+import { ProductColors } from './product-colors';
 
 type Product = components['schemas']['Product'];
 type Category = components['schemas']['Category'];
+type FilamentMaterial = components['schemas']['FilamentMaterial'];
 
 /**
  * The core product editor (P3-l l-1) — fills the two seams the P3-k list left (card → /san-pham/{id},
@@ -38,9 +40,11 @@ type Category = components['schemas']['Category'];
 export function ProductEditor({
   product,
   categories,
+  filaments = [],
 }: {
   product?: Product;
   categories: Category[];
+  filaments?: FilamentMaterial[];
 }) {
   const t = useTranslations('products');
   const router = useRouter();
@@ -260,6 +264,23 @@ export function ProductEditor({
           ))}
         </Select>
       </Card>
+
+      {/* Colours & parts (edit only — per-row sub-resources keyed by product id). ADR-037 two-tone: named
+          parts group the colours; a colour can link to a shop filament (ADR-039) for deduct-on-print. */}
+      {isEdit && (
+        <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
+          <div>
+            <h2 className="font-semibold text-text-strong">{t('edit.sectionColors')}</h2>
+            <p className="mt-0.5 text-sm text-text-muted">{t('edit.colorsHint')}</p>
+          </div>
+          <ProductColors
+            productId={product.id}
+            parts={product.parts}
+            colors={product.colors}
+            filaments={filaments}
+          />
+        </Card>
+      )}
 
       {/* Media (edit only — model-upload/asset-jobs are keyed by an existing product id; create is core-
           only → redirect → edit here). Gallery is a Product field (saves with "Lưu sản phẩm"); the model
