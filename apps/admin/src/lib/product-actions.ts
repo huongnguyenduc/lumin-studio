@@ -12,9 +12,11 @@ import { SESSION_COOKIE, coreApiBaseUrl } from './session';
 type ProductInput = components['schemas']['ProductInput'];
 type ColorInput = components['schemas']['ColorInput'];
 type PartInput = components['schemas']['PartInput'];
+type OptionInput = components['schemas']['OptionInput'];
+type OptionChoiceInput = components['schemas']['OptionChoiceInput'];
 
 export type WriteCode = 'forbidden' | 'validation' | 'notFound' | 'inUse' | 'error';
-/** Colours/parts persist per-row (P3-l l-3); the island refreshes from the server, so no body is needed. */
+/** Colours/parts/options persist per-row (P3-l l-3/l-4); the island refreshes from the server, so no body is needed. */
 export type SubWriteResult = { ok: true } | { ok: false; code: WriteCode };
 export type ProductWriteResult =
   | { ok: true; id: string }
@@ -163,6 +165,111 @@ export async function deletePart(productId: string, partId: string): Promise<Sub
     const { error, response } = await client.DELETE('/admin/products/{id}/parts/{partId}', {
       params: { path: { id: productId, partId } },
     });
+    if (!error) return { ok: true };
+    return { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
+// ── Options & choices (P3-l l-4, ADR-037) — per-row CRUD sub-resources of a product. A `choice` option
+// owns enumerated OptionChoice rows (nested under the option); a `text` option carries an engraving
+// maxChars instead. Owner-only at the server; the island refreshes after each write. Delete of an option
+// (or choice) already pinned by an order → 409 → `inUse` (archive the product).
+
+export async function createOption(productId: string, input: OptionInput): Promise<SubWriteResult> {
+  try {
+    const client = await authedClient();
+    const { error, response } = await client.POST('/admin/products/{id}/options', {
+      params: { path: { id: productId } },
+      body: input,
+    });
+    if (!error) return { ok: true };
+    return { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
+export async function updateOption(
+  productId: string,
+  optionId: string,
+  input: OptionInput,
+): Promise<SubWriteResult> {
+  try {
+    const client = await authedClient();
+    const { error, response } = await client.PATCH('/admin/products/{id}/options/{optionId}', {
+      params: { path: { id: productId, optionId } },
+      body: input,
+    });
+    if (!error) return { ok: true };
+    return { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
+export async function deleteOption(productId: string, optionId: string): Promise<SubWriteResult> {
+  try {
+    const client = await authedClient();
+    const { error, response } = await client.DELETE('/admin/products/{id}/options/{optionId}', {
+      params: { path: { id: productId, optionId } },
+    });
+    if (!error) return { ok: true };
+    return { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
+export async function createChoice(
+  productId: string,
+  optionId: string,
+  input: OptionChoiceInput,
+): Promise<SubWriteResult> {
+  try {
+    const client = await authedClient();
+    const { error, response } = await client.POST(
+      '/admin/products/{id}/options/{optionId}/choices',
+      { params: { path: { id: productId, optionId } }, body: input },
+    );
+    if (!error) return { ok: true };
+    return { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
+export async function updateChoice(
+  productId: string,
+  optionId: string,
+  choiceId: string,
+  input: OptionChoiceInput,
+): Promise<SubWriteResult> {
+  try {
+    const client = await authedClient();
+    const { error, response } = await client.PATCH(
+      '/admin/products/{id}/options/{optionId}/choices/{choiceId}',
+      { params: { path: { id: productId, optionId, choiceId } }, body: input },
+    );
+    if (!error) return { ok: true };
+    return { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
+export async function deleteChoice(
+  productId: string,
+  optionId: string,
+  choiceId: string,
+): Promise<SubWriteResult> {
+  try {
+    const client = await authedClient();
+    const { error, response } = await client.DELETE(
+      '/admin/products/{id}/options/{optionId}/choices/{choiceId}',
+      { params: { path: { id: productId, optionId, choiceId } } },
+    );
     if (!error) return { ok: true };
     return { ok: false, code: codeFor(response.status) };
   } catch {
