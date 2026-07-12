@@ -67,6 +67,31 @@ export interface AvailableTransition {
   kind: TransitionKind;
 }
 
+// The per-line COGS + margin from the order's frozen cost_snapshot (ADR-039, slice 4d-3). Revenue is the
+// line's server-derived unitPrice × quantity — the snapshot's filament term is already ×quantity (drawn
+// est×qty at print), so cost_snapshot.totalVnd is a WHOLE-LINE cost and must be compared against whole-line
+// revenue, never the unit price. Margin can be negative (a line sold under cost); marginPct is null when
+// revenue is 0 (a free line) so the view shows "—", not a divide-by-zero. Aux overhead is allocated per
+// ORDER and frozen onto every line, so the view shows per-line margins only — summing them into an order
+// total would double-count the overhead (oracle 4c-2 carry-forward #3).
+export interface LineMargin {
+  revenueVnd: number;
+  cogsVnd: number;
+  marginVnd: number;
+  marginPct: number | null;
+}
+
+export function lineMargin(unitPrice: number, quantity: number, cogsVnd: number): LineMargin {
+  const revenueVnd = unitPrice * quantity;
+  const marginVnd = revenueVnd - cogsVnd;
+  return {
+    revenueVnd,
+    cogsVnd,
+    marginVnd,
+    marginPct: revenueVnd > 0 ? (marginVnd / revenueVnd) * 100 : null,
+  };
+}
+
 /** The affordance an edge needs, keyed on its target status (mirrors the server's per-edge rules). */
 export function transitionKind(to: OrderStatus): TransitionKind {
   switch (to) {
