@@ -12,16 +12,19 @@ import { SESSION_COOKIE, coreApiBaseUrl } from './session';
 type BankAccountUpdate = components['schemas']['BankAccountUpdate'];
 type ShippingRule = components['schemas']['ShippingRule'];
 type ReplyTemplateInput = components['schemas']['ReplyTemplateInput'];
+type StaffInvite = components['schemas']['StaffInvite'];
 
 /** `forbidden` = staff hit an owner-only edge (403); `validation` = the server rejected a field
- *  (400/422); `notFound` = the reply template id is gone (404); `error` = transient/5xx. */
+ *  (400/422); `notFound` = the reply template id is gone (404); `conflict` = a duplicate (409, e.g. a
+ *  staff email already registered); `error` = transient/5xx. */
 export type SettingsResult =
   | { ok: true }
-  | { ok: false; code: 'forbidden' | 'validation' | 'notFound' | 'error' };
+  | { ok: false; code: 'forbidden' | 'validation' | 'notFound' | 'conflict' | 'error' };
 
-function codeFor(status: number): 'forbidden' | 'validation' | 'notFound' | 'error' {
+function codeFor(status: number): 'forbidden' | 'validation' | 'notFound' | 'conflict' | 'error' {
   if (status === 403) return 'forbidden';
   if (status === 404) return 'notFound';
+  if (status === 409) return 'conflict';
   if (status === 400 || status === 422) return 'validation';
   return 'error';
 }
@@ -108,6 +111,18 @@ export async function deleteReplyTemplate(id: string): Promise<SettingsResult> {
     });
     if (response.ok) return { ok: true }; // 204 No Content
     return { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
+/** Invite a staff/owner account (POST /admin/staff, P3-q) — owner-only; a duplicate email → `conflict`.
+ *  The owner sets the initial password here and shares it out-of-band (no email-invite flow yet). */
+export async function inviteStaff(body: StaffInvite): Promise<SettingsResult> {
+  try {
+    const client = await authedClient();
+    const { data, response } = await client.POST('/admin/staff', { body });
+    return data ? { ok: true } : { ok: false, code: codeFor(response.status) };
   } catch {
     return { ok: false, code: 'error' };
   }

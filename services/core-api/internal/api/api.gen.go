@@ -227,6 +227,17 @@ type AdminReview struct {
 	Status ReviewStatus `json:"status"`
 }
 
+// AdminStaff A team-roster row (GET /admin/staff, P3-q) — the AuthUser fields plus `active`. No credential material (password_hash) is ever included. `active=false` is a deactivated account; the flag is shown, not toggled, this slice (no deactivate endpoint yet).
+type AdminStaff struct {
+	Active bool                `json:"active"`
+	Email  openapi_types.Email `json:"email"`
+	Id     openapi_types.UUID  `json:"id"`
+	Name   string              `json:"name"`
+
+	// Role Stored user role (Postgres `user_role`). The subset of Role that a logged-in user can hold — `system` is excluded (a runtime actor, never persisted).
+	Role UserRole `json:"role"`
+}
+
 // AssetJob One render/ingest job for a product (migration 000006). The admin editor reads this to show render status. attempts/lastError/completedAt are written by the slice-3 worker; a freshly enqueued job is `queued` with 0 attempts and null lastError/completedAt.
 type AssetJob struct {
 	// Attempts Worker retry count (0 until the worker runs).
@@ -1315,6 +1326,16 @@ type ShippingRulesUpdate struct {
 	ShippingRules []ShippingRule `json:"shippingRules"`
 }
 
+// StaffInvite Create body for a staff/owner account (POST /admin/staff, P3-q). The owner sets an initial `password` (min 8) shared out-of-band — there is no email-invite flow yet. `role` is owner or staff (the two fixed roles, spec §08 — no custom roles). `name` is 2..60 chars. All bounds are validated server-side (oapi-codegen's strict server does not enforce schema min/maxLength).
+type StaffInvite struct {
+	Email    openapi_types.Email `json:"email"`
+	Name     string              `json:"name"`
+	Password string              `json:"password"`
+
+	// Role Stored user role (Postgres `user_role`). The subset of Role that a logged-in user can hold — `system` is excluded (a runtime actor, never persisted).
+	Role UserRole `json:"role"`
+}
+
 // StatusEvent One appended statusHistory record (spec §02/§04). `from` is null only at creation.
 type StatusEvent struct {
 	// At ISO-8601 UTC, trailing Z (e.g. 2026-06-25T00:00:00.000Z).
@@ -1551,6 +1572,9 @@ type UpdateRefundPolicyJSONRequestBody = RefundPolicyUpdate
 
 // UpdateShippingRulesJSONRequestBody defines body for UpdateShippingRules for application/json ContentType.
 type UpdateShippingRulesJSONRequestBody = ShippingRulesUpdate
+
+// CreateStaffJSONRequestBody defines body for CreateStaff for application/json ContentType.
+type CreateStaffJSONRequestBody = StaffInvite
 
 // LoginUserJSONRequestBody defines body for LoginUser for application/json ContentType.
 type LoginUserJSONRequestBody = LoginRequest
@@ -1832,6 +1856,12 @@ type ServerInterface interface {
 	// Replace the per-region shipping-fee table (owner-only).
 	// (PATCH /admin/settings/shipping-rules)
 	UpdateShippingRules(w http.ResponseWriter, r *http.Request)
+	// Staff & roles roster — every user account (owner-only read).
+	// (GET /admin/staff)
+	GetAdminStaff(w http.ResponseWriter, r *http.Request)
+	// Invite a staff/owner account with an owner-set initial password (owner-only).
+	// (POST /admin/staff)
+	CreateStaff(w http.ResponseWriter, r *http.Request)
 	// Email + password login; sets the session cookie on success.
 	// (POST /auth/login)
 	LoginUser(w http.ResponseWriter, r *http.Request)
@@ -2222,6 +2252,18 @@ func (_ Unimplemented) UpdateRefundPolicy(w http.ResponseWriter, r *http.Request
 // Replace the per-region shipping-fee table (owner-only).
 // (PATCH /admin/settings/shipping-rules)
 func (_ Unimplemented) UpdateShippingRules(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Staff & roles roster — every user account (owner-only read).
+// (GET /admin/staff)
+func (_ Unimplemented) GetAdminStaff(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Invite a staff/owner account with an owner-set initial password (owner-only).
+// (POST /admin/staff)
+func (_ Unimplemented) CreateStaff(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3997,6 +4039,46 @@ func (siw *ServerInterfaceWrapper) UpdateShippingRules(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// GetAdminStaff operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminStaff(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAdminStaff(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateStaff operation middleware
+func (siw *ServerInterfaceWrapper) CreateStaff(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateStaff(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // LoginUser operation middleware
 func (siw *ServerInterfaceWrapper) LoginUser(w http.ResponseWriter, r *http.Request) {
 
@@ -4774,6 +4856,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/admin/settings/shipping-rules", wrapper.UpdateShippingRules)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/staff", wrapper.GetAdminStaff)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/staff", wrapper.CreateStaff)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/auth/login", wrapper.LoginUser)
@@ -7302,6 +7390,93 @@ func (response UpdateShippingRules403JSONResponse) VisitUpdateShippingRulesRespo
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetAdminStaffRequestObject struct {
+}
+
+type GetAdminStaffResponseObject interface {
+	VisitGetAdminStaffResponse(w http.ResponseWriter) error
+}
+
+type GetAdminStaff200JSONResponse []AdminStaff
+
+func (response GetAdminStaff200JSONResponse) VisitGetAdminStaffResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminStaff401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetAdminStaff401JSONResponse) VisitGetAdminStaffResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminStaff403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetAdminStaff403JSONResponse) VisitGetAdminStaffResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateStaffRequestObject struct {
+	Body *CreateStaffJSONRequestBody
+}
+
+type CreateStaffResponseObject interface {
+	VisitCreateStaffResponse(w http.ResponseWriter) error
+}
+
+type CreateStaff201JSONResponse AdminStaff
+
+func (response CreateStaff201JSONResponse) VisitCreateStaffResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateStaff400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateStaff400JSONResponse) VisitCreateStaffResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateStaff401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateStaff401JSONResponse) VisitCreateStaffResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateStaff403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateStaff403JSONResponse) VisitCreateStaffResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateStaff409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateStaff409JSONResponse) VisitCreateStaffResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type LoginUserRequestObject struct {
 	Body *LoginUserJSONRequestBody
 }
@@ -8159,6 +8334,12 @@ type StrictServerInterface interface {
 	// Replace the per-region shipping-fee table (owner-only).
 	// (PATCH /admin/settings/shipping-rules)
 	UpdateShippingRules(ctx context.Context, request UpdateShippingRulesRequestObject) (UpdateShippingRulesResponseObject, error)
+	// Staff & roles roster — every user account (owner-only read).
+	// (GET /admin/staff)
+	GetAdminStaff(ctx context.Context, request GetAdminStaffRequestObject) (GetAdminStaffResponseObject, error)
+	// Invite a staff/owner account with an owner-set initial password (owner-only).
+	// (POST /admin/staff)
+	CreateStaff(ctx context.Context, request CreateStaffRequestObject) (CreateStaffResponseObject, error)
 	// Email + password login; sets the session cookie on success.
 	// (POST /auth/login)
 	LoginUser(ctx context.Context, request LoginUserRequestObject) (LoginUserResponseObject, error)
@@ -9882,6 +10063,61 @@ func (sh *strictHandler) UpdateShippingRules(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateShippingRulesResponseObject); ok {
 		if err := validResponse.VisitUpdateShippingRulesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAdminStaff operation middleware
+func (sh *strictHandler) GetAdminStaff(w http.ResponseWriter, r *http.Request) {
+	var request GetAdminStaffRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAdminStaff(ctx, request.(GetAdminStaffRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAdminStaff")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAdminStaffResponseObject); ok {
+		if err := validResponse.VisitGetAdminStaffResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateStaff operation middleware
+func (sh *strictHandler) CreateStaff(w http.ResponseWriter, r *http.Request) {
+	var request CreateStaffRequestObject
+
+	var body CreateStaffJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateStaff(ctx, request.(CreateStaffRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateStaff")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateStaffResponseObject); ok {
+		if err := validResponse.VisitCreateStaffResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

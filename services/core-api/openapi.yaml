@@ -1026,6 +1026,61 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /admin/staff:
+    get:
+      tags: [admin]
+      operationId: getAdminStaff
+      summary: Staff & roles roster — every user account (owner-only read).
+      description: >
+        Lists every user account (owner + staff), owner first, as the team roster for Cài đặt › Nhân
+        viên (P3-q). Owner-only for BOTH read and write: managing the team — and even seeing the roster —
+        is an owner power (spec §08; the design's role matrix gives staff no access to "Cài đặt & nhân
+        viên"), so a staff caller gets 403. This is the ONE owner-only admin READ; every other admin read
+        is owner+staff. No credential material (password_hash) is ever projected. NOT paginated — a
+        made-to-order shop's team is small.
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: The team roster (owner first).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminStaff'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [admin]
+      operationId: createStaff
+      summary: Invite a staff/owner account with an owner-set initial password (owner-only).
+      description: >
+        Creates a user account carrying a login credential the owner sets and shares out-of-band
+        (P3-q). There is no email-invite / self-service-password infrastructure yet (deferred) — the
+        owner sets a starting password here and passes it to the person, who logs in with email +
+        password immediately. Owner-only. A duplicate email → 409 EMAIL_TAKEN (a login email is
+        user-known, not a secret — the same safe-to-surface conflict as customer register).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StaffInvite'
+      responses:
+        '201':
+          description: The created account (no credential material).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminStaff'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
   /admin/categories:
     get:
       tags: [admin]
@@ -3866,6 +3921,50 @@ components:
           format: email
         role:
           $ref: '#/components/schemas/UserRole'
+
+    AdminStaff:
+      type: object
+      description: >
+        A team-roster row (GET /admin/staff, P3-q) — the AuthUser fields plus `active`. No credential
+        material (password_hash) is ever included. `active=false` is a deactivated account; the flag is
+        shown, not toggled, this slice (no deactivate endpoint yet).
+      required: [id, name, email, role, active]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/UserRole'
+        active:
+          type: boolean
+
+    StaffInvite:
+      type: object
+      description: >
+        Create body for a staff/owner account (POST /admin/staff, P3-q). The owner sets an initial
+        `password` (min 8) shared out-of-band — there is no email-invite flow yet. `role` is owner or
+        staff (the two fixed roles, spec §08 — no custom roles). `name` is 2..60 chars. All bounds are
+        validated server-side (oapi-codegen's strict server does not enforce schema min/maxLength).
+      required: [name, email, role, password]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 60
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/UserRole'
+        password:
+          type: string
+          format: password
+          minLength: 8
 
     # --- Storefront customer account (PR-P1-r) ----------------------------------------------------
     CustomerAccount:

@@ -231,6 +231,12 @@ type Querier interface {
 	InsertReview(ctx context.Context, arg InsertReviewParams) (Review, error)
 	// users.sql — staff/owner account queries (PR-2d). spec.md §02 User.
 	InsertUser(ctx context.Context, arg InsertUserParams) (User, error)
+	// Invite a staff/owner account WITH a login credential (P3-q). Unlike InsertUser (attribution-only, no
+	// password), this sets password_hash so the invitee logs in immediately with the owner-set password.
+	// active is forced true (an invited account is live). A duplicate email hits the UNIQUE(email) index →
+	// 23505, surfaced as ErrDuplicate → 409 (Identity.InviteUser). role is validated to {owner,staff} in the
+	// handler before it reaches the user_role enum.
+	InsertUserWithCredential(ctx context.Context, arg InsertUserWithCredentialParams) (User, error)
 	// ── COGS snapshot rollup + KPI reads (slice 4c-2, ADR-039 pt 5/6/7) ────────────────────────────────────
 	// ItemCostInputs reads the two item-specific rollup inputs in one round-trip: the filament cost FROZEN at
 	// print (Σ of the printed line's filament_consumption.cost_vnd — oracle R2: SUM per order_item_id and read
@@ -385,6 +391,10 @@ type Querier interface {
 	// OFFSET pagination is stable across pages and the response ETag stays stable; @page_limit is bounded by
 	// the handler (pageSize <= 48). No sort arm in Phase 1 (newest only — an additive sort is a later PR).
 	ListReviewsByProduct(ctx context.Context, arg ListReviewsByProductParams) ([]ListReviewsByProductRow, error)
+	// Team roster for the admin staff/roles surface (P3-q). Every account (owner + staff); owner first
+	// (user_role orders by its declared order, owner < staff), then by name — deterministic, no pagination
+	// (a made-to-order shop's team is small).
+	ListUsers(ctx context.Context) ([]User, error)
 	// MarkOutboxFailed quarantines a poison row after RelayMaxAttempts so it stops re-poisoning
 	// the seq scan and blocking later rows (head-of-line). Surfaced in a future Admin view.
 	MarkOutboxFailed(ctx context.Context, id uuid.UUID) error

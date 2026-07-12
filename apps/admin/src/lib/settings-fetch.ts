@@ -37,3 +37,18 @@ export async function fetchReplyTemplates(): Promise<components['schemas']['Repl
   }
   return data;
 }
+
+/** Fetch the team roster (GET /admin/staff, P3-q). Owner-only: a staff caller gets 403, so we return a
+ *  `forbidden` marker for the page to render the "không đủ quyền" state — the FE can't read the httpOnly
+ *  role, so the server's 403 is the only signal. Any other failure throws → route error boundary. */
+export async function fetchStaff(): Promise<
+  { forbidden: true } | { forbidden: false; staff: components['schemas']['AdminStaff'][] }
+> {
+  const client = await adminClient();
+  const { data, error, response } = await client.GET('/admin/staff', { cache: 'no-store' });
+  if (response.status === 403) return { forbidden: true };
+  if (error || !data) {
+    throw new Error(`admin staff fetch failed (${response.status})`);
+  }
+  return { forbidden: false, staff: data };
+}

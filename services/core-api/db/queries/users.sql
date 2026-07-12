@@ -5,6 +5,22 @@ INSERT INTO users (id, name, email, role, active)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
+-- name: ListUsers :many
+-- Team roster for the admin staff/roles surface (P3-q). Every account (owner + staff); owner first
+-- (user_role orders by its declared order, owner < staff), then by name — deterministic, no pagination
+-- (a made-to-order shop's team is small).
+SELECT * FROM users ORDER BY role, name;
+
+-- name: InsertUserWithCredential :one
+-- Invite a staff/owner account WITH a login credential (P3-q). Unlike InsertUser (attribution-only, no
+-- password), this sets password_hash so the invitee logs in immediately with the owner-set password.
+-- active is forced true (an invited account is live). A duplicate email hits the UNIQUE(email) index →
+-- 23505, surfaced as ErrDuplicate → 409 (Identity.InviteUser). role is validated to {owner,staff} in the
+-- handler before it reaches the user_role enum.
+INSERT INTO users (id, name, email, role, active, password_hash)
+VALUES ($1, $2, $3, $4, true, $5)
+RETURNING *;
+
 -- name: GetUserByEmail :one
 SELECT * FROM users WHERE email = $1;
 

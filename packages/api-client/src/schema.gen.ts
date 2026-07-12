@@ -549,6 +549,30 @@ export interface paths {
         patch: operations["updateReplyTemplate"];
         trace?: never;
     };
+    "/admin/staff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Staff & roles roster — every user account (owner-only read).
+         * @description Lists every user account (owner + staff), owner first, as the team roster for Cài đặt › Nhân viên (P3-q). Owner-only for BOTH read and write: managing the team — and even seeing the roster — is an owner power (spec §08; the design's role matrix gives staff no access to "Cài đặt & nhân viên"), so a staff caller gets 403. This is the ONE owner-only admin READ; every other admin read is owner+staff. No credential material (password_hash) is ever projected. NOT paginated — a made-to-order shop's team is small.
+         */
+        get: operations["getAdminStaff"];
+        put?: never;
+        /**
+         * Invite a staff/owner account with an owner-set initial password (owner-only).
+         * @description Creates a user account carrying a login credential the owner sets and shares out-of-band (P3-q). There is no email-invite / self-service-password infrastructure yet (deferred) — the owner sets a starting password here and passes it to the person, who logs in with email + password immediately. Owner-only. A duplicate email → 409 EMAIL_TAKEN (a login email is user-known, not a secret — the same safe-to-surface conflict as customer register).
+         */
+        post: operations["createStaff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/categories": {
         parameters: {
             query?: never;
@@ -2164,6 +2188,25 @@ export interface components {
             email: string;
             role: components["schemas"]["UserRole"];
         };
+        /** @description A team-roster row (GET /admin/staff, P3-q) — the AuthUser fields plus `active`. No credential material (password_hash) is ever included. `active=false` is a deactivated account; the flag is shown, not toggled, this slice (no deactivate endpoint yet). */
+        AdminStaff: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: email */
+            email: string;
+            role: components["schemas"]["UserRole"];
+            active: boolean;
+        };
+        /** @description Create body for a staff/owner account (POST /admin/staff, P3-q). The owner sets an initial `password` (min 8) shared out-of-band — there is no email-invite flow yet. `role` is owner or staff (the two fixed roles, spec §08 — no custom roles). `name` is 2..60 chars. All bounds are validated server-side (oapi-codegen's strict server does not enforce schema min/maxLength). */
+        StaffInvite: {
+            name: string;
+            /** Format: email */
+            email: string;
+            role: components["schemas"]["UserRole"];
+            /** Format: password */
+            password: string;
+        };
         /** @description The authenticated storefront customer (no credential material). Distinct from AuthUser (admin): a customer has no role, and carries the phone captured at registration. */
         CustomerAccount: {
             /** Format: uuid */
@@ -3293,6 +3336,56 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getAdminStaff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The team roster (owner first). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminStaff"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createStaff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffInvite"];
+            };
+        };
+        responses: {
+            /** @description The created account (no credential material). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminStaff"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
         };
     };
     getAdminCategories: {

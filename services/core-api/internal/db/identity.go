@@ -160,3 +160,24 @@ func (i *Identity) UserByID(ctx context.Context, id uuid.UUID) (sqlc.User, error
 func (i *Identity) UpsertOwnerCredential(ctx context.Context, arg sqlc.UpsertOwnerCredentialParams) (sqlc.User, error) {
 	return i.q.UpsertOwnerCredential(ctx, arg)
 }
+
+// ListUsers returns every user account (owner + staff), owner first, for the P3-q staff roster.
+func (i *Identity) ListUsers(ctx context.Context) ([]sqlc.User, error) {
+	return i.q.ListUsers(ctx)
+}
+
+// InviteUser creates a staff/owner account carrying an owner-set login credential (P3-q). A duplicate
+// email surfaces as ErrDuplicate (the users email UNIQUE → 23505), which the handler maps to 409 — the
+// DB, not an app pre-check, is the single arbiter of uniqueness, so there is no find-then-insert race.
+// Mirrors RegisterCustomer.
+func (i *Identity) InviteUser(ctx context.Context, arg sqlc.InsertUserWithCredentialParams) (sqlc.User, error) {
+	u, err := i.q.InsertUserWithCredential(ctx, arg)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgerrcodeUniqueViolation {
+			return sqlc.User{}, ErrDuplicate
+		}
+		return sqlc.User{}, err
+	}
+	return u, nil
+}

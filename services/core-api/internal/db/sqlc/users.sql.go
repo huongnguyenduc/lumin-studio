@@ -86,6 +86,79 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) (User, e
 	return i, err
 }
 
+const insertUserWithCredential = `-- name: InsertUserWithCredential :one
+INSERT INTO users (id, name, email, role, active, password_hash)
+VALUES ($1, $2, $3, $4, true, $5)
+RETURNING id, name, email, role, active, password_hash
+`
+
+type InsertUserWithCredentialParams struct {
+	ID           uuid.UUID `json:"id"`
+	Name         string    `json:"name"`
+	Email        string    `json:"email"`
+	Role         UserRole  `json:"role"`
+	PasswordHash *string   `json:"passwordHash"`
+}
+
+// Invite a staff/owner account WITH a login credential (P3-q). Unlike InsertUser (attribution-only, no
+// password), this sets password_hash so the invitee logs in immediately with the owner-set password.
+// active is forced true (an invited account is live). A duplicate email hits the UNIQUE(email) index →
+// 23505, surfaced as ErrDuplicate → 409 (Identity.InviteUser). role is validated to {owner,staff} in the
+// handler before it reaches the user_role enum.
+func (q *Queries) InsertUserWithCredential(ctx context.Context, arg InsertUserWithCredentialParams) (User, error) {
+	row := q.db.QueryRow(ctx, insertUserWithCredential,
+		arg.ID,
+		arg.Name,
+		arg.Email,
+		arg.Role,
+		arg.PasswordHash,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.Role,
+		&i.Active,
+		&i.PasswordHash,
+	)
+	return i, err
+}
+
+const listUsers = `-- name: ListUsers :many
+SELECT id, name, email, role, active, password_hash FROM users ORDER BY role, name
+`
+
+// Team roster for the admin staff/roles surface (P3-q). Every account (owner + staff); owner first
+// (user_role orders by its declared order, owner < staff), then by name — deterministic, no pagination
+// (a made-to-order shop's team is small).
+func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
+	rows, err := q.db.Query(ctx, listUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Email,
+			&i.Role,
+			&i.Active,
+			&i.PasswordHash,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertOwnerCredential = `-- name: UpsertOwnerCredential :one
 INSERT INTO users (id, name, email, role, active, password_hash)
 VALUES ($1, $2, $3, 'owner', true, $4)
