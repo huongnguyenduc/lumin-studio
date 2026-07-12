@@ -585,6 +585,31 @@ export const vi = {
       channels: 'Kênh chat',
       comingSoon: 'Sắp có',
     },
+    channels: {
+      title: 'Kênh chat',
+      subtitle: 'Nối hộp thư mạng xã hội để trợ lý đọc tin và tạo đơn ngay trong cửa sổ chat.',
+      statusNone: 'Chưa nối kênh nào',
+      comingSoonTitle: 'Sắp có',
+      comingSoonBody:
+        'Việc nối kênh và tự lưu khách sẽ hoạt động khi extension trình duyệt lên (giai đoạn sau). Màn này đang dựng sẵn giao diện.',
+      listTitle: 'Hộp thư mạng xã hội',
+      notConnected: 'Chưa nối',
+      connect: 'Nối',
+      messenger: 'Facebook Messenger',
+      instagram: 'Instagram DM',
+      zalo: 'Zalo OA',
+      tiktok: 'TikTok Shop',
+      extensionTitle: 'Chat chạy qua extension',
+      extensionBody:
+        'Lumin không thay hộp thư — extension đọc tin ngay trên Messenger hoặc Instagram để nhận diện số điện thoại, địa chỉ và mã đơn rồi tạo đơn một chạm.',
+      extensionSettings: 'Cài đặt extension',
+      replyTemplates: 'Mẫu trả lời nhanh',
+      autosaveTitle: 'Tự lưu khách từ chat',
+      autosaveLink: 'Lưu link Facebook hoặc Instagram của khách',
+      autosaveContact: 'Lưu số điện thoại và địa chỉ vào hồ sơ khách',
+      autosaveNote:
+        'Hồ sơ khách (mục Khách hàng) tự cập nhật để lần sau bấm "Nhắn" mở đúng hội thoại.',
+    },
     templates: {
       title: 'Mẫu trả lời nhanh',
       subtitle:
