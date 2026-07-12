@@ -397,6 +397,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin customers list — every customer with order aggregates (admin-gated).
+         * @description Lists every customer with their order roll-up (order count, total spent, most-recent order date) for the Khách hàng screen (P3-p). The INTERNAL admin projection carrying the phone + social handle the public API never exposes, so it is admin-gated (cookieAuth; owner AND staff read — PDPL: customer PII is never public). Money (totalSpent) is raw int-VND, never formatted server-side (always-must #2). NOT paginated — a made-to-order shop's customer base is small and the client searches the whole set in memory (mirrors the products list). Most-recently-active first (a customer with a recent order floats up); a customer with no orders sorts last.
+         */
+        get: operations["getAdminCustomers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/customers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin customer detail — contact, addresses + order history (admin-gated).
+         * @description Returns one customer's full profile (P3-p): contact (name, phone, email, social handle), the saved addresses, the summed lifetime spend, and their order history (code, total, status, date — newest first). Admin-gated (cookieAuth; owner AND staff — PDPL: never public). Money is raw int-VND (always-must #2); status crosses the wire as an OrderStatus enum the client maps to an i18n label (always-must #3). An unknown id → 404 NOT_FOUND.
+         */
+        get: operations["getAdminCustomer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/print-queue": {
         parameters: {
             query?: never;
@@ -2390,6 +2430,58 @@ export interface components {
             /** @description Total orders matching the status filter, across all pages. */
             total: number;
         };
+        /** @description One customer row in the admin Khách hàng list (P3-p) — contact plus an order roll-up. socialHandle is the single stored MXH link (spec §02: singular, ADR-003). orderCount / totalSpent aggregate ALL of the customer's orders regardless of status (a rough lifetime value); totalSpent is raw int-VND (never formatted server-side, always-must #2). email / socialHandle are absent when unset; lastOrderAt is absent for a customer with no orders yet. */
+        AdminCustomer: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            phone: string;
+            /** Format: email */
+            email?: string;
+            socialHandle?: string;
+            /** @description Count of the customer's orders (all statuses). */
+            orderCount: number;
+            /**
+             * Format: int64
+             * @description Sum of the customer's order totals, raw int-VND (all statuses).
+             */
+            totalSpent: number;
+            /**
+             * Format: date-time
+             * @description Created-at of the customer's most recent order; absent if they have none yet.
+             */
+            lastOrderAt?: string;
+        };
+        /** @description A customer's full admin profile (GET /admin/customers/{id}, P3-p): contact + saved addresses + order history + summed lifetime spend. PII behind the admin gate (PDPL). orders is newest-first; each row carries the money (raw int-VND) + status enum a purchase-history list needs. addresses is the stored Address[] (may be empty). totalSpent is summed server-side (all statuses). */
+        AdminCustomerDetail: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            phone: string;
+            /** Format: email */
+            email?: string;
+            socialHandle?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: int64
+             * @description Sum of the customer's order totals, raw int-VND (all statuses).
+             */
+            totalSpent: number;
+            addresses: components["schemas"]["Address"][];
+            orders: components["schemas"]["AdminCustomerOrder"][];
+        };
+        /** @description One order in a customer's history (P3-p) — the compact row the profile lists. code + total (raw int-VND) + status + createdAt is enough to look an order up; the per-order product summary the design shows is deferred (it needs an item join). Newest first. */
+        AdminCustomerOrder: {
+            /** Format: uuid */
+            id: string;
+            code: string;
+            status: components["schemas"]["OrderStatus"];
+            /** Format: int64 */
+            total: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
         /** @description One enriched print-queue card (P3-f), returned by GET /admin/print-queue and the stage PATCH. The bare print_jobs row (spec §02: orderItemRef · stage · printer · colorName · eta) joined to the order code, product name and quantity so a card at the printer says WHAT to make for WHICH order. colorName/printer/eta are optional (nullable columns). Stage is a PrintStage enum the client maps to the kanban column label (always-must #3). */
         PrintQueueJob: {
             /** Format: uuid */
@@ -3078,6 +3170,52 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Order"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAdminCustomers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every customer with order aggregates (most-recently-active first). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCustomer"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getAdminCustomer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The customer's full profile with order history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCustomerDetail"];
                 };
             };
             400: components["responses"]["BadRequest"];

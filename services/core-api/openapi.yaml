@@ -781,6 +781,63 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /admin/customers:
+    get:
+      tags: [admin]
+      operationId: getAdminCustomers
+      summary: Admin customers list — every customer with order aggregates (admin-gated).
+      description: >
+        Lists every customer with their order roll-up (order count, total spent, most-recent order
+        date) for the Khách hàng screen (P3-p). The INTERNAL admin projection carrying the phone +
+        social handle the public API never exposes, so it is admin-gated (cookieAuth; owner AND staff
+        read — PDPL: customer PII is never public). Money (totalSpent) is raw int-VND, never formatted
+        server-side (always-must #2). NOT paginated — a made-to-order shop's customer base is small and
+        the client searches the whole set in memory (mirrors the products list). Most-recently-active
+        first (a customer with a recent order floats up); a customer with no orders sorts last.
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Every customer with order aggregates (most-recently-active first).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminCustomer'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /admin/customers/{id}:
+    get:
+      tags: [admin]
+      operationId: getAdminCustomer
+      summary: Admin customer detail — contact, addresses + order history (admin-gated).
+      description: >
+        Returns one customer's full profile (P3-p): contact (name, phone, email, social handle), the
+        saved addresses, the summed lifetime spend, and their order history (code, total, status, date —
+        newest first). Admin-gated (cookieAuth; owner AND staff — PDPL: never public). Money is raw
+        int-VND (always-must #2); status crosses the wire as an OrderStatus enum the client maps to an
+        i18n label (always-must #3). An unknown id → 404 NOT_FOUND.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The customer's full profile with order history.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminCustomerDetail'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /admin/print-queue:
     get:
       tags: [admin]
@@ -4311,6 +4368,99 @@ components:
         total:
           type: integer
           description: Total orders matching the status filter, across all pages.
+
+    AdminCustomer:
+      type: object
+      description: >
+        One customer row in the admin Khách hàng list (P3-p) — contact plus an order roll-up.
+        socialHandle is the single stored MXH link (spec §02: singular, ADR-003). orderCount /
+        totalSpent aggregate ALL of the customer's orders regardless of status (a rough lifetime value);
+        totalSpent is raw int-VND (never formatted server-side, always-must #2). email / socialHandle
+        are absent when unset; lastOrderAt is absent for a customer with no orders yet.
+      required: [id, name, phone, orderCount, totalSpent]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          format: email
+        socialHandle:
+          type: string
+        orderCount:
+          type: integer
+          description: Count of the customer's orders (all statuses).
+        totalSpent:
+          type: integer
+          format: int64
+          description: Sum of the customer's order totals, raw int-VND (all statuses).
+        lastOrderAt:
+          type: string
+          format: date-time
+          description: Created-at of the customer's most recent order; absent if they have none yet.
+
+    AdminCustomerDetail:
+      type: object
+      description: >
+        A customer's full admin profile (GET /admin/customers/{id}, P3-p): contact + saved addresses +
+        order history + summed lifetime spend. PII behind the admin gate (PDPL). orders is newest-first;
+        each row carries the money (raw int-VND) + status enum a purchase-history list needs. addresses
+        is the stored Address[] (may be empty). totalSpent is summed server-side (all statuses).
+      required: [id, name, phone, createdAt, totalSpent, addresses, orders]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          format: email
+        socialHandle:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        totalSpent:
+          type: integer
+          format: int64
+          description: Sum of the customer's order totals, raw int-VND (all statuses).
+        addresses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Address'
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminCustomerOrder'
+
+    AdminCustomerOrder:
+      type: object
+      description: >
+        One order in a customer's history (P3-p) — the compact row the profile lists. code + total (raw
+        int-VND) + status + createdAt is enough to look an order up; the per-order product summary the
+        design shows is deferred (it needs an item join). Newest first.
+      required: [id, code, status, total, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        total:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
 
     PrintQueueJob:
       type: object

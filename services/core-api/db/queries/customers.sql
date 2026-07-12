@@ -11,6 +11,26 @@ SELECT * FROM customers WHERE id = $1;
 -- name: GetCustomerByPhone :one
 SELECT * FROM customers WHERE phone = $1;
 
+-- ListAdminCustomers rolls every customer up with their order aggregates for the admin Khách hàng
+-- list (P3-p). LEFT JOIN so a customer with no orders still appears (count 0, spent 0, last NULL).
+-- Money stays raw int-VND: sum(bigint) is numeric, cast back to bigint (coalesced to 0). Ordered
+-- most-recently-active first so a customer who just ordered floats to the top; a customer with no
+-- orders sorts last, then newest customer. NOT paginated — a made-to-order shop's base is small and
+-- the FE searches the whole set (mirrors the products list).
+-- ponytail: totalSpent/orderCount count ALL orders regardless of status (rough lifetime value);
+-- add a `WHERE o.status IN (paid..completed)` if the shop wants strict "tổng chi", and server
+-- paging + a search predicate if the base ever outgrows a single fetch.
+-- name: ListAdminCustomers :many
+SELECT
+  c.id, c.name, c.phone, c.email, c.social_handle,
+  count(o.id)                        AS order_count,
+  coalesce(sum(o.total), 0)::bigint  AS total_spent,
+  max(o.created_at)::timestamptz     AS last_order_at
+FROM customers c
+LEFT JOIN orders o ON o.customer_id = c.id
+GROUP BY c.id
+ORDER BY max(o.created_at) DESC NULLS LAST, c.created_at DESC;
+
 -- InsertCustomerWithCredential registers a storefront account (PR-P1-r): a customer row that
 -- carries a login credential. addresses defaults to '[]' and social_handle to NULL (a registrant
 -- supplies only name/phone/email/password). A duplicate login email is rejected by the

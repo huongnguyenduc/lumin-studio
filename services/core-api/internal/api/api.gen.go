@@ -146,6 +146,50 @@ type AdminCategory struct {
 	Visible bool `json:"visible"`
 }
 
+// AdminCustomer One customer row in the admin Khách hàng list (P3-p) — contact plus an order roll-up. socialHandle is the single stored MXH link (spec §02: singular, ADR-003). orderCount / totalSpent aggregate ALL of the customer's orders regardless of status (a rough lifetime value); totalSpent is raw int-VND (never formatted server-side, always-must #2). email / socialHandle are absent when unset; lastOrderAt is absent for a customer with no orders yet.
+type AdminCustomer struct {
+	Email *openapi_types.Email `json:"email,omitempty"`
+	Id    openapi_types.UUID   `json:"id"`
+
+	// LastOrderAt Created-at of the customer's most recent order; absent if they have none yet.
+	LastOrderAt *time.Time `json:"lastOrderAt,omitempty"`
+	Name        string     `json:"name"`
+
+	// OrderCount Count of the customer's orders (all statuses).
+	OrderCount   int     `json:"orderCount"`
+	Phone        string  `json:"phone"`
+	SocialHandle *string `json:"socialHandle,omitempty"`
+
+	// TotalSpent Sum of the customer's order totals, raw int-VND (all statuses).
+	TotalSpent int64 `json:"totalSpent"`
+}
+
+// AdminCustomerDetail A customer's full admin profile (GET /admin/customers/{id}, P3-p): contact + saved addresses + order history + summed lifetime spend. PII behind the admin gate (PDPL). orders is newest-first; each row carries the money (raw int-VND) + status enum a purchase-history list needs. addresses is the stored Address[] (may be empty). totalSpent is summed server-side (all statuses).
+type AdminCustomerDetail struct {
+	Addresses    []Address            `json:"addresses"`
+	CreatedAt    time.Time            `json:"createdAt"`
+	Email        *openapi_types.Email `json:"email,omitempty"`
+	Id           openapi_types.UUID   `json:"id"`
+	Name         string               `json:"name"`
+	Orders       []AdminCustomerOrder `json:"orders"`
+	Phone        string               `json:"phone"`
+	SocialHandle *string              `json:"socialHandle,omitempty"`
+
+	// TotalSpent Sum of the customer's order totals, raw int-VND (all statuses).
+	TotalSpent int64 `json:"totalSpent"`
+}
+
+// AdminCustomerOrder One order in a customer's history (P3-p) — the compact row the profile lists. code + total (raw int-VND) + status + createdAt is enough to look an order up; the per-order product summary the design shows is deferred (it needs an item join). Newest first.
+type AdminCustomerOrder struct {
+	Code      string             `json:"code"`
+	CreatedAt time.Time          `json:"createdAt"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// Status Order lifecycle status (spec §04). 5 progress milestones + 2 close states.
+	Status OrderStatus `json:"status"`
+	Total  int64       `json:"total"`
+}
+
 // AdminOrderList One page of admin order summaries plus the pagination envelope. `total` is the count of orders matching the status filter across all pages; the client derives the page count.
 type AdminOrderList struct {
 	Items []AdminOrderSummary `json:"items"`
@@ -1718,6 +1762,12 @@ type ServerInterface interface {
 	// Derived costing KPIs for the /vat-tu dashboard (admin-gated read; owner+staff).
 	// (GET /admin/costing-summary)
 	GetCostingSummary(w http.ResponseWriter, r *http.Request)
+	// Admin customers list — every customer with order aggregates (admin-gated).
+	// (GET /admin/customers)
+	GetAdminCustomers(w http.ResponseWriter, r *http.Request)
+	// Admin customer detail — contact, addresses + order history (admin-gated).
+	// (GET /admin/customers/{id})
+	GetAdminCustomer(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// Admin dashboard aggregates (counts + net revenue + recent orders + todos).
 	// (GET /admin/dashboard)
 	GetDashboard(w http.ResponseWriter, r *http.Request)
@@ -1976,6 +2026,18 @@ func (_ Unimplemented) UpdateAdminCategory(w http.ResponseWriter, r *http.Reques
 // Derived costing KPIs for the /vat-tu dashboard (admin-gated read; owner+staff).
 // (GET /admin/costing-summary)
 func (_ Unimplemented) GetCostingSummary(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Admin customers list — every customer with order aggregates (admin-gated).
+// (GET /admin/customers)
+func (_ Unimplemented) GetAdminCustomers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Admin customer detail — contact, addresses + order history (admin-gated).
+// (GET /admin/customers/{id})
+func (_ Unimplemented) GetAdminCustomer(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2613,6 +2675,57 @@ func (siw *ServerInterfaceWrapper) GetCostingSummary(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCostingSummary(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAdminCustomers operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminCustomers(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAdminCustomers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAdminCustomer operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminCustomer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAdminCustomer(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4720,6 +4833,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/admin/costing-summary", wrapper.GetCostingSummary)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/customers", wrapper.GetAdminCustomers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/customers/{id}", wrapper.GetAdminCustomer)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/dashboard", wrapper.GetDashboard)
 	})
 	r.Group(func(r chi.Router) {
@@ -5337,6 +5456,75 @@ type GetCostingSummary401JSONResponse struct{ UnauthorizedJSONResponse }
 func (response GetCostingSummary401JSONResponse) VisitGetCostingSummaryResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminCustomersRequestObject struct {
+}
+
+type GetAdminCustomersResponseObject interface {
+	VisitGetAdminCustomersResponse(w http.ResponseWriter) error
+}
+
+type GetAdminCustomers200JSONResponse []AdminCustomer
+
+func (response GetAdminCustomers200JSONResponse) VisitGetAdminCustomersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminCustomers401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetAdminCustomers401JSONResponse) VisitGetAdminCustomersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminCustomerRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type GetAdminCustomerResponseObject interface {
+	VisitGetAdminCustomerResponse(w http.ResponseWriter) error
+}
+
+type GetAdminCustomer200JSONResponse AdminCustomerDetail
+
+func (response GetAdminCustomer200JSONResponse) VisitGetAdminCustomerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminCustomer400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetAdminCustomer400JSONResponse) VisitGetAdminCustomerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminCustomer401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetAdminCustomer401JSONResponse) VisitGetAdminCustomerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminCustomer404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetAdminCustomer404JSONResponse) VisitGetAdminCustomerResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -8196,6 +8384,12 @@ type StrictServerInterface interface {
 	// Derived costing KPIs for the /vat-tu dashboard (admin-gated read; owner+staff).
 	// (GET /admin/costing-summary)
 	GetCostingSummary(ctx context.Context, request GetCostingSummaryRequestObject) (GetCostingSummaryResponseObject, error)
+	// Admin customers list — every customer with order aggregates (admin-gated).
+	// (GET /admin/customers)
+	GetAdminCustomers(ctx context.Context, request GetAdminCustomersRequestObject) (GetAdminCustomersResponseObject, error)
+	// Admin customer detail — contact, addresses + order history (admin-gated).
+	// (GET /admin/customers/{id})
+	GetAdminCustomer(ctx context.Context, request GetAdminCustomerRequestObject) (GetAdminCustomerResponseObject, error)
 	// Admin dashboard aggregates (counts + net revenue + recent orders + todos).
 	// (GET /admin/dashboard)
 	GetDashboard(ctx context.Context, request GetDashboardRequestObject) (GetDashboardResponseObject, error)
@@ -8698,6 +8892,56 @@ func (sh *strictHandler) GetCostingSummary(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCostingSummaryResponseObject); ok {
 		if err := validResponse.VisitGetCostingSummaryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAdminCustomers operation middleware
+func (sh *strictHandler) GetAdminCustomers(w http.ResponseWriter, r *http.Request) {
+	var request GetAdminCustomersRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAdminCustomers(ctx, request.(GetAdminCustomersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAdminCustomers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAdminCustomersResponseObject); ok {
+		if err := validResponse.VisitGetAdminCustomersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAdminCustomer operation middleware
+func (sh *strictHandler) GetAdminCustomer(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request GetAdminCustomerRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAdminCustomer(ctx, request.(GetAdminCustomerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAdminCustomer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAdminCustomerResponseObject); ok {
+		if err := validResponse.VisitGetAdminCustomerResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

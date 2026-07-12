@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const getCustomerByID = `-- name: GetCustomerByID :one
@@ -247,6 +248,67 @@ func (q *Queries) ListActiveConsents(ctx context.Context, customerID uuid.UUID) 
 			&i.GrantedAt,
 			&i.PolicyVersion,
 			&i.WithdrawnAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAdminCustomers = `-- name: ListAdminCustomers :many
+SELECT
+  c.id, c.name, c.phone, c.email, c.social_handle,
+  count(o.id)                        AS order_count,
+  coalesce(sum(o.total), 0)::bigint  AS total_spent,
+  max(o.created_at)::timestamptz     AS last_order_at
+FROM customers c
+LEFT JOIN orders o ON o.customer_id = c.id
+GROUP BY c.id
+ORDER BY max(o.created_at) DESC NULLS LAST, c.created_at DESC
+`
+
+type ListAdminCustomersRow struct {
+	ID           uuid.UUID          `json:"id"`
+	Name         string             `json:"name"`
+	Phone        string             `json:"phone"`
+	Email        *string            `json:"email"`
+	SocialHandle *string            `json:"socialHandle"`
+	OrderCount   int64              `json:"orderCount"`
+	TotalSpent   int64              `json:"totalSpent"`
+	LastOrderAt  pgtype.Timestamptz `json:"lastOrderAt"`
+}
+
+// ListAdminCustomers rolls every customer up with their order aggregates for the admin Khách hàng
+// list (P3-p). LEFT JOIN so a customer with no orders still appears (count 0, spent 0, last NULL).
+// Money stays raw int-VND: sum(bigint) is numeric, cast back to bigint (coalesced to 0). Ordered
+// most-recently-active first so a customer who just ordered floats to the top; a customer with no
+// orders sorts last, then newest customer. NOT paginated — a made-to-order shop's base is small and
+// the FE searches the whole set (mirrors the products list).
+// ponytail: totalSpent/orderCount count ALL orders regardless of status (rough lifetime value);
+// add a `WHERE o.status IN (paid..completed)` if the shop wants strict "tổng chi", and server
+// paging + a search predicate if the base ever outgrows a single fetch.
+func (q *Queries) ListAdminCustomers(ctx context.Context) ([]ListAdminCustomersRow, error) {
+	rows, err := q.db.Query(ctx, listAdminCustomers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAdminCustomersRow
+	for rows.Next() {
+		var i ListAdminCustomersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Phone,
+			&i.Email,
+			&i.SocialHandle,
+			&i.OrderCount,
+			&i.TotalSpent,
+			&i.LastOrderAt,
 		); err != nil {
 			return nil, err
 		}
