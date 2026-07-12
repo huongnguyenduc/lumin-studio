@@ -170,6 +170,11 @@ type Querier interface {
 	InsertBankAudit(ctx context.Context, arg InsertBankAuditParams) (SettingBankAudit, error)
 	// catalog.sql — catalog read/write queries (PR-2c). spec.md §02. Inserts return the row so
 	// callers (slice-3 admin handlers, tests) get the persisted record back.
+	// InsertCategory creates a category and APPENDS it to the end of the menu order (display_order = current
+	// max + 1, or 0 for the first). description/image_url/visible take their column defaults ('', '', true) — a
+	// new category is shown and un-described until the owner edits it. slug/name are the only create inputs
+	// (design "+ Thêm danh mục"); the rich fields are set from the edit panel (UpdateCategory). The subquery
+	// reads the pre-insert max (the new row is not visible to its own INSERT), so appends never collide.
 	InsertCategory(ctx context.Context, arg InsertCategoryParams) (Category, error)
 	// InsertColor takes an optional part_id (ADR-037): NULL = flat product-level colour (legacy/default);
 	// set = the colour belongs to that part. The handler validates the part ∈ the same product first
@@ -278,8 +283,9 @@ type Querier interface {
 	// That count is the load-bearing admin figure: it tells the owner which categories are safe to delete (a
 	// non-zero count means DeleteCategory will trip the products.category_id FK → 409). No pagination — categories
 	// are a small, admin-curated set (same "fits one response" scale as ListCategories/ListAdminProducts). Ordered
-	// name A→Z with the UNIQUE slug as tiebreak = a deterministic TOTAL order (two categories sharing a display
-	// name never flap position).
+	// by the owner-set display_order first (so the admin list mirrors the storefront menu order the owner is
+	// arranging), then name/slug as the deterministic tiebreak. Unlike ListCategories it does NOT filter on
+	// `visible` — the admin sees hidden categories too (with their toggle off), that is the point of the screen.
 	ListAllCategories(ctx context.Context) ([]ListAllCategoriesRow, error)
 	// ListAssetJobsByProduct powers the admin product editor's render-status panel (P3-j-b GET
 	// /admin/products/{id}/asset-jobs): every render/ingest job for one product, newest first so the
@@ -303,6 +309,10 @@ type Querier interface {
 	// fits one response. The order is a deterministic TOTAL order (name first for a human-friendly A→Z, slug —
 	// UNIQUE — as the tiebreak) so two categories sharing a display name never flap position; a stable order
 	// keeps the response ETag stable. No browsable category → zero rows → the handler renders `[]`, not 404.
+	// Two gates now decide menu membership (P3-o slice o-2): the owner's explicit `visible` toggle AND the
+	// active-product EXISTS — a category shows iff BOTH hold (an owner hide removes a category with active
+	// products from the menu; the auto-hide still catches empty/draft-only ones). Ordered by the owner-set
+	// display_order first (the drag-to-reorder result), then name/slug as the deterministic tiebreak.
 	ListCategories(ctx context.Context) ([]Category, error)
 	// ListChoicesByProduct returns every option_choice for a product's options (joined via options.product_id),
 	// for the editor's Product-detail assembly (the handler groups them by option_id into Option.choices[]).
@@ -393,6 +403,12 @@ type Querier interface {
 	// 4c-1 NOTE — robust to a stray second primary or an inactivated one). No primary set → ErrNoRows → the
 	// rollup contributes machineVnd 0 (guarded), never a fault.
 	PrimaryMachine(ctx context.Context) (Machine, error)
+	// ReorderCategories sets each category's display_order to its position in the given id list (0-based), in
+	// one atomic statement over the whole ordered set the admin drag produced. unnest(... ) WITH ORDINALITY
+	// pairs each id with its 1-based index (ord), minus 1 for a 0-based order. Ids absent from the list keep
+	// their current order (the FE sends the FULL list after a drag, so that is a no-op in practice); an unknown
+	// id matches no row (harmless). Owner-only at the handler.
+	ReorderCategories(ctx context.Context, ids []uuid.UUID) error
 	// SelectPendingOutbox scans the WHOLE pending SET in commit order each tick (ADR-029). It
 	// deliberately scans `status='pending' ORDER BY seq` — NOT a `seq > watermark` cursor and NOT
 	// `FOR UPDATE SKIP LOCKED`: bigserial `seq` is assigned at INSERT, not COMMIT, so a lower-seq
@@ -426,9 +442,12 @@ type Querier interface {
 	// UpdateBankAccount sets the VietQR STK the server renders the static QR from. Called only inside
 	// UpdateBankAccountTx, alongside InsertBankAudit, so every change is audited (conventions §57).
 	UpdateBankAccount(ctx context.Context, bankAccount []byte) (Setting, error)
-	// UpdateCategory saves a category's slug + name (P3-o). slug stays mutable — a changed slug that collides with
-	// another category trips the UNIQUE(slug) constraint, which the handler maps to a 400 field error (never a
-	// 500), mirroring UpdateProduct. RETURNING so an unknown id (0 rows → ErrNoRows) surfaces as 404.
+	// UpdateCategory saves a category's editable fields (P3-o): slug, name, and the o-2 menu metadata
+	// (description, image_url, visible). display_order is NOT set here — it moves only via ReorderCategories
+	// (the drag), so a Save from the edit panel never disturbs the menu order. slug stays mutable — a changed
+	// slug that collides with another category trips the UNIQUE(slug) constraint, which the handler maps to a
+	// 400 field error (never a 500), mirroring UpdateProduct. RETURNING so an unknown id (0 rows → ErrNoRows)
+	// surfaces as 404.
 	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (Category, error)
 	// UpdateColor / DeleteColor are scoped by BOTH id AND product_id (P3-j) so a colorId belonging to another
 	// product (a mismatched /products/{id}/colors/{colorId} path) matches no row → ErrNoRows→404, never a

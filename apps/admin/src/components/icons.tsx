@@ -35,6 +35,21 @@ export function GaugeIcon(props: IconProps) {
   );
 }
 
+// Six-dot drag handle (design ⠿) — the affordance to reorder a list row. Decorative; the handle button
+// carries the real aria-label.
+export function GripIcon(props: IconProps) {
+  return (
+    <Svg fill="currentColor" stroke="none" {...props}>
+      <circle cx="9" cy="6" r="1.4" />
+      <circle cx="15" cy="6" r="1.4" />
+      <circle cx="9" cy="12" r="1.4" />
+      <circle cx="15" cy="12" r="1.4" />
+      <circle cx="9" cy="18" r="1.4" />
+      <circle cx="15" cy="18" r="1.4" />
+    </Svg>
+  );
+}
+
 export function OrdersIcon(props: IconProps) {
   return (
     <Svg {...props}>

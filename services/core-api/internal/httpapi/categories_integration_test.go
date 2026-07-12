@@ -21,16 +21,17 @@ import (
 // Integration tests for GetCategories (GET /categories, PR-P1-d) against real Postgres (testcontainers:
 // skip local without Docker, run in CI — ADR-020; startPostgres lives in a sibling integration file). They
 // drive the FULL public router with NO cookie to prove the route is mounted, classified authPublic, returns
-// only the BROWSABLE taxonomy (categories with >=1 active product) in a deterministic name→slug order,
-// renders an empty result as `[]` (not 404), and honours the conditional-GET (ETag → If-None-Match → 304) +
-// Cache-Control contract — the same caching shape as /products.
+// only the BROWSABLE taxonomy (categories with >=1 active product) in the owner-set display_order (menu)
+// order, renders an empty result as `[]` (not 404), and honours the conditional-GET (ETag → If-None-Match →
+// 304) + Cache-Control contract — the same caching shape as /products.
 //
 // The load-bearing case is NON-LEAK: a category whose only products are draft/archived (or which is empty)
 // must NEVER appear — otherwise the chip dead-ends and an unreleased category name leaks (the exact info the
-// active-only product reads withhold). Display names are ASCII on purpose: `ORDER BY name` uses the database
-// collation, and asserting an exact Vietnamese A→Z order would be collation-fragile across environments;
-// ASCII names sort identically under every common collation, so the order assertion is stable while still
-// proving the clause is not a no-op; the slug tiebreak is proven with a same-name pair.
+// active-only product reads withhold). Ordering is now display_order-driven (P3-o slice o-2): categories
+// created via InsertCategory APPEND (display_order = max+1), so with no owner reorder the public list comes
+// back in INSERTION order; name/slug remain only as a deterministic tiebreak for the (app-impossible) equal
+// display_order case. Display names are ASCII on purpose so any residual name-order assertion stays
+// collation-stable across environments.
 
 func getCategories(t *testing.T, router http.Handler, ifNoneMatch string) (*httptest.ResponseRecorder, []api.Category) {
 	t.Helper()
@@ -121,9 +122,11 @@ func TestGetCategoriesEndToEnd(t *testing.T) {
 		}
 	})
 
-	// (3) Seed BROWSABLE categories (each with >=1 active product), UNSORTED, with a same-name pair
-	// (decor-a / decor-b) so the response proves name ordering AND the slug tiebreak (a stable TOTAL order).
-	// The draft-only "unreleased" and empty "empty" categories from step (2) remain and must stay hidden.
+	// (3) Seed BROWSABLE categories (each with >=1 active product) in a fixed INSERTION order. Since
+	// InsertCategory appends (display_order = max+1) and no reorder is applied, the public list must come
+	// back in exactly this insertion order (P3-o slice o-2). The draft-only "unreleased" and empty "empty"
+	// categories from step (2) were inserted FIRST but stay hidden (not browsable), so they neither appear
+	// nor shift the browsable ones' relative order.
 	for _, s := range []struct{ slug, name string }{
 		{"lamps", "Lamps"},
 		{"decor-b", "Decor"},
@@ -134,13 +137,13 @@ func TestGetCategoriesEndToEnd(t *testing.T) {
 		mkProduct(t, ctx, pool, id, s.slug+"-p1", sqlc.ProductStatusActive)
 	}
 
-	t.Run("returns only browsable categories, name→slug order (hidden ones excluded) + headers", func(t *testing.T) {
+	t.Run("returns only browsable categories in display_order (insertion order; hidden ones excluded) + headers", func(t *testing.T) {
 		rec, cats := getCategories(t, router, "")
-		// A→Z by name, slug tiebreak: Decor(decor-a), Decor(decor-b), Keychains, Lamps. "unreleased" (draft
-		// only) and "empty" (no products) MUST NOT appear.
-		want := []string{"decor-a", "decor-b", "keychains", "lamps"}
+		// display_order = insertion order (no owner reorder): lamps, decor-b, decor-a, keychains. "unreleased"
+		// (draft only) and "empty" (no products) MUST NOT appear.
+		want := []string{"lamps", "decor-b", "decor-a", "keychains"}
 		if got := slugsOfCats(cats); !eqSlugs(got, want) {
-			t.Errorf("order = %v, want %v (browsable only, name asc, slug tiebreak)", got, want)
+			t.Errorf("order = %v, want %v (browsable only, display_order = insertion order)", got, want)
 		}
 		for _, c := range cats {
 			if c.Slug == "unreleased" || c.Slug == "empty" {

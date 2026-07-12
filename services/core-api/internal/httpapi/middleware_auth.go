@@ -75,9 +75,10 @@ func classify(operationID string) authClass {
 		// published-only + product-existence non-leak boundaries live in the query/handler, not in auth).
 		return authPublic
 	case "GetCategories":
-		// Public storefront category list (PR-P1-d) — no session; the whole taxonomy for the browse chips.
-		// Categories have no visibility axis (all public) and no money; keeping it public avoids gating
-		// browse behind auth (a fail-closed default would 401 the storefront's category chips).
+		// Public storefront category list (PR-P1-d) — no session; the browsable taxonomy for the browse chips.
+		// The visibility axis (P3-o o-2 `visible` toggle + active-product EXISTS) is enforced in the query, not
+		// auth; the endpoint carries no money. Keeping it public avoids gating browse behind auth (a fail-closed
+		// default would 401 the storefront's category chips).
 		return authPublic
 	case "LookupOrder":
 		// Public guest order tracking (PR-P1-n) — no session; a customer looks up their own order by
@@ -109,7 +110,7 @@ func classify(operationID string) authClass {
 		// (GetSettings/ListReplyTemplates) stay authRequired (owner+staff) via the default.
 		return authOwnerOnly
 	case "CreateAdminProduct", "UpdateAdminProduct", "DeleteAdminProduct", "UpdateProductModelView",
-		"CreateAdminCategory", "UpdateAdminCategory", "DeleteAdminCategory",
+		"CreateAdminCategory", "UpdateAdminCategory", "DeleteAdminCategory", "ReorderAdminCategories",
 		"CreateProductColor", "UpdateProductColor", "DeleteProductColor",
 		"CreateProductOption", "UpdateProductOption", "DeleteProductOption",
 		"CreateProductPart", "UpdateProductPart", "DeleteProductPart",
