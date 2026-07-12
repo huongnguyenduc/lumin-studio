@@ -14,6 +14,7 @@ type ColorInput = components['schemas']['ColorInput'];
 type PartInput = components['schemas']['PartInput'];
 type OptionInput = components['schemas']['OptionInput'];
 type OptionChoiceInput = components['schemas']['OptionChoiceInput'];
+type Model3dView = components['schemas']['Model3dView'];
 
 export type WriteCode = 'forbidden' | 'validation' | 'notFound' | 'inUse' | 'error';
 /** Colours/parts/options persist per-row (P3-l l-3/l-4); the island refreshes from the server, so no body is needed. */
@@ -270,6 +271,22 @@ export async function deleteChoice(
       '/admin/products/{id}/options/{optionId}/choices/{choiceId}',
       { params: { path: { id: productId, optionId, choiceId } } },
     );
+    if (!error) return { ok: true };
+    return { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
+// Save the default 3D camera pose (P3-l l-5, ADR-038). Owner-only; 204 no body. The pose is display
+// metadata (degrees/percent/metres floats), not money — the storefront viewer opens at it.
+export async function saveModelView(productId: string, view: Model3dView): Promise<SubWriteResult> {
+  try {
+    const client = await authedClient();
+    const { error, response } = await client.PATCH('/admin/products/{id}/model-view', {
+      params: { path: { id: productId } },
+      body: view,
+    });
     if (!error) return { ok: true };
     return { ok: false, code: codeFor(response.status) };
   } catch {

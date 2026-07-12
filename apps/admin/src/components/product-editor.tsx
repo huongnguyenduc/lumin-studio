@@ -25,6 +25,7 @@ import { ProductGallery } from './product-gallery';
 import { ProductModel } from './product-model';
 import { ProductColors } from './product-colors';
 import { ProductOptions } from './product-options';
+import { ProductModelView } from './product-model-view';
 
 type Product = components['schemas']['Product'];
 type Category = components['schemas']['Category'];
@@ -315,6 +316,23 @@ export function ProductEditor({
             <ProductModel productId={product.id} model3dUrl={product.model3dUrl} />
           </Card>
         </>
+      )}
+
+      {/* Preview & align 3D (edit only — needs the pipeline's model3dUrl; ADR-038). Owner sets the default
+          camera pose the storefront viewer opens at. */}
+      {isEdit && (
+        <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
+          <div>
+            <h2 className="font-semibold text-text-strong">{t('edit.sectionPreview')}</h2>
+            <p className="mt-0.5 text-sm text-text-muted">{t('edit.previewHint')}</p>
+          </div>
+          <ProductModelView
+            productId={product.id}
+            model3dUrl={product.model3dUrl}
+            model3dView={product.model3dView}
+            productName={product.name}
+          />
+        </Card>
       )}
 
       {/* Delete (edit only) — two-step confirm, no blocking browser dialog */}
