@@ -1159,6 +1159,72 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /admin/reviews:
+    get:
+      tags: [admin]
+      operationId: getAdminReviews
+      summary: Admin review-moderation list — every review across all products (admin-gated read).
+      description: >
+        Returns EVERY review (P3-m) as the admin moderation projection — rating/body/images/reply/status/
+        createdAt plus the product name and the reviewer's name (customerName is null for a guest review) —
+        newest first, optionally filtered to one status. Unlike the public GET /products/{slug}/reviews (which
+        is published-only at the SQL source), this shows HIDDEN reviews too, so the shop can un-hide or reply.
+        The reviewer name is admin-only PII (PDPL) — served only behind the admin auth wall. NOT paginated: a
+        made-to-order shop's review set is small and the FE derives its tabs (pending-reply / replied /
+        has-image) client-side. Admin-gated (cookieAuth; owner AND staff — staff moderates reviews, spec §08).
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Filter to a single review status (published/hidden). Omit for all ("Tất cả").
+          schema:
+            $ref: '#/components/schemas/ReviewStatus'
+      responses:
+        '200':
+          description: Every review as an admin moderation card (newest first).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminReview'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /admin/reviews/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [admin]
+      operationId: updateAdminReview
+      summary: Moderate a review — publish/hide and/or reply (owner or staff).
+      description: >
+        Applies a moderation change to one review (P3-m): set status (publish ↔ hide) and/or write the shop
+        reply. At least one of `status`/`reply` must be present (an empty body is a 400). A `reply` sets the
+        public shop reply (its timestamp is server-stamped); the FE sends `status: published` alongside a
+        reply for "Lưu & công khai" so replying also makes the review visible. Omitting a field leaves it
+        unchanged (a plain hide keeps any existing reply). Unknown id → 404. Owner AND staff (staff moderates
+        reviews, spec §08). Returns 204 — the FE re-reads the list.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewModeration'
+      responses:
+        '204':
+          description: Moderation applied.
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /admin/products:
     get:
       tags: [admin]
@@ -3125,6 +3191,71 @@ components:
           type: string
           format: date-time
           description: ISO-8601 UTC when the reply was posted.
+
+    ReviewStatus:
+      type: string
+      description: >
+        Moderation state of a review (spec §02). `published` = visible on the storefront; `hidden` =
+        moderated out (never served by the public review list). Exposed only on the admin projection — the
+        public Review omits it (a hidden review simply never appears).
+      enum: [published, hidden]
+
+    AdminReview:
+      type: object
+      description: >
+        Admin review-moderation projection (P3-m) — a review with its moderation fields plus the product name
+        and the reviewer's name for the moderation card. Unlike the public Review it carries `status` and
+        `customerName` (admin-only PII, PDPL — a guest review has customerName null). `reply` is the shop's
+        reply, null until replied. The FE derives its tabs (pending-reply = published & no reply, replied =
+        has reply, has-image = images non-empty) from these fields.
+      required: [id, productId, productName, rating, body, images, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+        productName:
+          type: string
+          description: Name of the product this review is on (for the moderation card).
+        customerName:
+          type: string
+          nullable: true
+          description: Reviewer's name, or null for a guest review. Admin-only (PDPL).
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: Star rating, 1–5.
+        body:
+          type: string
+        images:
+          type: array
+          items:
+            type: string
+          description: Reviewer's attached image URLs (may be empty).
+        reply:
+          $ref: '#/components/schemas/ReviewReply'
+        status:
+          $ref: '#/components/schemas/ReviewStatus'
+        createdAt:
+          type: string
+          format: date-time
+
+    ReviewModeration:
+      type: object
+      description: >
+        Moderation change for one review (P3-m). At least one field must be present (an empty body is a 400).
+        `status` flips published ↔ hidden. `reply` sets the shop reply text (its timestamp is server-stamped);
+        omit it to leave any existing reply untouched. The FE sends both (`status: published` + `reply`) for
+        "Lưu & công khai" so a reply also publishes the review.
+      properties:
+        status:
+          $ref: '#/components/schemas/ReviewStatus'
+        reply:
+          type: string
+          description: Shop reply text (non-empty). Server stamps the timestamp. Omit to leave the reply unchanged.
 
     ReviewList:
       type: object

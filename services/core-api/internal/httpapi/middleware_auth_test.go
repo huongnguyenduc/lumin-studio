@@ -277,6 +277,10 @@ func TestClassifyFailsClosed(t *testing.T) {
 		"GetSettings":              authRequired,
 		"ListReplyTemplates":       authRequired,
 		"TransitionOrder":          authRequired,
+		// P3-m reviews: BOTH read and moderate are owner+staff — staff moderates reviews (spec §08),
+		// unlike the owner-only catalog. UpdateAdminReview is a WRITE that is deliberately NOT owner-only.
+		"GetAdminReviews":   authRequired,
+		"UpdateAdminReview": authRequired,
 		// P3-j catalog: reads owner+staff (default), every write owner-only (spec §08).
 		"GetAdminProducts":       authRequired,
 		"GetAdminProduct":        authRequired,

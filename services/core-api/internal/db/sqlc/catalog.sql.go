@@ -768,6 +768,71 @@ func (q *Queries) ListAllCategories(ctx context.Context) ([]ListAllCategoriesRow
 	return items, nil
 }
 
+const listAllReviews = `-- name: ListAllReviews :many
+SELECT r.id, r.product_id, p.name AS product_name, r.customer_id, c.name AS customer_name,
+       r.rating, r.body, r.images, r.reply, r.status, r.created_at
+FROM reviews r
+JOIN products p ON p.id = r.product_id
+LEFT JOIN customers c ON c.id = r.customer_id
+WHERE ($1::review_status IS NULL OR r.status = $1::review_status)
+ORDER BY r.created_at DESC, r.id DESC
+`
+
+type ListAllReviewsRow struct {
+	ID           uuid.UUID          `json:"id"`
+	ProductID    uuid.UUID          `json:"productId"`
+	ProductName  string             `json:"productName"`
+	CustomerID   pgtype.UUID        `json:"customerId"`
+	CustomerName *string            `json:"customerName"`
+	Rating       int16              `json:"rating"`
+	Body         string             `json:"body"`
+	Images       []byte             `json:"images"`
+	Reply        []byte             `json:"reply"`
+	Status       ReviewStatus       `json:"status"`
+	CreatedAt    pgtype.Timestamptz `json:"createdAt"`
+}
+
+// ListAllReviews is the ADMIN review-moderation list (P3-m) — EVERY review across ALL products, both
+// 'published' AND 'hidden' (the moderation surface, unlike the storefront ListReviewsByProduct which is
+// published-only at the SQL source). It is the INTERNAL projection: it JOINs the product name (for "review
+// on <product>") and LEFT JOINs the reviewer's name (customer_id is nullable — guests may review — so
+// customer_name is null for a guest). Reviewer identity is admin-only PII (PDPL): it appears here behind the
+// admin auth wall, never on the public Review. Optional status filter (nullable narg = Tất cả / a tab),
+// mirroring ListAdminProducts. No pagination — a made-to-order shop's review set is small and the FE derives
+// its tabs (Chờ trả lời / Đã trả lời / Có ảnh) client-side. -- ponytail: add a page window here if reviews
+// ever grow large. Newest first with an id tiebreak = a deterministic total order.
+func (q *Queries) ListAllReviews(ctx context.Context, status NullReviewStatus) ([]ListAllReviewsRow, error) {
+	rows, err := q.db.Query(ctx, listAllReviews, status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllReviewsRow
+	for rows.Next() {
+		var i ListAllReviewsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProductID,
+			&i.ProductName,
+			&i.CustomerID,
+			&i.CustomerName,
+			&i.Rating,
+			&i.Body,
+			&i.Images,
+			&i.Reply,
+			&i.Status,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCategories = `-- name: ListCategories :many
 SELECT id, slug, name, display_order, description, image_url, visible FROM categories
 WHERE visible AND EXISTS (SELECT 1 FROM products WHERE products.category_id = categories.id AND products.status = 'active')
@@ -1357,4 +1422,37 @@ func (q *Queries) UpdateProductModelView(ctx context.Context, arg UpdateProductM
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const updateReviewModeration = `-- name: UpdateReviewModeration :one
+UPDATE reviews
+SET status = coalesce($1::review_status, status),
+    reply  = CASE WHEN $2::boolean THEN $3 ELSE reply END
+WHERE id = $4
+RETURNING id
+`
+
+type UpdateReviewModerationParams struct {
+	Status   NullReviewStatus `json:"status"`
+	SetReply bool             `json:"setReply"`
+	Reply    []byte           `json:"reply"`
+	ID       uuid.UUID        `json:"id"`
+}
+
+// UpdateReviewModeration is the admin moderation write (P3-m): change a review's status (publish ↔ hide)
+// and/or set its shop reply, in one partial UPDATE. status is a nullable narg (omit ⇒ unchanged, via
+// coalesce). reply is touched only when @set_reply is true (so a plain hide/unhide leaves an existing reply
+// intact); the handler builds the {body, at} jsonb (or passes it through). No outbox — review moderation is
+// an internal content decision, not a domain event (plan §5). RETURNING id so an unknown id (0 rows →
+// ErrNoRows) surfaces as 404; the handler answers 204 (the FE re-reads the list).
+func (q *Queries) UpdateReviewModeration(ctx context.Context, arg UpdateReviewModerationParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, updateReviewModeration,
+		arg.Status,
+		arg.SetReply,
+		arg.Reply,
+		arg.ID,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }
