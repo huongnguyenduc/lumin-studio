@@ -25,6 +25,7 @@ const valid: ProductDraft = {
   dimH: '240',
   material: 'PLA',
   status: 'active',
+  images: [],
 };
 
 describe('validateDraft', () => {
@@ -65,7 +66,7 @@ describe('draft ⇄ wire round-trip', () => {
       dimensions: { w: 180, d: 180, h: 240 },
       material: 'PETG',
       model3dUrl: '',
-      images: [],
+      images: ['https://cdn.example/a.jpg', 'https://cdn.example/b.jpg'],
       colors: [],
       options: [],
       parts: [],
@@ -84,13 +85,15 @@ describe('draft ⇄ wire round-trip', () => {
       dimensions: { w: 180, d: 180, h: 240 },
       material: 'PETG',
       status: 'active',
+      images: ['https://cdn.example/a.jpg', 'https://cdn.example/b.jpg'],
     });
   });
-  it('a fresh draft defaults to a PLA draft product', () => {
+  it('a fresh draft defaults to a PLA draft product with no images', () => {
     expect(emptyDraft('cat-9')).toMatchObject({
       categoryId: 'cat-9',
       material: 'PLA',
       status: 'draft',
+      images: [],
     });
   });
 });

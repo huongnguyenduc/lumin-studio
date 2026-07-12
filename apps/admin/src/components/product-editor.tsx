@@ -21,6 +21,8 @@ import {
 } from '@/lib/product-form';
 import { parseIntField } from '@/lib/materials';
 import { createProduct, updateProduct, deleteProduct, type WriteCode } from '@/lib/product-actions';
+import { ProductGallery } from './product-gallery';
+import { ProductModel } from './product-model';
 
 type Product = components['schemas']['Product'];
 type Category = components['schemas']['Category'];
@@ -258,6 +260,28 @@ export function ProductEditor({
           ))}
         </Select>
       </Card>
+
+      {/* Media (edit only — model-upload/asset-jobs are keyed by an existing product id; create is core-
+          only → redirect → edit here). Gallery is a Product field (saves with "Lưu sản phẩm"); the model
+          upload enqueues its render jobs immediately. */}
+      {isEdit && (
+        <>
+          <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
+            <div>
+              <h2 className="font-semibold text-text-strong">{t('edit.sectionGallery')}</h2>
+              <p className="mt-0.5 text-sm text-text-muted">{t('edit.galleryHint')}</p>
+            </div>
+            <ProductGallery images={draft.images} onChange={(next) => set('images', next)} />
+          </Card>
+          <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
+            <div>
+              <h2 className="font-semibold text-text-strong">{t('edit.sectionModel')}</h2>
+              <p className="mt-0.5 text-sm text-text-muted">{t('edit.modelHint')}</p>
+            </div>
+            <ProductModel productId={product.id} model3dUrl={product.model3dUrl} />
+          </Card>
+        </>
+      )}
 
       {/* Delete (edit only) — two-step confirm, no blocking browser dialog */}
       {isEdit && (
