@@ -28,6 +28,9 @@ export interface ProductDraft {
   dimH: string;
   material: string;
   status: ProductStatus;
+  // Gallery photos (ADR-007: images[0] is the shop-taken cover — the worker never renders it). Held as
+  // final object URLs from the presigned upload (l-2); saved with the product via the main PATCH.
+  images: string[];
 }
 
 /** One error code per invalid draft field; the view maps it to an i18n message. Empty object = valid. */
@@ -60,6 +63,7 @@ export function emptyDraft(categoryId = ''): ProductDraft {
     dimH: '',
     material: MATERIALS[0],
     status: 'draft',
+    images: [],
   };
 }
 
@@ -76,6 +80,7 @@ export function draftFromProduct(p: Product): ProductDraft {
     dimH: String(p.dimensions.h),
     material: p.material,
     status: p.status,
+    images: p.images,
   };
 }
 
@@ -120,6 +125,7 @@ export function draftToInput(d: ProductDraft): ProductInput {
     },
     material: d.material,
     status: d.status,
+    images: d.images,
   };
 }
 
