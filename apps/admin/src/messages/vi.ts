@@ -131,6 +131,8 @@ export const vi = {
       sectionOptions: 'Tuỳ chọn',
       optionsHint:
         'Tuỳ chọn cá nhân hoá: ô khắc chữ (giới hạn ký tự) hoặc danh sách lựa chọn khách chọn một.',
+      sectionPreview: 'Xem trước & căn chỉnh 3D',
+      previewHint: 'Xoay mẫu tới góc đẹp rồi lưu làm góc mặc định khách thấy trên web.',
       nameLabel: 'Tên sản phẩm',
       slugLabel: 'Đường dẫn (slug)',
       slugHint: 'Dùng trong URL: chữ thường, số và gạch ngang.',
@@ -297,6 +299,24 @@ export const vi = {
           notFound: 'Không tìm thấy — có thể vừa bị xoá.',
           inUse:
             'Đã có đơn dùng tuỳ chọn này nên không xoá được — bạn chuyển sản phẩm sang Lưu trữ nhé.',
+          error: 'Mất kết nối một chút — bạn thử lại giúp mình nhé.',
+        },
+      },
+      preview: {
+        noModel: 'Tải mô hình 3D ở trên trước, rồi bạn xem trước và căn chỉnh góc ở đây nhé.',
+        noWebgl: 'Trình duyệt này không hỗ trợ WebGL nên chưa xem được mẫu 3D.',
+        hint: 'Xoay và kéo để chọn góc đẹp, rồi lưu làm góc mặc định.',
+        loading: 'Đang tải mẫu 3D…',
+        error: 'Chưa tải được mẫu 3D — bạn thử lại nhé.',
+        alt: 'Mẫu 3D của {name}',
+        saveView: 'Lưu góc mặc định',
+        saving: 'Đang lưu…',
+        saved: 'Đã lưu góc 🧡',
+        saveErr: {
+          forbidden: 'Bạn không có quyền lưu góc mặc định.',
+          validation: 'Góc chưa hợp lệ — bạn thử lại nhé.',
+          notFound: 'Không tìm thấy sản phẩm này — có thể vừa bị xoá.',
+          inUse: 'Không lưu được lúc này — bạn thử lại nhé.',
           error: 'Mất kết nối một chút — bạn thử lại giúp mình nhé.',
         },
       },
