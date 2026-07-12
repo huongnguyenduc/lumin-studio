@@ -96,6 +96,11 @@ type Querier interface {
 	// the caller never takes more than the lot's qty_remaining (clamp), so this cannot go negative.
 	DecrementBatch(ctx context.Context, arg DecrementBatchParams) error
 	DeleteAuxCost(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	// DeleteCategory is a HARD delete, allowed only for a category no product references: products.category_id is
+	// NOT NULL REFERENCES categories(id) with the default NO ACTION (migration 000003), so deleting a category
+	// still in use raises a foreign_key_violation the handler maps to 409 CATEGORY_IN_USE (reassign or archive the
+	// products first). RETURNING id so a missing row surfaces as ErrNoRows→404, mirroring DeleteProduct.
+	DeleteCategory(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	DeleteColor(ctx context.Context, arg DeleteColorParams) (uuid.UUID, error)
 	DeleteMachine(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	DeleteOption(ctx context.Context, arg DeleteOptionParams) (uuid.UUID, error)
@@ -266,6 +271,16 @@ type Querier interface {
 	// add a page window here if the catalog ever grows large. Newest first with an id tiebreak = deterministic
 	// total order.
 	ListAdminProducts(ctx context.Context, status NullProductStatus) ([]Product, error)
+	// ListAllCategories is the ADMIN category list (P3-o) — the INTERNAL projection that returns EVERY category,
+	// including empty ones and those whose only products are draft/archived, unlike the storefront-facing
+	// ListCategories (which hides categories with no ACTIVE product). Each row carries product_count = the number
+	// of products referencing it across ALL statuses (LEFT JOIN so an empty category still appears, with count 0).
+	// That count is the load-bearing admin figure: it tells the owner which categories are safe to delete (a
+	// non-zero count means DeleteCategory will trip the products.category_id FK → 409). No pagination — categories
+	// are a small, admin-curated set (same "fits one response" scale as ListCategories/ListAdminProducts). Ordered
+	// name A→Z with the UNIQUE slug as tiebreak = a deterministic TOTAL order (two categories sharing a display
+	// name never flap position).
+	ListAllCategories(ctx context.Context) ([]ListAllCategoriesRow, error)
 	// ListAssetJobsByProduct powers the admin product editor's render-status panel (P3-j-b GET
 	// /admin/products/{id}/asset-jobs): every render/ingest job for one product, newest first so the
 	// editor shows the latest attempt's status at the top. id breaks created_at ties for stable ordering.
@@ -411,6 +426,10 @@ type Querier interface {
 	// UpdateBankAccount sets the VietQR STK the server renders the static QR from. Called only inside
 	// UpdateBankAccountTx, alongside InsertBankAudit, so every change is audited (conventions §57).
 	UpdateBankAccount(ctx context.Context, bankAccount []byte) (Setting, error)
+	// UpdateCategory saves a category's slug + name (P3-o). slug stays mutable — a changed slug that collides with
+	// another category trips the UNIQUE(slug) constraint, which the handler maps to a 400 field error (never a
+	// 500), mirroring UpdateProduct. RETURNING so an unknown id (0 rows → ErrNoRows) surfaces as 404.
+	UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (Category, error)
 	// UpdateColor / DeleteColor are scoped by BOTH id AND product_id (P3-j) so a colorId belonging to another
 	// product (a mismatched /products/{id}/colors/{colorId} path) matches no row → ErrNoRows→404, never a
 	// cross-product edit. RETURNING lets the handler 404 on a stale id.

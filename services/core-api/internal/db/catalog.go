@@ -157,6 +157,36 @@ func (c *Catalog) CreateCategory(ctx context.Context, arg sqlc.InsertCategoryPar
 	return c.q.InsertCategory(ctx, arg)
 }
 
+// AdminCategories lists EVERY category with its product count across all statuses (P3-o), name A→Z. Unlike
+// Categories() (the active-only browsable taxonomy) this is the internal admin projection — one autocommit
+// read, no pagination (a small, admin-curated set). No category yields a non-nil empty slice, never an error.
+func (c *Catalog) AdminCategories(ctx context.Context) ([]sqlc.ListAllCategoriesRow, error) {
+	return c.q.ListAllCategories(ctx)
+}
+
+// UpdateCategory saves a category's slug + name, returning the persisted row or ErrNotFound if the id is
+// unknown. A slug collision surfaces as the raw UNIQUE-violation error (pgx code 23505) for the handler to
+// map to a 400 field error, mirroring UpdateProduct.
+func (c *Catalog) UpdateCategory(ctx context.Context, arg sqlc.UpdateCategoryParams) (sqlc.Category, error) {
+	cat, err := c.q.UpdateCategory(ctx, arg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Category{}, ErrNotFound
+	}
+	return cat, err
+}
+
+// DeleteCategory hard-deletes a category, or returns ErrNotFound for an unknown id. A category still
+// referenced by a product raises a foreign_key_violation (pgx code 23503) — passed through RAW (not
+// swallowed) so the handler can map it to a 409 steering the owner to reassign/archive the products first,
+// mirroring DeleteProduct.
+func (c *Catalog) DeleteCategory(ctx context.Context, id uuid.UUID) error {
+	_, err := c.q.DeleteCategory(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
+}
+
 // CreateProduct inserts a product and returns the persisted row.
 func (c *Catalog) CreateProduct(ctx context.Context, arg sqlc.InsertProductParams) (sqlc.Product, error) {
 	return c.q.InsertProduct(ctx, arg)

@@ -109,6 +109,7 @@ func classify(operationID string) authClass {
 		// (GetSettings/ListReplyTemplates) stay authRequired (owner+staff) via the default.
 		return authOwnerOnly
 	case "CreateAdminProduct", "UpdateAdminProduct", "DeleteAdminProduct", "UpdateProductModelView",
+		"CreateAdminCategory", "UpdateAdminCategory", "DeleteAdminCategory",
 		"CreateProductColor", "UpdateProductColor", "DeleteProductColor",
 		"CreateProductOption", "UpdateProductOption", "DeleteProductOption",
 		"CreateProductPart", "UpdateProductPart", "DeleteProductPart",
@@ -118,11 +119,12 @@ func classify(operationID string) authClass {
 		"CreateMachine", "UpdateMachine", "DeleteMachine",
 		"CreateAuxCost", "UpdateAuxCost", "DeleteAuxCost":
 		// Every catalog WRITE is owner-only (spec §08: sản phẩm is an owner power; staff manages orders/
-		// print-queue/reviews, not the catalog). Model upload + asset-job enqueue mutate the catalog's
-		// asset pipeline, so they are owner-only too (P3-j-b). Vật tư mutations (filament material/import/
-		// scrap, machines, aux costs — ADR-039) are cost config → owner-only too. The reads
-		// (GetAdminProducts/GetAdminProduct/GetProductAssetJobs/ListFilamentMaterials/GetFilamentMaterial/
-		// ListMachines/ListAuxCosts) stay authRequired (owner+staff) via the default, mirroring settings.
+		// print-queue/reviews, not the catalog). Category writes (P3-o) are the same catalog-taxonomy power.
+		// Model upload + asset-job enqueue mutate the catalog's asset pipeline, so they are owner-only too
+		// (P3-j-b). Vật tư mutations (filament material/import/scrap, machines, aux costs — ADR-039) are
+		// cost config → owner-only too. The reads (GetAdminProducts/GetAdminProduct/GetAdminCategories/
+		// GetProductAssetJobs/ListFilamentMaterials/GetFilamentMaterial/ListMachines/ListAuxCosts) stay
+		// authRequired (owner+staff) via the default, mirroring settings.
 		return authOwnerOnly
 	case "RegisterCustomer", "LoginCustomer", "LogoutCustomer":
 		// Storefront customer auth entry points (PR-P1-r) — issuing or clearing a customer cookie

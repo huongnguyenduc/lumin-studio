@@ -39,6 +39,10 @@ const (
 	// an asset job (ON DELETE RESTRICT, migrations 000005/000006). 409, steering the owner to archive
 	// (PATCH status→archived) instead of deleting a product with history (P3-j).
 	codeProductInUse = "PRODUCT_IN_USE"
+	// codeCategoryInUse — a hard category delete blocked because a product still references it
+	// (products.category_id NOT NULL, NO ACTION — migration 000003). 409, steering the owner to
+	// reassign or archive the products first (P3-o).
+	codeCategoryInUse = "CATEGORY_IN_USE"
 	// codeEmailTaken is the storefront-register 409: the login email is already registered. It is
 	// the ONE field a register form may safely surface (a login email is user-known, not a secret —
 	// unlike the login endpoint, which stays uniform to avoid enumeration). PR-P1-r.
@@ -81,6 +85,11 @@ var errQcPhotoRequired = errors.New("httpapi: valid QC photo URL required for SH
 // an asset job (the DB raises a foreign_key_violation on the RESTRICT FK; the handler translates it here so
 // the wire answer is a stable 409, never a leaked pg error). Maps to 409 PRODUCT_IN_USE (P3-j).
 var errProductInUse = errors.New("httpapi: product has orders or render history")
+
+// errCategoryInUse is the admin category-delete boundary rejection for a category still referenced by a
+// product (the DB raises a foreign_key_violation on the NOT-NULL category_id FK; the handler translates it
+// here so the wire answer is a stable 409, never a leaked pg error). Maps to 409 CATEGORY_IN_USE (P3-o).
+var errCategoryInUse = errors.New("httpapi: category still has products")
 
 // Checkout (PR-3g) boundary sentinels — HTTP-edge rules the domain/db layers don't model.
 var (
@@ -160,6 +169,9 @@ func mapError(err error) (int, api.ErrorEnvelope) {
 	case errors.Is(err, errProductInUse):
 		// Hard product delete blocked by an order/asset-job RESTRICT FK — archive instead (P3-j).
 		return http.StatusConflict, envelope(codeProductInUse)
+	case errors.Is(err, errCategoryInUse):
+		// Hard category delete blocked by a product's category_id FK — reassign/archive first (P3-o).
+		return http.StatusConflict, envelope(codeCategoryInUse)
 	case errors.Is(err, errPaymentProofRequired):
 		// Web create with no usable CK-receipt URL (CHK-04). Same code the domain guard uses.
 		return http.StatusUnprocessableEntity, envelope(string(order.ErrProofRequired))

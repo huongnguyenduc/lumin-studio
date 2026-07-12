@@ -291,6 +291,12 @@ func TestClassifyFailsClosed(t *testing.T) {
 		"UpdateProductOption":    authOwnerOnly,
 		"DeleteProductOption":    authOwnerOnly,
 
+		// P3-o categories: read owner+staff (default), every write owner-only (spec §08, same catalog power).
+		"GetAdminCategories":  authRequired,
+		"CreateAdminCategory": authOwnerOnly,
+		"UpdateAdminCategory": authOwnerOnly,
+		"DeleteAdminCategory": authOwnerOnly,
+
 		"CreateProductPart":  authOwnerOnly, // ADR-037 configurator writes — owner-only catalog
 		"UpdateProductPart":  authOwnerOnly,
 		"DeleteProductPart":  authOwnerOnly,

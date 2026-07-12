@@ -549,6 +549,56 @@ export interface paths {
         patch: operations["updateReplyTemplate"];
         trace?: never;
     };
+    "/admin/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin category list — every category with its product count (admin-gated read).
+         * @description Returns EVERY category (P3-o) as the admin projection — id, slug, name, and productCount (the number of products referencing it across ALL statuses) — ordered name A→Z with the slug as tiebreak. Unlike the public GetCategories (which lists only categories with an ACTIVE product), this is the INTERNAL admin taxonomy: it shows empty categories and draft-only categories too, so the owner can manage the whole set. productCount is the deletability signal — a non-zero count means a hard delete is blocked (409). NOT paginated: categories are a small, admin-curated set. Admin-gated (cookieAuth; owner AND staff read).
+         */
+        get: operations["getAdminCategories"];
+        put?: never;
+        /**
+         * Create a category (owner-only).
+         * @description Creates a category from the admin taxonomy editor (owner-only — spec §08 catalog is an owner power). A duplicate slug → 400 with a `slug` field error. The response is the created Category (its productCount is definitionally 0, so the list shape is not needed here).
+         */
+        post: operations["createAdminCategory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/categories/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a category (owner-only; blocked while products reference it).
+         * @description Hard-deletes a category (owner-only). Allowed only for a category no product references; a category still in use is retained (products.category_id is NOT NULL with NO ACTION) and the delete returns 409 CATEGORY_IN_USE — reassign or archive the products first. Unknown id → 404.
+         */
+        delete: operations["deleteAdminCategory"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename or re-slug a category (owner-only).
+         * @description Saves a category's slug + name (owner-only). Unknown id → 404; a slug now taken by another category → 400 with a `slug` field error. The response is the updated Category (productCount is unchanged by a rename, so the caller keeps the count it already holds).
+         */
+        patch: operations["updateAdminCategory"];
+        trace?: never;
+    };
     "/admin/products": {
         parameters: {
             query?: never;
@@ -1738,6 +1788,25 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** @description Unique URL slug — the value passed to GET /products?category={slug}. */
+            slug: string;
+            /** @description Human-friendly display name (sentence case). */
+            name: string;
+        };
+        /** @description Admin category-list projection (P3-o): a Category plus productCount — the number of products referencing it across ALL statuses. The count is the deletability signal (a non-zero count means a hard delete is blocked, 409). Only the admin list carries it; the create/rename responses return the plain Category (a fresh category's count is 0; a rename does not change it). */
+        AdminCategory: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            name: string;
+            /**
+             * Format: int64
+             * @description Products referencing this category, across all statuses (>= 0). 0 = safe to delete.
+             */
+            productCount: number;
+        };
+        /** @description Create/rename body for a category (P3-o). slug is a URL-safe lowercase-dash token (validated at the edge so a junk slug never reaches the storefront URL); name is a sentence-case display label. */
+        CategoryInput: {
+            /** @description Unique URL slug (lowercase alphanumerics in dash-separated groups, e.g. "den-de-ban"). */
             slug: string;
             /** @description Human-friendly display name (sentence case). */
             name: string;
@@ -3096,6 +3165,108 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReplyTemplate"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAdminCategories: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every category with its product count (name A→Z). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCategory"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createAdminCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryInput"];
+            };
+        };
+        responses: {
+            /** @description The created category. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Category"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    deleteAdminCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateAdminCategory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryInput"];
+            };
+        };
+        responses: {
+            /** @description The updated category. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Category"];
                 };
             };
             400: components["responses"]["BadRequest"];
