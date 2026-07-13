@@ -360,6 +360,92 @@ func (ns NullPaymentMethod) Value() (driver.Value, error) {
 	return string(ns.PaymentMethod), nil
 }
 
+type PetSpecies string
+
+const (
+	PetSpeciesDog   PetSpecies = "dog"
+	PetSpeciesCat   PetSpecies = "cat"
+	PetSpeciesOther PetSpecies = "other"
+)
+
+func (e *PetSpecies) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PetSpecies(s)
+	case string:
+		*e = PetSpecies(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PetSpecies: %T", src)
+	}
+	return nil
+}
+
+type NullPetSpecies struct {
+	PetSpecies PetSpecies `json:"petSpecies"`
+	Valid      bool       `json:"valid"` // Valid is true if PetSpecies is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPetSpecies) Scan(value interface{}) error {
+	if value == nil {
+		ns.PetSpecies, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PetSpecies.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPetSpecies) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PetSpecies), nil
+}
+
+type PetTagStatus string
+
+const (
+	PetTagStatusUNENCODED PetTagStatus = "UNENCODED"
+	PetTagStatusENCODED   PetTagStatus = "ENCODED"
+	PetTagStatusACTIVATED PetTagStatus = "ACTIVATED"
+)
+
+func (e *PetTagStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PetTagStatus(s)
+	case string:
+		*e = PetTagStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PetTagStatus: %T", src)
+	}
+	return nil
+}
+
+type NullPetTagStatus struct {
+	PetTagStatus PetTagStatus `json:"petTagStatus"`
+	Valid        bool         `json:"valid"` // Valid is true if PetTagStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPetTagStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.PetTagStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PetTagStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPetTagStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PetTagStatus), nil
+}
+
 type PrintStage string
 
 const (
@@ -445,6 +531,48 @@ func (ns NullProductStatus) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.ProductStatus), nil
+}
+
+type ProductType string
+
+const (
+	ProductTypeStandard ProductType = "standard"
+	ProductTypeNfcTag   ProductType = "nfc_tag"
+)
+
+func (e *ProductType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ProductType(s)
+	case string:
+		*e = ProductType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ProductType: %T", src)
+	}
+	return nil
+}
+
+type NullProductType struct {
+	ProductType ProductType `json:"productType"`
+	Valid       bool        `json:"valid"` // Valid is true if ProductType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullProductType) Scan(value interface{}) error {
+	if value == nil {
+		ns.ProductType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ProductType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullProductType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ProductType), nil
 }
 
 type ReviewStatus string
@@ -630,6 +758,14 @@ type FilamentMaterial struct {
 	UpdatedAt         pgtype.Timestamptz `json:"updatedAt"`
 }
 
+type LostEvent struct {
+	ID              uuid.UUID          `json:"id"`
+	TagID           uuid.UUID          `json:"tagId"`
+	ScannedAt       pgtype.Timestamptz `json:"scannedAt"`
+	FinderLocation  []byte             `json:"finderLocation"`
+	OwnerNotifiedAt pgtype.Timestamptz `json:"ownerNotifiedAt"`
+}
+
 type Machine struct {
 	ID                    uuid.UUID          `json:"id"`
 	Name                  string             `json:"name"`
@@ -719,6 +855,43 @@ type Part struct {
 	EstFilamentQty int64     `json:"estFilamentQty"`
 }
 
+type PetProfile struct {
+	ID             uuid.UUID          `json:"id"`
+	TagID          uuid.UUID          `json:"tagId"`
+	OwnerAccountID uuid.UUID          `json:"ownerAccountId"`
+	Handle         string             `json:"handle"`
+	PetName        string             `json:"petName"`
+	Species        PetSpecies         `json:"species"`
+	Breed          *string            `json:"breed"`
+	Age            *string            `json:"age"`
+	Weight         *string            `json:"weight"`
+	PhotoUrl       *string            `json:"photoUrl"`
+	Gallery        []byte             `json:"gallery"`
+	Bio            *string            `json:"bio"`
+	Favorites      []byte             `json:"favorites"`
+	Medical        []byte             `json:"medical"`
+	OwnerContact   []byte             `json:"ownerContact"`
+	Socials        []byte             `json:"socials"`
+	LostMode       bool               `json:"lostMode"`
+	Theme          []byte             `json:"theme"`
+	Blocks         []byte             `json:"blocks"`
+	CreatedAt      pgtype.Timestamptz `json:"createdAt"`
+	UpdatedAt      pgtype.Timestamptz `json:"updatedAt"`
+}
+
+type PetTag struct {
+	ID             uuid.UUID          `json:"id"`
+	Code           string             `json:"code"`
+	ShortID        string             `json:"shortId"`
+	OrderItemID    uuid.UUID          `json:"orderItemId"`
+	Status         PetTagStatus       `json:"status"`
+	ChipUid        *string            `json:"chipUid"`
+	OwnerAccountID pgtype.UUID        `json:"ownerAccountId"`
+	EncodedAt      pgtype.Timestamptz `json:"encodedAt"`
+	ActivatedAt    pgtype.Timestamptz `json:"activatedAt"`
+	CreatedAt      pgtype.Timestamptz `json:"createdAt"`
+}
+
 type PrintJob struct {
 	ID                 uuid.UUID          `json:"id"`
 	OrderItemID        uuid.UUID          `json:"orderItemId"`
@@ -749,6 +922,7 @@ type Product struct {
 	Model3dView     []byte             `json:"model3dView"`
 	EstFilamentQty  int64              `json:"estFilamentQty"`
 	EstPrintMinutes int32              `json:"estPrintMinutes"`
+	ProductType     ProductType        `json:"productType"`
 }
 
 type ReplyTemplate struct {

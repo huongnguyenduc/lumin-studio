@@ -155,7 +155,7 @@ dashboard** (`app/page.tsx`) — **CHƯA có màn đăng nhập**: backend auth 
 | **P3-q** | Nhân viên/RBAC `/cai-dat/nhan-vien` | BE+FE | — | `GET/POST /admin/staff` invite + role (owner-only) + FE list + **RBAC matrix hiển thị** (owner/staff cố định — không cấu-hình-được); empty/loading/error |
 | **P3-r** | Kênh chat + thông báo `/cai-dat/kenh` | FE | — | Toggle kênh (Mess/IG/TikTok = placeholder) + web-orders toggle (wire checkout gate) + notif in-app badge; **Extension-settings section = placeholder read-only** (handshake Phase 4); push thật = Phase 5 |
 | **P3-s** | **Vật tư & chi phí** `/vat-tu` — GREENFIELD | BE+FE | (P3-h) | **ADR data-model + migration 000015+** (filament_spools/machine_hours/aux_costs/scrap) + endpoints + FE 4-tab (Filament/Giờ máy/Chi phí phụ/Hao hụt) + **wire filament-deduct vào print-stage→PRINTING** (badge "thiếu nhựa" thật); empty/loading/error. Mini-feature |
-| **P3-t** | **Pet-Tag admin** `/pet-tag` — GREENFIELD | BE+FE | (feature-plan riêng) | **Tách `docs/plans/pet-tag.md`** (build feature Pet-Tag NFC: pet_tags/pet_profiles/encode/activate/lost + stage "Ghi chip NFC" trong kanban + trang pet). Plan này chỉ đặt chỗ + cross-ref |
+| **P3-t** | **Pet-Tag admin** `/pet-tag` — GREENFIELD | BE+FE | (feature-plan riêng) | ✅ **Feature-plan written → [`docs/plans/pet-tag.md`](pet-tag.md)** (Pet-Tag NFC: pet_tags/pet_profiles/encode/activate/lost + stage "Ghi chip NFC" + trang pet). Đã tách khỏi Phase-3; build theo slice t-1..t-5 có merge-gate riêng. Owner đã quyết 3 điểm (storefront-path / admin-mobile Web NFC / email-only) → t-1 (ADR + migration) unblocked |
 
 ## 4 · BLOCKERs
 
@@ -208,8 +208,8 @@ dashboard** (`app/page.tsx`) — **CHƯA có màn đăng nhập**: backend auth 
    matrix chỉ **hiển thị**, không cho tick tuỳ biến. *(mặc định: hiển thị-only; custom-role = de-scope.)*
 4. **SSE vs poll ở box nhà (P3-g/h):** nếu tunnel-buffering làm SSE flaky, có chấp nhận poll-only cho v1 không?
    *(mặc định: SSE có fallback poll; nếu smoke-test qua tunnel fail nhiều → ship poll-only, giữ SSE sau — ADR-008 cho phép.)*
-5. **Pet-Tag tách plan (P3-t):** confirm tách `docs/plans/pet-tag.md` (feature riêng, có spec Pet-Tag NFC) thay vì nhét
-   vào Phase-3? *(mặc định: tách — nó là feature-đầy-đủ, không phải 1 màn admin.)*
+5. **Pet-Tag tách plan (P3-t):** ✅ **RESOLVED — tách.** Feature-plan `docs/plans/pet-tag.md` written; là feature NFC
+   đầy-đủ (4 entity + trang pet public + encode-stage), không phải 1 màn admin. Build đợi owner quyết 3 `[NEEDS CLARIFICATION]`.
 
 ## 7 · Nợ chất lượng của plan
 
