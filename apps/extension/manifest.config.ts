@@ -13,8 +13,11 @@ export default defineManifest({
   name: 'Lumin Studio',
   description: 'Trợ lý bán hàng Lumin Studio — tạo đơn, tra cứu, mẫu trả lời ngay bên khung chat.',
   version: '0.0.0',
-  // No default_popup → clicking the toolbar icon opens the side panel (background.ts sets the
-  // behavior). The full toolbar-popup quick-actions screen is a later slice (e-4).
+  // No default_popup → clicking the toolbar icon opens the side panel directly in one click
+  // (background.ts sets openPanelOnActionClick). ponytail: a toolbar quick-actions popup was weighed for
+  // e-4 and DROPPED — a default_popup would *replace* this one-click open with a two-step popup→panel
+  // dance, and its actions just duplicate the panel's own tab nav (the popup's chat/domain chrome is the
+  // auto-scan cosmetics ADR-011 forbids). Add one only if a real need appears that the tabs can't serve.
   action: { default_title: 'Mở bảng Lumin Studio' },
   side_panel: { default_path: 'index.html' },
   background: { service_worker: 'src/background.ts', type: 'module' },
