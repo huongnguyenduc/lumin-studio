@@ -52,6 +52,13 @@ const (
 	Web CreateWebOrderInputChannel = "web"
 )
 
+// Defines values for ImageUploadInputContentType.
+const (
+	ImageUploadInputContentTypeImagejpeg ImageUploadInputContentType = "image/jpeg"
+	ImageUploadInputContentTypeImagepng  ImageUploadInputContentType = "image/png"
+	ImageUploadInputContentTypeImagewebp ImageUploadInputContentType = "image/webp"
+)
+
 // Defines values for ModelUploadInputContentType.
 const (
 	Model3mf        ModelUploadInputContentType = "model/3mf"
@@ -78,9 +85,9 @@ const (
 
 // Defines values for PaymentProofUploadInputContentType.
 const (
-	Imagejpeg PaymentProofUploadInputContentType = "image/jpeg"
-	Imagepng  PaymentProofUploadInputContentType = "image/png"
-	Imagewebp PaymentProofUploadInputContentType = "image/webp"
+	PaymentProofUploadInputContentTypeImagejpeg PaymentProofUploadInputContentType = "image/jpeg"
+	PaymentProofUploadInputContentTypeImagepng  PaymentProofUploadInputContentType = "image/png"
+	PaymentProofUploadInputContentTypeImagewebp PaymentProofUploadInputContentType = "image/webp"
 )
 
 // Defines values for PetSpecies.
@@ -771,6 +778,33 @@ type FilamentScrapInput struct {
 	// Reason Optional scrap reason.
 	Reason *string `json:"reason,omitempty"`
 }
+
+// ImageUpload A short-lived, browser-ready S3/Garage POST form for one public image. Submit every `fields` entry and the file part to `uploadUrl`; after a successful direct upload the image is addressable at the host-pinned `finalUrl`, which the caller stores as the pet-photo or gallery URL. `finalUrl` is host-pinned by the server and never derived from browser input.
+type ImageUpload struct {
+	// ExpiresAt Policy expiration timestamp.
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// Fields Exact form fields to include before the file part.
+	Fields map[string]string `json:"fields"`
+
+	// FinalUrl Host-pinned object URL the caller stores as the pet-photo or product-gallery image URL.
+	FinalUrl string `json:"finalUrl"`
+
+	// MaxBytes Maximum object size enforced by the signed POST policy.
+	MaxBytes int64 `json:"maxBytes"`
+
+	// UploadUrl S3/Garage form POST target, usually the bucket endpoint.
+	UploadUrl string `json:"uploadUrl"`
+}
+
+// ImageUploadInput Browser upload bootstrap for one permanent public image (pet-page or product-gallery photo). Like PaymentProofUploadInput, no file name or client-declared size is accepted: the object key is generated server-side with no PII and the actual size/type gate lives in the signed S3 POST policy.
+type ImageUploadInput struct {
+	// ContentType Exact image MIME type the returned POST policy will allow.
+	ContentType ImageUploadInputContentType `json:"contentType"`
+}
+
+// ImageUploadInputContentType Exact image MIME type the returned POST policy will allow.
+type ImageUploadInputContentType string
 
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
@@ -1965,6 +1999,9 @@ type SharePetLocationJSONRequestBody = PetShareLocationInput
 // QuotePriceJSONRequestBody defines body for QuotePrice for application/json ContentType.
 type QuotePriceJSONRequestBody = PriceQuoteInput
 
+// CreateImageUploadJSONRequestBody defines body for CreateImageUpload for application/json ContentType.
+type CreateImageUploadJSONRequestBody = ImageUploadInput
+
 // AsCreateWebOrderInput returns the union data inside the CreateOrderInput as a CreateWebOrderInput
 func (t CreateOrderInput) AsCreateWebOrderInput() (CreateWebOrderInput, error) {
 	var body CreateWebOrderInput
@@ -2311,6 +2348,9 @@ type ServerInterface interface {
 	// Public storefront product reviews (published-only) — paginated, newest first.
 	// (GET /products/{slug}/reviews)
 	GetProductReviews(w http.ResponseWriter, r *http.Request, slug string, params GetProductReviewsParams)
+	// Create a presigned POST form for one public image upload.
+	// (POST /uploads/image)
+	CreateImageUpload(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -2824,6 +2864,12 @@ func (_ Unimplemented) GetProductBySlug(w http.ResponseWriter, r *http.Request, 
 // Public storefront product reviews (published-only) — paginated, newest first.
 // (GET /products/{slug}/reviews)
 func (_ Unimplemented) GetProductReviews(w http.ResponseWriter, r *http.Request, slug string, params GetProductReviewsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Create a presigned POST form for one public image upload.
+// (POST /uploads/image)
+func (_ Unimplemented) CreateImageUpload(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -5310,6 +5356,20 @@ func (siw *ServerInterfaceWrapper) GetProductReviews(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// CreateImageUpload operation middleware
+func (siw *ServerInterfaceWrapper) CreateImageUpload(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateImageUpload(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -5677,6 +5737,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/products/{slug}/reviews", wrapper.GetProductReviews)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/uploads/image", wrapper.CreateImageUpload)
 	})
 
 	return r
@@ -9363,6 +9426,41 @@ func (response GetProductReviews404JSONResponse) VisitGetProductReviewsResponse(
 	return json.NewEncoder(w).Encode(response)
 }
 
+type CreateImageUploadRequestObject struct {
+	Body *CreateImageUploadJSONRequestBody
+}
+
+type CreateImageUploadResponseObject interface {
+	VisitCreateImageUploadResponse(w http.ResponseWriter) error
+}
+
+type CreateImageUpload200JSONResponse ImageUpload
+
+func (response CreateImageUpload200JSONResponse) VisitCreateImageUploadResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateImageUpload400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateImageUpload400JSONResponse) VisitCreateImageUploadResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateImageUpload429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response CreateImageUpload429JSONResponse) VisitCreateImageUploadResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(429)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// List auxiliary/overhead cost lines (admin-gated read; owner+staff).
@@ -9620,6 +9718,9 @@ type StrictServerInterface interface {
 	// Public storefront product reviews (published-only) — paginated, newest first.
 	// (GET /products/{slug}/reviews)
 	GetProductReviews(ctx context.Context, request GetProductReviewsRequestObject) (GetProductReviewsResponseObject, error)
+	// Create a presigned POST form for one public image upload.
+	// (POST /uploads/image)
+	CreateImageUpload(ctx context.Context, request CreateImageUploadRequestObject) (CreateImageUploadResponseObject, error)
 }
 
 type StrictHandlerFunc = strictnethttp.StrictHTTPHandlerFunc
@@ -12117,6 +12218,37 @@ func (sh *strictHandler) GetProductReviews(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetProductReviewsResponseObject); ok {
 		if err := validResponse.VisitGetProductReviewsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateImageUpload operation middleware
+func (sh *strictHandler) CreateImageUpload(w http.ResponseWriter, r *http.Request) {
+	var request CreateImageUploadRequestObject
+
+	var body CreateImageUploadJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateImageUpload(ctx, request.(CreateImageUploadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateImageUpload")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateImageUploadResponseObject); ok {
+		if err := validResponse.VisitCreateImageUploadResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

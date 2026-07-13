@@ -11,6 +11,7 @@ import {
   type OnboardingForm,
 } from '@/lib/pet-onboarding-form';
 import { activatePetTag } from '@/lib/pet-actions';
+import { track } from '@/lib/analytics';
 import type { PetSpecies } from '@/lib/pet-page';
 
 // The 2-step activation onboarding wizard (spec §10 steps 2b/2c, P3-t t-3). Rendered on /t/{shortId} when a
@@ -60,6 +61,7 @@ export function PetOnboarding({ shortId }: { shortId: string }) {
     const res = await activatePetTag(shortId, toActivateInput(form));
     setPending(false);
     if (res.ok) {
+      track('pet_activated');
       setDone(true);
       return;
     }

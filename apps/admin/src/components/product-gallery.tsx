@@ -3,7 +3,7 @@
 import { useRef, useState, useTransition, type ChangeEvent } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@lumin/ui';
-import { uploadProofFile, type UploadError } from '@/lib/upload-proof';
+import { uploadImageFile, type UploadError } from '@/lib/upload-proof';
 
 /**
  * Product gallery editor (P3-l l-2). Shop photos are the product's primary visual — images[0] is the card
@@ -30,7 +30,7 @@ export function ProductGallery({
     if (!file) return;
     setError(null);
     startUpload(async () => {
-      const res = await uploadProofFile(file);
+      const res = await uploadImageFile(file);
       if (res.ok) onChange([...images, res.url]);
       else setError(res.error);
     });

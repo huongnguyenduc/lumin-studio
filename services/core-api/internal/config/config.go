@@ -111,6 +111,21 @@ type Config struct {
 	// ≤100MB (the Cloudflare Tunnel body limit, ADR-005) — no multipart. Unlike payment proofs there is
 	// NO retention sweeper: catalog assets are permanent, so this config has no retention/interval twin.
 	ModelUploads ModelUploadConfig
+	// ImageUploads configures the presigned POST surface for PUBLIC, PERMANENT images — pet-page photos
+	// (P3-t) and product-gallery photos (P3-l) — signed the same way as payment proofs but landing in the
+	// world-readable lumin-assets bucket, NOT the private payment-proof bucket. It reuses the proofstore
+	// image rules (jpeg/png/webp, ≤10MB) with a distinct bucket+prefix so a lost pet's photo is never
+	// swept by the payment-proof retention (P3-t t-6). No retention twin: these assets are permanent.
+	ImageUploads PaymentProofUploadConfig
+	// LostEventGeoRetention is how long a finder's shared {lat,lng} is kept before the geo sweeper NULLs
+	// lost_events.finder_location — the row (the owner's own lost-scan history) survives, only the
+	// finder's PII coordinate is dropped (P3-t t-6, PDPL data-minimization). Finder location is useful
+	// only while a pet is actively lost, so 30 days is well past any real rescue window.
+	LostEventGeoRetention time.Duration
+	// LostEventSweepInterval is how often the geo sweeper scans for expired finder locations. Cheap
+	// (partial-index scan + UPDATE), so a slow cadence keeps it off the hot path; geo outliving retention
+	// by up to one interval is harmless.
+	LostEventSweepInterval time.Duration
 }
 
 // ModelUploadConfig holds the S3/Garage signing inputs for source 3D model uploads (ADR-036). Same
@@ -270,6 +285,22 @@ func Load() Config {
 			PostTTL:         getenvDuration("MODEL_UPLOAD_POST_TTL", 5*time.Minute),
 			MaxBytes:        int64(getenvInt("MODEL_UPLOAD_MAX_BYTES", 100*1024*1024)),
 		},
+		ImageUploads: PaymentProofUploadConfig{
+			// Same Garage instance + world-readable bucket as models (lumin-assets), a distinct key
+			// prefix (pet-images) so a bucket lifecycle rule can target only what it should, image rules
+			// (jpeg/png/webp, ≤10MB) from proofstore. Creds default empty → uploads fail closed until wired.
+			S3Endpoint:      getenv("IMAGE_UPLOAD_S3_ENDPOINT", "http://127.0.0.1:3900"),
+			S3Region:        getenv("IMAGE_UPLOAD_S3_REGION", "garage"),
+			Bucket:          getenv("IMAGE_UPLOAD_BUCKET", "lumin-assets"),
+			PublicBaseURL:   getenv("IMAGE_UPLOAD_PUBLIC_BASE_URL", "http://127.0.0.1:3900/lumin-assets"),
+			AccessKeyID:     getenv("IMAGE_UPLOAD_ACCESS_KEY_ID", ""),
+			SecretAccessKey: getenv("IMAGE_UPLOAD_SECRET_ACCESS_KEY", ""),
+			KeyPrefix:       getenv("IMAGE_UPLOAD_KEY_PREFIX", "pet-images"),
+			PostTTL:         getenvDuration("IMAGE_UPLOAD_POST_TTL", 5*time.Minute),
+			MaxBytes:        int64(getenvInt("IMAGE_UPLOAD_MAX_BYTES", 10*1024*1024)),
+		},
+		LostEventGeoRetention:  getenvDuration("LOST_EVENT_GEO_RETENTION", 30*24*time.Hour),
+		LostEventSweepInterval: getenvDuration("LOST_EVENT_SWEEP_INTERVAL", 6*time.Hour),
 	}
 }
 

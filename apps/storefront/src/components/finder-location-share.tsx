@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { sharePetLocation } from '@/lib/pet-actions';
+import { track } from '@/lib/analytics';
 
 // The finder's rescue send-once on the LOST pet page (spec §10 4a→4b, P3-t t-4b). Rendered only in the lost
 // view (a stranger + lostMode). The PURPOSE is stated BEFORE any permission is requested (PDPL — nêu rõ mục
@@ -33,8 +34,10 @@ export function FinderLocationShare({ shortId, petName }: { shortId: string; pet
         setPhase('sending');
         void (async () => {
           const res = await sharePetLocation(shortId, pos.coords.latitude, pos.coords.longitude);
-          if (res.ok) setPhase('sent');
-          else setPhase(res.code === 'notLost' ? 'notLost' : 'error');
+          if (res.ok) {
+            track('finder_location_shared');
+            setPhase('sent');
+          } else setPhase(res.code === 'notLost' ? 'notLost' : 'error');
         })();
       },
       (err) => {

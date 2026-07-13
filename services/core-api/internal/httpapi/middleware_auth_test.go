@@ -267,6 +267,7 @@ func TestClassifyFailsClosed(t *testing.T) {
 		"LookupOrder":              authPublic,
 		"GetCheckoutConfig":        authPublic,
 		"CreatePaymentProofUpload": authPublic,
+		"CreateImageUpload":        authPublic,
 		"CreateOrder":              authOptional,
 		"UpdateBankAccount":        authOwnerOnly,
 		"GetDashboard":             authRequired,

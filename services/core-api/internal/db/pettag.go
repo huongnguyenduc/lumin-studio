@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -186,6 +187,13 @@ func (t *PetTags) RecordLostScan(ctx context.Context, tagID uuid.UUID, loc Finde
 // D4). Only rows carrying a location come back (the query filters); limit bounds the list.
 func (t *PetTags) RecentLostScans(ctx context.Context, tagID uuid.UUID, limit int32) ([]sqlc.LostEvent, error) {
 	return t.q.RecentLostScansForTag(ctx, sqlc.RecentLostScansForTagParams{TagID: tagID, Limit: limit})
+}
+
+// PurgeExpiredFinderLocations NULLs the finder {lat,lng} on lost_events older than `before` (P3-t t-6, PDPL
+// geo retention). The row (the owner's own lost-scan history) survives; only the finder's PII coordinate is
+// dropped. Returns rows cleared, for the sweeper's log. Idempotent — already-null rows are skipped by the query.
+func (t *PetTags) PurgeExpiredFinderLocations(ctx context.Context, before time.Time) (int64, error) {
+	return t.q.PurgeExpiredFinderLocations(ctx, pgtype.Timestamptz{Time: before, Valid: true})
 }
 
 // ResolveHandle folds the pet name into a unique vanity handle (spec §10 "handle auto từ tên, unique").

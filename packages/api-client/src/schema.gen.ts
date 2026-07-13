@@ -457,6 +457,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/uploads/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a presigned POST form for one public image upload.
+         * @description Public bootstrap for uploading ONE permanent, world-readable image — a pet-page photo (P3-t) or a product-gallery photo (P3-l). Mirrors POST /checkout/payment-proof-upload (random non-PII object key; a signed POST policy pinning `content-length-range` ≤10MB and an exact `Content-Type` of `image/jpeg`, `image/png`, or `image/webp`; short TTL; the browser uploads straight to Garage). The one difference: the object lands in the world-readable `lumin-assets` bucket with NO retention sweeper — these images are permanent, unlike payment receipts (P3-t t-6). The host-pinned `finalUrl` is what the caller stores as the photo/gallery URL.
+         */
+        post: operations["createImageUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/dashboard": {
         parameters: {
             query?: never;
@@ -2530,6 +2550,41 @@ export interface components {
              */
             maxBytes: number;
         };
+        /** @description Browser upload bootstrap for one permanent public image (pet-page or product-gallery photo). Like PaymentProofUploadInput, no file name or client-declared size is accepted: the object key is generated server-side with no PII and the actual size/type gate lives in the signed S3 POST policy. */
+        ImageUploadInput: {
+            /**
+             * @description Exact image MIME type the returned POST policy will allow.
+             * @enum {string}
+             */
+            contentType: "image/jpeg" | "image/png" | "image/webp";
+        };
+        /** @description A short-lived, browser-ready S3/Garage POST form for one public image. Submit every `fields` entry and the file part to `uploadUrl`; after a successful direct upload the image is addressable at the host-pinned `finalUrl`, which the caller stores as the pet-photo or gallery URL. `finalUrl` is host-pinned by the server and never derived from browser input. */
+        ImageUpload: {
+            /**
+             * Format: uri
+             * @description S3/Garage form POST target, usually the bucket endpoint.
+             */
+            uploadUrl: string;
+            /** @description Exact form fields to include before the file part. */
+            fields: {
+                [key: string]: string;
+            };
+            /**
+             * Format: uri
+             * @description Host-pinned object URL the caller stores as the pet-photo or product-gallery image URL.
+             */
+            finalUrl: string;
+            /**
+             * Format: date-time
+             * @description Policy expiration timestamp.
+             */
+            expiresAt: string;
+            /**
+             * Format: int64
+             * @description Maximum object size enforced by the signed POST policy.
+             */
+            maxBytes: number;
+        };
         /** @description An extension reply template (spec §02). */
         ReplyTemplate: {
             /** Format: uuid */
@@ -3645,6 +3700,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PaymentProofUpload"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    createImageUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageUploadInput"];
+            };
+        };
+        responses: {
+            /** @description Browser-ready POST target, form fields, and the host-pinned final object URL. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageUpload"];
                 };
             };
             400: components["responses"]["BadRequest"];

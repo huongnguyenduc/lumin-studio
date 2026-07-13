@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
@@ -492,6 +493,11 @@ type Querier interface {
 	// 4c-1 NOTE — robust to a stray second primary or an inactivated one). No primary set → ErrNoRows → the
 	// rollup contributes machineVnd 0 (guarded), never a fault.
 	PrimaryMachine(ctx context.Context) (Machine, error)
+	// PurgeExpiredFinderLocations NULLs the finder's {lat,lng} on lost_events older than the cutoff (P3-t t-6,
+	// PDPL geo retention). The row survives — it is the OWNER's own lost-scan history, not finder PII — but the
+	// finder's precise coordinate is dropped once past the retention window (spec §10 "lưu tối thiểu, có hạn lưu").
+	// Only rows still carrying a location are touched, so a re-run after the sweep is a no-op. Returns rows cleared.
+	PurgeExpiredFinderLocations(ctx context.Context, before pgtype.Timestamptz) (int64, error)
 	// RecentLostScansForTag lists a tag's most-recent finder location-shares for the OWNER's in-app notify (spec
 	// §10 D4). Only rows that carry a location (a plain scan with no share is not a notify). Bounded by $2, newest
 	// first, via lost_events_tag_idx. ponytail: no time-window filter — the retention sweep (t-6) bounds row age,

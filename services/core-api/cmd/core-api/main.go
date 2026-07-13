@@ -146,6 +146,16 @@ func main() {
 		modelStore = nil
 	}
 
+	// Build the public-image upload signer once (P3-t t-6, P3-l): pet-page + product-gallery photos land in
+	// the world-readable lumin-assets bucket with NO retention sweeper (permanent, unlike receipts). Same
+	// proofstore image rules as payment proofs (jpeg/png/webp ≤10MB), a distinct bucket+prefix. Invalid or
+	// absent config disables image uploads (endpoint fails closed); main.go still boots.
+	imageStore, err := proofstore.New(cfg.ImageUploads)
+	if err != nil {
+		logger.Warn("image uploads disabled (invalid or absent S3/Garage config)", "err", err)
+		imageStore = nil
+	}
+
 	// Start the payment-proof retention sweeper: one goroutine deleting receipts ~90 days after their
 	// order reaches a terminal status (ADR-035, PDPL). It only runs when uploads are configured (there
 	// is nothing to delete otherwise) and is joined on shutdown BEFORE pool.Close()/proofStore go away,
@@ -165,12 +175,28 @@ func main() {
 		}
 	}
 
+	// Start the lost-event geo retention sweeper (P3-t t-6, PDPL): one goroutine NULLing a finder's shared
+	// {lat,lng} ~30 days after the scan. Unlike the proof sweeper it needs no object store — only the pool —
+	// so it always runs; joined on shutdown BEFORE pool.Close() since it reads the pool.
+	geoCtx, geoCancel := context.WithCancel(context.Background())
+	geoDone := make(chan struct{})
+	geoSweeper := retention.NewGeoSweeper(db.NewPetTags(pool), cfg.LostEventGeoRetention, cfg.LostEventSweepInterval, logger)
+	go func() {
+		defer close(geoDone)
+		geoSweeper.Run(geoCtx)
+	}()
+	stopGeoSweeper := func() {
+		geoCancel()
+		<-geoDone
+	}
+
 	srv := &http.Server{
 		Addr: cfg.Addr,
 		Handler: httpapi.NewRouter(logger, pool, nc, authIssuer,
 			httpapi.WithCustomerAuth(customerAuthIssuer),
 			httpapi.WithPaymentProofUploads(proofStore),
 			httpapi.WithModelUploads(modelStore),
+			httpapi.WithImageUploads(imageStore),
 			httpapi.WithTrackingSecret(cfg.TrackingSecret),
 			httpapi.WithPetPageBaseURL(cfg.PetPageBaseURL),
 		),
@@ -200,6 +226,7 @@ func main() {
 		logger.Error("server failed", "err", err)
 		stopRelay()
 		stopSweeper()
+		stopGeoSweeper()
 		nc.Close()
 		pool.Close()
 		os.Exit(1)
@@ -215,6 +242,7 @@ func main() {
 	// their handles first. The relay holds both DB + NATS, so it must exit before either closes.
 	stopRelay()
 	stopSweeper()
+	stopGeoSweeper()
 	nc.Close()
 	pool.Close()
 	if shutdownErr != nil {

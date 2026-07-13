@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import type { PetPageProfile, PetSpecies } from '@/lib/pet-page';
 import { normalizeBlocks } from '@/lib/pet-blocks';
+import { track } from '@/lib/analytics';
 import {
   BACKGROUND_IDS,
   NAME_FONT_IDS,
@@ -107,6 +108,7 @@ function ThemePanel({
     });
     setSaving(false);
     if (res.ok) {
+      track('pet_theme_changed');
       onSaved();
       router.refresh();
       return;

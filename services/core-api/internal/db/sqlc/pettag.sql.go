@@ -404,6 +404,24 @@ func (q *Queries) PetHandleTaken(ctx context.Context, handle string) (bool, erro
 	return taken, err
 }
 
+const purgeExpiredFinderLocations = `-- name: PurgeExpiredFinderLocations :execrows
+UPDATE lost_events
+SET finder_location = NULL
+WHERE finder_location IS NOT NULL AND scanned_at < $1
+`
+
+// PurgeExpiredFinderLocations NULLs the finder's {lat,lng} on lost_events older than the cutoff (P3-t t-6,
+// PDPL geo retention). The row survives — it is the OWNER's own lost-scan history, not finder PII — but the
+// finder's precise coordinate is dropped once past the retention window (spec §10 "lưu tối thiểu, có hạn lưu").
+// Only rows still carrying a location are touched, so a re-run after the sweep is a no-op. Returns rows cleared.
+func (q *Queries) PurgeExpiredFinderLocations(ctx context.Context, before pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeExpiredFinderLocations, before)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const recentLostScansForTag = `-- name: RecentLostScansForTag :many
 SELECT id, tag_id, scanned_at, finder_location, owner_notified_at FROM lost_events
 WHERE tag_id = $1 AND finder_location IS NOT NULL
