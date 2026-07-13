@@ -14,8 +14,9 @@ import (
 )
 
 // LoginUser handles POST /auth/login (PR-3e-1, ADR-030): look the user up by email, verify the
-// password with bcrypt, and on success mint a signed JWT set as an httpOnly session cookie —
-// the token is NEVER placed in the response body (out of JS-readable storage, blunts XSS theft).
+// password with bcrypt, and on success mint a signed JWT set as an httpOnly session cookie. The
+// token rides in the cookie and is placed in the response body ONLY when the caller sets
+// issueToken — the MV3 extension (ADR-043), which is cross-origin and cannot carry the cookie.
 // Unknown email and wrong password return the SAME uniform 401: auth.VerifyPassword always runs
 // one bcrypt comparison (even for a missing user / null hash) so the two paths are timing-
 // indistinguishable and the endpoint leaks no signal about which emails exist (no enumeration).
@@ -48,17 +49,25 @@ func (s *Server) LoginUser(ctx context.Context, req api.LoginUserRequestObject) 
 	if err != nil {
 		return nil, err
 	}
-	// The token rides ONLY in the Set-Cookie header (the openapi Set-Cookie response header,
-	// generated as Headers.SetCookie) — never the JSON body, so it stays out of JS-readable
-	// storage (ADR-030). cookie.String() serializes all the security attributes (httpOnly/Secure/
-	// SameSite/Path/Max-Age) set by the issuer.
+	// The token rides in the Set-Cookie header (cookie.String() serializes the httpOnly/Secure/
+	// SameSite/Path/Max-Age attributes set by the issuer). For the admin SPA that is the ONLY
+	// carrier — never the JSON body — so it stays out of JS-readable storage (ADR-030).
+	body := api.AuthUser{
+		Id:    user.ID,
+		Name:  user.Name,
+		Email: openapi_types.Email(user.Email),
+		Role:  api.UserRole(user.Role),
+	}
+	// ADR-043: the MV3 extension is cross-origin and can't send the SameSite=Strict cookie, so when
+	// it asks (issueToken=true) hand back the same JWT the cookie carries (cookie.Value) for it to
+	// store in chrome.storage.local and present as Authorization: Bearer. The admin SPA omits the
+	// flag, so its response is unchanged and token-free — ADR-030 stays intact for the admin realm.
+	if req.Body.IssueToken != nil && *req.Body.IssueToken {
+		token := cookie.Value
+		body.Token = &token
+	}
 	return api.LoginUser200JSONResponse{
-		Body: api.AuthUser{
-			Id:    user.ID,
-			Name:  user.Name,
-			Email: openapi_types.Email(user.Email),
-			Role:  api.UserRole(user.Role),
-		},
+		Body:    body,
 		Headers: api.LoginUser200ResponseHeaders{SetCookie: cookie.String()},
 	}, nil
 }

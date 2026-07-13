@@ -203,3 +203,42 @@ func assertUnauthorizedNoCookie(t *testing.T, res *http.Response) {
 		t.Fatalf("envelope = %+v, want a uniform UNAUTHORIZED code", env)
 	}
 }
+
+// postLoginIssueToken posts a login that opts into the body token via issueToken=true — the MV3
+// extension path (ADR-043), which is cross-origin and can't use the SameSite=Strict cookie.
+func postLoginIssueToken(h http.Handler, email, password string) *http.Response {
+	body, _ := json.Marshal(map[string]any{"email": email, "password": password, "issueToken": true})
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec.Result()
+}
+
+// ADR-043: with issueToken=true the JWT is ALSO returned in the body — the SAME value the cookie
+// carries — for the extension to store in chrome.storage.local and present as Authorization: Bearer.
+// The cookie is still set, so a client that keeps using it (or the admin path) is unaffected.
+func TestLoginIssueTokenReturnsTokenInBody(t *testing.T) {
+	srv := testLoginServer(fakeUsers{user: ownerUser(t, "owner@lumin.vn", "secret123")})
+	res := postLoginIssueToken(testAuthRouter(srv), "owner@lumin.vn", "secret123")
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", res.StatusCode)
+	}
+	c := sessionCookie(res)
+	if c == nil || c.Value == "" {
+		t.Fatal("login must still set the session cookie")
+	}
+	raw, _ := io.ReadAll(res.Body)
+	var out api.AuthUser
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("body not an AuthUser: %v (%s)", err, raw)
+	}
+	if out.Token == nil || *out.Token == "" {
+		t.Fatal("issueToken=true must return the JWT in the body (ADR-043)")
+	}
+	if *out.Token != c.Value {
+		t.Fatalf("body token must equal the cookie JWT; body=%q cookie=%q", *out.Token, c.Value)
+	}
+}

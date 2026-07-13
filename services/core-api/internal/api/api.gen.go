@@ -380,7 +380,7 @@ type AssetJobStatus string
 // AssetJobType Which asset pipeline a job runs (D3): `model_ingest` normalizes geometry + builds the LOD .glb, `sprite_render` renders the 360° sprite alone. The client maps it to an i18n label.
 type AssetJobType string
 
-// AuthUser The authenticated user (no credential material).
+// AuthUser The authenticated user. `token` is present ONLY when the login request set `issueToken` (the MV3 extension; ADR-043); the admin SPA omits the flag and the token stays cookie-only (ADR-030). No other credential material.
 type AuthUser struct {
 	Email openapi_types.Email `json:"email"`
 	Id    openapi_types.UUID  `json:"id"`
@@ -388,6 +388,9 @@ type AuthUser struct {
 
 	// Role Stored user role (Postgres `user_role`). The subset of Role that a logged-in user can hold — `system` is excluded (a runtime actor, never persisted).
 	Role UserRole `json:"role"`
+
+	// Token Signed session JWT — the same token as the Set-Cookie. Present only for extension logins (issueToken=true; ADR-043). Optional (no `default`) so the admin client's typed response stays token-free.
+	Token *string `json:"token,omitempty"`
 }
 
 // AuxCost An auxiliary/overhead cost line (ADR-039 pt 7). amountVnd is int-VND; the per-order allocation is derived at rollup time.
@@ -808,8 +811,11 @@ type ImageUploadInputContentType string
 
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
-	Email    openapi_types.Email `json:"email"`
-	Password string              `json:"password"`
+	Email openapi_types.Email `json:"email"`
+
+	// IssueToken When true, the 200 body also carries the signed JWT in `token` (alongside the Set-Cookie). Only the MV3 extension sets this — it stores the token in chrome.storage.local and sends it as `Authorization: Bearer` (cross-origin, no cookie; ADR-043). The admin SPA omits it and stays cookie-only (ADR-030).
+	IssueToken *bool  `json:"issueToken,omitempty"`
+	Password   string `json:"password"`
 }
 
 // Machine A printer for machine-hour costing (ADR-039 pt 6). costPerHour is DERIVED = purchasePriceVnd / (depreciationMonths × expectedHoursPerMonth) — a rate (float, not stored money); the 4c snapshot attributes hours to the primary machine. active=false hides it from the cost rollup.

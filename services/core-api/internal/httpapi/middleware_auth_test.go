@@ -422,3 +422,87 @@ func TestPublicCreateOrderNotGatedByAuth(t *testing.T) {
 		t.Fatalf("anonymous POST /orders = %d, must not be gated (401/403)", rec.Code)
 	}
 }
+
+// callAuthMWBearer drives srv.authMiddleware for operationID with an Authorization: Bearer token
+// (the MV3 extension credential, ADR-043) instead of a session cookie.
+func callAuthMWBearer(srv *Server, operationID, token string) (*recordingNext, interface{}, error) {
+	next := &recordingNext{}
+	mw := srv.authMiddleware(next.fn, operationID)
+	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	rec := httptest.NewRecorder()
+	resp, err := mw(context.Background(), rec, req, nil)
+	return next, resp, err
+}
+
+// ADR-043: a Bearer token authenticates the admin realm exactly like the cookie — the extension
+// presents the same JWT this way because it can't carry the SameSite=Strict cookie cross-origin.
+// The cookie's Value IS that JWT, so we reuse issueCookie to mint a real token.
+func TestAuthMiddlewareBearerInjectsActor(t *testing.T) {
+	u := authTestUser(sqlc.UserRoleOwner, true)
+	srv := serverWithUsers(fakeUsers{byID: map[uuid.UUID]sqlc.User{u.ID: u}})
+	next, _, err := callAuthMWBearer(srv, "GetDashboard", issueCookie(t, srv, u).Value)
+	if err != nil {
+		t.Fatalf("Bearer token must authenticate, got %v", err)
+	}
+	if !next.called || !next.hasAct {
+		t.Fatalf("Bearer must inject the actor (called=%v hasAct=%v)", next.called, next.hasAct)
+	}
+	if next.actor.ByUser != u.ID.String() || next.actor.Role != order.RoleOwner {
+		t.Fatalf("actor = %+v, want owner %s", next.actor, u.ID)
+	}
+}
+
+// A tampered Bearer token is rejected just like a tampered cookie (the same Verify path).
+func TestAuthMiddlewareBearerRejectsTampered(t *testing.T) {
+	u := authTestUser(sqlc.UserRoleOwner, true)
+	srv := serverWithUsers(fakeUsers{byID: map[uuid.UUID]sqlc.User{u.ID: u}})
+	next, _, err := callAuthMWBearer(srv, "GetDashboard", issueCookie(t, srv, u).Value+"x")
+	if !errors.Is(err, errUnauthenticated) {
+		t.Fatalf("tampered Bearer must be errUnauthenticated, got %v", err)
+	}
+	if next.called {
+		t.Fatal("handler must not run for a tampered Bearer token")
+	}
+}
+
+// A non-Bearer Authorization header (wrong scheme) yields no token → treated as no credential, so a
+// required route fails closed (401), never a 500. Guards bearerToken's scheme check.
+func TestAuthMiddlewareNonBearerHeaderIsNoCredential(t *testing.T) {
+	srv := serverWithUsers(fakeUsers{})
+	next := &recordingNext{}
+	mw := srv.authMiddleware(next.fn, "GetDashboard")
+	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil)
+	req.Header.Set("Authorization", "Basic Zm9vOmJhcg==") // not the Bearer scheme
+	if _, err := mw(context.Background(), httptest.NewRecorder(), req, nil); !errors.Is(err, errUnauthenticated) {
+		t.Fatalf("a non-Bearer Authorization header must be treated as no credential (401), got %v", err)
+	}
+	if next.called {
+		t.Fatal("handler must not run without a valid credential")
+	}
+}
+
+// bearerToken parses the RFC 6750 Bearer scheme: case-insensitive, trims the token, and rejects
+// any other scheme or a scheme-only header.
+func TestBearerToken(t *testing.T) {
+	cases := map[string]string{
+		"Bearer abc.def.ghi": "abc.def.ghi",
+		"bearer abc":         "abc",    // case-insensitive scheme (RFC 6750 §2.1)
+		"Bearer  spaced ":    "spaced", // surrounding space trimmed
+		"Basic Zm9v":         "",       // wrong scheme
+		"":                   "",       // header absent
+		"Bearer":             "",       // scheme only, no token
+		"Bearer ":            "",       // empty token
+	}
+	for h, want := range cases {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		if h != "" {
+			r.Header.Set("Authorization", h)
+		}
+		if got := bearerToken(r); got != want {
+			t.Errorf("bearerToken(%q) = %q, want %q", h, got, want)
+		}
+	}
+}

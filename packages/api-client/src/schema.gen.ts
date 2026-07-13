@@ -14,7 +14,7 @@ export interface paths {
         put?: never;
         /**
          * Email + password login; sets the session cookie on success.
-         * @description Verifies the credential (bcrypt, constant-time) and, on success, mints a signed JWT set as an httpOnly+Secure+SameSite cookie. A uniform error is returned for both unknown email and bad password (no user enumeration). The cookie — not the body — carries the token.
+         * @description Verifies the credential (bcrypt, constant-time) and, on success, mints a signed JWT set as an httpOnly+Secure+SameSite cookie. A uniform error is returned for both unknown email and bad password (no user enumeration). The cookie carries the token; the body carries it too ONLY when `issueToken` is set (the MV3 extension — cross-origin, no cookie; ADR-043).
          */
         post: operations["loginUser"];
         delete?: never;
@@ -2408,8 +2408,10 @@ export interface components {
             /** Format: email */
             email: string;
             password: string;
+            /** @description When true, the 200 body also carries the signed JWT in `token` (alongside the Set-Cookie). Only the MV3 extension sets this — it stores the token in chrome.storage.local and sends it as `Authorization: Bearer` (cross-origin, no cookie; ADR-043). The admin SPA omits it and stays cookie-only (ADR-030). */
+            issueToken?: boolean;
         };
-        /** @description The authenticated user (no credential material). */
+        /** @description The authenticated user. `token` is present ONLY when the login request set `issueToken` (the MV3 extension; ADR-043); the admin SPA omits the flag and the token stays cookie-only (ADR-030). No other credential material. */
         AuthUser: {
             /** Format: uuid */
             id: string;
@@ -2417,6 +2419,8 @@ export interface components {
             /** Format: email */
             email: string;
             role: components["schemas"]["UserRole"];
+            /** @description Signed session JWT — the same token as the Set-Cookie. Present only for extension logins (issueToken=true; ADR-043). Optional (no `default`) so the admin client's typed response stays token-free. */
+            token?: string;
         };
         /** @description A team-roster row (GET /admin/staff, P3-q) — the AuthUser fields plus `active`. No credential material (password_hash) is ever included. `active=false` is a deactivated account; the flag is shown, not toggled, this slice (no deactivate endpoint yet). */
         AdminStaff: {
@@ -3055,7 +3059,7 @@ export interface operations {
             /** @description Authenticated. The session cookie is set via Set-Cookie. */
             200: {
                 headers: {
-                    /** @description Signed JWT in an httpOnly + Secure + SameSite=Strict session cookie (the token is not in the body). */
+                    /** @description Signed JWT in an httpOnly + Secure + SameSite=Strict session cookie (also returned in the body only when issueToken is set — ADR-043). */
                     "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
