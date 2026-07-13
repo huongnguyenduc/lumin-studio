@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"strings"
 
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/api"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
@@ -90,6 +91,40 @@ func (s *Server) GetAdminOrder(ctx context.Context, request api.GetAdminOrderReq
 		return nil, err // malformed stored `at` (never written by the seams) → 500 (logged)
 	}
 	return api.GetAdminOrder200JSONResponse(dto), nil
+}
+
+// GetAdminOrderByCode handles GET /admin/orders/by-code/{code} (P4 e-3): the staff paste-a-code order
+// lookup behind the browser extension. Staff have a human code ("#LMN-0042"), not the uuid the by-id read
+// needs, so this resolves the code to the SAME full internal Order as GetAdminOrder (customer PII, items,
+// address, money, proof, tracking, note, full statusHistory). It is authRequired (classify default — owner
+// AND staff, cookie OR Bearer per ADR-043); the read is actor-independent. Unlike the public LookupOrder it
+// needs no phone and returns the full detail — the caller is an authenticated staffer, so there is no
+// enumeration boundary to defend (ADR-032's whitelist protects GUESTS, not staff). An unknown code is
+// db.ErrNotFound → 404 (mapError, no leak). Status changes go through POST /orders/{id}/transitions
+// (RBAC-gated). r.Context() propagates into both reads so a client disconnect / timeout cancels them.
+func (s *Server) GetAdminOrderByCode(ctx context.Context, request api.GetAdminOrderByCodeRequestObject) (api.GetAdminOrderByCodeResponseObject, error) {
+	row, err := db.NewOrders(s.pool).ByCode(ctx, normalizeAdminOrderCode(request.Code))
+	if err != nil {
+		return nil, err // ErrNotFound → 404; any other db fault → 500 (mapError, no leak)
+	}
+	dto, err := assembleOrderDTO(ctx, s.pool, row)
+	if err != nil {
+		return nil, err // malformed stored `at` (never written by the seams) → 500 (logged)
+	}
+	return api.GetAdminOrderByCode200JSONResponse(dto), nil
+}
+
+// normalizeAdminOrderCode canonicalizes a staff-typed/pasted order code to the stored form ("#LMN-0042"):
+// trim, upper-case, and add the leading "#" if missing. Unlike the public normalizeLookupCode (which does
+// NOT invent "#", keeping the guest lookup's match strict), staff paste loosely — "lmn-0042", "#LMN-0042" —
+// and there is no enumeration risk on this authenticated endpoint, so the "#"-less form is accepted. A code
+// that still doesn't match after normalizing funnels to the uniform 404.
+func normalizeAdminOrderCode(code string) string {
+	c := strings.ToUpper(strings.TrimSpace(code))
+	if c != "" && !strings.HasPrefix(c, "#") {
+		c = "#" + c
+	}
+	return c
 }
 
 // adminOrdersPageParams applies the defaults for the omitted (nil) page/pageSize params and validates them

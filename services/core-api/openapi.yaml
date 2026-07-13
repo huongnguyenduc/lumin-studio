@@ -1042,6 +1042,40 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /admin/orders/by-code/{code}:
+    get:
+      tags: [admin]
+      operationId: getAdminOrderByCode
+      summary: Admin order detail by human code — staff paste-to-lookup (admin-gated).
+      description: >
+        Resolves a human order code (e.g. "LMN-0042" or "#LMN-0042") to the full INTERNAL Order — the same
+        projection as GET /admin/orders/{id} (customer PII, items, address, money, proof, tracking, note,
+        full statusHistory). This is the staff paste-a-code lookup behind the browser extension (Phase 4
+        e-3): staff have a code, not a uuid, so they cannot use the by-id read. Admin-gated (owner AND
+        staff; cookie OR Bearer per ADR-043) — NOT the public /orders/lookup, which needs the phone and
+        returns only the PublicOrderTimeline whitelist (ADR-032). The code is matched case-insensitively
+        with the leading "#" optional (staff paste loosely); no phone is required because the caller is an
+        authenticated staffer (no enumeration boundary to defend). An unknown code → 404 NOT_FOUND.
+        Read-only; status changes go through POST /orders/{id}/transitions (RBAC-gated).
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          description: The human order code shown at checkout, with or without the leading "#" (e.g. "LMN-0042").
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The full internal order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /admin/customers:
     get:
       tags: [admin]

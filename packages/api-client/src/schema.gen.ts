@@ -537,6 +537,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/orders/by-code/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin order detail by human code — staff paste-to-lookup (admin-gated).
+         * @description Resolves a human order code (e.g. "LMN-0042" or "#LMN-0042") to the full INTERNAL Order — the same projection as GET /admin/orders/{id} (customer PII, items, address, money, proof, tracking, note, full statusHistory). This is the staff paste-a-code lookup behind the browser extension (Phase 4 e-3): staff have a code, not a uuid, so they cannot use the by-id read. Admin-gated (owner AND staff; cookie OR Bearer per ADR-043) — NOT the public /orders/lookup, which needs the phone and returns only the PublicOrderTimeline whitelist (ADR-032). The code is matched case-insensitively with the leading "#" optional (staff paste loosely); no phone is required because the caller is an authenticated staffer (no enumeration boundary to defend). An unknown code → 404 NOT_FOUND. Read-only; status changes go through POST /orders/{id}/transitions (RBAC-gated).
+         */
+        get: operations["getAdminOrderByCode"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/customers": {
         parameters: {
             query?: never;
@@ -3807,6 +3827,31 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAdminOrderByCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The human order code shown at checkout, with or without the leading "#" (e.g. "LMN-0042"). */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The full internal order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Order"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };

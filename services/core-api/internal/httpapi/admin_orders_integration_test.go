@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -218,6 +219,62 @@ func getAdminOrder(t *testing.T, srv *Server, ctx context.Context, id uuid.UUID)
 	ok, isOK := resp.(api.GetAdminOrder200JSONResponse)
 	if !isOK {
 		t.Fatalf("response type = %T, want GetAdminOrder200JSONResponse", resp)
+	}
+	return api.Order(ok)
+}
+
+// TestGetAdminOrderByCodeEndToEnd exercises the staff paste-a-code lookup (P4 e-3) over a real Postgres:
+// seed an order, resolve its human code back to the SAME full internal Order the by-id read returns, and
+// prove the code match is #-optional and case-insensitive (staff paste loosely). An unknown code → the
+// same db.ErrNotFound the by-id path returns (→ 404 at the boundary, no leak).
+func TestGetAdminOrderByCodeEndToEnd(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+
+	catID := seedCategory(t, ctx, pool)
+	mochi := seedProductNamed(t, ctx, pool, catID, "mochi", "Đèn Mochi", 390_000)
+
+	orderID := seedAdminOrder(t, ctx, pool, adminOrderSeed{
+		customer: "Nguyễn An", channel: order.ChannelWeb, createdAt: "2026-07-03T08:00:00Z",
+		items: []db.NewOrderItem{{ProductID: mochi, Quantity: 1, UnitPrice: 390_000}},
+	})
+
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
+
+	// The code stored on the seeded order (e.g. "#LMN-1000") — read it back via the by-id detail.
+	code := getAdminOrder(t, srv, ctx, orderID).Code
+	if code == "" {
+		t.Fatal("seeded order has no code")
+	}
+
+	// Exact, #-less, and lower-case forms all resolve to the same order (staff paste loosely). Each returns
+	// the FULL internal detail — the PII (customer name) + money the public timeline whitelist omits.
+	for _, variant := range []string{code, strings.TrimPrefix(code, "#"), strings.ToLower(code)} {
+		got := getAdminOrderByCode(t, srv, ctx, variant)
+		if got.Id != orderID || got.Code != code {
+			t.Fatalf("lookup %q → id=%v code=%q, want id=%v code=%q", variant, got.Id, got.Code, orderID, code)
+		}
+		if got.Customer.Name != "Nguyễn An" || got.Total != 420_000 { // 390k item + 30k ship
+			t.Fatalf("lookup %q wrong detail: customer=%q total=%d, want 'Nguyễn An'/420000", variant, got.Customer.Name, got.Total)
+		}
+	}
+
+	// Unknown code → db.ErrNotFound, which mapError renders as a uniform 404 NOT_FOUND (no leak).
+	if _, err := srv.GetAdminOrderByCode(ctx, api.GetAdminOrderByCodeRequestObject{Code: "#LMN-9999"}); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("unknown code → err %v, want db.ErrNotFound (→ 404)", err)
+	}
+}
+
+// getAdminOrderByCode calls the by-code handler and unwraps the 200 Order body, failing on any other outcome.
+func getAdminOrderByCode(t *testing.T, srv *Server, ctx context.Context, code string) api.Order {
+	t.Helper()
+	resp, err := srv.GetAdminOrderByCode(ctx, api.GetAdminOrderByCodeRequestObject{Code: code})
+	if err != nil {
+		t.Fatalf("GetAdminOrderByCode(%q): %v", code, err)
+	}
+	ok, isOK := resp.(api.GetAdminOrderByCode200JSONResponse)
+	if !isOK {
+		t.Fatalf("response type = %T, want GetAdminOrderByCode200JSONResponse", resp)
 	}
 	return api.Order(ok)
 }
