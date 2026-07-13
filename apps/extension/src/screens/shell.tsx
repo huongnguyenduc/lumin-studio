@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button } from '@lumin/ui';
 import { logout, type SessionUser } from '../lib/auth';
 import { t, type MessageKey } from '../i18n';
+import { CreateOrder } from './create-order';
 
 type Tab = 'create' | 'lookup' | 'templates';
 const TABS: { id: Tab; labelKey: MessageKey }[] = [
@@ -21,7 +22,7 @@ export function Shell({ user, onLogout }: { user: SessionUser; onLogout: () => v
   }
 
   return (
-    <div className="flex min-h-full flex-col bg-surface-page">
+    <div className="flex h-full flex-col bg-surface-page">
       <header className="flex items-center justify-between gap-2 bg-surface-brand px-4 py-3 text-on-dark">
         <span className="font-display text-base font-bold">{t('app.name')}</span>
         <span className="flex items-center gap-1.5 font-mono text-xs">
@@ -62,9 +63,13 @@ export function Shell({ user, onLogout }: { user: SessionUser; onLogout: () => v
         })}
       </nav>
 
-      <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-text-muted">
-        {t('shell.comingSoon')}
-      </div>
+      {tab === 'create' ? (
+        <CreateOrder />
+      ) : (
+        <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-text-muted">
+          {t('shell.comingSoon')}
+        </div>
+      )}
     </div>
   );
 }
