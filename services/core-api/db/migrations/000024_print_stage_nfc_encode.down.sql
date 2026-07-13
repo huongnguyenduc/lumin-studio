@@ -1,0 +1,7 @@
+-- Reverse of 000024: intentionally a NO-OP. Postgres cannot DROP a value from an enum type (there is
+-- no ALTER TYPE ... DROP VALUE), and rebuilding print_stage without NFC_ENCODE would mean recreating the
+-- type + rewriting every print_jobs.stage + every dependent object — far more risk than a dev-only down
+-- is worth for one unused label. The migrations-reversible test (db/outbox_test.go) only asserts that
+-- AFTER ALL downs the public schema has zero enum types, and 000001_enums.down.sql drops print_stage
+-- wholesale — so this no-op is correct: the leftover value disappears with the whole type upstream, and
+-- the up's `ADD VALUE IF NOT EXISTS` makes the re-apply idempotent.

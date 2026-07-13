@@ -904,6 +904,46 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /admin/print-jobs/{id}/encode:
+    post:
+      tags: [admin]
+      operationId: encodePrintJobTag
+      summary: NFC-encode a Pet Tag print job — mint/return the tag, then confirm the chip write.
+      description: >
+        The "Ghi chip NFC" step (spec §10, P3-t t-2) for an nfc_tag print job sitting in the NFC_ENCODE
+        stage. TWO-PHASE, one endpoint (ADR-041): call with NO chipUid to PREPARE — get-or-create the pet
+        tag (mint code + shortId) and return the URL to burn to the chip, leaving the board stage
+        untouched; call WITH chipUid to CONFIRM — record the chip UID, mark the tag ENCODED, and advance
+        the print job to PACKING. The tag is minted lazily here because no order→print_job wiring exists
+        yet; a qty>1 line gets ONE tag for now (ADR-041). Admin-gated (cookieAuth; owner AND staff —
+        fulfillment work, mirrors the print board). A non-nfc_tag job → 400; an unknown job id → 404. Does
+        NOT transition OrderStatus — the tag lifecycle is separate (spec §10).
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrintTagEncodeInput'
+      responses:
+        '200':
+          description: The pet tag (URL to burn + status) and the print-queue card in its current state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrintTagEncodeResult'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /admin/settings:
     get:
       tags: [admin]
@@ -2337,12 +2377,37 @@ components:
       description: >
         Print queue stage (spec §02 PrintJob). STORED and staff-driven — finer-grained than OrderStatus
         (one PRINTING order spans the PRINTING + PACKING print stages) and advanced independently of it
-        (D6): a stage move is NOT an OrderStatus transition.
+        (D6): a stage move is NOT an OrderStatus transition. NFC_ENCODE (spec §10, "Ghi chip NFC") sits
+        between PRINTING and PACKING and routes ONLY nfc_tag products (P3-t t-2) — a standard product's
+        board path skips it. Order matches the Postgres enum so the client lays the columns out in order.
       enum:
         - NEED_PRINT
         - PRINTING
+        - NFC_ENCODE
         - PACKING
         - SHIPPED
+
+    ProductType:
+      type: string
+      description: >
+        What kind of product a line is (spec §10). `standard` is every ordinary made-to-order item;
+        `nfc_tag` is a Pet Tag NFC ring, which needs the extra NFC-encode print stage + a per-pet page.
+        Carried on a print-queue card so the board can route nfc_tag cards through NFC_ENCODE.
+      enum:
+        - standard
+        - nfc_tag
+
+    PetTagStatus:
+      type: string
+      description: >
+        Pet Tag fulfillment lifecycle (spec §10 "Trạng thái tag") — PARALLEL to but SEPARATE from
+        OrderStatus (the order still runs PENDING_CONFIRM→…→COMPLETED). UNENCODED = printed, blank chip;
+        ENCODED = chip written + locked, ready to pack + ship; ACTIVATED = customer logged in + a pet
+        profile exists (t-3). Not a packages/core state machine (DB-only, no statusHistory).
+      enum:
+        - UNENCODED
+        - ENCODED
+        - ACTIVATED
 
     Channel:
       type: string
@@ -4470,13 +4535,15 @@ components:
         the order code, product name and quantity so a card at the printer says WHAT to make for WHICH
         order. colorName/printer/eta are optional (nullable columns). Stage is a PrintStage enum the
         client maps to the kanban column label (always-must #3).
-      required: [id, stage, orderCode, productName, quantity]
+      required: [id, stage, productType, orderCode, productName, quantity]
       properties:
         id:
           type: string
           format: uuid
         stage:
           $ref: '#/components/schemas/PrintStage'
+        productType:
+          $ref: '#/components/schemas/ProductType'
         orderCode:
           type: string
           description: Display code of the owning order (e.g. #LMN-2261) — the card's "which order" anchor.
@@ -4512,6 +4579,59 @@ components:
       properties:
         stage:
           $ref: '#/components/schemas/PrintStage'
+
+    # --- Pet Tag NFC encode (P3-t t-2) ------------------------------------------------------------
+    PetTagRef:
+      type: object
+      description: >
+        A minimal reference to the physical Pet Tag behind a print job (spec §10). Returned by the encode
+        endpoint so the admin sheet can show the URL to burn to the chip and the current tag status. The
+        tag is minted lazily on the first encode call for an nfc_tag order line (no order→print_job
+        wiring exists yet — ADR-041); code + shortId are stable once created.
+      required: [code, shortId, url, status]
+      properties:
+        code:
+          type: string
+          description: Display code (e.g. #LMN-T0231) — the admin-facing tag reference.
+        shortId:
+          type: string
+          description: The URL routing key burned to the chip — the /t/{shortId} pet-page segment.
+        url:
+          type: string
+          description: >
+            The absolute pet-page URL to write to the NFC chip (NDEF), derived server-side from shortId
+            (PET_TAG_BASE_URL). This is what staff encode onto the NTAG215.
+        status:
+          $ref: '#/components/schemas/PetTagStatus'
+        chipUid:
+          type: string
+          description: The NTAG215 hardware UID recorded at encode; absent until the tag is ENCODED.
+
+    PrintTagEncodeInput:
+      type: object
+      description: >
+        Body for POST /admin/print-jobs/{id}/encode. OMIT chipUid to PREPARE — mint/return the tag + the
+        URL to burn, leaving the stage untouched (the sheet-open call). SEND chipUid to CONFIRM — record
+        the chip UID, mark the tag ENCODED, and advance the print job to PACKING (the write-done call).
+      properties:
+        chipUid:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: The NTAG215 hardware UID read from the just-written chip. Omit to prepare only.
+
+    PrintTagEncodeResult:
+      type: object
+      description: >
+        Response for POST /admin/print-jobs/{id}/encode. `tag` is the Pet Tag ref (URL to burn + status);
+        `card` is the print-queue card in its CURRENT state — unchanged for a prepare call, advanced to
+        PACKING after a confirm. The client folds `card` back into the board (same shape as the list).
+      required: [tag, card]
+      properties:
+        tag:
+          $ref: '#/components/schemas/PetTagRef'
+        card:
+          $ref: '#/components/schemas/PrintQueueJob'
 
     # --- Public guest order lookup (P1-n) ---------------------------------------------------------
     PublicOrderTimeline:

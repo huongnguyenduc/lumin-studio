@@ -451,6 +451,7 @@ type PrintStage string
 const (
 	PrintStageNEEDPRINT PrintStage = "NEED_PRINT"
 	PrintStagePRINTING  PrintStage = "PRINTING"
+	PrintStageNFCENCODE PrintStage = "NFC_ENCODE"
 	PrintStagePACKING   PrintStage = "PACKING"
 	PrintStageSHIPPED   PrintStage = "SHIPPED"
 )

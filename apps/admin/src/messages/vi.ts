@@ -535,8 +535,29 @@ export const vi = {
     stage: {
       needPrint: 'Cần in',
       printing: 'Đang in',
+      nfcEncode: 'Ghi chip NFC',
       packing: 'Đóng gói',
       shipped: 'Đã gửi',
+    },
+    encode: {
+      open: 'Ghi chip',
+      title: 'Ghi chip NFC',
+      preparing: 'Đang tạo mã cho tag…',
+      prepareError: 'Chưa tạo được mã tag — bạn thử lại nhé.',
+      retry: 'Thử lại',
+      urlLabel: 'URL ghi vào chip',
+      urlHint:
+        'Ghi URL này vào chip NTAG215 (Web NFC hoặc app), rồi nhập mã UID của chip bên dưới.',
+      nfcWrite: 'Chạm điện thoại để ghi',
+      nfc: {
+        written: 'Đã ghi URL vào chip 🎉',
+        failed: 'Chưa ghi được — bạn thử ghi bằng app NFC rồi nhập UID nhé.',
+      },
+      chipUidLabel: 'Mã UID của chip',
+      confirm: 'Xong — đánh dấu đã ghi',
+      submitting: 'Đang lưu…',
+      error: 'Chưa lưu được — bạn thử lại giúp mình nhé.',
+      back: 'Đóng',
     },
   },
   settings: {

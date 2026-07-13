@@ -26,12 +26,15 @@ import {
 } from '@/lib/print-queue';
 import { usePrintStream } from '@/lib/use-print-stream';
 import { advancePrintStage } from '@/lib/print-queue-actions';
+import { EncodeTagSheet } from '@/components/encode-tag-sheet';
 
-// Per-column chrome. PRINTING is the active column → coral tint + coral border (design "Đang in"); the
-// rest are calm sunken panels. SHIPPED cards are de-emphasized (terminal on the board).
+// Per-column chrome. PRINTING is the active column → coral tint + coral border (design "Đang in").
+// NFC_ENCODE ("Ghi chip NFC", P3-t t-2) gets a teal accent to stand out as the special tag-only step;
+// the rest are calm sunken panels. SHIPPED cards are de-emphasized (terminal on the board).
 const COLUMN_TONE: Record<PrintStage, string> = {
   NEED_PRINT: 'border-border-subtle bg-surface-sunken',
   PRINTING: 'border-primary bg-accent-flame-soft',
+  NFC_ENCODE: 'border-accent-teal bg-accent-teal-soft',
   PACKING: 'border-border-subtle bg-surface-sunken',
   SHIPPED: 'border-border-subtle bg-surface-sunken',
 };
@@ -51,6 +54,7 @@ export function PrintBoard({ initialCards }: { initialCards: PrintCard[] }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [reduced, setReduced] = useState(false);
+  const [encodingCard, setEncodingCard] = useState<PrintCard | null>(null); // NFC-encode sheet (t-2)
 
   // prefers-reduced-motion → kill the drop settle animation (the drag itself must still translate, or
   // the card can't follow the pointer; only the decorative settle is suppressed).
@@ -92,7 +96,13 @@ export function PrintBoard({ initialCards }: { initialCards: PrintCard[] }) {
   function onDragEnd(e: DragEndEvent) {
     setActiveId(null);
     const to = e.over?.id as PrintStage | undefined;
-    if (to && PRINT_STAGES.includes(to)) void advance(String(e.active.id), to);
+    if (!to || !PRINT_STAGES.includes(to)) return;
+    const card = cards.find((c) => c.id === String(e.active.id));
+    if (!card) return;
+    // A standard product has no chip — never let it land in the NFC-encode column (that column is
+    // nfc_tag-only; the encode action, not a raw drag, is the blessed way through it). Snap it back.
+    if (to === 'NFC_ENCODE' && card.productType !== 'nfc_tag') return;
+    void advance(String(e.active.id), to);
   }
 
   return (
@@ -123,9 +133,15 @@ export function PrintBoard({ initialCards }: { initialCards: PrintCard[] }) {
           onDragCancel={() => setActiveId(null)}
           onDragEnd={onDragEnd}
         >
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
             {PRINT_STAGES.map((stage) => (
-              <Column key={stage} stage={stage} cards={columns[stage]} onAdvance={advance} />
+              <Column
+                key={stage}
+                stage={stage}
+                cards={columns[stage]}
+                onAdvance={advance}
+                onEncode={setEncodingCard}
+              />
             ))}
           </div>
           <DragOverlay dropAnimation={reduced ? null : undefined}>
@@ -137,6 +153,17 @@ export function PrintBoard({ initialCards }: { initialCards: PrintCard[] }) {
           </DragOverlay>
         </DndContext>
       )}
+
+      {encodingCard && (
+        <EncodeTagSheet
+          card={encodingCard}
+          onClose={() => setEncodingCard(null)}
+          onEncoded={(card) => {
+            setCards((cs) => mergeCard(cs, card)); // fold the ENCODED→PACKING card back into the board
+            setEncodingCard(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -146,10 +173,12 @@ function Column({
   stage,
   cards,
   onAdvance,
+  onEncode,
 }: {
   stage: PrintStage;
   cards: PrintCard[];
   onAdvance: (id: string, to: PrintStage) => void;
+  onEncode: (card: PrintCard) => void;
 }) {
   const t = useTranslations('printQueue');
   const { setNodeRef, isOver } = useDroppable({ id: stage });
@@ -178,7 +207,9 @@ function Column({
           {t('columnEmpty')}
         </p>
       ) : (
-        cards.map((card) => <DraggableCard key={card.id} card={card} onAdvance={onAdvance} />)
+        cards.map((card) => (
+          <DraggableCard key={card.id} card={card} onAdvance={onAdvance} onEncode={onEncode} />
+        ))
       )}
     </section>
   );
@@ -190,9 +221,11 @@ function Column({
 function DraggableCard({
   card,
   onAdvance,
+  onEncode,
 }: {
   card: PrintCard;
   onAdvance: (id: string, to: PrintStage) => void;
+  onEncode: (card: PrintCard) => void;
 }) {
   const { listeners, setNodeRef, transform, isDragging } = useDraggable({ id: card.id });
   const style = transform
@@ -209,7 +242,7 @@ function DraggableCard({
       } ${card.stage === 'SHIPPED' ? 'opacity-70' : ''}`}
     >
       <CardFace card={card} />
-      <CardAdvance card={card} onAdvance={onAdvance} />
+      <CardAdvance card={card} onAdvance={onAdvance} onEncode={onEncode} />
     </div>
   );
 }
@@ -240,29 +273,47 @@ function CardFace({ card }: { card: PrintCard }) {
   );
 }
 
-/** The advance button — the keyboard/AT/mobile alternative to dragging (D-P3-2). Hidden at SHIPPED
- *  (terminal on the board). stopPropagation on pointerdown so pressing it doesn't start a card drag. */
+/** The per-card action — the keyboard/AT/mobile alternative to dragging (D-P3-2). For an nfc_tag card at
+ *  NFC_ENCODE it's the "Ghi chip NFC" button that opens the encode sheet (writes the chip + advances to
+ *  PACKING); otherwise it's the plain product-aware stage advance (hidden at the terminal column).
+ *  stopPropagation on mousedown AND touchstart so pressing it doesn't start a card drag. */
 function CardAdvance({
   card,
   onAdvance,
+  onEncode,
 }: {
   card: PrintCard;
   onAdvance: (id: string, to: PrintStage) => void;
+  onEncode: (card: PrintCard) => void;
 }) {
   const t = useTranslations('printQueue');
-  const next = nextStage(card.stage);
-  if (!next) return null;
+  const btnBase =
+    'mt-2 inline-flex min-h-[44px] w-full items-center justify-center rounded-lg border-[1.5px] px-2 py-1 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2';
 
+  // The NFC-encode action (spec §10) — the blessed way through the NFC_ENCODE stage. Teal to match the column.
+  if (card.productType === 'nfc_tag' && card.stage === 'NFC_ENCODE') {
+    return (
+      <button
+        type="button"
+        onMouseDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+        onClick={() => onEncode(card)}
+        className={`${btnBase} border-accent-teal bg-accent-teal-soft text-text-strong`}
+      >
+        {t('encode.open')}
+      </button>
+    );
+  }
+
+  const next = nextStage(card.stage, card.productType);
+  if (!next) return null;
   return (
     <button
       type="button"
-      // Stop the drag sensors from claiming a press on the button: MouseSensor listens on mousedown,
-      // TouchSensor on touchstart, so both must be stopped (a pointerdown-only stop would let a
-      // long-press on the button start a card drag via TouchSensor).
       onMouseDown={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
       onClick={() => onAdvance(card.id, next)}
-      className="mt-2 inline-flex min-h-[44px] w-full items-center justify-center rounded-lg border-[1.5px] border-border-strong px-2 py-1 text-xs font-semibold text-text-strong hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
+      className={`${btnBase} border-border-strong text-text-strong hover:bg-surface-sunken`}
     >
       {t('advanceTo', { stage: t(`stage.${STAGE_LABEL_KEY[next]}`) })}
     </button>

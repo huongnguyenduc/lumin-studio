@@ -73,6 +73,10 @@ type Server struct {
 	// broadcasts the advanced card; GET /admin/print-queue/stream subscribers push it to the browser.
 	// core-api is single-instance (ADR-009) so no NATS is involved. Never nil off NewServer; see print_stream.go.
 	printHub *printStreamHub
+	// petPageBaseURL is the base for the /t/{shortId} pet-page URL the NFC-encode step burns to a chip
+	// (P3-t t-2). Never a secret — NewServer defaults it (defaultPetPageBaseURL); main.go overrides via
+	// WithPetPageBaseURL from PET_TAG_BASE_URL. See admin_pettag_encode.go.
+	petPageBaseURL string
 }
 
 // ServerOption customizes an optional Server dependency without churning every existing
@@ -111,6 +115,17 @@ func WithTrackingSecret(secret string) ServerOption {
 	return func(s *Server) { s.tracking = newTrackingSigner(secret) }
 }
 
+// WithPetPageBaseURL sets the base for the /t/{shortId} pet-page URL the NFC-encode step burns to a chip
+// (P3-t t-2). main.go passes the resolved PET_TAG_BASE_URL; unit tests fall back to NewServer's
+// defaultPetPageBaseURL. An empty string is ignored so a missing env keeps the default.
+func WithPetPageBaseURL(base string) ServerOption {
+	return func(s *Server) {
+		if base != "" {
+			s.petPageBaseURL = base
+		}
+	}
+}
+
 // NewServer builds the handler root. pool/nats may be nil in unit tests that don't
 // exercise those dependencies (readiness then skips the corresponding check); auth may be
 // nil in tests that don't hit the login handler. opts wire optional dependencies (e.g. the
@@ -126,6 +141,7 @@ func NewServer(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus, authIss
 		proofUploadLimiter: newPaymentProofUploadLimiter(defaultPaymentProofUploadLimits()),
 		tracking:           newTrackingSigner(devTrackingSecret),
 		printHub:           newPrintStreamHub(),
+		petPageBaseURL:     defaultPetPageBaseURL,
 	}
 	for _, opt := range opts {
 		opt(s)

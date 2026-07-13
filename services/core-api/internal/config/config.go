@@ -86,6 +86,12 @@ type Config struct {
 	// stored (the token is recomputed on read), so rotating this invalidates every outstanding link.
 	TrackingSecret string
 
+	// PetPageBaseURL is the base for the /t/{shortId} pet-page URL the NFC-encode step burns to a chip
+	// (P3-t t-2, spec §10). NOT a secret — a plain deploy handle. lumin.pet is reserved (D1, ADR-040) for
+	// a later edge-rewrite; until it exists set PET_TAG_BASE_URL to the storefront origin so the chip
+	// carries a URL that serves today. Defaults to the canonical https://lumin.pet.
+	PetPageBaseURL string
+
 	// PaymentProofUploads configures the presigned POST surface that lets the storefront upload a
 	// receipt image directly to Garage/S3 before POST /orders references the returned finalUrl.
 	PaymentProofUploads PaymentProofUploadConfig
@@ -239,6 +245,7 @@ func Load() Config {
 		CustomerJWTSecret: getenv("CUSTOMER_JWT_SECRET", DevCustomerJWTSecret),
 		CustomerJWTTTL:    getenvDuration("CUSTOMER_JWT_TTL", 720*time.Hour),
 		TrackingSecret:    getenv("TRACKING_SECRET", DevTrackingSecret),
+		PetPageBaseURL:    getenv("PET_TAG_BASE_URL", "https://lumin.pet"),
 		PaymentProofUploads: PaymentProofUploadConfig{
 			S3Endpoint:      getenv("PAYMENT_PROOF_S3_ENDPOINT", "http://127.0.0.1:3900"),
 			S3Region:        getenv("PAYMENT_PROOF_S3_REGION", "garage"),

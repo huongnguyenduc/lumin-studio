@@ -137,8 +137,10 @@ func (q *Queries) GetPrintJobByID(ctx context.Context, id uuid.UUID) (PrintJob, 
 
 const getPrintQueueEntry = `-- name: GetPrintQueueEntry :one
 SELECT pj.id, pj.stage, pj.printer, pj.color_name, pj.eta,
+  pj.order_item_id AS order_item_id,
   o.code AS order_code,
   p.name AS product_name,
+  p.product_type AS product_type,
   oi.quantity AS quantity,
   oi.part_colors AS part_colors
 FROM print_jobs pj
@@ -154,8 +156,10 @@ type GetPrintQueueEntryRow struct {
 	Printer     *string            `json:"printer"`
 	ColorName   *string            `json:"colorName"`
 	Eta         pgtype.Timestamptz `json:"eta"`
+	OrderItemID uuid.UUID          `json:"orderItemId"`
 	OrderCode   string             `json:"orderCode"`
 	ProductName string             `json:"productName"`
+	ProductType ProductType        `json:"productType"`
 	Quantity    int32              `json:"quantity"`
 	PartColors  []byte             `json:"partColors"`
 }
@@ -171,8 +175,10 @@ func (q *Queries) GetPrintQueueEntry(ctx context.Context, id uuid.UUID) (GetPrin
 		&i.Printer,
 		&i.ColorName,
 		&i.Eta,
+		&i.OrderItemID,
 		&i.OrderCode,
 		&i.ProductName,
+		&i.ProductType,
 		&i.Quantity,
 		&i.PartColors,
 	)
@@ -333,7 +339,8 @@ SELECT pj.id, pj.stage, pj.printer, pj.color_name, pj.eta,
   o.code AS order_code,
   p.name AS product_name,
   oi.quantity AS quantity,
-  oi.part_colors AS part_colors
+  oi.part_colors AS part_colors,
+  p.product_type AS product_type
 FROM print_jobs pj
 JOIN order_items oi ON oi.id = pj.order_item_id
 JOIN orders o ON o.id = oi.order_id
@@ -351,6 +358,7 @@ type ListPrintQueueRow struct {
 	ProductName string             `json:"productName"`
 	Quantity    int32              `json:"quantity"`
 	PartColors  []byte             `json:"partColors"`
+	ProductType ProductType        `json:"productType"`
 }
 
 // ListPrintQueue is the admin kanban board read (P3-f): every print job across all stages, joined to
@@ -383,6 +391,7 @@ func (q *Queries) ListPrintQueue(ctx context.Context) ([]ListPrintQueueRow, erro
 			&i.ProductName,
 			&i.Quantity,
 			&i.PartColors,
+			&i.ProductType,
 		); err != nil {
 			return nil, err
 		}

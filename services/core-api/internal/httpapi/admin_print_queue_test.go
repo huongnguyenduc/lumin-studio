@@ -55,9 +55,9 @@ func TestPrintQueueDTO(t *testing.T) {
 	partColorsJSON := []byte(`[{"partId":"11111111-1111-1111-1111-111111111111","partName":"Chao","colorId":"22222222-2222-2222-2222-222222222222","colorName":"Đỏ","hex":"#E23"},` +
 		`{"partId":"33333333-3333-3333-3333-333333333333","partName":"Đế","colorId":"44444444-4444-4444-4444-444444444444","colorName":"Trắng","hex":"#FFF"}]`)
 	rows := []sqlc.ListPrintQueueRow{
-		{ID: id1, Stage: sqlc.PrintStageNEEDPRINT, OrderCode: "#LMN-2048", ProductName: "Đèn Mochi", Quantity: 1,
+		{ID: id1, Stage: sqlc.PrintStageNEEDPRINT, ProductType: sqlc.ProductTypeNfcTag, OrderCode: "#LMN-2048", ProductName: "Đèn Mochi", Quantity: 1,
 			ColorName: &color, Printer: nil, Eta: pgtype.Timestamptz{Time: eta, Valid: true}},
-		{ID: id2, Stage: sqlc.PrintStagePRINTING, OrderCode: "#LMN-2050", ProductName: "Mèo Mập", Quantity: 3,
+		{ID: id2, Stage: sqlc.PrintStagePRINTING, ProductType: sqlc.ProductTypeStandard, OrderCode: "#LMN-2050", ProductName: "Mèo Mập", Quantity: 3,
 			ColorName: nil, Printer: &printer, Eta: pgtype.Timestamptz{}, PartColors: partColorsJSON},
 	}
 	got, err := printQueueDTO(rows)
@@ -69,8 +69,8 @@ func TestPrintQueueDTO(t *testing.T) {
 	}
 
 	a := got[0]
-	if a.Id != id1 || string(a.Stage) != "NEED_PRINT" || a.OrderCode != "#LMN-2048" ||
-		a.ProductName != "Đèn Mochi" || a.Quantity != 1 {
+	if a.Id != id1 || string(a.Stage) != "NEED_PRINT" || a.ProductType != api.NfcTag ||
+		a.OrderCode != "#LMN-2048" || a.ProductName != "Đèn Mochi" || a.Quantity != 1 {
 		t.Fatalf("card A core fields wrong: %+v", a)
 	}
 	if a.ColorName == nil || *a.ColorName != "Cam" {
@@ -87,8 +87,8 @@ func TestPrintQueueDTO(t *testing.T) {
 	}
 
 	b := got[1]
-	if b.Id != id2 || string(b.Stage) != "PRINTING" || b.OrderCode != "#LMN-2050" ||
-		b.ProductName != "Mèo Mập" || b.Quantity != 3 {
+	if b.Id != id2 || string(b.Stage) != "PRINTING" || b.ProductType != api.Standard ||
+		b.OrderCode != "#LMN-2050" || b.ProductName != "Mèo Mập" || b.Quantity != 3 {
 		t.Fatalf("card B core fields wrong: %+v", b)
 	}
 	if b.ColorName != nil {
@@ -124,7 +124,7 @@ func TestPrintQueueDTOEmptyIsNonNil(t *testing.T) {
 // TestPrintStagesMembership: every print_stage enum value is a member of the validation set, and a token
 // outside it is not — the guard the stage PATCH uses to 400 a bad stage before the ::print_stage cast.
 func TestPrintStagesMembership(t *testing.T) {
-	for _, s := range []sqlc.PrintStage{sqlc.PrintStageNEEDPRINT, sqlc.PrintStagePRINTING, sqlc.PrintStagePACKING, sqlc.PrintStageSHIPPED} {
+	for _, s := range []sqlc.PrintStage{sqlc.PrintStageNEEDPRINT, sqlc.PrintStagePRINTING, sqlc.PrintStageNFCENCODE, sqlc.PrintStagePACKING, sqlc.PrintStageSHIPPED} {
 		if !printStages[s] {
 			t.Fatalf("printStages[%q] = false, want true (valid enum member)", s)
 		}

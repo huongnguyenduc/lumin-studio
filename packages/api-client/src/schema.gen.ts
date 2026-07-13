@@ -477,6 +477,26 @@ export interface paths {
         patch: operations["advancePrintJobStage"];
         trace?: never;
     };
+    "/admin/print-jobs/{id}/encode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * NFC-encode a Pet Tag print job — mint/return the tag, then confirm the chip write.
+         * @description The "Ghi chip NFC" step (spec §10, P3-t t-2) for an nfc_tag print job sitting in the NFC_ENCODE stage. TWO-PHASE, one endpoint (ADR-041): call with NO chipUid to PREPARE — get-or-create the pet tag (mint code + shortId) and return the URL to burn to the chip, leaving the board stage untouched; call WITH chipUid to CONFIRM — record the chip UID, mark the tag ENCODED, and advance the print job to PACKING. The tag is minted lazily here because no order→print_job wiring exists yet; a qty>1 line gets ONE tag for now (ADR-041). Admin-gated (cookieAuth; owner AND staff — fulfillment work, mirrors the print board). A non-nfc_tag job → 400; an unknown job id → 404. Does NOT transition OrderStatus — the tag lifecycle is separate (spec §10).
+         */
+        post: operations["encodePrintJobTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/settings": {
         parameters: {
             query?: never;
@@ -1214,10 +1234,20 @@ export interface components {
          */
         OrderStatus: "PENDING_CONFIRM" | "PAID" | "PRINTING" | "SHIPPING" | "COMPLETED" | "CANCELLED" | "REFUNDED";
         /**
-         * @description Print queue stage (spec §02 PrintJob). STORED and staff-driven — finer-grained than OrderStatus (one PRINTING order spans the PRINTING + PACKING print stages) and advanced independently of it (D6): a stage move is NOT an OrderStatus transition.
+         * @description Print queue stage (spec §02 PrintJob). STORED and staff-driven — finer-grained than OrderStatus (one PRINTING order spans the PRINTING + PACKING print stages) and advanced independently of it (D6): a stage move is NOT an OrderStatus transition. NFC_ENCODE (spec §10, "Ghi chip NFC") sits between PRINTING and PACKING and routes ONLY nfc_tag products (P3-t t-2) — a standard product's board path skips it. Order matches the Postgres enum so the client lays the columns out in order.
          * @enum {string}
          */
-        PrintStage: "NEED_PRINT" | "PRINTING" | "PACKING" | "SHIPPED";
+        PrintStage: "NEED_PRINT" | "PRINTING" | "NFC_ENCODE" | "PACKING" | "SHIPPED";
+        /**
+         * @description What kind of product a line is (spec §10). `standard` is every ordinary made-to-order item; `nfc_tag` is a Pet Tag NFC ring, which needs the extra NFC-encode print stage + a per-pet page. Carried on a print-queue card so the board can route nfc_tag cards through NFC_ENCODE.
+         * @enum {string}
+         */
+        ProductType: "standard" | "nfc_tag";
+        /**
+         * @description Pet Tag fulfillment lifecycle (spec §10 "Trạng thái tag") — PARALLEL to but SEPARATE from OrderStatus (the order still runs PENDING_CONFIRM→…→COMPLETED). UNENCODED = printed, blank chip; ENCODED = chip written + locked, ready to pack + ship; ACTIVATED = customer logged in + a pet profile exists (t-3). Not a packages/core state machine (DB-only, no statusHistory).
+         * @enum {string}
+         */
+        PetTagStatus: "UNENCODED" | "ENCODED" | "ACTIVATED";
         /**
          * @description Order origin (spec §04).
          * @enum {string}
@@ -2487,6 +2517,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             stage: components["schemas"]["PrintStage"];
+            productType: components["schemas"]["ProductType"];
             /** @description Display code of the owning order (e.g. */
             orderCode: string;
             /** @description Product name of the print job's order line — what to make. */
@@ -2508,6 +2539,28 @@ export interface components {
         /** @description PATCH body for /admin/print-jobs/{id} — the target print stage (staff drag-drop). */
         PrintStageUpdate: {
             stage: components["schemas"]["PrintStage"];
+        };
+        /** @description A minimal reference to the physical Pet Tag behind a print job (spec §10). Returned by the encode endpoint so the admin sheet can show the URL to burn to the chip and the current tag status. The tag is minted lazily on the first encode call for an nfc_tag order line (no order→print_job wiring exists yet — ADR-041); code + shortId are stable once created. */
+        PetTagRef: {
+            /** @description Display code (e.g. */
+            code: string;
+            /** @description The URL routing key burned to the chip — the /t/{shortId} pet-page segment. */
+            shortId: string;
+            /** @description The absolute pet-page URL to write to the NFC chip (NDEF), derived server-side from shortId (PET_TAG_BASE_URL). This is what staff encode onto the NTAG215. */
+            url: string;
+            status: components["schemas"]["PetTagStatus"];
+            /** @description The NTAG215 hardware UID recorded at encode; absent until the tag is ENCODED. */
+            chipUid?: string;
+        };
+        /** @description Body for POST /admin/print-jobs/{id}/encode. OMIT chipUid to PREPARE — mint/return the tag + the URL to burn, leaving the stage untouched (the sheet-open call). SEND chipUid to CONFIRM — record the chip UID, mark the tag ENCODED, and advance the print job to PACKING (the write-done call). */
+        PrintTagEncodeInput: {
+            /** @description The NTAG215 hardware UID read from the just-written chip. Omit to prepare only. */
+            chipUid?: string;
+        };
+        /** @description Response for POST /admin/print-jobs/{id}/encode. `tag` is the Pet Tag ref (URL to burn + status); `card` is the print-queue card in its CURRENT state — unchanged for a prepare call, advanced to PACKING after a confirm. The client folds `card` back into the board (same shape as the list). */
+        PrintTagEncodeResult: {
+            tag: components["schemas"]["PetTagRef"];
+            card: components["schemas"]["PrintQueueJob"];
         };
         /** @description The guest-facing order timeline returned by GET /orders/lookup. It is a SEPARATE schema from Order (never a $ref) and exposes ONLY what a customer who already knows their code + phone may see: the code they typed, the current status, a status→time milestone list, an optional carrier tracking code, and the creation instant. It deliberately OMITS every internal field — customer PII, shipping address, line items, money (subtotal/shippingFee/total/unitPrice), payment/refund proof URLs, the internal note, the order uuid, the channel, and the statusHistory actor (byUser) + reason (ADR-032 non-leak). */
         PublicOrderTimeline: {
@@ -3266,6 +3319,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PrintQueueJob"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    encodePrintJobTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PrintTagEncodeInput"];
+            };
+        };
+        responses: {
+            /** @description The pet tag (URL to burn + status) and the print-queue card in its current state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrintTagEncodeResult"];
                 };
             };
             400: components["responses"]["BadRequest"];

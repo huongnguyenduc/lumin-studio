@@ -10,6 +10,7 @@ import {
 const card = (id: string, stage: PrintCard['stage'], over: Partial<PrintCard> = {}): PrintCard => ({
   id,
   stage,
+  productType: 'standard',
   orderCode: '#LMN-1000',
   productName: 'Đèn Mochi',
   quantity: 1,
@@ -17,7 +18,7 @@ const card = (id: string, stage: PrintCard['stage'], over: Partial<PrintCard> = 
 });
 
 describe('groupByStage', () => {
-  it('buckets every stage, keeps list order within a column, and always has all four columns', () => {
+  it('buckets every stage, keeps list order within a column, and always has all five columns', () => {
     const grouped = groupByStage([
       card('a', 'NEED_PRINT'),
       card('b', 'PRINTING'),
@@ -26,17 +27,25 @@ describe('groupByStage', () => {
     expect(PRINT_STAGES.every((s) => Array.isArray(grouped[s]))).toBe(true);
     expect(grouped.NEED_PRINT.map((c) => c.id)).toEqual(['a', 'c']); // FIFO order preserved
     expect(grouped.PRINTING.map((c) => c.id)).toEqual(['b']);
+    expect(grouped.NFC_ENCODE).toEqual([]);
     expect(grouped.PACKING).toEqual([]);
     expect(grouped.SHIPPED).toEqual([]);
   });
 });
 
 describe('nextStage', () => {
-  it('walks the board order and terminates at SHIPPED', () => {
-    expect(nextStage('NEED_PRINT')).toBe('PRINTING');
-    expect(nextStage('PRINTING')).toBe('PACKING');
-    expect(nextStage('PACKING')).toBe('SHIPPED');
-    expect(nextStage('SHIPPED')).toBeNull();
+  it('a standard product SKIPS the NFC_ENCODE stage (PRINTING → PACKING)', () => {
+    expect(nextStage('NEED_PRINT', 'standard')).toBe('PRINTING');
+    expect(nextStage('PRINTING', 'standard')).toBe('PACKING');
+    expect(nextStage('PACKING', 'standard')).toBe('SHIPPED');
+    expect(nextStage('SHIPPED', 'standard')).toBeNull();
+  });
+
+  it('an nfc_tag product ROUTES through NFC_ENCODE (PRINTING → NFC_ENCODE → PACKING)', () => {
+    expect(nextStage('PRINTING', 'nfc_tag')).toBe('NFC_ENCODE');
+    expect(nextStage('NFC_ENCODE', 'nfc_tag')).toBe('PACKING');
+    expect(nextStage('PACKING', 'nfc_tag')).toBe('SHIPPED');
+    expect(nextStage('SHIPPED', 'nfc_tag')).toBeNull();
   });
 });
 
