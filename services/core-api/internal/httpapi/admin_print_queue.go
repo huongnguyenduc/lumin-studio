@@ -20,6 +20,7 @@ import (
 var printStages = map[sqlc.PrintStage]bool{
 	sqlc.PrintStageNEEDPRINT: true,
 	sqlc.PrintStagePRINTING:  true,
+	sqlc.PrintStageNFCENCODE: true, // "Ghi chip NFC" (P3-t t-2) — routed only to nfc_tag cards by the board
 	sqlc.PrintStagePACKING:   true,
 	sqlc.PrintStageSHIPPED:   true,
 }
@@ -129,6 +130,7 @@ func printQueueDTO(rows []sqlc.ListPrintQueueRow) ([]api.PrintQueueJob, error) {
 		dto := api.PrintQueueJob{
 			Id:              r.ID,
 			Stage:           api.PrintStage(r.Stage),
+			ProductType:     api.ProductType(r.ProductType), // routes nfc_tag cards through NFC_ENCODE (t-2)
 			OrderCode:       r.OrderCode,
 			ProductName:     r.ProductName,
 			Quantity:        int(r.Quantity),
@@ -155,6 +157,7 @@ func printQueueEntryDTO(r sqlc.GetPrintQueueEntryRow) (api.PrintQueueJob, error)
 	dto := api.PrintQueueJob{
 		Id:              r.ID,
 		Stage:           api.PrintStage(r.Stage),
+		ProductType:     api.ProductType(r.ProductType),
 		OrderCode:       r.OrderCode,
 		ProductName:     r.ProductName,
 		Quantity:        int(r.Quantity),

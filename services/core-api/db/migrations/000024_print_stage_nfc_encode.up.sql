@@ -1,0 +1,18 @@
+-- 000024_print_stage_nfc_encode.up.sql — the "Ghi chip NFC" print-queue stage (P3-t slice t-2,
+-- ADR-041). spec.md §10 ("Vận hành admin") · 000006_jobs.up.sql:19-20 (this ALTER was pre-declared).
+--
+-- Adds ONE value to the print_stage enum, BETWEEN 'PRINTING' and 'PACKING', for the NFC-encode step:
+-- a tag is printed (PRINTING), its chip is written + locked (NFC_ENCODE), then it is packed (PACKING).
+-- The stage only routes nfc_tag products (a standard product skips it — enforced in the board's
+-- product-type-aware nextStage + the encode endpoint's nfc_tag guard, NOT by a DB constraint).
+--
+-- ISOLATED single statement on purpose: ALTER TYPE ... ADD VALUE is the one DDL that pre-PG12 could not
+-- run inside a transaction block, and even on PG12+ the new label cannot be USED in the same tx that
+-- adds it. Kept alone in its own migration file so the test applier's per-file implicit tx wraps only
+-- this add (which uses nothing), and nothing here or later references NFC_ENCODE in the same tx.
+-- Numbered above 000023 (monotonic — memory lumin-migration-numbering-monotonic).
+--
+-- BEFORE 'PACKING' fixes the enum's SORT ORDER (NEED_PRINT→PRINTING→NFC_ENCODE→PACKING→SHIPPED), which
+-- ListPrintQueue's `ORDER BY pj.stage` relies on to lay the kanban columns out left→right.
+-- IF NOT EXISTS makes a re-run a no-op (the down cannot remove the value — see the .down.sql).
+ALTER TYPE print_stage ADD VALUE IF NOT EXISTS 'NFC_ENCODE' BEFORE 'PACKING';

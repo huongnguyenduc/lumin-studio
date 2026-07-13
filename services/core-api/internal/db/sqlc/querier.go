@@ -139,6 +139,10 @@ type Querier interface {
 	// claimed partId belongs to the SAME product before assigning it (ADR-037: colour ∈ part ∈ product), so a
 	// colour can never be grouped under another product's part. Missing → ErrNoRows → 400 field(partId).
 	GetPartByProduct(ctx context.Context, arg GetPartByProductParams) (Part, error)
+	// GetPetTagByOrderItem returns the (first) pet tag minted for an order line, or no rows. A qty>1 line
+	// maps to N physical tags (order_item_id is NOT unique — t-1); t-2 mints/encodes ONE per line, so LIMIT
+	// 1 by age is the tag this line's encode operates on (ADR-041 — the per-unit N-tag loop is a follow-up).
+	GetPetTagByOrderItem(ctx context.Context, orderItemID uuid.UUID) (PetTag, error)
 	GetPrintJobByID(ctx context.Context, id uuid.UUID) (PrintJob, error)
 	// GetPrintQueueEntry is the single-card read behind the stage PATCH (P3-f): the same enriched shape as
 	// ListPrintQueue for one job, so the mutate response and the board list carry one identical card shape.
@@ -225,6 +229,10 @@ type Querier interface {
 	InsertOutbox(ctx context.Context, arg InsertOutboxParams) error
 	// === ADR-037 configurator: parts (named part groups, each with its own colour set) ===
 	InsertPart(ctx context.Context, arg InsertPartParams) (Part, error)
+	// InsertPetTag mints a tag in the default UNENCODED state (chip_uid/encoded_at NULL until the chip is
+	// written). code + short_id are generated in the Go seam (sequence + crypto/rand); the UNIQUE indexes on
+	// both are the collision backstop.
+	InsertPetTag(ctx context.Context, arg InsertPetTagParams) (PetTag, error)
 	InsertPrintJob(ctx context.Context, arg InsertPrintJobParams) (PrintJob, error)
 	InsertProduct(ctx context.Context, arg InsertProductParams) (Product, error)
 	InsertReplyTemplate(ctx context.Context, arg InsertReplyTemplateParams) (ReplyTemplate, error)
@@ -411,12 +419,23 @@ type Querier interface {
 	// MarkOutboxPublished flips a row to published ONLY after its JetStream PubAck (ADR-029:
 	// publish → await PubAck → mark, never mark-then-publish).
 	MarkOutboxPublished(ctx context.Context, id uuid.UUID) error
+	// MarkPetTagEncoded records the chip write (spec §10 "→ tag ENCODED"): stamp chip_uid + encoded_at and
+	// flip status to ENCODED. Idempotent enough for a re-encode before packing (a fresh chip_uid overwrites);
+	// the physical NTAG215 write-once lock, not the DB, is what enforces "ghi 1 lần rồi khoá".
+	MarkPetTagEncoded(ctx context.Context, arg MarkPetTagEncodedParams) (PetTag, error)
 	// NextOrderCode hands the create tx the next display-code number from order_code_seq (000010).
 	// nextval is atomic and collision-free across concurrent callers by construction (§6 D9); the Go
 	// seam formats it as `#LMN-<n>`. Called inside the SAME tx as CreateOrder so a code is minted per
 	// create attempt (a rolled-back attempt simply burns its number — gaps are expected, codes are
 	// display handles, not counts).
 	NextOrderCode(ctx context.Context) (int64, error)
+	// pettag.sql — Pet Tag NFC reads/writes (P3-t). Slice t-2 needs only the encode path: mint a tag for
+	// an nfc_tag order line and stamp it ENCODED. Activation (t-3), the pet page (t-4) and the roster (t-5)
+	// add their own queries here. The tag lifecycle is MONEY-FREE and SEPARATE from OrderStatus (spec §10).
+	// NextPetTagCode hands the encode tx the next display-code number from pet_tag_code_seq (000025) —
+	// mirrors NextOrderCode. nextval is atomic + collision-free across concurrent encoders; the Go seam
+	// formats it `#LMN-T<n>`. Gaps are expected (a rolled-back encode burns its number).
+	NextPetTagCode(ctx context.Context) (int64, error)
 	// OrderItemForDeduction is the deduct-on-print resolution read (ADR-039 pt 4): the line a print job draws
 	// for — product_id + color_id + the ADR-037 part_colors snapshot + quantity, plus the product's flat est +
 	// name. product FK is RESTRICT (000005) so the product always resolves. The handler turns this into draw

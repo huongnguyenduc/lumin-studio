@@ -12,6 +12,7 @@ import { SESSION_COOKIE, coreApiBaseUrl } from './session';
 
 type PrintCard = components['schemas']['PrintQueueJob'];
 type PrintStage = components['schemas']['PrintStage'];
+type EncodeResult = components['schemas']['PrintTagEncodeResult'];
 
 /**
  * Move ONE print job to a new stage (PATCH /admin/print-jobs/{id}) — the drag drop / advance button.
@@ -38,6 +39,40 @@ export async function advancePrintStage(
       body: { stage },
     });
     if (data) return { ok: true, card: data };
+    const s = response.status;
+    if (s === 404) return { ok: false, code: 'conflict' };
+    if (s === 400 || s === 422) return { ok: false, code: 'validation' };
+    return { ok: false, code: 'error' };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
+/**
+ * NFC-encode a Pet Tag print job (POST /admin/print-jobs/{id}/encode, P3-t t-2). TWO-PHASE, one call
+ * either way: OMIT chipUid to PREPARE — mint/return the pet tag + the URL to burn, board stage untouched
+ * (the encode-sheet open); PASS chipUid to CONFIRM — record the chip UID, flip the tag to ENCODED, and
+ * advance the card to PACKING (the write-done submit). Returns `result.tag` (URL + status) and
+ * `result.card` (folded back into the board). `conflict` = the job vanished (404); `validation` = a
+ * non-nfc_tag job or a blank chipUid (400) — shouldn't happen from the guarded encode button.
+ */
+export async function encodePrintTag(
+  id: string,
+  chipUid?: string,
+): Promise<
+  { ok: true; result: EncodeResult } | { ok: false; code: 'conflict' | 'validation' | 'error' }
+> {
+  const session = (await cookies()).get(SESSION_COOKIE)?.value;
+  try {
+    const client = createApiClient({
+      baseUrl: coreApiBaseUrl(),
+      headers: session ? { cookie: `${SESSION_COOKIE}=${session}` } : {},
+    });
+    const { data, response } = await client.POST('/admin/print-jobs/{id}/encode', {
+      params: { path: { id } },
+      body: chipUid ? { chipUid } : {},
+    });
+    if (data) return { ok: true, result: data };
     const s = response.status;
     if (s === 404) return { ok: false, code: 'conflict' };
     if (s === 400 || s === 422) return { ok: false, code: 'validation' };

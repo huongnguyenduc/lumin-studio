@@ -172,6 +172,7 @@ func main() {
 			httpapi.WithPaymentProofUploads(proofStore),
 			httpapi.WithModelUploads(modelStore),
 			httpapi.WithTrackingSecret(cfg.TrackingSecret),
+			httpapi.WithPetPageBaseURL(cfg.PetPageBaseURL),
 		),
 		// ReadHeaderTimeout covers the Slowloris header vector. Read/Write/Idle
 		// timeouts are intentionally unset for now — TODO(phase-1): source

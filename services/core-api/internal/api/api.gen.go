@@ -83,9 +83,17 @@ const (
 	Imagewebp PaymentProofUploadInputContentType = "image/webp"
 )
 
+// Defines values for PetTagStatus.
+const (
+	ACTIVATED PetTagStatus = "ACTIVATED"
+	ENCODED   PetTagStatus = "ENCODED"
+	UNENCODED PetTagStatus = "UNENCODED"
+)
+
 // Defines values for PrintStage.
 const (
 	PrintStageNEEDPRINT PrintStage = "NEED_PRINT"
+	PrintStageNFCENCODE PrintStage = "NFC_ENCODE"
 	PrintStagePACKING   PrintStage = "PACKING"
 	PrintStagePRINTING  PrintStage = "PRINTING"
 	PrintStageSHIPPED   PrintStage = "SHIPPED"
@@ -96,6 +104,12 @@ const (
 	Active   ProductStatus = "active"
 	Archived ProductStatus = "archived"
 	Draft    ProductStatus = "draft"
+)
+
+// Defines values for ProductType.
+const (
+	NfcTag   ProductType = "nfc_tag"
+	Standard ProductType = "standard"
 )
 
 // Defines values for ReviewStatus.
@@ -1051,6 +1065,27 @@ type Personalization struct {
 	ZoneId string `json:"zoneId"`
 }
 
+// PetTagRef A minimal reference to the physical Pet Tag behind a print job (spec §10). Returned by the encode endpoint so the admin sheet can show the URL to burn to the chip and the current tag status. The tag is minted lazily on the first encode call for an nfc_tag order line (no order→print_job wiring exists yet — ADR-041); code + shortId are stable once created.
+type PetTagRef struct {
+	// ChipUid The NTAG215 hardware UID recorded at encode; absent until the tag is ENCODED.
+	ChipUid *string `json:"chipUid,omitempty"`
+
+	// Code Display code (e.g.
+	Code string `json:"code"`
+
+	// ShortId The URL routing key burned to the chip — the /t/{shortId} pet-page segment.
+	ShortId string `json:"shortId"`
+
+	// Status Pet Tag fulfillment lifecycle (spec §10 "Trạng thái tag") — PARALLEL to but SEPARATE from OrderStatus (the order still runs PENDING_CONFIRM→…→COMPLETED). UNENCODED = printed, blank chip; ENCODED = chip written + locked, ready to pack + ship; ACTIVATED = customer logged in + a pet profile exists (t-3). Not a packages/core state machine (DB-only, no statusHistory).
+	Status PetTagStatus `json:"status"`
+
+	// Url The absolute pet-page URL to write to the NFC chip (NDEF), derived server-side from shortId (PET_TAG_BASE_URL). This is what staff encode onto the NTAG215.
+	Url string `json:"url"`
+}
+
+// PetTagStatus Pet Tag fulfillment lifecycle (spec §10 "Trạng thái tag") — PARALLEL to but SEPARATE from OrderStatus (the order still runs PENDING_CONFIRM→…→COMPLETED). UNENCODED = printed, blank chip; ENCODED = chip written + locked, ready to pack + ship; ACTIVATED = customer logged in + a pet profile exists (t-3). Not a packages/core state machine (DB-only, no statusHistory).
+type PetTagStatus string
+
 // PriceQuote Server-computed line prices + subtotal (raw int-VND). `lines` is positionally aligned with the request `items` (same index) — a line carries no product reference, so a client maps a line back to its selection by array index. `shippingFee` and `total` are present ONLY when the request carried a province (P2-b); without one the response is line/subtotal only.
 type PriceQuote struct {
 	Lines []PriceQuoteLine `json:"lines"`
@@ -1104,20 +1139,38 @@ type PrintQueueJob struct {
 	// ProductName Product name of the print job's order line — what to make.
 	ProductName string `json:"productName"`
 
+	// ProductType What kind of product a line is (spec §10). `standard` is every ordinary made-to-order item; `nfc_tag` is a Pet Tag NFC ring, which needs the extra NFC-encode print stage + a per-pet page. Carried on a print-queue card so the board can route nfc_tag cards through NFC_ENCODE.
+	ProductType ProductType `json:"productType"`
+
 	// Quantity Quantity of the order line (the card renders "×N").
 	Quantity int `json:"quantity"`
 
-	// Stage Print queue stage (spec §02 PrintJob). STORED and staff-driven — finer-grained than OrderStatus (one PRINTING order spans the PRINTING + PACKING print stages) and advanced independently of it (D6): a stage move is NOT an OrderStatus transition.
+	// Stage Print queue stage (spec §02 PrintJob). STORED and staff-driven — finer-grained than OrderStatus (one PRINTING order spans the PRINTING + PACKING print stages) and advanced independently of it (D6): a stage move is NOT an OrderStatus transition. NFC_ENCODE (spec §10, "Ghi chip NFC") sits between PRINTING and PACKING and routes ONLY nfc_tag products (P3-t t-2) — a standard product's board path skips it. Order matches the Postgres enum so the client lays the columns out in order.
 	Stage PrintStage `json:"stage"`
 }
 
-// PrintStage Print queue stage (spec §02 PrintJob). STORED and staff-driven — finer-grained than OrderStatus (one PRINTING order spans the PRINTING + PACKING print stages) and advanced independently of it (D6): a stage move is NOT an OrderStatus transition.
+// PrintStage Print queue stage (spec §02 PrintJob). STORED and staff-driven — finer-grained than OrderStatus (one PRINTING order spans the PRINTING + PACKING print stages) and advanced independently of it (D6): a stage move is NOT an OrderStatus transition. NFC_ENCODE (spec §10, "Ghi chip NFC") sits between PRINTING and PACKING and routes ONLY nfc_tag products (P3-t t-2) — a standard product's board path skips it. Order matches the Postgres enum so the client lays the columns out in order.
 type PrintStage string
 
 // PrintStageUpdate PATCH body for /admin/print-jobs/{id} — the target print stage (staff drag-drop).
 type PrintStageUpdate struct {
-	// Stage Print queue stage (spec §02 PrintJob). STORED and staff-driven — finer-grained than OrderStatus (one PRINTING order spans the PRINTING + PACKING print stages) and advanced independently of it (D6): a stage move is NOT an OrderStatus transition.
+	// Stage Print queue stage (spec §02 PrintJob). STORED and staff-driven — finer-grained than OrderStatus (one PRINTING order spans the PRINTING + PACKING print stages) and advanced independently of it (D6): a stage move is NOT an OrderStatus transition. NFC_ENCODE (spec §10, "Ghi chip NFC") sits between PRINTING and PACKING and routes ONLY nfc_tag products (P3-t t-2) — a standard product's board path skips it. Order matches the Postgres enum so the client lays the columns out in order.
 	Stage PrintStage `json:"stage"`
+}
+
+// PrintTagEncodeInput Body for POST /admin/print-jobs/{id}/encode. OMIT chipUid to PREPARE — mint/return the tag + the URL to burn, leaving the stage untouched (the sheet-open call). SEND chipUid to CONFIRM — record the chip UID, mark the tag ENCODED, and advance the print job to PACKING (the write-done call).
+type PrintTagEncodeInput struct {
+	// ChipUid The NTAG215 hardware UID read from the just-written chip. Omit to prepare only.
+	ChipUid *string `json:"chipUid,omitempty"`
+}
+
+// PrintTagEncodeResult Response for POST /admin/print-jobs/{id}/encode. `tag` is the Pet Tag ref (URL to burn + status); `card` is the print-queue card in its CURRENT state — unchanged for a prepare call, advanced to PACKING after a confirm. The client folds `card` back into the board (same shape as the list).
+type PrintTagEncodeResult struct {
+	// Card One enriched print-queue card (P3-f), returned by GET /admin/print-queue and the stage PATCH. The bare print_jobs row (spec §02: orderItemRef · stage · printer · colorName · eta) joined to the order code, product name and quantity so a card at the printer says WHAT to make for WHICH order. colorName/printer/eta are optional (nullable columns). Stage is a PrintStage enum the client maps to the kanban column label (always-must #3).
+	Card PrintQueueJob `json:"card"`
+
+	// Tag A minimal reference to the physical Pet Tag behind a print job (spec §10). Returned by the encode endpoint so the admin sheet can show the URL to burn to the chip and the current tag status. The tag is minted lazily on the first encode call for an nfc_tag order line (no order→print_job wiring exists yet — ADR-041); code + shortId are stable once created.
+	Tag PetTagRef `json:"tag"`
 }
 
 // Product Storefront product detail (spec §02). Money fields (basePrice, colors[].priceDelta, options[].priceDelta) are raw int-VND — the client formats via @lumin/core (always-must #2). images[0] is the card cover (sprite-first, ADR-007). No productType in Phase 1 (D-P1-1).
@@ -1240,6 +1293,9 @@ type ProductList struct {
 
 // ProductStatus Product lifecycle (spec §02, Postgres `product_status`). The detail read returns `active` only.
 type ProductStatus string
+
+// ProductType What kind of product a line is (spec §10). `standard` is every ordinary made-to-order item; `nfc_tag` is a Pet Tag NFC ring, which needs the extra NFC-encode print stage + a per-pet page. Carried on a print-queue card so the board can route nfc_tag cards through NFC_ENCODE.
+type ProductType string
 
 // PublicOrderTimeline The guest-facing order timeline returned by GET /orders/lookup. It is a SEPARATE schema from Order (never a $ref) and exposes ONLY what a customer who already knows their code + phone may see: the code they typed, the current status, a status→time milestone list, an optional carrier tracking code, and the creation instant. It deliberately OMITS every internal field — customer PII, shipping address, line items, money (subtotal/shippingFee/total/unitPrice), payment/refund proof URLs, the internal note, the order uuid, the channel, and the statusHistory actor (byUser) + reason (ADR-032 non-leak).
 type PublicOrderTimeline struct {
@@ -1560,6 +1616,9 @@ type UpdateMachineJSONRequestBody = MachineInput
 // AdvancePrintJobStageJSONRequestBody defines body for AdvancePrintJobStage for application/json ContentType.
 type AdvancePrintJobStageJSONRequestBody = PrintStageUpdate
 
+// EncodePrintJobTagJSONRequestBody defines body for EncodePrintJobTag for application/json ContentType.
+type EncodePrintJobTagJSONRequestBody = PrintTagEncodeInput
+
 // CreateAdminProductJSONRequestBody defines body for CreateAdminProduct for application/json ContentType.
 type CreateAdminProductJSONRequestBody = ProductInput
 
@@ -1810,6 +1869,9 @@ type ServerInterface interface {
 	// Move a print job to a new queue stage (admin-gated; stage-only, no order transition).
 	// (PATCH /admin/print-jobs/{id})
 	AdvancePrintJobStage(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// NFC-encode a Pet Tag print job — mint/return the tag, then confirm the chip write.
+	// (POST /admin/print-jobs/{id}/encode)
+	EncodePrintJobTag(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// Admin print queue — every print job across all stages, enriched (admin-gated).
 	// (GET /admin/print-queue)
 	GetPrintQueue(w http.ResponseWriter, r *http.Request)
@@ -2122,6 +2184,12 @@ func (_ Unimplemented) GetAdminOrder(w http.ResponseWriter, r *http.Request, id 
 // Move a print job to a new queue stage (admin-gated; stage-only, no order transition).
 // (PATCH /admin/print-jobs/{id})
 func (_ Unimplemented) AdvancePrintJobStage(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// NFC-encode a Pet Tag print job — mint/return the tag, then confirm the chip write.
+// (POST /admin/print-jobs/{id}/encode)
+func (_ Unimplemented) EncodePrintJobTag(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3136,6 +3204,37 @@ func (siw *ServerInterfaceWrapper) AdvancePrintJobStage(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AdvancePrintJobStage(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EncodePrintJobTag operation middleware
+func (siw *ServerInterfaceWrapper) EncodePrintJobTag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EncodePrintJobTag(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4881,6 +4980,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Patch(options.BaseURL+"/admin/print-jobs/{id}", wrapper.AdvancePrintJobStage)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/print-jobs/{id}/encode", wrapper.EncodePrintJobTag)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/print-queue", wrapper.GetPrintQueue)
 	})
 	r.Group(func(r chi.Router) {
@@ -6105,6 +6207,51 @@ func (response AdvancePrintJobStage401JSONResponse) VisitAdvancePrintJobStageRes
 type AdvancePrintJobStage404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response AdvancePrintJobStage404JSONResponse) VisitAdvancePrintJobStageResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type EncodePrintJobTagRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *EncodePrintJobTagJSONRequestBody
+}
+
+type EncodePrintJobTagResponseObject interface {
+	VisitEncodePrintJobTagResponse(w http.ResponseWriter) error
+}
+
+type EncodePrintJobTag200JSONResponse PrintTagEncodeResult
+
+func (response EncodePrintJobTag200JSONResponse) VisitEncodePrintJobTagResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type EncodePrintJobTag400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response EncodePrintJobTag400JSONResponse) VisitEncodePrintJobTagResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type EncodePrintJobTag401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response EncodePrintJobTag401JSONResponse) VisitEncodePrintJobTagResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type EncodePrintJobTag404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response EncodePrintJobTag404JSONResponse) VisitEncodePrintJobTagResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
 
@@ -8432,6 +8579,9 @@ type StrictServerInterface interface {
 	// Move a print job to a new queue stage (admin-gated; stage-only, no order transition).
 	// (PATCH /admin/print-jobs/{id})
 	AdvancePrintJobStage(ctx context.Context, request AdvancePrintJobStageRequestObject) (AdvancePrintJobStageResponseObject, error)
+	// NFC-encode a Pet Tag print job — mint/return the tag, then confirm the chip write.
+	// (POST /admin/print-jobs/{id}/encode)
+	EncodePrintJobTag(ctx context.Context, request EncodePrintJobTagRequestObject) (EncodePrintJobTagResponseObject, error)
 	// Admin print queue — every print job across all stages, enriched (admin-gated).
 	// (GET /admin/print-queue)
 	GetPrintQueue(ctx context.Context, request GetPrintQueueRequestObject) (GetPrintQueueResponseObject, error)
@@ -9347,6 +9497,39 @@ func (sh *strictHandler) AdvancePrintJobStage(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(AdvancePrintJobStageResponseObject); ok {
 		if err := validResponse.VisitAdvancePrintJobStageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// EncodePrintJobTag operation middleware
+func (sh *strictHandler) EncodePrintJobTag(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request EncodePrintJobTagRequestObject
+
+	request.Id = id
+
+	var body EncodePrintJobTagJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.EncodePrintJobTag(ctx, request.(EncodePrintJobTagRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "EncodePrintJobTag")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(EncodePrintJobTagResponseObject); ok {
+		if err := validResponse.VisitEncodePrintJobTagResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -84,7 +84,8 @@ SELECT pj.id, pj.stage, pj.printer, pj.color_name, pj.eta,
   o.code AS order_code,
   p.name AS product_name,
   oi.quantity AS quantity,
-  oi.part_colors AS part_colors
+  oi.part_colors AS part_colors,
+  p.product_type AS product_type
 FROM print_jobs pj
 JOIN order_items oi ON oi.id = pj.order_item_id
 JOIN orders o ON o.id = oi.order_id
@@ -95,8 +96,10 @@ ORDER BY pj.stage, pj.created_at;
 -- ListPrintQueue for one job, so the mutate response and the board list carry one identical card shape.
 -- name: GetPrintQueueEntry :one
 SELECT pj.id, pj.stage, pj.printer, pj.color_name, pj.eta,
+  pj.order_item_id AS order_item_id,
   o.code AS order_code,
   p.name AS product_name,
+  p.product_type AS product_type,
   oi.quantity AS quantity,
   oi.part_colors AS part_colors
 FROM print_jobs pj

@@ -6,19 +6,23 @@ import type { components } from '@lumin/api-client';
 
 export type PrintCard = components['schemas']['PrintQueueJob'];
 export type PrintStage = components['schemas']['PrintStage'];
+export type ProductType = components['schemas']['ProductType'];
 
 /**
- * The four kanban columns, left→right, matching the Postgres print_stage enum order core-api advances
- * through (NEED_PRINT → PRINTING → PACKING → SHIPPED). `nextStage` walks this array, so the advance
- * button always offers exactly the server's next step — no hard-coded drift from the backend enum.
+ * The five kanban columns, left→right, matching the Postgres print_stage enum order core-api advances
+ * through (NEED_PRINT → PRINTING → NFC_ENCODE → PACKING → SHIPPED). NFC_ENCODE ("Ghi chip NFC", P3-t
+ * t-2) routes ONLY nfc_tag rings — a standard product skips it (see `stagesFor`/`nextStage`). `nextStage`
+ * walks the product's own sub-sequence, so the advance button always offers exactly the server's next
+ * step — no hard-coded drift from the backend enum.
  */
-export const PRINT_STAGES = ['NEED_PRINT', 'PRINTING', 'PACKING', 'SHIPPED'] as const;
+export const PRINT_STAGES = ['NEED_PRINT', 'PRINTING', 'NFC_ENCODE', 'PACKING', 'SHIPPED'] as const;
 
 /** i18n key per stage under the `printQueue.stage.*` catalog — the label is rendered at the call site
  *  (always-must #3: no baked UI string), this is the pure key→stage map. */
 export const STAGE_LABEL_KEY: Record<PrintStage, string> = {
   NEED_PRINT: 'needPrint',
   PRINTING: 'printing',
+  NFC_ENCODE: 'nfcEncode',
   PACKING: 'packing',
   SHIPPED: 'shipped',
 };
@@ -32,6 +36,7 @@ export function groupByStage(cards: readonly PrintCard[]): Record<PrintStage, Pr
   const out: Record<PrintStage, PrintCard[]> = {
     NEED_PRINT: [],
     PRINTING: [],
+    NFC_ENCODE: [],
     PACKING: [],
     SHIPPED: [],
   };
@@ -44,11 +49,19 @@ export function groupByStage(cards: readonly PrintCard[]): Record<PrintStage, Pr
   return out;
 }
 
-/** The stage after `stage` on the board, or null at the terminal column (SHIPPED) — drives the
- *  per-card advance button, the keyboard/AT/mobile alternative to dragging (D-P3-2). */
-export function nextStage(stage: PrintStage): PrintStage | null {
-  const i = PRINT_STAGES.indexOf(stage);
-  return i >= 0 && i < PRINT_STAGES.length - 1 ? PRINT_STAGES[i + 1] : null;
+/** The board columns a product actually walks. A standard product SKIPS NFC_ENCODE (nothing to encode);
+ *  only an nfc_tag ring routes through it (spec §10, P3-t t-2). */
+export function stagesFor(productType: ProductType): readonly PrintStage[] {
+  return productType === 'nfc_tag' ? PRINT_STAGES : PRINT_STAGES.filter((s) => s !== 'NFC_ENCODE');
+}
+
+/** The stage after `stage` for a card of `productType`, or null at the terminal column (SHIPPED) —
+ *  drives the per-card advance button (the keyboard/AT/mobile alternative to dragging, D-P3-2).
+ *  Product-aware: a standard card advances PRINTING→PACKING, an nfc_tag card PRINTING→NFC_ENCODE→PACKING. */
+export function nextStage(stage: PrintStage, productType: ProductType): PrintStage | null {
+  const seq = stagesFor(productType);
+  const i = seq.indexOf(stage);
+  return i >= 0 && i < seq.length - 1 ? seq[i + 1] : null;
 }
 
 /**
