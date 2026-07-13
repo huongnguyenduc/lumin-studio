@@ -372,6 +372,48 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /pet-tags/{shortId}/appearance:
+    patch:
+      tags: [pettag]
+      operationId: updatePetAppearance
+      summary: Owner changes the pet page theme + block order (spec §10 giao diện + sắp xếp, P3-t t-4c-2).
+      description: >
+        The theme sheet (🎨) + reorder mode (⠿) save (P3-t t-4c-2): the owner sets the page appearance —
+        the colorway/background/opacity/name-font theme and the content-block order + visibility — in one
+        PATCH. This is a full replace of BOTH theme and blocks (the client holds the loaded appearance and
+        sends it back, like the content editor), kept separate from the content PATCH so a theme change
+        never risks the page text and vice versa. Owner-only: guarded by owner_account_id in SQL, so a
+        signed-in non-owner is a 403 (not a silent no-op), exactly like the content edit + lost-mode toggle.
+        Safety is enforced on render, not here (the allergy warning, lost banner + emergency call are never
+        themed; the photo_name block is always first + visible). Requires a valid customer session (401).
+        Unknown shortId → 404; a tag the caller does not own → 403; a bad theme/block field → 400. Returns
+        the updated pet page.
+      security:
+        - customerAuth: []
+      parameters:
+        - name: shortId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PetAppearanceInput'
+      responses:
+        '200':
+          description: The updated pet page (the profile now reflects the new theme + block order).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PetPage'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /orders:
     post:
       tags: [orders]
@@ -4877,7 +4919,10 @@ components:
       properties:
         palette:
           type: string
-          description: A brand colorway id (bo · mint · sun · sky · sunny) or cocoa (dark). Drives bg + chip + CTA.
+          description: >
+            A brand colorway id — bo · bac-ha · cam-nang · troi-xanh · nang (light) or cocoa (dark), spec §10
+            "Bơ · Bạc hà · Cam nắng · Trời xanh · Nắng + Đêm cocoa". Drives the page bg + chips + accents. An
+            unknown/absent value renders the bo default (read-passthrough is lenient; the write validates).
         background:
           type: string
           description: Background style — dots · plain · paper · image (spec §10 Chấm bi · Trơn · Vân giấy · Ảnh riêng).
@@ -5109,6 +5154,23 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PetSocial'
+
+    PetAppearanceInput:
+      type: object
+      description: >
+        The theme sheet + reorder mode save (spec §10, P3-t t-4c-2) — a FULL replace of the page appearance:
+        the theme and the ordered block list, both sent every time (the client holds the loaded appearance).
+        Reuses the loose read shapes (PetTheme / PetBlock); the server validates the fixed choices (palette /
+        background / font enums, opacity 0–100, known block types, a first-and-visible photo_name block).
+        Kept separate from PetProfileUpdateInput so appearance + content never clobber each other.
+      required: [theme, blocks]
+      properties:
+        theme:
+          $ref: '#/components/schemas/PetTheme'
+        blocks:
+          type: array
+          items:
+            $ref: '#/components/schemas/PetBlock'
 
     PetShareLocationInput:
       type: object

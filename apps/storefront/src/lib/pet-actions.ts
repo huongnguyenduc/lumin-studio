@@ -148,6 +148,50 @@ export async function updatePetProfile(
   }
 }
 
+// The wire payload for the theme sheet + reorder mode save (P3-t t-4c-2) — a full replace of the page
+// appearance (theme + block order/visibility), mirroring the server's PetAppearanceInput. Content fields
+// (name/bio/…) are NOT here — they have their own PATCH (updatePetProfile). Kept apart so a theme change
+// never risks the page text and vice versa.
+export type AppearanceInput = {
+  theme: {
+    palette: string;
+    background: string;
+    bgImageUrl?: string;
+    bgOpacity: number;
+    nameFont: string;
+  };
+  blocks: { type: string; order: number; visible: boolean }[];
+};
+
+// updatePetAppearance bridges the theme sheet + reorder mode to PATCH /pet-tags/{shortId}/appearance (P3-t
+// t-4c-2). Owner-only + customer-authed + owner-guarded server-side (the SQL owner_account_id guard), exactly
+// like updatePetProfile. On success the caller router.refresh()es so the server component re-renders with the
+// new theme + block order. validation is a rare race (the sheet only offers the fixed valid choices).
+export async function updatePetAppearance(
+  shortId: string,
+  input: AppearanceInput,
+): Promise<UpdateProfileResult> {
+  const jwt = (await cookies()).get(CUSTOMER_COOKIE)?.value;
+  if (!jwt) return { ok: false, code: 'unauthenticated' }; // no session → skip the round-trip
+  try {
+    const client = createApiClient({
+      baseUrl: coreApiBaseUrl(),
+      headers: { cookie: `${CUSTOMER_COOKIE}=${jwt}` },
+    });
+    const { data, response } = await client.PATCH('/pet-tags/{shortId}/appearance', {
+      params: { path: { shortId } },
+      body: input,
+    });
+    if (data) return { ok: true };
+    if (response.status === 401) return { ok: false, code: 'unauthenticated' };
+    if (response.status === 403) return { ok: false, code: 'forbidden' };
+    if (response.status === 400) return { ok: false, code: 'validation' };
+    return { ok: false, code: 'error' };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
 // notLost = the pet was un-flagged (409) between page-load and submit — a rare race; error = network / 404 / 400
 // / 429 / else. A denied browser-geolocation permission never reaches here (it is handled in the client).
 export type ShareLocationResult = { ok: true } | { ok: false; code: 'notLost' | 'error' };

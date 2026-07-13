@@ -565,3 +565,146 @@ func isUpdate400(resp api.UpdatePetProfileResponseObject) bool {
 	_, ok := resp.(api.UpdatePetProfile400JSONResponse)
 	return ok
 }
+
+// TestUpdatePetAppearance drives the t-4c-2 theme + reorder write end-to-end against real Postgres: an owner
+// applies a theme (colorway + image bg + opacity + font) and a reordered/partly-hidden block list; the page
+// projects them back + they persist; switching the bg away from image drops the stale image URL; the content
+// columns stay untouched; a non-owner is a 403; bad theme/block fields are 400s; unknown 404; no session 401.
+func TestUpdatePetAppearance(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+
+	catID := seedCategory(t, ctx, pool)
+	tagProduct := seedProductNamed(t, ctx, pool, catID, "pet-tag-theme", "Pet Tag NFC", 390_000)
+	if _, err := pool.Exec(ctx, `UPDATE products SET product_type='nfc_tag' WHERE id=$1`, tagProduct); err != nil {
+		t.Fatalf("mark nfc_tag: %v", err)
+	}
+	orderID := seedAdminOrder(t, ctx, pool, adminOrderSeed{
+		customer: "Mai Lê", channel: order.ChannelWeb, createdAt: "2026-07-07T08:00:00Z",
+		items: []db.NewOrderItem{{ProductID: tagProduct, Quantity: 1, UnitPrice: 390_000}},
+	})
+	item := orderItemID(t, ctx, pool, orderID, tagProduct)
+	shortID := seedEncodedTag(t, ctx, pool, item, "petthemeaa")
+	owner := seedCustomerRow(t, ctx, pool, "Mai Lê", "0905552261", nil, nil, []byte("[]"))
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
+	activatePetTag(t, srv, withCustomer(ctx, owner), shortID, validPetInput())
+
+	// --- Before: a fresh profile carries no theme/blocks (renders the brand default). ---
+	pre := getPetPage(t, srv, withCustomer(ctx, owner), shortID)
+	if pre.Profile.Theme != nil || pre.Profile.Blocks != nil {
+		t.Fatalf("pre-write profile already themed: theme=%+v blocks=%+v", pre.Profile.Theme, pre.Profile.Blocks)
+	}
+
+	// --- Owner applies a theme + reordered/hidden blocks. ---
+	applied := updatePetAppearance(t, srv, withCustomer(ctx, owner), shortID, validAppearanceInput())
+	th := applied.Profile.Theme
+	if th == nil || th.Palette == nil || *th.Palette != "bac-ha" || th.Background == nil || *th.Background != "image" {
+		t.Fatalf("applied theme = %+v, want bac-ha + image bg", th)
+	}
+	if th.BgImageUrl == nil || th.BgOpacity == nil || *th.BgOpacity != 40 {
+		t.Fatalf("applied theme lost bgImageUrl/opacity: %+v", th)
+	}
+	if applied.Profile.Blocks == nil || len(*applied.Profile.Blocks) != 3 {
+		t.Fatalf("applied blocks = %+v, want the 3 saved", applied.Profile.Blocks)
+	}
+
+	// DB: theme + blocks persisted as jsonb.
+	var palette string
+	var blockCount int
+	if err := pool.QueryRow(ctx, `SELECT theme->>'palette', jsonb_array_length(blocks)
+		FROM pet_profiles WHERE tag_id=(SELECT id FROM pet_tags WHERE short_id=$1)`, shortID).Scan(&palette, &blockCount); err != nil {
+		t.Fatalf("read appearance: %v", err)
+	}
+	if palette != "bac-ha" || blockCount != 3 {
+		t.Fatalf("db appearance = palette %q / %d blocks, want bac-ha / 3", palette, blockCount)
+	}
+
+	// The content columns are untouched by an appearance write (separate endpoints).
+	pageAfter := getPetPage(t, srv, withCustomer(ctx, owner), shortID)
+	if pageAfter.Profile.PetName != "Bơ" {
+		t.Fatalf("appearance write changed content (petName=%q)", pageAfter.Profile.PetName)
+	}
+
+	// --- Switching the bg away from image drops the stale image URL (no ghost). ---
+	plainTheme := validAppearanceInput()
+	dots := "dots"
+	plainTheme.Theme.Background = &dots // BgImageUrl still set from validAppearanceInput → must be dropped
+	reapplied := updatePetAppearance(t, srv, withCustomer(ctx, owner), shortID, plainTheme)
+	if reapplied.Profile.Theme != nil && reapplied.Profile.Theme.BgImageUrl != nil {
+		t.Fatalf("dots bg kept a ghost bgImageUrl: %+v", reapplied.Profile.Theme)
+	}
+
+	// --- Reject paths. ---
+	// A different signed-in customer is NOT the owner → 403 (the SQL owner guard).
+	owner2 := seedCustomerRow(t, ctx, pool, "Trần Bình", "0912345678", nil, nil, []byte("[]"))
+	if _, err := srv.UpdatePetAppearance(withCustomer(ctx, owner2), api.UpdatePetAppearanceRequestObject{ShortId: shortID, Body: ptrAppearance(validAppearanceInput())}); !errors.Is(err, errForbidden) {
+		t.Fatalf("non-owner appearance → %v, want errForbidden (403)", err)
+	}
+	// Unknown palette → 400.
+	badPalette := validAppearanceInput()
+	neon := "neon"
+	badPalette.Theme.Palette = &neon
+	if resp, _ := srv.UpdatePetAppearance(withCustomer(ctx, owner), api.UpdatePetAppearanceRequestObject{ShortId: shortID, Body: ptrAppearance(badPalette)}); !isAppearance400(resp) {
+		t.Fatalf("unknown palette → %T, want 400", resp)
+	}
+	// Hiding the fixed photo_name block → 400.
+	hidden := validAppearanceInput()
+	hidden.Blocks[0].Visible = false
+	if resp, _ := srv.UpdatePetAppearance(withCustomer(ctx, owner), api.UpdatePetAppearanceRequestObject{ShortId: shortID, Body: ptrAppearance(hidden)}); !isAppearance400(resp) {
+		t.Fatalf("hidden photo_name → %T, want 400", resp)
+	}
+	// Unknown shortId → 404.
+	if _, err := srv.UpdatePetAppearance(withCustomer(ctx, owner), api.UpdatePetAppearanceRequestObject{ShortId: "does-not-exist", Body: ptrAppearance(validAppearanceInput())}); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("unknown shortId → %v, want db.ErrNotFound (404)", err)
+	}
+	// No customer session → 401.
+	if _, err := srv.UpdatePetAppearance(ctx, api.UpdatePetAppearanceRequestObject{ShortId: shortID, Body: ptrAppearance(validAppearanceInput())}); !errors.Is(err, errUnauthenticated) {
+		t.Fatalf("no session → %v, want errUnauthenticated (401)", err)
+	}
+	// Nil body → 400.
+	if resp, _ := srv.UpdatePetAppearance(withCustomer(ctx, owner), api.UpdatePetAppearanceRequestObject{ShortId: shortID, Body: nil}); !isAppearance400(resp) {
+		t.Fatalf("nil body → %T, want 400", resp)
+	}
+}
+
+// validAppearanceInput is a full valid theme + block payload: Bạc hà colorway on a custom-image background at
+// 40% opacity with the display font, and a 3-block layout (photo_name fixed + visible, bio visible, socials
+// hidden). A fresh copy each call so a test can mutate one field.
+func validAppearanceInput() api.PetAppearanceInput {
+	sp := func(s string) *string { return &s }
+	op := 40
+	return api.PetAppearanceInput{
+		Theme: api.PetTheme{
+			Palette:    sp("bac-ha"),
+			Background: sp("image"),
+			BgImageUrl: sp("https://garage.example/bo-ho-tay.jpg"),
+			BgOpacity:  &op,
+			NameFont:   sp("display"),
+		},
+		Blocks: []api.PetBlock{
+			{Type: "photo_name", Order: 0, Visible: true},
+			{Type: "bio", Order: 1, Visible: true},
+			{Type: "socials", Order: 2, Visible: false},
+		},
+	}
+}
+
+func ptrAppearance(in api.PetAppearanceInput) *api.PetAppearanceInput { return &in }
+
+func updatePetAppearance(t *testing.T, srv *Server, ctx context.Context, shortID string, in api.PetAppearanceInput) api.PetPage {
+	t.Helper()
+	resp, err := srv.UpdatePetAppearance(ctx, api.UpdatePetAppearanceRequestObject{ShortId: shortID, Body: &in})
+	if err != nil {
+		t.Fatalf("UpdatePetAppearance(%s): %v", shortID, err)
+	}
+	ok, isOK := resp.(api.UpdatePetAppearance200JSONResponse)
+	if !isOK {
+		t.Fatalf("UpdatePetAppearance response = %T, want 200", resp)
+	}
+	return api.PetPage(ok)
+}
+
+func isAppearance400(resp api.UpdatePetAppearanceResponseObject) bool {
+	_, ok := resp.(api.UpdatePetAppearance400JSONResponse)
+	return ok
+}

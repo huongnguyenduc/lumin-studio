@@ -567,6 +567,15 @@ type Querier interface {
 	// 404), the same cross-product guard as UpdateColor/UpdateOption. Deleting a part CASCADEs its colours
 	// (000015); a colour pinned by an order_item (FK NO ACTION) blocks the delete → 23503 → 409 (archive).
 	UpdatePart(ctx context.Context, arg UpdatePartParams) (Part, error)
+	// UpdatePetAppearance replaces the owner-set page appearance in one write (spec §10 giao diện + sắp xếp,
+	// t-4c-2): the theme jsonb (colorway/background/opacity/font) and the blocks jsonb (order + visibility).
+	// A full replace of BOTH — the theme sheet + reorder mode each send the whole appearance — kept apart from
+	// UpdatePetProfileContent so an appearance save never touches the page CONTENT (and vice versa). Same
+	// owner_account_id guard as the content update: a signed-in non-owner matches 0 rows → the handler maps
+	// that to a 403 (not a silent no-op). It touches neither the content columns nor lost_mode/handle. Scoped
+	// by tag_id (resolved from shortId first, so an unknown tag 404s before this runs). updated_at moves. The
+	// jsonb params ([]byte) are marshalled + validated in the Go seam.
+	UpdatePetAppearance(ctx context.Context, arg UpdatePetAppearanceParams) (PetProfile, error)
 	// ==== Pet page — in-place content edit (t-4c) =================================================
 	// UpdatePetProfileContent replaces the owner-editable page content in one write (spec §10 sửa-tại-chỗ): the
 	// display fields + the content blocks (bio, gallery, favorites) + medical/owner_contact/socials jsonb. Like

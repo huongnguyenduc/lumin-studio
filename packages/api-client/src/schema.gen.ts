@@ -217,6 +217,26 @@ export interface paths {
         patch: operations["updatePetProfile"];
         trace?: never;
     };
+    "/pet-tags/{shortId}/appearance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Owner changes the pet page theme + block order (spec §10 giao diện + sắp xếp, P3-t t-4c-2).
+         * @description The theme sheet (🎨) + reorder mode (⠿) save (P3-t t-4c-2): the owner sets the page appearance — the colorway/background/opacity/name-font theme and the content-block order + visibility — in one PATCH. This is a full replace of BOTH theme and blocks (the client holds the loaded appearance and sends it back, like the content editor), kept separate from the content PATCH so a theme change never risks the page text and vice versa. Owner-only: guarded by owner_account_id in SQL, so a signed-in non-owner is a 403 (not a silent no-op), exactly like the content edit + lost-mode toggle. Safety is enforced on render, not here (the allergy warning, lost banner + emergency call are never themed; the photo_name block is always first + visible). Requires a valid customer session (401). Unknown shortId → 404; a tag the caller does not own → 403; a bad theme/block field → 400. Returns the updated pet page.
+         */
+        patch: operations["updatePetAppearance"];
+        trace?: never;
+    };
     "/orders": {
         parameters: {
             query?: never;
@@ -2688,7 +2708,7 @@ export interface components {
         };
         /** @description The pet page's theme (spec §10 "Theme trang pet") — 5 brand colorways + Đêm cocoa, a background style with a per-image opacity, and the name font. This is the READ shape (P3-t t-4c-1) projected as-is from the stored jsonb; the theme SHEET that writes it (with the fixed colorway/background/font choices, no free picker) lands in t-4c-2. All fields optional — an unthemed page carries an empty theme and renders the brand default. Safety colours (allergy warning, lost banner, emergency call) are never themed. */
         PetTheme: {
-            /** @description A brand colorway id (bo · mint · sun · sky · sunny) or cocoa (dark). Drives bg + chip + CTA. */
+            /** @description A brand colorway id — bo · bac-ha · cam-nang · troi-xanh · nang (light) or cocoa (dark), spec §10 "Bơ · Bạc hà · Cam nắng · Trời xanh · Nắng + Đêm cocoa". Drives the page bg + chips + accents. An unknown/absent value renders the bo default (read-passthrough is lenient; the write validates). */
             palette?: string;
             /** @description Background style — dots · plain · paper · image (spec §10 Chấm bi · Trơn · Vân giấy · Ảnh riêng). */
             background?: string;
@@ -2790,6 +2810,11 @@ export interface components {
             medical?: components["schemas"]["PetMedical"];
             ownerContact: components["schemas"]["PetOwnerContact"];
             socials?: components["schemas"]["PetSocial"][];
+        };
+        /** @description The theme sheet + reorder mode save (spec §10, P3-t t-4c-2) — a FULL replace of the page appearance: the theme and the ordered block list, both sent every time (the client holds the loaded appearance). Reuses the loose read shapes (PetTheme / PetBlock); the server validates the fixed choices (palette / background / font enums, opacity 0–100, known block types, a first-and-visible photo_name block). Kept separate from PetProfileUpdateInput so appearance + content never clobber each other. */
+        PetAppearanceInput: {
+            theme: components["schemas"]["PetTheme"];
+            blocks: components["schemas"]["PetBlock"][];
         };
         /** @description The finder's one-shot location share for a lost pet (spec §10 rescue 4a→4b, P3-t t-4b). Only lat/lng — data-minimized (PDPL). Sent once, after the finder grants the browser geolocation permission. */
         PetShareLocationInput: {
@@ -3193,6 +3218,36 @@ export interface operations {
         };
         responses: {
             /** @description The updated pet page (the profile now reflects the edited content). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PetPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updatePetAppearance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shortId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PetAppearanceInput"];
+            };
+        };
+        responses: {
+            /** @description The updated pet page (the profile now reflects the new theme + block order). */
             200: {
                 headers: {
                     [name: string]: unknown;
