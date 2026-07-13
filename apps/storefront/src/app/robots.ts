@@ -14,8 +14,10 @@ export default function robots(): MetadataRoute.Robots {
       // `/tai-khoan` (+ its /dang-nhap, /dang-ky sub-routes) is the customer account (P1-s) — private, per
       // customer; a prefix disallow covers the whole subtree. `/thanh-toan` is checkout (Phase 2) and `/o/`
       // is the phone-less order-tracking deep link `/o/{code}-{token}` (P2-g) — both private, per-order.
-      // Each of these also carries its own per-page noindex (belt + suspenders).
-      disallow: ['/thanh-toan', '/gio-hang', '/tra-cuu-don', '/o/', '/tai-khoan', '/api/'],
+      // `/t/` is the per-pet page `/t/{shortId}` (P3-t) — public to a scanner but keyed by an unguessable
+      // id and carrying pet + owner PII, so keep it out of the index (PDPL data-minimization). Each of
+      // these also carries its own per-page noindex (belt + suspenders).
+      disallow: ['/thanh-toan', '/gio-hang', '/tra-cuu-don', '/o/', '/t/', '/tai-khoan', '/api/'],
     },
     sitemap: `${base}/sitemap.xml`,
     host: base,

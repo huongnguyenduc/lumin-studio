@@ -9,7 +9,78 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const attachAndActivateTag = `-- name: AttachAndActivateTag :one
+UPDATE pet_tags
+SET owner_account_id = $2, status = 'ACTIVATED', activated_at = now()
+WHERE id = $1 AND status = 'ENCODED'
+RETURNING id, code, short_id, order_item_id, status, chip_uid, owner_account_id, encoded_at, activated_at, created_at
+`
+
+type AttachAndActivateTagParams struct {
+	ID             uuid.UUID   `json:"id"`
+	OwnerAccountID pgtype.UUID `json:"ownerAccountId"`
+}
+
+// AttachAndActivateTag is the atomic claim: attach the tag to the signed-in customer, stamp activated_at,
+// flip ENCODED → ACTIVATED (spec §10 step 2d). The `status = 'ENCODED'` guard makes it idempotent AND
+// race-safe: a concurrent activate that already flipped the tag leaves 0 rows, which the handler maps to a
+// 409 (a tag can only be activated once). A profile is created only alongside this flip, so a tag that
+// passes the guard has no pet_profiles row yet (the tag_id UNIQUE is a further backstop).
+func (q *Queries) AttachAndActivateTag(ctx context.Context, arg AttachAndActivateTagParams) (PetTag, error) {
+	row := q.db.QueryRow(ctx, attachAndActivateTag, arg.ID, arg.OwnerAccountID)
+	var i PetTag
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.ShortID,
+		&i.OrderItemID,
+		&i.Status,
+		&i.ChipUid,
+		&i.OwnerAccountID,
+		&i.EncodedAt,
+		&i.ActivatedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getPetProfileByTagID = `-- name: GetPetProfileByTagID :one
+SELECT id, tag_id, owner_account_id, handle, pet_name, species, breed, age, weight, photo_url, gallery, bio, favorites, medical, owner_contact, socials, lost_mode, theme, blocks, created_at, updated_at FROM pet_profiles WHERE tag_id = $1
+`
+
+// GetPetProfileByTagID loads the profile for an ACTIVATED tag's public page (t-3 returns a minimal
+// summary; t-4 renders the full page). One profile per tag (pet_profiles.tag_id UNIQUE).
+func (q *Queries) GetPetProfileByTagID(ctx context.Context, tagID uuid.UUID) (PetProfile, error) {
+	row := q.db.QueryRow(ctx, getPetProfileByTagID, tagID)
+	var i PetProfile
+	err := row.Scan(
+		&i.ID,
+		&i.TagID,
+		&i.OwnerAccountID,
+		&i.Handle,
+		&i.PetName,
+		&i.Species,
+		&i.Breed,
+		&i.Age,
+		&i.Weight,
+		&i.PhotoUrl,
+		&i.Gallery,
+		&i.Bio,
+		&i.Favorites,
+		&i.Medical,
+		&i.OwnerContact,
+		&i.Socials,
+		&i.LostMode,
+		&i.Theme,
+		&i.Blocks,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
 
 const getPetTagByOrderItem = `-- name: GetPetTagByOrderItem :one
 SELECT id, code, short_id, order_item_id, status, chip_uid, owner_account_id, encoded_at, activated_at, created_at FROM pet_tags WHERE order_item_id = $1 ORDER BY created_at LIMIT 1
@@ -32,6 +103,104 @@ func (q *Queries) GetPetTagByOrderItem(ctx context.Context, orderItemID uuid.UUI
 		&i.EncodedAt,
 		&i.ActivatedAt,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getPetTagByShortID = `-- name: GetPetTagByShortID :one
+
+SELECT id, code, short_id, order_item_id, status, chip_uid, owner_account_id, encoded_at, activated_at, created_at FROM pet_tags WHERE short_id = $1
+`
+
+// ==== Activation + public pet page (t-3) ======================================================
+// GetPetTagByShortID resolves a tag by its URL routing key (the /t/{shortId} segment burned to the chip),
+// for the public pet page (t-3) and the activation guard. No lock — the public GET never writes; the
+// activation race is handled by AttachAndActivateTag's status guard, not a SELECT FOR UPDATE.
+func (q *Queries) GetPetTagByShortID(ctx context.Context, shortID string) (PetTag, error) {
+	row := q.db.QueryRow(ctx, getPetTagByShortID, shortID)
+	var i PetTag
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.ShortID,
+		&i.OrderItemID,
+		&i.Status,
+		&i.ChipUid,
+		&i.OwnerAccountID,
+		&i.EncodedAt,
+		&i.ActivatedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const insertPetProfile = `-- name: InsertPetProfile :one
+INSERT INTO pet_profiles (
+  id, tag_id, owner_account_id, handle, pet_name, species,
+  breed, age, weight, photo_url, medical, owner_contact, socials
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+RETURNING id, tag_id, owner_account_id, handle, pet_name, species, breed, age, weight, photo_url, gallery, bio, favorites, medical, owner_contact, socials, lost_mode, theme, blocks, created_at, updated_at
+`
+
+type InsertPetProfileParams struct {
+	ID             uuid.UUID  `json:"id"`
+	TagID          uuid.UUID  `json:"tagId"`
+	OwnerAccountID uuid.UUID  `json:"ownerAccountId"`
+	Handle         string     `json:"handle"`
+	PetName        string     `json:"petName"`
+	Species        PetSpecies `json:"species"`
+	Breed          *string    `json:"breed"`
+	Age            *string    `json:"age"`
+	Weight         *string    `json:"weight"`
+	PhotoUrl       *string    `json:"photoUrl"`
+	Medical        []byte     `json:"medical"`
+	OwnerContact   []byte     `json:"ownerContact"`
+	Socials        []byte     `json:"socials"`
+}
+
+// InsertPetProfile creates the pet page at activation (spec §10). gallery/favorites/theme/blocks +
+// lost_mode take their table DEFAULTS (empty/[]/{}/false) — onboarding only collects profile + contact +
+// medical + socials; the rest is filled later on the page (t-4). medical/owner_contact/socials are jsonb
+// ([]byte in Go). handle is resolved unique before this insert (SlugifyHandle + PetHandleTaken loop).
+func (q *Queries) InsertPetProfile(ctx context.Context, arg InsertPetProfileParams) (PetProfile, error) {
+	row := q.db.QueryRow(ctx, insertPetProfile,
+		arg.ID,
+		arg.TagID,
+		arg.OwnerAccountID,
+		arg.Handle,
+		arg.PetName,
+		arg.Species,
+		arg.Breed,
+		arg.Age,
+		arg.Weight,
+		arg.PhotoUrl,
+		arg.Medical,
+		arg.OwnerContact,
+		arg.Socials,
+	)
+	var i PetProfile
+	err := row.Scan(
+		&i.ID,
+		&i.TagID,
+		&i.OwnerAccountID,
+		&i.Handle,
+		&i.PetName,
+		&i.Species,
+		&i.Breed,
+		&i.Age,
+		&i.Weight,
+		&i.PhotoUrl,
+		&i.Gallery,
+		&i.Bio,
+		&i.Favorites,
+		&i.Medical,
+		&i.OwnerContact,
+		&i.Socials,
+		&i.LostMode,
+		&i.Theme,
+		&i.Blocks,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -124,4 +293,33 @@ func (q *Queries) NextPetTagCode(ctx context.Context) (int64, error) {
 	var n int64
 	err := row.Scan(&n)
 	return n, err
+}
+
+const petHandleTaken = `-- name: PetHandleTaken :one
+SELECT EXISTS (SELECT 1 FROM pet_profiles WHERE handle = $1) AS taken
+`
+
+// PetHandleTaken reports whether a candidate vanity handle is already used, driving the auto-suffix loop
+// (pet_profiles.handle UNIQUE is the final backstop against a check-then-insert race — astronomically
+// rare at one-shop volume, and a lost race just fails the activate, which the customer retries).
+func (q *Queries) PetHandleTaken(ctx context.Context, handle string) (bool, error) {
+	row := q.db.QueryRow(ctx, petHandleTaken, handle)
+	var taken bool
+	err := row.Scan(&taken)
+	return taken, err
+}
+
+const slugifyHandle = `-- name: SlugifyHandle :one
+SELECT trim(both '-' from lower(regexp_replace(immutable_unaccent(trim($1::text)), '[^a-zA-Z0-9]+', '-', 'g')))::text AS handle
+`
+
+// SlugifyHandle folds a pet name into a URL-safe vanity handle base, reusing the search stack's
+// immutable_unaccent (000012) so Vietnamese diacritics fold the same way everywhere (Bơ → bo, Mai Lê →
+// mai-le). The handle is cosmetic (@handle) — the route key is short_id — so an empty result (e.g. an
+// all-emoji name) is fine; the handler falls back. Uniqueness is resolved by the PetHandleTaken loop.
+func (q *Queries) SlugifyHandle(ctx context.Context, dollar_1 string) (string, error) {
+	row := q.db.QueryRow(ctx, slugifyHandle, dollar_1)
+	var handle string
+	err := row.Scan(&handle)
+	return handle, err
 }

@@ -30,3 +30,51 @@ UPDATE pet_tags
 SET status = 'ENCODED', chip_uid = $2, encoded_at = now()
 WHERE id = $1
 RETURNING *;
+
+-- ==== Activation + public pet page (t-3) ======================================================
+
+-- GetPetTagByShortID resolves a tag by its URL routing key (the /t/{shortId} segment burned to the chip),
+-- for the public pet page (t-3) and the activation guard. No lock — the public GET never writes; the
+-- activation race is handled by AttachAndActivateTag's status guard, not a SELECT FOR UPDATE.
+-- name: GetPetTagByShortID :one
+SELECT * FROM pet_tags WHERE short_id = $1;
+
+-- AttachAndActivateTag is the atomic claim: attach the tag to the signed-in customer, stamp activated_at,
+-- flip ENCODED → ACTIVATED (spec §10 step 2d). The `status = 'ENCODED'` guard makes it idempotent AND
+-- race-safe: a concurrent activate that already flipped the tag leaves 0 rows, which the handler maps to a
+-- 409 (a tag can only be activated once). A profile is created only alongside this flip, so a tag that
+-- passes the guard has no pet_profiles row yet (the tag_id UNIQUE is a further backstop).
+-- name: AttachAndActivateTag :one
+UPDATE pet_tags
+SET owner_account_id = $2, status = 'ACTIVATED', activated_at = now()
+WHERE id = $1 AND status = 'ENCODED'
+RETURNING *;
+
+-- InsertPetProfile creates the pet page at activation (spec §10). gallery/favorites/theme/blocks +
+-- lost_mode take their table DEFAULTS (empty/[]/{}/false) — onboarding only collects profile + contact +
+-- medical + socials; the rest is filled later on the page (t-4). medical/owner_contact/socials are jsonb
+-- ([]byte in Go). handle is resolved unique before this insert (SlugifyHandle + PetHandleTaken loop).
+-- name: InsertPetProfile :one
+INSERT INTO pet_profiles (
+  id, tag_id, owner_account_id, handle, pet_name, species,
+  breed, age, weight, photo_url, medical, owner_contact, socials
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+RETURNING *;
+
+-- GetPetProfileByTagID loads the profile for an ACTIVATED tag's public page (t-3 returns a minimal
+-- summary; t-4 renders the full page). One profile per tag (pet_profiles.tag_id UNIQUE).
+-- name: GetPetProfileByTagID :one
+SELECT * FROM pet_profiles WHERE tag_id = $1;
+
+-- SlugifyHandle folds a pet name into a URL-safe vanity handle base, reusing the search stack's
+-- immutable_unaccent (000012) so Vietnamese diacritics fold the same way everywhere (Bơ → bo, Mai Lê →
+-- mai-le). The handle is cosmetic (@handle) — the route key is short_id — so an empty result (e.g. an
+-- all-emoji name) is fine; the handler falls back. Uniqueness is resolved by the PetHandleTaken loop.
+-- name: SlugifyHandle :one
+SELECT trim(both '-' from lower(regexp_replace(immutable_unaccent(trim($1::text)), '[^a-zA-Z0-9]+', '-', 'g')))::text AS handle;
+
+-- PetHandleTaken reports whether a candidate vanity handle is already used, driving the auto-suffix loop
+-- (pet_profiles.handle UNIQUE is the final backstop against a check-then-insert race — astronomically
+-- rare at one-shop volume, and a lost race just fails the activate, which the customer retries).
+-- name: PetHandleTaken :one
+SELECT EXISTS (SELECT 1 FROM pet_profiles WHERE handle = $1) AS taken;

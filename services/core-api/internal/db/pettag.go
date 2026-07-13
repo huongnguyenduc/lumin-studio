@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
 )
@@ -66,6 +68,99 @@ func (t *PetTags) MarkEncoded(ctx context.Context, id uuid.UUID, chipUID string)
 		return sqlc.PetTag{}, ErrNotFound
 	}
 	return row, err
+}
+
+// defaultHandleBase is the vanity-handle fallback when a pet name folds to an empty slug (e.g. an
+// all-emoji name). The route key is short_id, so a generic base is harmless — it just reads @pet-xxxx.
+const defaultHandleBase = "pet"
+
+// GetByShortID resolves a tag by its /t/{shortId} routing key (public page + activation guard). No lock.
+func (t *PetTags) GetByShortID(ctx context.Context, shortID string) (sqlc.PetTag, error) {
+	row, err := t.q.GetPetTagByShortID(ctx, shortID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.PetTag{}, ErrNotFound
+	}
+	return row, err
+}
+
+// Activate is the atomic claim (spec §10 step 2d): attach the tag to the customer + flip ENCODED →
+// ACTIVATED. The status guard means 0 rows = the tag was NOT in ENCODED state (already activated, or a
+// concurrent activate won the race); that surfaces as ErrNotFound, which the handler — having just read an
+// ENCODED tag — maps to a 409, not a 404 (the tag exists, it just can't be activated a second time).
+func (t *PetTags) Activate(ctx context.Context, id, ownerID uuid.UUID) (sqlc.PetTag, error) {
+	row, err := t.q.AttachAndActivateTag(ctx, sqlc.AttachAndActivateTagParams{
+		ID:             id,
+		OwnerAccountID: pgtype.UUID{Bytes: ownerID, Valid: true},
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.PetTag{}, ErrNotFound
+	}
+	return row, err
+}
+
+// CreateProfile inserts the pet page built at activation. The caller resolves a unique handle first
+// (ResolveHandle); pet_profiles.handle UNIQUE is the final backstop, so a check-then-insert race surfaces
+// as a plain error (the whole activation rolls back and the customer retries) — see ResolveHandle.
+func (t *PetTags) CreateProfile(ctx context.Context, params sqlc.InsertPetProfileParams) (sqlc.PetProfile, error) {
+	return t.q.InsertPetProfile(ctx, params)
+}
+
+// ProfileByTagID loads the profile behind an ACTIVATED tag (the public page summary). ErrNoRows → ErrNotFound.
+func (t *PetTags) ProfileByTagID(ctx context.Context, tagID uuid.UUID) (sqlc.PetProfile, error) {
+	row, err := t.q.GetPetProfileByTagID(ctx, tagID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.PetProfile{}, ErrNotFound
+	}
+	return row, err
+}
+
+// ResolveHandle folds the pet name into a unique vanity handle (spec §10 "handle auto từ tên, unique").
+// The base is accent-folded in SQL (SlugifyHandle → immutable_unaccent); a collision auto-suffixes (-2..-9,
+// then a random suffix) rather than 400 — the user never types the handle (it's derived) and the route key
+// is short_id, so the handle is cosmetic. ponytail: bounded, no FOR UPDATE — the handle UNIQUE index is the
+// race backstop; a lost race just fails the (rare, human-paced) activate, which the customer retries.
+func (t *PetTags) ResolveHandle(ctx context.Context, petName string) (string, error) {
+	base, err := t.q.SlugifyHandle(ctx, petName)
+	if err != nil {
+		return "", err
+	}
+	if base == "" {
+		base = defaultHandleBase
+	}
+	for _, cand := range handleCandidates(base) {
+		taken, err := t.q.PetHandleTaken(ctx, cand)
+		if err != nil {
+			return "", err
+		}
+		if !taken {
+			return cand, nil
+		}
+	}
+	suffix, err := randHandleSuffix()
+	if err != nil {
+		return "", err
+	}
+	return base + "-" + suffix, nil
+}
+
+// handleCandidates is the ordered try-list for a base slug: the bare base, then base-2…base-9. Pure, so
+// the suffix sequence is unit-testable; exhausting it (8 same-named pets) falls through to a random suffix.
+func handleCandidates(base string) []string {
+	cands := make([]string, 0, 9)
+	cands = append(cands, base)
+	for n := 2; n <= 9; n++ {
+		cands = append(cands, fmt.Sprintf("%s-%d", base, n))
+	}
+	return cands
+}
+
+// randHandleSuffix is 2 crypto/rand bytes → 4 lowercase hex chars, the last-resort handle disambiguator.
+func randHandleSuffix() (string, error) {
+	b := make([]byte, 2)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 // newShortID mints the public /t/{shortId} routing key burned to the chip: 8 crypto/rand bytes →

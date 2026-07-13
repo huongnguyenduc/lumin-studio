@@ -1,0 +1,16 @@
+-- 000026_consent_scope_pet_profile.up.sql — PDPL consent point 1 for Pet Tag activation (P3-t slice
+-- t-3, ADR-042). spec.md §10 ("Privacy & tuân thủ (PDPL)": "Ghi consent tại 2 điểm: (1) tạo profile").
+--
+-- Adds ONE value to the consent_scope enum for the pet-profile PII purpose. Activation (t-3) creates a
+-- PetProfile that stores pet + owner contact PII, so it grants a consent under this scope — reusing the
+-- existing consent_grants append-then-mark table + GrantConsentIfAbsent (000004), NOT a new consent
+-- mechanism (compliance.md §2: don't over-engineer, one row per active purpose). Channel = 'web' (the
+-- storefront), the same channel checkout records order_fulfillment under.
+--
+-- ISOLATED single statement on purpose: ALTER TYPE ... ADD VALUE is the one DDL that pre-PG12 could not
+-- run inside a transaction block, and even on PG12+ the new label cannot be USED in the same tx that
+-- adds it. Kept alone in its own file so the test applier's per-file implicit tx wraps only this add
+-- (which uses nothing) and nothing here references pet_profile in the same tx. Numbered above 000025
+-- (monotonic — memory lumin-migration-numbering-monotonic). No sort-order dependency (unlike 000024's
+-- print_stage), so it appends at the end. IF NOT EXISTS makes a re-run a no-op.
+ALTER TYPE consent_scope ADD VALUE IF NOT EXISTS 'pet_profile';

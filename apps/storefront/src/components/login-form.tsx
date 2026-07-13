@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Button, Input } from '@lumin/ui';
 import { loginCustomer } from '@/lib/customer-auth';
+import { safeNextPath } from '@/lib/next-path';
 
 type LoginError = 'invalidCredentials' | 'validation' | 'networkError' | 'formError';
 
@@ -16,9 +17,16 @@ type LoginError = 'invalidCredentials' | 'validation' | 'networkError' | 'formEr
  * password) surfaces as one message, no enumeration (ADR-030). Reads/writes ONLY the session; no order
  * creation or status change (Phase-1/2 boundary).
  */
-export function LoginForm() {
+export function LoginForm({ next }: { next?: string }) {
   const t = useTranslations('account.login');
   const router = useRouter();
+  // Post-login return target (P3-t t-3: the pet-tag welcome links here with ?next=/t/{shortId}). Guarded
+  // against open redirects; defaults to the account hub. Forwarded to the register link so a brand-new
+  // customer comes back to the same place after signing up.
+  const returnTo = safeNextPath(next);
+  const registerHref = next
+    ? `/tai-khoan/dang-ky?next=${encodeURIComponent(returnTo)}`
+    : '/tai-khoan/dang-ky';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -35,7 +43,7 @@ export function LoginForm() {
     setPending(true);
     const res = await loginCustomer(email, password);
     if (res.ok) {
-      router.push('/tai-khoan');
+      router.push(returnTo);
       router.refresh(); // invalidate any prefetched (logged-out) hub payload → re-read the fresh cookie
       return;
     }
@@ -96,7 +104,7 @@ export function LoginForm() {
         <p>
           {t('noAccount')}{' '}
           <Link
-            href="/tai-khoan/dang-ky"
+            href={registerHref}
             className="font-medium text-text-strong underline underline-offset-2 hover:text-accent-flame"
           >
             {t('registerLink')}

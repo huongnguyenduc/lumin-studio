@@ -151,6 +151,7 @@ const (
 	ConsentScopeOrderFulfillment ConsentScope = "order_fulfillment"
 	ConsentScopeAnalytics        ConsentScope = "analytics"
 	ConsentScopeSessionReplay    ConsentScope = "session_replay"
+	ConsentScopePetProfile       ConsentScope = "pet_profile"
 )
 
 func (e *ConsentScope) Scan(src interface{}) error {
