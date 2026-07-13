@@ -488,6 +488,13 @@ type Querier interface {
 	// late-committing lower-seq row forever = silent money-event loss. Single instance (ADR-009)
 	// ⇒ no SKIP LOCKED / advisory lock. Uses the partial index outbox_unpublished_idx.
 	SelectPendingOutbox(ctx context.Context, limit int32) ([]SelectPendingOutboxRow, error)
+	// ==== Pet page — lost mode (t-4a) =============================================================
+	// SetLostMode flips the profile's lost-mode flag (spec §10 công tắc thất lạc). The owner_account_id guard
+	// makes this the authorization boundary: a signed-in NON-owner matches 0 rows → the handler maps that to a
+	// 403 (not a silent no-op). Scoped by tag_id (resolved from shortId first, so an unknown tag is a 404 before
+	// this runs). updated_at moves so the toggle leaves a minimal trace (the lostmode_toggled analytics event +
+	// lost_events are the fuller audit — t-4b/t-6). ponytail: no separate audit table for a boolean flip.
+	SetLostMode(ctx context.Context, arg SetLostModeParams) (PetProfile, error)
 	// SetOrderItemCostSnapshot writes the frozen COGS blob (the rollup marshals it in Go). Best-effort,
 	// post-commit — a failure leaves cost_snapshot NULL ("chưa chốt", backfillable), never blocking the board.
 	SetOrderItemCostSnapshot(ctx context.Context, arg SetOrderItemCostSnapshotParams) error

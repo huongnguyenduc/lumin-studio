@@ -194,11 +194,13 @@ paths:
       summary: Public pet-page read by shortId — the /t/{shortId} scan target (spec §10).
       description: >
         Resolves a Pet Tag by its shortId (the URL routing key burned to the chip) for the public
-        /t/{shortId} pet page (P3-t t-3). Public — anyone who scans the chip. Returns the tag's lifecycle
-        status and, once ACTIVATED, a MINIMAL profile summary (pet name + handle + species + photo). The
-        onboarding gate reads status to route (ENCODED → login/onboarding, ACTIVATED → the page). PDPL
-        data-minimization: NO owner PII (phone/contact) here — the public read carries only the display
-        summary; the full page + masked-contact states land in t-4. Unknown shortId → 404.
+        /t/{shortId} pet page (P3-t t-3/t-4a). Public — anyone who scans the chip — but resolves the
+        customer session OPTIONALLY when present, so the owner is recognised. Returns the tag's lifecycle
+        status and, once ACTIVATED, the profile the 3-state page renders (spec §10 §"1 URL · 3 trạng thái"):
+        the display fields + medical/socials + a CONTACT block whose phone is masked (PDPL
+        data-minimization) and revealed in full only when lostMode=true or the viewer is the owner. The
+        onboarding gate reads status to route (ENCODED → login/onboarding, ACTIVATED → the page). Owner-only
+        content (bio/gallery/favorites/theme/blocks + the in-place editor) lands in t-4c. Unknown shortId → 404.
       parameters:
         - name: shortId
           in: path
@@ -207,7 +209,7 @@ paths:
             type: string
       responses:
         '200':
-          description: The tag status and (when ACTIVATED) a minimal pet-page profile summary.
+          description: The tag status, viewerIsOwner, and (when ACTIVATED) the pet-page profile.
           content:
             application/json:
               schema:
@@ -252,6 +254,43 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+
+  /pet-tags/{shortId}/lost-mode:
+    patch:
+      tags: [pettag]
+      operationId: toggleLostMode
+      summary: Toggle a pet's lost mode — owner only (spec §10 công tắc thất lạc).
+      description: >
+        Flips the profile's lostMode flag (P3-t t-4a). Only the tag's owner may toggle it — the update is
+        guarded by owner_account_id in SQL, so a signed-in non-owner is a 403 (not a silent no-op). lostMode
+        drives the public page's view-state (spec §10: false = at-home read-only, true = rescue) and the
+        contact reveal (a masked phone becomes callable in lost mode). Requires a valid customer session
+        (401). Unknown shortId → 404; a tag the caller does not own → 403. Returns the updated pet page.
+      security:
+        - customerAuth: []
+      parameters:
+        - name: shortId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PetLostModeInput'
+      responses:
+        '200':
+          description: The updated pet page (lostMode now reflects the requested value).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PetPage'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /orders:
     post:
@@ -4747,12 +4786,44 @@ components:
         handle:
           type: string
 
+    PetPageContact:
+      type: object
+      description: >
+        The owner-contact block AS PROJECTED to the public page (P3-t t-4a) — the PDPL-safe view of
+        PetOwnerContact. `masked` is the reveal gate: when true (a stranger, at-home page) only `phoneMasked`
+        is present and NO callable value is shipped; when false (lost mode, or the owner viewing) the full
+        `phone`/`zalo`/`email` are included so the finder can reach the owner. `name` is owner-only (a finder
+        never needs it — the CTAs say "sen của {petName}"). Masking is decided server-side: the raw number
+        never reaches the wire in the masked case.
+      required: [masked, phoneMasked]
+      properties:
+        masked:
+          type: boolean
+          description: true = only the masked phone is available (at-home stranger view); false = full contact revealed.
+        phoneMasked:
+          type: string
+          description: The always-safe masked phone, e.g. "+84 90 •••• 261".
+        phone:
+          type: string
+          description: Full VN phone — present only when masked=false (lost mode or owner).
+        zalo:
+          type: string
+          description: Present only when masked=false and the owner set a Zalo handle.
+        email:
+          type: string
+          description: Present only when masked=false and the owner set an email.
+        name:
+          type: string
+          description: Owner name — present only when the viewer IS the owner (never shown to finders).
+
     PetPageProfile:
       type: object
       description: >
-        The MINIMAL public profile summary shown once a tag is ACTIVATED (P3-t t-3). Display-only fields —
-        NO owner PII (contact/medical) — so the public read stays data-minimized. The full page lands in t-4.
-      required: [handle, petName, species]
+        The pet profile the public /t/{shortId} page renders in its 3 view-states (P3-t t-4a). Display fields
+        + medical (drives the allergy warning) + socials + a PDPL-masked contact block + lostMode (routes the
+        view-state). Owner-only content (bio/gallery/favorites/theme/blocks) has no writer until the t-4c
+        in-place editor, so it lands there — this shape is exactly what onboarding captures + the contact.
+      required: [handle, petName, species, lostMode, contact]
       properties:
         handle:
           type: string
@@ -4763,21 +4834,50 @@ components:
           $ref: '#/components/schemas/PetSpecies'
         photoUrl:
           type: string
+        breed:
+          type: string
+        age:
+          type: string
+        weight:
+          type: string
+        lostMode:
+          type: boolean
+          description: false = at-home (default), true = lost/rescue. Routes the view-state + gates the contact reveal.
+        medical:
+          $ref: '#/components/schemas/PetMedical'
+        socials:
+          type: array
+          items:
+            $ref: '#/components/schemas/PetSocial'
+        contact:
+          $ref: '#/components/schemas/PetPageContact'
 
     PetPage:
       type: object
       description: >
-        The public /t/{shortId} pet-page read (P3-t t-3). `status` routes the page: UNENCODED/ENCODED = not
-        yet activated (onboarding/welcome), ACTIVATED = live. `profile` is present only when ACTIVATED (the
-        minimal summary — the full page is t-4).
-      required: [shortId, status]
+        The public /t/{shortId} pet-page read (P3-t t-3/t-4a). `status` routes the page: UNENCODED/ENCODED =
+        not yet activated (onboarding/welcome), ACTIVATED = live. `viewerIsOwner` is true when the optional
+        customer session belongs to the tag's owner (drives the owner affordances — the lost-mode toggle now,
+        the editor in t-4c). `profile` is present only when ACTIVATED.
+      required: [shortId, status, viewerIsOwner]
       properties:
         shortId:
           type: string
         status:
           $ref: '#/components/schemas/PetTagStatus'
+        viewerIsOwner:
+          type: boolean
+          description: Whether the (optional) signed-in customer is this tag's owner.
         profile:
           $ref: '#/components/schemas/PetPageProfile'
+
+    PetLostModeInput:
+      type: object
+      description: The PATCH body for toggleLostMode (P3-t t-4a) — the requested lost-mode value.
+      required: [lostMode]
+      properties:
+        lostMode:
+          type: boolean
 
     PetActivateInput:
       type: object

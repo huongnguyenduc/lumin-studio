@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"unicode/utf8"
 
@@ -23,10 +24,11 @@ const petNameMax = 40
 // race) or still UNENCODED (chip not written). Caught in the handler → 409, never a 500.
 var errPetTagNotActivatable = errors.New("pet tag: not in an activatable (ENCODED) state")
 
-// GetPetPage handles GET /pet-tags/{shortId} (public, P3-t t-3): resolve a tag by its routing key for the
-// /t/{shortId} page. Returns the lifecycle status (the FE routes on it: ENCODED → login/onboarding,
-// ACTIVATED → the page) plus, once ACTIVATED, a MINIMAL profile summary. PDPL data-minimization: no owner
-// PII here (phone/contact) — only the display summary; the masked-contact states land in t-4. Unknown
+// GetPetPage handles GET /pet-tags/{shortId} (public, P3-t t-3/t-4a): resolve a tag by its routing key for
+// the /t/{shortId} page. Returns the lifecycle status (the FE routes on it: ENCODED → login/onboarding,
+// ACTIVATED → the page) plus, once ACTIVATED, the profile the 3-state page renders. The customer session is
+// resolved OPTIONALLY (authOptionalCustomer): when it belongs to the tag's owner, viewerIsOwner flips true
+// and the contact is un-masked (PDPL — the reveal is decided server-side, never in the browser). Unknown
 // shortId → 404.
 func (s *Server) GetPetPage(ctx context.Context, request api.GetPetPageRequestObject) (api.GetPetPageResponseObject, error) {
 	tags := db.NewPetTags(s.pool)
@@ -35,14 +37,19 @@ func (s *Server) GetPetPage(ctx context.Context, request api.GetPetPageRequestOb
 		return nil, err // ErrNotFound → 404; else 500
 	}
 	var profile *sqlc.PetProfile
+	viewerIsOwner := false
 	if tag.Status == sqlc.PetTagStatusACTIVATED {
 		p, err := tags.ProfileByTagID(ctx, tag.ID)
 		if err != nil {
 			return nil, err // an ACTIVATED tag always has a profile (created atomically); a miss is a broken invariant → 500
 		}
 		profile = &p
+		// authOptionalCustomer injects the customer iff a valid session cookie was present. Owner iff it matches.
+		if cid, ok := customerFrom(ctx); ok && cid == p.OwnerAccountID {
+			viewerIsOwner = true
+		}
 	}
-	return api.GetPetPage200JSONResponse(petPageDTO(tag, profile)), nil
+	return api.GetPetPage200JSONResponse(petPageDTO(tag, profile, viewerIsOwner)), nil
 }
 
 // ActivatePetTag handles POST /pet-tags/{shortId}/activate (customer-authed, P3-t t-3): onboarding
@@ -102,7 +109,7 @@ func (s *Server) ActivatePetTag(ctx context.Context, request api.ActivatePetTagR
 		}); err != nil {
 			return err
 		}
-		page = petPageDTO(tag, &profile)
+		page = petPageDTO(tag, &profile, true) // the activating customer is, by construction, the owner
 		return nil
 	})
 	if err != nil {
@@ -112,6 +119,34 @@ func (s *Server) ActivatePetTag(ctx context.Context, request api.ActivatePetTagR
 		return nil, err // ErrNotFound → 404; else 500 (mapError, no leak)
 	}
 	return api.ActivatePetTag200JSONResponse(page), nil
+}
+
+// ToggleLostMode handles PATCH /pet-tags/{shortId}/lost-mode (customer-authed, P3-t t-4a): the owner flips
+// the lost-mode switch (spec §10 công tắc thất lạc). Only the owner may toggle — SetLostMode's
+// owner_account_id guard is the authorization boundary, so a signed-in non-owner is a 403, not a silent
+// no-op. lostMode drives the public page's view-state + the contact reveal. Unknown shortId → 404; a tag the
+// caller does not own → 403.
+func (s *Server) ToggleLostMode(ctx context.Context, request api.ToggleLostModeRequestObject) (api.ToggleLostModeResponseObject, error) {
+	customerID, ok := customerFrom(ctx)
+	if !ok {
+		return nil, errUnauthenticated // wiring guard — authCustomer injects the owner; a miss is not an anonymous toggle
+	}
+	if request.Body == nil {
+		return api.ToggleLostMode400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
+	}
+	tags := db.NewPetTags(s.pool)
+	tag, err := tags.GetByShortID(ctx, request.ShortId)
+	if err != nil {
+		return nil, err // ErrNotFound → 404 (bad link); else 500
+	}
+	profile, err := tags.SetLostMode(ctx, tag.ID, customerID, request.Body.LostMode)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return nil, errForbidden // 0 rows = the tag exists but this customer does not own it → 403
+		}
+		return nil, err
+	}
+	return api.ToggleLostMode200JSONResponse(petPageDTO(tag, &profile, true)), nil
 }
 
 // validateActivateInput enforces the spec §10 onboarding rules the DB CHECK/regex would otherwise turn
@@ -176,12 +211,15 @@ func profileParams(tag sqlc.PetTag, ownerID uuid.UUID, handle string, in api.Pet
 	}
 }
 
-// petPageDTO projects a tag (+ optional profile) to the public page read. profile is nil until ACTIVATED;
-// the summary carries NO owner PII (handle / name / species / photo only — PDPL data-minimization).
-func petPageDTO(tag sqlc.PetTag, profile *sqlc.PetProfile) api.PetPage {
+// petPageDTO projects a tag (+ optional profile) to the public page read. profile is nil until ACTIVATED.
+// The contact is masked unless the page is in lost mode OR the viewer is the owner — masking is decided HERE
+// (server-side) so the raw phone never reaches the wire in the masked case (PDPL). Owner-only sections
+// (bio/gallery/favorites/theme/blocks) are not projected — they have no writer until the t-4c editor.
+func petPageDTO(tag sqlc.PetTag, profile *sqlc.PetProfile, viewerIsOwner bool) api.PetPage {
 	page := api.PetPage{
-		ShortId: tag.ShortID,
-		Status:  api.PetTagStatus(tag.Status),
+		ShortId:       tag.ShortID,
+		Status:        api.PetTagStatus(tag.Status),
+		ViewerIsOwner: viewerIsOwner,
 	}
 	if profile != nil {
 		page.Profile = &api.PetPageProfile{
@@ -189,9 +227,101 @@ func petPageDTO(tag sqlc.PetTag, profile *sqlc.PetProfile) api.PetPage {
 			PetName:  profile.PetName,
 			Species:  api.PetSpecies(profile.Species),
 			PhotoUrl: profile.PhotoUrl,
+			Breed:    profile.Breed,
+			Age:      profile.Age,
+			Weight:   profile.Weight,
+			LostMode: profile.LostMode,
+			Medical:  petMedicalDTO(profile.Medical),
+			Socials:  petSocialsDTO(profile.Socials),
+			Contact:  petContactDTO(profile.OwnerContact, viewerIsOwner || profile.LostMode, viewerIsOwner),
 		}
 	}
 	return page
+}
+
+// petMedicalDTO unmarshals the medical jsonb to the public block, returning nil (omitted) when it carries no
+// data — an empty {} shouldn't render an empty section. allergies drives the on-page allergy warning.
+func petMedicalDTO(b []byte) *api.PetMedical {
+	if len(b) == 0 {
+		return nil
+	}
+	var m api.PetMedical
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil // a corrupt medical blob just drops the section, never 500s the whole page
+	}
+	if m.Allergies == nil && m.Neutered == nil && m.Vaccinated == nil && m.VetClinic == nil {
+		return nil
+	}
+	return &m
+}
+
+// petSocialsDTO unmarshals the socials jsonb, returning nil (omitted) when empty so the FE renders no pills.
+func petSocialsDTO(b []byte) *[]api.PetSocial {
+	if len(b) == 0 {
+		return nil
+	}
+	var s []api.PetSocial
+	if err := json.Unmarshal(b, &s); err != nil || len(s) == 0 {
+		return nil
+	}
+	return &s
+}
+
+// petOwnerContactRow is the stored owner_contact jsonb (spec §10) — the raw values onboarding captured.
+type petOwnerContactRow struct {
+	Name  string `json:"name"`
+	Phone string `json:"phone"`
+	Zalo  string `json:"zalo"`
+	Email string `json:"email"`
+}
+
+// petContactDTO projects the owner contact to the page with PDPL masking. phoneMasked is ALWAYS present (the
+// safe partial). When reveal is false (a stranger on an at-home page) that is ALL that ships — no callable
+// value leaves the server. When reveal is true (lost mode, or the owner) the full phone/zalo/email are
+// included so the finder can reach the owner. The owner name is included only for the owner (viewerIsOwner);
+// a finder never needs it (the CTAs read "sen của {petName}").
+func petContactDTO(b []byte, reveal, viewerIsOwner bool) api.PetPageContact {
+	var c petOwnerContactRow
+	if len(b) > 0 {
+		_ = json.Unmarshal(b, &c) // a corrupt blob yields an empty contact + a "••••" mask, never a leak
+	}
+	contact := api.PetPageContact{
+		Masked:      !reveal,
+		PhoneMasked: maskPhone(c.Phone),
+	}
+	if viewerIsOwner && c.Name != "" {
+		contact.Name = &c.Name
+	}
+	if reveal {
+		if c.Phone != "" {
+			contact.Phone = &c.Phone
+		}
+		if c.Zalo != "" {
+			contact.Zalo = &c.Zalo
+		}
+		if c.Email != "" {
+			contact.Email = &c.Email
+		}
+	}
+	return contact
+}
+
+// maskPhone renders the PDPL-safe partial phone (spec §10: "+84 90 •••• 261"). Onboarding validates the
+// number as ^(0|\+84)\d{9}$, so it folds to 9 national digits; the mask shows the first 2 + last 3, bulleting
+// the middle. Anything that doesn't fold to ≥5 digits (corrupt/absent) returns bullets only — never a leak.
+func maskPhone(raw string) string {
+	national := strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(raw), "+84"), "0")
+	var digits strings.Builder
+	for _, r := range national {
+		if r >= '0' && r <= '9' {
+			digits.WriteRune(r)
+		}
+	}
+	n := digits.String()
+	if len(n) < 5 {
+		return "••••"
+	}
+	return fmt.Sprintf("+84 %s •••• %s", n[:2], n[len(n)-3:])
 }
 
 // trimPtr normalizes an optional text field: nil or whitespace-only → nil (don't store ""), else trimmed.

@@ -47,6 +47,12 @@ const (
 	// admin classes above (separate cookie + secret, ADR-030). It resolves the customer id from the
 	// customer cookie and injects it; absent/invalid → 401. An admin token can never satisfy it.
 	authCustomer
+	// authOptionalCustomer is the customer-realm mirror of authOptional: it resolves + injects the customer
+	// iff a valid customer cookie is present, but NEVER rejects — an absent OR invalid/expired cookie just
+	// continues anonymously. Used by the PUBLIC pet page (GetPetPage), where the optional owner identity
+	// only unlocks the un-masked contact; a stale cookie must never 401 a page any stranger can read. It is
+	// deliberately more lenient than admin authOptional (which 401s a present-but-bad cookie) for that reason.
+	authOptionalCustomer
 )
 
 // classify maps a generated operationID to its gate. Unlisted operations fall through to
@@ -139,15 +145,17 @@ func classify(operationID string) authClass {
 		// credential; logout is idempotent.
 		return authPublic
 	case "GetPetPage":
-		// Public pet-page read (P3-t t-3) — the /t/{shortId} scan target. Anyone who taps the chip
-		// reads it (no session); returns status + a data-minimized profile summary (no owner PII). The
-		// active/owner boundaries the full page needs land in t-4; this read is public by design.
-		return authPublic
-	case "GetCustomerOrders", "ActivatePetTag":
+		// Public pet-page read (P3-t t-3/t-4a) — the /t/{shortId} scan target. Anyone who taps the chip
+		// reads it (no session required); but the customer session is resolved OPTIONALLY so the owner is
+		// recognised (viewerIsOwner → un-masked contact). A stale/absent cookie must not 401 a page any
+		// stranger can read, so this is authOptionalCustomer (lenient), not authCustomer.
+		return authOptionalCustomer
+	case "GetCustomerOrders", "ActivatePetTag", "ToggleLostMode":
 		// GetCustomerOrders — the authenticated customer's own order history. ActivatePetTag (P3-t t-3) —
 		// onboarding attaches the scanned tag to WHICHEVER customer is signed in (spec §10 "tag tự gắn
-		// vào tài khoản vừa đăng nhập"), so it needs a valid CUSTOMER session (not the admin cookie);
-		// resolveCustomer injects the owner id. An absent/invalid customer session → 401.
+		// vào tài khoản vừa đăng nhập"). ToggleLostMode (P3-t t-4a) — only the owner flips lost mode; the
+		// owner_account_id guard in SQL is the final authz, but the session is required first (a valid
+		// CUSTOMER session, not the admin cookie). resolveCustomer injects the id; absent/invalid → 401.
 		return authCustomer
 	default:
 		// GetDashboard, ListReplyTemplates, GetSettings, TransitionOrder, + any new operation.
@@ -179,6 +187,15 @@ func (s *Server) authMiddleware(next api.StrictHandlerFunc, operationID string) 
 				return nil, errUnauthenticated // no customer session
 			}
 			return next(withCustomer(ctx, id), w, r, request)
+		}
+
+		// authOptionalCustomer never rejects: inject the customer iff the cookie resolves, else continue
+		// anonymously — a stale/absent customer cookie must not 401 the public pet page (see the class doc).
+		if class == authOptionalCustomer {
+			if id, ok, err := s.resolveCustomer(r); err == nil && ok {
+				return next(withCustomer(ctx, id), w, r, request)
+			}
+			return next(ctx, w, r, request)
 		}
 
 		actor, ok, err := s.resolveActor(ctx, r)

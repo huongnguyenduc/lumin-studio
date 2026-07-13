@@ -1097,6 +1097,11 @@ type PetActivateInput struct {
 	Weight  *string    `json:"weight,omitempty"`
 }
 
+// PetLostModeInput The PATCH body for toggleLostMode (P3-t t-4a) — the requested lost-mode value.
+type PetLostModeInput struct {
+	LostMode bool `json:"lostMode"`
+}
+
 // PetMedical The pet's medical block (spec §10) — all optional. `allergies` drives the allergy warning on the page.
 type PetMedical struct {
 	Allergies  *string `json:"allergies,omitempty"`
@@ -1114,25 +1119,63 @@ type PetOwnerContact struct {
 	Zalo  *string `json:"zalo,omitempty"`
 }
 
-// PetPage The public /t/{shortId} pet-page read (P3-t t-3). `status` routes the page: UNENCODED/ENCODED = not yet activated (onboarding/welcome), ACTIVATED = live. `profile` is present only when ACTIVATED (the minimal summary — the full page is t-4).
+// PetPage The public /t/{shortId} pet-page read (P3-t t-3/t-4a). `status` routes the page: UNENCODED/ENCODED = not yet activated (onboarding/welcome), ACTIVATED = live. `viewerIsOwner` is true when the optional customer session belongs to the tag's owner (drives the owner affordances — the lost-mode toggle now, the editor in t-4c). `profile` is present only when ACTIVATED.
 type PetPage struct {
-	// Profile The MINIMAL public profile summary shown once a tag is ACTIVATED (P3-t t-3). Display-only fields — NO owner PII (contact/medical) — so the public read stays data-minimized. The full page lands in t-4.
+	// Profile The pet profile the public /t/{shortId} page renders in its 3 view-states (P3-t t-4a). Display fields + medical (drives the allergy warning) + socials + a PDPL-masked contact block + lostMode (routes the view-state). Owner-only content (bio/gallery/favorites/theme/blocks) has no writer until the t-4c in-place editor, so it lands there — this shape is exactly what onboarding captures + the contact.
 	Profile *PetPageProfile `json:"profile,omitempty"`
 	ShortId string          `json:"shortId"`
 
 	// Status Pet Tag fulfillment lifecycle (spec §10 "Trạng thái tag") — PARALLEL to but SEPARATE from OrderStatus (the order still runs PENDING_CONFIRM→…→COMPLETED). UNENCODED = printed, blank chip; ENCODED = chip written + locked, ready to pack + ship; ACTIVATED = customer logged in + a pet profile exists (t-3). Not a packages/core state machine (DB-only, no statusHistory).
 	Status PetTagStatus `json:"status"`
+
+	// ViewerIsOwner Whether the (optional) signed-in customer is this tag's owner.
+	ViewerIsOwner bool `json:"viewerIsOwner"`
 }
 
-// PetPageProfile The MINIMAL public profile summary shown once a tag is ACTIVATED (P3-t t-3). Display-only fields — NO owner PII (contact/medical) — so the public read stays data-minimized. The full page lands in t-4.
+// PetPageContact The owner-contact block AS PROJECTED to the public page (P3-t t-4a) — the PDPL-safe view of PetOwnerContact. `masked` is the reveal gate: when true (a stranger, at-home page) only `phoneMasked` is present and NO callable value is shipped; when false (lost mode, or the owner viewing) the full `phone`/`zalo`/`email` are included so the finder can reach the owner. `name` is owner-only (a finder never needs it — the CTAs say "sen của {petName}"). Masking is decided server-side: the raw number never reaches the wire in the masked case.
+type PetPageContact struct {
+	// Email Present only when masked=false and the owner set an email.
+	Email *string `json:"email,omitempty"`
+
+	// Masked true = only the masked phone is available (at-home stranger view); false = full contact revealed.
+	Masked bool `json:"masked"`
+
+	// Name Owner name — present only when the viewer IS the owner (never shown to finders).
+	Name *string `json:"name,omitempty"`
+
+	// Phone Full VN phone — present only when masked=false (lost mode or owner).
+	Phone *string `json:"phone,omitempty"`
+
+	// PhoneMasked The always-safe masked phone, e.g. "+84 90 •••• 261".
+	PhoneMasked string `json:"phoneMasked"`
+
+	// Zalo Present only when masked=false and the owner set a Zalo handle.
+	Zalo *string `json:"zalo,omitempty"`
+}
+
+// PetPageProfile The pet profile the public /t/{shortId} page renders in its 3 view-states (P3-t t-4a). Display fields + medical (drives the allergy warning) + socials + a PDPL-masked contact block + lostMode (routes the view-state). Owner-only content (bio/gallery/favorites/theme/blocks) has no writer until the t-4c in-place editor, so it lands there — this shape is exactly what onboarding captures + the contact.
 type PetPageProfile struct {
+	Age   *string `json:"age,omitempty"`
+	Breed *string `json:"breed,omitempty"`
+
+	// Contact The owner-contact block AS PROJECTED to the public page (P3-t t-4a) — the PDPL-safe view of PetOwnerContact. `masked` is the reveal gate: when true (a stranger, at-home page) only `phoneMasked` is present and NO callable value is shipped; when false (lost mode, or the owner viewing) the full `phone`/`zalo`/`email` are included so the finder can reach the owner. `name` is owner-only (a finder never needs it — the CTAs say "sen của {petName}"). Masking is decided server-side: the raw number never reaches the wire in the masked case.
+	Contact PetPageContact `json:"contact"`
+
 	// Handle The vanity slug shown as @handle (derived from the pet name).
-	Handle   string  `json:"handle"`
-	PetName  string  `json:"petName"`
-	PhotoUrl *string `json:"photoUrl,omitempty"`
+	Handle string `json:"handle"`
+
+	// LostMode false = at-home (default), true = lost/rescue. Routes the view-state + gates the contact reveal.
+	LostMode bool `json:"lostMode"`
+
+	// Medical The pet's medical block (spec §10) — all optional. `allergies` drives the allergy warning on the page.
+	Medical  *PetMedical  `json:"medical,omitempty"`
+	PetName  string       `json:"petName"`
+	PhotoUrl *string      `json:"photoUrl,omitempty"`
+	Socials  *[]PetSocial `json:"socials,omitempty"`
 
 	// Species The pet's species — a fixed 3-choice set on the onboarding form (spec §10). `other` catches the rest.
 	Species PetSpecies `json:"species"`
+	Weight  *string    `json:"weight,omitempty"`
 }
 
 // PetSocial One social link (spec §10) — a handle, not a full URL (e.g. instagram / tiktok).
@@ -1779,6 +1822,9 @@ type TransitionOrderJSONRequestBody = TransitionRequest
 // ActivatePetTagJSONRequestBody defines body for ActivatePetTag for application/json ContentType.
 type ActivatePetTagJSONRequestBody = PetActivateInput
 
+// ToggleLostModeJSONRequestBody defines body for ToggleLostMode for application/json ContentType.
+type ToggleLostModeJSONRequestBody = PetLostModeInput
+
 // QuotePriceJSONRequestBody defines body for QuotePrice for application/json ContentType.
 type QuotePriceJSONRequestBody = PriceQuoteInput
 
@@ -2101,6 +2147,9 @@ type ServerInterface interface {
 	// Activate an ENCODED tag — attach it to the signed-in customer + create the pet profile.
 	// (POST /pet-tags/{shortId}/activate)
 	ActivatePetTag(w http.ResponseWriter, r *http.Request, shortId string)
+	// Toggle a pet's lost mode — owner only (spec §10 công tắc thất lạc).
+	// (PATCH /pet-tags/{shortId}/lost-mode)
+	ToggleLostMode(w http.ResponseWriter, r *http.Request, shortId string)
 	// Server-authoritative line/subtotal quote; optional province adds shippingFee + total.
 	// (POST /price/quote)
 	QuotePrice(w http.ResponseWriter, r *http.Request)
@@ -2572,6 +2621,12 @@ func (_ Unimplemented) GetPetPage(w http.ResponseWriter, r *http.Request, shortI
 // Activate an ENCODED tag — attach it to the signed-in customer + create the pet profile.
 // (POST /pet-tags/{shortId}/activate)
 func (_ Unimplemented) ActivatePetTag(w http.ResponseWriter, r *http.Request, shortId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Toggle a pet's lost mode — owner only (spec §10 công tắc thất lạc).
+// (PATCH /pet-tags/{shortId}/lost-mode)
+func (_ Unimplemented) ToggleLostMode(w http.ResponseWriter, r *http.Request, shortId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4760,6 +4815,37 @@ func (siw *ServerInterfaceWrapper) ActivatePetTag(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// ToggleLostMode operation middleware
+func (siw *ServerInterfaceWrapper) ToggleLostMode(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "shortId" -------------
+	var shortId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "shortId", chi.URLParam(r, "shortId"), &shortId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "shortId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CustomerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ToggleLostMode(w, r, shortId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // QuotePrice operation middleware
 func (siw *ServerInterfaceWrapper) QuotePrice(w http.ResponseWriter, r *http.Request) {
 
@@ -5284,6 +5370,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/pet-tags/{shortId}/activate", wrapper.ActivatePetTag)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/pet-tags/{shortId}/lost-mode", wrapper.ToggleLostMode)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/price/quote", wrapper.QuotePrice)
@@ -8566,6 +8655,60 @@ func (response ActivatePetTag409JSONResponse) VisitActivatePetTagResponse(w http
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ToggleLostModeRequestObject struct {
+	ShortId string `json:"shortId"`
+	Body    *ToggleLostModeJSONRequestBody
+}
+
+type ToggleLostModeResponseObject interface {
+	VisitToggleLostModeResponse(w http.ResponseWriter) error
+}
+
+type ToggleLostMode200JSONResponse PetPage
+
+func (response ToggleLostMode200JSONResponse) VisitToggleLostModeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ToggleLostMode400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ToggleLostMode400JSONResponse) VisitToggleLostModeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ToggleLostMode401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ToggleLostMode401JSONResponse) VisitToggleLostModeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ToggleLostMode403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ToggleLostMode403JSONResponse) VisitToggleLostModeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ToggleLostMode404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ToggleLostMode404JSONResponse) VisitToggleLostModeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type QuotePriceRequestObject struct {
 	Body *QuotePriceJSONRequestBody
 }
@@ -8971,6 +9114,9 @@ type StrictServerInterface interface {
 	// Activate an ENCODED tag — attach it to the signed-in customer + create the pet profile.
 	// (POST /pet-tags/{shortId}/activate)
 	ActivatePetTag(ctx context.Context, request ActivatePetTagRequestObject) (ActivatePetTagResponseObject, error)
+	// Toggle a pet's lost mode — owner only (spec §10 công tắc thất lạc).
+	// (PATCH /pet-tags/{shortId}/lost-mode)
+	ToggleLostMode(ctx context.Context, request ToggleLostModeRequestObject) (ToggleLostModeResponseObject, error)
 	// Server-authoritative line/subtotal quote; optional province adds shippingFee + total.
 	// (POST /price/quote)
 	QuotePrice(ctx context.Context, request QuotePriceRequestObject) (QuotePriceResponseObject, error)
@@ -11214,6 +11360,39 @@ func (sh *strictHandler) ActivatePetTag(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ActivatePetTagResponseObject); ok {
 		if err := validResponse.VisitActivatePetTagResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ToggleLostMode operation middleware
+func (sh *strictHandler) ToggleLostMode(w http.ResponseWriter, r *http.Request, shortId string) {
+	var request ToggleLostModeRequestObject
+
+	request.ShortId = shortId
+
+	var body ToggleLostModeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ToggleLostMode(ctx, request.(ToggleLostModeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ToggleLostMode")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ToggleLostModeResponseObject); ok {
+		if err := validResponse.VisitToggleLostModeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

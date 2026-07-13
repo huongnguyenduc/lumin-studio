@@ -309,6 +309,55 @@ func (q *Queries) PetHandleTaken(ctx context.Context, handle string) (bool, erro
 	return taken, err
 }
 
+const setLostMode = `-- name: SetLostMode :one
+
+UPDATE pet_profiles
+SET lost_mode = $2, updated_at = now()
+WHERE tag_id = $1 AND owner_account_id = $3
+RETURNING id, tag_id, owner_account_id, handle, pet_name, species, breed, age, weight, photo_url, gallery, bio, favorites, medical, owner_contact, socials, lost_mode, theme, blocks, created_at, updated_at
+`
+
+type SetLostModeParams struct {
+	TagID          uuid.UUID `json:"tagId"`
+	LostMode       bool      `json:"lostMode"`
+	OwnerAccountID uuid.UUID `json:"ownerAccountId"`
+}
+
+// ==== Pet page — lost mode (t-4a) =============================================================
+// SetLostMode flips the profile's lost-mode flag (spec §10 công tắc thất lạc). The owner_account_id guard
+// makes this the authorization boundary: a signed-in NON-owner matches 0 rows → the handler maps that to a
+// 403 (not a silent no-op). Scoped by tag_id (resolved from shortId first, so an unknown tag is a 404 before
+// this runs). updated_at moves so the toggle leaves a minimal trace (the lostmode_toggled analytics event +
+// lost_events are the fuller audit — t-4b/t-6). ponytail: no separate audit table for a boolean flip.
+func (q *Queries) SetLostMode(ctx context.Context, arg SetLostModeParams) (PetProfile, error) {
+	row := q.db.QueryRow(ctx, setLostMode, arg.TagID, arg.LostMode, arg.OwnerAccountID)
+	var i PetProfile
+	err := row.Scan(
+		&i.ID,
+		&i.TagID,
+		&i.OwnerAccountID,
+		&i.Handle,
+		&i.PetName,
+		&i.Species,
+		&i.Breed,
+		&i.Age,
+		&i.Weight,
+		&i.PhotoUrl,
+		&i.Gallery,
+		&i.Bio,
+		&i.Favorites,
+		&i.Medical,
+		&i.OwnerContact,
+		&i.Socials,
+		&i.LostMode,
+		&i.Theme,
+		&i.Blocks,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const slugifyHandle = `-- name: SlugifyHandle :one
 SELECT trim(both '-' from lower(regexp_replace(immutable_unaccent(trim($1::text)), '[^a-zA-Z0-9]+', '-', 'g')))::text AS handle
 `
