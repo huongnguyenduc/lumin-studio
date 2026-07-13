@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* The side panel fills the browser's docked panel (chrome.sidePanel owns the width — user-resizable,
+   so the old "fixed 382px" from the injected-iframe design no longer applies; the layout is fluid,
+   D3). Light scheme only for now. */
+:root {
+  color-scheme: light;
+}
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  margin: 0;
+}

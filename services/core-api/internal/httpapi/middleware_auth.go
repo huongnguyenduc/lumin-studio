@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -232,18 +233,39 @@ func (s *Server) authMiddleware(next api.StrictHandlerFunc, operationID string) 
 	}
 }
 
-// resolveActor reads the session cookie and turns it into an authoritative Actor. It returns
-// (_, false, nil) when no cookie is present (anonymous — the optional path continues); an
-// errUnauthenticated when a cookie is present but the token is invalid, its subject is not a
-// user id, or the user is gone/deactivated; and a raw (non-sentinel) error only on a genuine
-// DB fault (mapped to 500). The role comes from the users row, not the token claim, so a token
-// minted before a role change or deactivation cannot outrank the current record.
-func (s *Server) resolveActor(ctx context.Context, r *http.Request) (Actor, bool, error) {
-	cookie, err := r.Cookie(auth.SessionCookieName)
-	if err != nil || cookie.Value == "" {
-		return Actor{}, false, nil
+// bearerToken extracts a JWT from an "Authorization: Bearer <token>" header, or "" when the header
+// is absent or not a Bearer credential. The MV3 extension (ADR-043) authenticates this way — it
+// can't carry the SameSite=Strict session cookie cross-origin, so it stores the token in
+// chrome.storage.local and presents it here. The scheme match is case-insensitive (RFC 6750 §2.1).
+func bearerToken(r *http.Request) string {
+	const prefix = "Bearer "
+	h := r.Header.Get("Authorization")
+	if len(h) > len(prefix) && strings.EqualFold(h[:len(prefix)], prefix) {
+		return strings.TrimSpace(h[len(prefix):])
 	}
-	claims, err := s.auth.Verify(cookie.Value)
+	return ""
+}
+
+// resolveActor reads the session credential — an Authorization: Bearer token (the MV3 extension,
+// ADR-043) or, failing that, the session cookie — and turns it into an authoritative Actor. It
+// returns (_, false, nil) when no credential is present (anonymous — the optional path continues);
+// an errUnauthenticated when one is present but the token is invalid, its subject is not a user id,
+// or the user is gone/deactivated; and a raw (non-sentinel) error only on a genuine DB fault (mapped
+// to 500). The role comes from the users row, not the token claim, so a token minted before a role
+// change or deactivation cannot outrank the current record.
+func (s *Server) resolveActor(ctx context.Context, r *http.Request) (Actor, bool, error) {
+	// Bearer takes precedence over the cookie: a client sending it (the extension) intends token
+	// auth. Either credential is verified with the one Issuer + the role re-read below, so cookie
+	// and Bearer are interchangeable admin-realm credentials.
+	token := bearerToken(r)
+	if token == "" {
+		cookie, err := r.Cookie(auth.SessionCookieName)
+		if err != nil || cookie.Value == "" {
+			return Actor{}, false, nil
+		}
+		token = cookie.Value
+	}
+	claims, err := s.auth.Verify(token)
 	if err != nil {
 		return Actor{}, false, errUnauthenticated
 	}

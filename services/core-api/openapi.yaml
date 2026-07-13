@@ -55,7 +55,8 @@ paths:
       description: >
         Verifies the credential (bcrypt, constant-time) and, on success, mints a signed JWT set as an
         httpOnly+Secure+SameSite cookie. A uniform error is returned for both unknown email and bad
-        password (no user enumeration). The cookie — not the body — carries the token.
+        password (no user enumeration). The cookie carries the token; the body carries it too ONLY when
+        `issueToken` is set (the MV3 extension — cross-origin, no cookie; ADR-043).
       requestBody:
         required: true
         content:
@@ -67,7 +68,7 @@ paths:
           description: Authenticated. The session cookie is set via Set-Cookie.
           headers:
             Set-Cookie:
-              description: Signed JWT in an httpOnly + Secure + SameSite=Strict session cookie (the token is not in the body).
+              description: Signed JWT in an httpOnly + Secure + SameSite=Strict session cookie (also returned in the body only when issueToken is set — ADR-043).
               schema:
                 type: string
           content:
@@ -4313,10 +4314,20 @@ components:
         password:
           type: string
           minLength: 1
+        issueToken:
+          type: boolean
+          description: >
+            When true, the 200 body also carries the signed JWT in `token` (alongside the
+            Set-Cookie). Only the MV3 extension sets this — it stores the token in
+            chrome.storage.local and sends it as `Authorization: Bearer` (cross-origin, no
+            cookie; ADR-043). The admin SPA omits it and stays cookie-only (ADR-030).
 
     AuthUser:
       type: object
-      description: The authenticated user (no credential material).
+      description: >
+        The authenticated user. `token` is present ONLY when the login request set
+        `issueToken` (the MV3 extension; ADR-043); the admin SPA omits the flag and the token
+        stays cookie-only (ADR-030). No other credential material.
       required: [id, name, email, role]
       properties:
         id:
@@ -4329,6 +4340,12 @@ components:
           format: email
         role:
           $ref: '#/components/schemas/UserRole'
+        token:
+          type: string
+          description: >
+            Signed session JWT — the same token as the Set-Cookie. Present only for extension
+            logins (issueToken=true; ADR-043). Optional (no `default`) so the admin client's
+            typed response stays token-free.
 
     AdminStaff:
       type: object
