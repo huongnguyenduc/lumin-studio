@@ -14,6 +14,7 @@ import {
   PrinterIcon,
   SettingsIcon,
   StarIcon,
+  TagIcon,
   UsersIcon,
 } from './icons';
 
@@ -38,6 +39,7 @@ export function Sidebar() {
     { href: '/danh-gia', label: t('reviews'), Icon: StarIcon },
     { href: '/vat-tu', label: t('materials'), Icon: CoilIcon },
     { href: '/khach-hang', label: t('customers'), Icon: UsersIcon },
+    { href: '/pet-tag', label: t('petTag'), Icon: TagIcon },
     { href: '/cai-dat', label: t('settings'), Icon: SettingsIcon },
   ];
 

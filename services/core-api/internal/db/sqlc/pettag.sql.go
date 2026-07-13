@@ -277,6 +277,68 @@ func (q *Queries) InsertPetTag(ctx context.Context, arg InsertPetTagParams) (Pet
 	return i, err
 }
 
+const listPetTags = `-- name: ListPetTags :many
+
+SELECT
+  pt.id, pt.code, pt.short_id, pt.status, pt.chip_uid, pt.created_at,
+  pp.handle, pp.pet_name, pp.species, pp.lost_mode
+FROM pet_tags pt
+LEFT JOIN pet_profiles pp ON pp.tag_id = pt.id
+ORDER BY pt.created_at DESC
+`
+
+type ListPetTagsRow struct {
+	ID        uuid.UUID          `json:"id"`
+	Code      string             `json:"code"`
+	ShortID   string             `json:"shortId"`
+	Status    PetTagStatus       `json:"status"`
+	ChipUid   *string            `json:"chipUid"`
+	CreatedAt pgtype.Timestamptz `json:"createdAt"`
+	Handle    *string            `json:"handle"`
+	PetName   *string            `json:"petName"`
+	Species   NullPetSpecies     `json:"species"`
+	LostMode  *bool              `json:"lostMode"`
+}
+
+// ==== Admin roster (t-5) ======================================================================
+// ListPetTags rolls every tag up with its linked pet for the admin /pet-tag roster (spec §10, P3-t t-5).
+// LEFT JOIN pet_profiles so a tag with no pet yet (UNENCODED/ENCODED) still appears — the pet-derived
+// columns come back NULL and the DTO omits them. Newest tag first (mirrors the order the encode mints
+// them). NOT paginated: the FE filters the whole set by status in memory (mirrors ListAdminCustomers).
+// MONEY-FREE and no owner PII — the pet is identified by its public @handle, never the customer account.
+// ponytail: no status predicate here — the 3-status filter is a client chip over the full list (the roster
+// is small); add a WHERE + server paging only if the tag volume ever outgrows a single fetch.
+func (q *Queries) ListPetTags(ctx context.Context) ([]ListPetTagsRow, error) {
+	rows, err := q.db.Query(ctx, listPetTags)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPetTagsRow
+	for rows.Next() {
+		var i ListPetTagsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.ShortID,
+			&i.Status,
+			&i.ChipUid,
+			&i.CreatedAt,
+			&i.Handle,
+			&i.PetName,
+			&i.Species,
+			&i.LostMode,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markPetTagEncoded = `-- name: MarkPetTagEncoded :one
 UPDATE pet_tags
 SET status = 'ENCODED', chip_uid = $2, encoded_at = now()

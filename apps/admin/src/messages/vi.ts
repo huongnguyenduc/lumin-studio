@@ -22,6 +22,7 @@ export const vi = {
     reviews: 'Đánh giá',
     materials: 'Vật tư',
     customers: 'Khách hàng',
+    petTag: 'Pet Tag',
     settings: 'Cài đặt',
     logout: 'Đăng xuất',
   },
@@ -881,6 +882,30 @@ export const vi = {
     noAddress: 'Chưa có địa chỉ nào được lưu.',
     orderHistory: 'Lịch sử đơn',
     noOrders: 'Khách chưa có đơn nào.',
+  },
+  petTag: {
+    title: 'Pet Tag',
+    subtitle:
+      'Danh sách tag NFC theo vòng đời — chờ ghi chip, đã ghi, đã kích hoạt. Xem chip, đường dẫn trang bé và trạng thái thất lạc.',
+    count: '{count} tag',
+    filterLabel: 'Lọc theo trạng thái',
+    filter: {
+      all: 'Tất cả',
+    },
+    status: {
+      UNENCODED: 'Chờ ghi chip',
+      ENCODED: 'Đã ghi',
+      ACTIVATED: 'Đã kích hoạt',
+    },
+    colTag: 'Tag',
+    colStatus: 'Trạng thái',
+    colChipUrl: 'Chip & đường dẫn',
+    colPet: 'Bé cưng',
+    lost: 'Đang thất lạc',
+    noChip: '— chưa ghi chip —',
+    notLinked: 'Chưa liên kết bé',
+    empty: 'Chưa có tag nào. Khi một đơn Pet Tag được in và ghi chip, tag sẽ xuất hiện ở đây.',
+    noneInStatus: 'Không có tag nào ở trạng thái này.',
   },
 } as const;
 

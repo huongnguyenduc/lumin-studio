@@ -557,6 +557,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/pet-tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin Pet Tag roster — every tag with its lifecycle + linked pet (admin-gated).
+         * @description Lists every Pet Tag for the /pet-tag roster (P3-t t-5, spec §10): the display code, lifecycle status (UNENCODED/ENCODED/ACTIVATED), the pet-page URL, the chip UID, and — once ACTIVATED — the linked pet's @handle, name, species and lost-mode flag (a LEFT JOIN; the profile-derived fields are absent for a tag with no pet yet). Admin-gated (cookieAuth; owner AND staff — fulfillment work, mirrors the print board + customers). The tag lifecycle is SEPARATE from OrderStatus (no statusHistory). NOT paginated — the client filters the whole set by status in memory (mirrors the customers list). Newest tag first.
+         */
+        get: operations["getAdminPetTags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/print-queue": {
         parameters: {
             query?: never;
@@ -2672,6 +2692,27 @@ export interface components {
             /** @description The NTAG215 hardware UID recorded at encode; absent until the tag is ENCODED. */
             chipUid?: string;
         };
+        /** @description One Pet Tag row in the admin roster (P3-t t-5, GET /admin/pet-tags). code + status + url identify the physical tag and its lifecycle stage; chipUid is present once ENCODED. The pet-derived fields (handle, petName, species, lostMode) come from the linked pet_profiles row (a LEFT JOIN) and are therefore absent for a tag that is not yet ACTIVATED — the roster shows "chưa liên kết" for those. No money, no owner PII (the pet is identified by its public @handle, not the customer account). */
+        AdminPetTag: {
+            /** Format: uuid */
+            id: string;
+            /** @description Display code (e.g. */
+            code: string;
+            status: components["schemas"]["PetTagStatus"];
+            /** @description The absolute pet-page URL (/t/{shortId}, PET_TAG_BASE_URL) — what is burned to the chip. */
+            url: string;
+            /** @description The NTAG215 hardware UID; absent until the tag is ENCODED. */
+            chipUid?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description The linked pet's public @handle (absent until the tag is ACTIVATED). */
+            handle?: string;
+            /** @description The linked pet's name (absent until ACTIVATED). */
+            petName?: string;
+            species?: components["schemas"]["PetSpecies"];
+            /** @description Whether the owner has the pet in lost mode (absent until ACTIVATED). */
+            lostMode?: boolean;
+        };
         /** @description Body for POST /admin/print-jobs/{id}/encode. OMIT chipUid to PREPARE — mint/return the tag + the URL to burn, leaving the stage untouched (the sheet-open call). SEND chipUid to CONFIRM — record the chip UID, mark the tag ENCODED, and advance the print job to PACKING (the write-done call). */
         PrintTagEncodeInput: {
             /** @description The NTAG215 hardware UID read from the just-written chip. Omit to prepare only. */
@@ -3729,6 +3770,27 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getAdminPetTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every Pet Tag with its lifecycle + linked pet (newest first). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminPetTag"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
         };
     };
     getPrintQueue: {

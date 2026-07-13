@@ -71,6 +71,14 @@ func (t *PetTags) MarkEncoded(ctx context.Context, id uuid.UUID, chipUID string)
 	return row, err
 }
 
+// ListForAdmin returns every pet tag with its linked pet (LEFT JOIN pet_profiles) for the admin /pet-tag
+// roster (spec §10, t-5), newest first. Read-only and MONEY-FREE; the pet-derived columns come back NULL
+// for a tag with no profile yet (UNENCODED/ENCODED). Not paginated — the roster filters by status in the
+// FE (mirrors ListAdminCustomers).
+func (t *PetTags) ListForAdmin(ctx context.Context) ([]sqlc.ListPetTagsRow, error) {
+	return t.q.ListPetTags(ctx)
+}
+
 // defaultHandleBase is the vanity-handle fallback when a pet name folds to an empty slug (e.g. an
 // all-emoji name). The route key is short_id, so a generic base is harmless — it just reads @pet-xxxx.
 const defaultHandleBase = "pet"
