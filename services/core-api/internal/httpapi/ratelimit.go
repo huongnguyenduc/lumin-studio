@@ -122,6 +122,20 @@ func defaultPaymentProofUploadLimits() paymentProofUploadLimits {
 	return paymentProofUploadLimits{rate: defaultPaymentProofUploadRate, burst: defaultPaymentProofUploadBurst}
 }
 
+// defaultLostShareLimits configures the public finder location-share limiter (P3-t t-4b). Deliberately
+// GENEROUS — throttling a rescue (someone reporting a found lost pet) is worse than the junk-row abuse it
+// prevents, and the abuse blast radius is tiny (a lost_events row storing the finder's OWN coordinates — no
+// PII of others, retention-swept in t-6). Reuses the same global token-bucket type as the proof-upload signer:
+// both are unauthenticated public writes with no trusted per-IP signal (the edge WAF is the per-IP layer).
+const (
+	defaultLostShareRate  = rate.Limit(1) // 60 sustained shares/minute process-wide — far above any real rescue volume
+	defaultLostShareBurst = 30
+)
+
+func defaultLostShareLimits() paymentProofUploadLimits {
+	return paymentProofUploadLimits{rate: defaultLostShareRate, burst: defaultLostShareBurst}
+}
+
 // paymentProofUploadLimiter is intentionally global, not per-IP: core-api still does not have a
 // trusted client-IP signal in-process. Cloudflare WAF remains the per-IP sweep layer; this process
 // bucket is the local backstop for the unauthenticated signer.

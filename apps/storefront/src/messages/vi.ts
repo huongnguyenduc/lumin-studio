@@ -680,6 +680,23 @@ export const vi = {
         ariaLabel: 'Bật hoặc tắt chế độ thất lạc',
         error: 'Chưa đổi được — thử lại giúp mình nhé.',
       },
+      finder: {
+        purpose: 'Chia sẻ vị trí của bạn để gửi cho sen biết bé đang ở đâu. Chỉ gửi một lần.',
+        button: 'Gửi vị trí của tôi',
+        locating: 'Đang lấy vị trí…',
+        sending: 'Đang gửi…',
+        sent: 'Đã gửi vị trí cho sen của {name}! Cảm ơn bạn đã giúp đỡ 🎉',
+        denied: 'Chưa chia sẻ được vị trí',
+        deniedHint: 'Bạn vẫn có thể gọi hoặc nhắn cho sen bằng nút phía trên nhé.',
+        notLost: 'Bé này vừa được đánh dấu đã về nhà rồi — không cần gửi vị trí nữa.',
+        error: 'Gửi chưa được — thử lại giúp mình nhé.',
+        retry: 'Thử lại',
+      },
+      scans: {
+        heading: '📍 {name} vừa được quét gần đây',
+        scannedAt: 'Quét lúc {time}',
+        viewMap: 'Xem trên bản đồ',
+      },
     },
   },
 } as const;

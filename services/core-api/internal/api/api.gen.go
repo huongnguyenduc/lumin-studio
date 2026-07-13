@@ -1102,6 +1102,15 @@ type PetLostModeInput struct {
 	LostMode bool `json:"lostMode"`
 }
 
+// PetLostScan One finder location-share surfaced to the OWNER on their own pet page (spec §10 D4 in-app notify, P3-t t-4b). Present only in PetPage.recentScans, only for the owner. mapUrl is an OpenStreetMap link derived from the stored {lat,lng} (never reverse-geocoded here — that is deferred, plan §6).
+type PetLostScan struct {
+	// MapUrl OpenStreetMap link to the shared coordinates (owner-only).
+	MapUrl string `json:"mapUrl"`
+
+	// ScannedAt When the finder shared the location (ISO-8601 UTC).
+	ScannedAt time.Time `json:"scannedAt"`
+}
+
 // PetMedical The pet's medical block (spec §10) — all optional. `allergies` drives the allergy warning on the page.
 type PetMedical struct {
 	Allergies  *string `json:"allergies,omitempty"`
@@ -1123,7 +1132,10 @@ type PetOwnerContact struct {
 type PetPage struct {
 	// Profile The pet profile the public /t/{shortId} page renders in its 3 view-states (P3-t t-4a). Display fields + medical (drives the allergy warning) + socials + a PDPL-masked contact block + lostMode (routes the view-state). Owner-only content (bio/gallery/favorites/theme/blocks) has no writer until the t-4c in-place editor, so it lands there — this shape is exactly what onboarding captures + the contact.
 	Profile *PetPageProfile `json:"profile,omitempty"`
-	ShortId string          `json:"shortId"`
+
+	// RecentScans Recent finder location-shares for this pet — the in-app "your pet was scanned" notify (spec §10 D4, P3-t t-4b). Populated ONLY when viewerIsOwner (a stranger never learns where a lost pet was found). Most recent first.
+	RecentScans *[]PetLostScan `json:"recentScans,omitempty"`
+	ShortId     string         `json:"shortId"`
 
 	// Status Pet Tag fulfillment lifecycle (spec §10 "Trạng thái tag") — PARALLEL to but SEPARATE from OrderStatus (the order still runs PENDING_CONFIRM→…→COMPLETED). UNENCODED = printed, blank chip; ENCODED = chip written + locked, ready to pack + ship; ACTIVATED = customer logged in + a pet profile exists (t-3). Not a packages/core state machine (DB-only, no statusHistory).
 	Status PetTagStatus `json:"status"`
@@ -1176,6 +1188,21 @@ type PetPageProfile struct {
 	// Species The pet's species — a fixed 3-choice set on the onboarding form (spec §10). `other` catches the rest.
 	Species PetSpecies `json:"species"`
 	Weight  *string    `json:"weight,omitempty"`
+}
+
+// PetShareLocationInput The finder's one-shot location share for a lost pet (spec §10 rescue 4a→4b, P3-t t-4b). Only lat/lng — data-minimized (PDPL). Sent once, after the finder grants the browser geolocation permission.
+type PetShareLocationInput struct {
+	// Lat WGS84 latitude, -90..90.
+	Lat float64 `json:"lat"`
+
+	// Lng WGS84 longitude, -180..180.
+	Lng float64 `json:"lng"`
+}
+
+// PetShareLocationResult Acknowledges that the finder's location was recorded (spec §10 4b "đã gửi").
+type PetShareLocationResult struct {
+	// Ok Always true on a 200 — the lost_events row was created.
+	Ok bool `json:"ok"`
 }
 
 // PetSocial One social link (spec §10) — a handle, not a full URL (e.g. instagram / tiktok).
@@ -1825,6 +1852,9 @@ type ActivatePetTagJSONRequestBody = PetActivateInput
 // ToggleLostModeJSONRequestBody defines body for ToggleLostMode for application/json ContentType.
 type ToggleLostModeJSONRequestBody = PetLostModeInput
 
+// SharePetLocationJSONRequestBody defines body for SharePetLocation for application/json ContentType.
+type SharePetLocationJSONRequestBody = PetShareLocationInput
+
 // QuotePriceJSONRequestBody defines body for QuotePrice for application/json ContentType.
 type QuotePriceJSONRequestBody = PriceQuoteInput
 
@@ -2150,6 +2180,9 @@ type ServerInterface interface {
 	// Toggle a pet's lost mode — owner only (spec §10 công tắc thất lạc).
 	// (PATCH /pet-tags/{shortId}/lost-mode)
 	ToggleLostMode(w http.ResponseWriter, r *http.Request, shortId string)
+	// Finder shares their location once for a lost pet (spec §10 rescue 4a→4b).
+	// (POST /pet-tags/{shortId}/share-location)
+	SharePetLocation(w http.ResponseWriter, r *http.Request, shortId string)
 	// Server-authoritative line/subtotal quote; optional province adds shippingFee + total.
 	// (POST /price/quote)
 	QuotePrice(w http.ResponseWriter, r *http.Request)
@@ -2627,6 +2660,12 @@ func (_ Unimplemented) ActivatePetTag(w http.ResponseWriter, r *http.Request, sh
 // Toggle a pet's lost mode — owner only (spec §10 công tắc thất lạc).
 // (PATCH /pet-tags/{shortId}/lost-mode)
 func (_ Unimplemented) ToggleLostMode(w http.ResponseWriter, r *http.Request, shortId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Finder shares their location once for a lost pet (spec §10 rescue 4a→4b).
+// (POST /pet-tags/{shortId}/share-location)
+func (_ Unimplemented) SharePetLocation(w http.ResponseWriter, r *http.Request, shortId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4846,6 +4885,31 @@ func (siw *ServerInterfaceWrapper) ToggleLostMode(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// SharePetLocation operation middleware
+func (siw *ServerInterfaceWrapper) SharePetLocation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "shortId" -------------
+	var shortId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "shortId", chi.URLParam(r, "shortId"), &shortId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "shortId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SharePetLocation(w, r, shortId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // QuotePrice operation middleware
 func (siw *ServerInterfaceWrapper) QuotePrice(w http.ResponseWriter, r *http.Request) {
 
@@ -5373,6 +5437,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/pet-tags/{shortId}/lost-mode", wrapper.ToggleLostMode)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/pet-tags/{shortId}/share-location", wrapper.SharePetLocation)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/price/quote", wrapper.QuotePrice)
@@ -8709,6 +8776,60 @@ func (response ToggleLostMode404JSONResponse) VisitToggleLostModeResponse(w http
 	return json.NewEncoder(w).Encode(response)
 }
 
+type SharePetLocationRequestObject struct {
+	ShortId string `json:"shortId"`
+	Body    *SharePetLocationJSONRequestBody
+}
+
+type SharePetLocationResponseObject interface {
+	VisitSharePetLocationResponse(w http.ResponseWriter) error
+}
+
+type SharePetLocation200JSONResponse PetShareLocationResult
+
+func (response SharePetLocation200JSONResponse) VisitSharePetLocationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SharePetLocation400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SharePetLocation400JSONResponse) VisitSharePetLocationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SharePetLocation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SharePetLocation404JSONResponse) VisitSharePetLocationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SharePetLocation409JSONResponse struct{ ConflictJSONResponse }
+
+func (response SharePetLocation409JSONResponse) VisitSharePetLocationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SharePetLocation429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response SharePetLocation429JSONResponse) VisitSharePetLocationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(429)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type QuotePriceRequestObject struct {
 	Body *QuotePriceJSONRequestBody
 }
@@ -9117,6 +9238,9 @@ type StrictServerInterface interface {
 	// Toggle a pet's lost mode — owner only (spec §10 công tắc thất lạc).
 	// (PATCH /pet-tags/{shortId}/lost-mode)
 	ToggleLostMode(ctx context.Context, request ToggleLostModeRequestObject) (ToggleLostModeResponseObject, error)
+	// Finder shares their location once for a lost pet (spec §10 rescue 4a→4b).
+	// (POST /pet-tags/{shortId}/share-location)
+	SharePetLocation(ctx context.Context, request SharePetLocationRequestObject) (SharePetLocationResponseObject, error)
 	// Server-authoritative line/subtotal quote; optional province adds shippingFee + total.
 	// (POST /price/quote)
 	QuotePrice(ctx context.Context, request QuotePriceRequestObject) (QuotePriceResponseObject, error)
@@ -11393,6 +11517,39 @@ func (sh *strictHandler) ToggleLostMode(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ToggleLostModeResponseObject); ok {
 		if err := validResponse.VisitToggleLostModeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SharePetLocation operation middleware
+func (sh *strictHandler) SharePetLocation(w http.ResponseWriter, r *http.Request, shortId string) {
+	var request SharePetLocationRequestObject
+
+	request.ShortId = shortId
+
+	var body SharePetLocationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SharePetLocation(ctx, request.(SharePetLocationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SharePetLocation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SharePetLocationResponseObject); ok {
+		if err := validResponse.VisitSharePetLocationResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

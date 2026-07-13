@@ -134,6 +134,39 @@ func (q *Queries) GetPetTagByShortID(ctx context.Context, shortID string) (PetTa
 	return i, err
 }
 
+const insertLostEvent = `-- name: InsertLostEvent :one
+
+INSERT INTO lost_events (id, tag_id, finder_location)
+VALUES ($1, $2, $3)
+RETURNING id, tag_id, scanned_at, finder_location, owner_notified_at
+`
+
+type InsertLostEventParams struct {
+	ID             uuid.UUID `json:"id"`
+	TagID          uuid.UUID `json:"tagId"`
+	FinderLocation []byte    `json:"finderLocation"`
+}
+
+// ==== Pet page — rescue: finder location share (t-4b) =========================================
+// InsertLostEvent records ONE finder location share for a lost pet (spec §10 LostEvent). The row itself IS the
+// PDPL consent artifact (consent point 2): it exists only because an anonymous finder saw the stated purpose,
+// tapped "send", and granted the browser geolocation permission — so scanned_at (DEFAULT now()) + a non-null
+// finder_location capture {scope=location_share, channel=web, timestamp} (compliance.md §2). owner_notified_at
+// stays NULL until a push is actually delivered — the email/notification worker is a later slice; t-4b notifies
+// the owner IN-APP (RecentLostScansForTag on their own page), which needs no worker.
+func (q *Queries) InsertLostEvent(ctx context.Context, arg InsertLostEventParams) (LostEvent, error) {
+	row := q.db.QueryRow(ctx, insertLostEvent, arg.ID, arg.TagID, arg.FinderLocation)
+	var i LostEvent
+	err := row.Scan(
+		&i.ID,
+		&i.TagID,
+		&i.ScannedAt,
+		&i.FinderLocation,
+		&i.OwnerNotifiedAt,
+	)
+	return i, err
+}
+
 const insertPetProfile = `-- name: InsertPetProfile :one
 INSERT INTO pet_profiles (
   id, tag_id, owner_account_id, handle, pet_name, species,
@@ -307,6 +340,48 @@ func (q *Queries) PetHandleTaken(ctx context.Context, handle string) (bool, erro
 	var taken bool
 	err := row.Scan(&taken)
 	return taken, err
+}
+
+const recentLostScansForTag = `-- name: RecentLostScansForTag :many
+SELECT id, tag_id, scanned_at, finder_location, owner_notified_at FROM lost_events
+WHERE tag_id = $1 AND finder_location IS NOT NULL
+ORDER BY scanned_at DESC
+LIMIT $2
+`
+
+type RecentLostScansForTagParams struct {
+	TagID uuid.UUID `json:"tagId"`
+	Limit int32     `json:"limit"`
+}
+
+// RecentLostScansForTag lists a tag's most-recent finder location-shares for the OWNER's in-app notify (spec
+// §10 D4). Only rows that carry a location (a plain scan with no share is not a notify). Bounded by $2, newest
+// first, via lost_events_tag_idx. ponytail: no time-window filter — the retention sweep (t-6) bounds row age,
+// so LIMIT is the only cap needed.
+func (q *Queries) RecentLostScansForTag(ctx context.Context, arg RecentLostScansForTagParams) ([]LostEvent, error) {
+	rows, err := q.db.Query(ctx, recentLostScansForTag, arg.TagID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LostEvent
+	for rows.Next() {
+		var i LostEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.TagID,
+			&i.ScannedAt,
+			&i.FinderLocation,
+			&i.OwnerNotifiedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const setLostMode = `-- name: SetLostMode :one

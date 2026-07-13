@@ -177,6 +177,26 @@ export interface paths {
         patch: operations["toggleLostMode"];
         trace?: never;
     };
+    "/pet-tags/{shortId}/share-location": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finder shares their location once for a lost pet (spec §10 rescue 4a→4b).
+         * @description The rescue send-once (spec §10 "Cứu hộ → gửi vị trí", P3-t t-4b). PUBLIC + unauthenticated — the finder is a stranger who scanned a lost pet, not an account. Records ONE lost_events row carrying the finder's {lat,lng}; that row IS the PDPL consent artifact (consent point 2) — it exists only because the finder saw the stated purpose, tapped "send", and granted the browser geolocation permission, so {scope=location_share, channel=web, timestamp=scanned_at} is captured (compliance.md §2). The owner is notified in-app (the scan surfaces on the owner's own page as recentScans); email push is a later slice (it needs a NATS stream + a notification worker). Guarded: the pet MUST be in lost mode (409 PET_NOT_LOST otherwise — an at-home pet's location is never pinged), coords MUST be in range (400), the shortId MUST resolve (404). Rate-limited (429) — a public write.
+         */
+        post: operations["sharePetLocation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orders": {
         parameters: {
             query?: never;
@@ -2684,6 +2704,8 @@ export interface components {
             /** @description Whether the (optional) signed-in customer is this tag's owner. */
             viewerIsOwner: boolean;
             profile?: components["schemas"]["PetPageProfile"];
+            /** @description Recent finder location-shares for this pet — the in-app "your pet was scanned" notify (spec §10 D4, P3-t t-4b). Populated ONLY when viewerIsOwner (a stranger never learns where a lost pet was found). Most recent first. */
+            recentScans?: components["schemas"]["PetLostScan"][];
         };
         /** @description The PATCH body for toggleLostMode (P3-t t-4a) — the requested lost-mode value. */
         PetLostModeInput: {
@@ -2704,6 +2726,34 @@ export interface components {
             socials?: components["schemas"]["PetSocial"][];
             /** @description PDPL consent (point 1) to store the pet + owner PII for the pet-page purpose. Must be true — a false/absent consent is a 400. Recorded as a pet_profile consent grant (ADR-042). */
             consent: boolean;
+        };
+        /** @description The finder's one-shot location share for a lost pet (spec §10 rescue 4a→4b, P3-t t-4b). Only lat/lng — data-minimized (PDPL). Sent once, after the finder grants the browser geolocation permission. */
+        PetShareLocationInput: {
+            /**
+             * Format: double
+             * @description WGS84 latitude, -90..90.
+             */
+            lat: number;
+            /**
+             * Format: double
+             * @description WGS84 longitude, -180..180.
+             */
+            lng: number;
+        };
+        /** @description Acknowledges that the finder's location was recorded (spec §10 4b "đã gửi"). */
+        PetShareLocationResult: {
+            /** @description Always true on a 200 — the lost_events row was created. */
+            ok: boolean;
+        };
+        /** @description One finder location-share surfaced to the OWNER on their own pet page (spec §10 D4 in-app notify, P3-t t-4b). Present only in PetPage.recentScans, only for the owner. mapUrl is an OpenStreetMap link derived from the stored {lat,lng} (never reverse-geocoded here — that is deferred, plan §6). */
+        PetLostScan: {
+            /**
+             * Format: date-time
+             * @description When the finder shared the location (ISO-8601 UTC).
+             */
+            scannedAt: string;
+            /** @description OpenStreetMap link to the shared coordinates (owner-only). */
+            mapUrl: string;
         };
         /** @description The guest-facing order timeline returned by GET /orders/lookup. It is a SEPARATE schema from Order (never a $ref) and exposes ONLY what a customer who already knows their code + phone may see: the code they typed, the current status, a status→time milestone list, an optional carrier tracking code, and the creation instant. It deliberately OMITS every internal field — customer PII, shipping address, line items, money (subtotal/shippingFee/total/unitPrice), payment/refund proof URLs, the internal note, the order uuid, the channel, and the statusHistory actor (byUser) + reason (ADR-032 non-leak). */
         PublicOrderTimeline: {
@@ -3031,6 +3081,36 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    sharePetLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shortId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PetShareLocationInput"];
+            };
+        };
+        responses: {
+            /** @description The location was recorded (a lost_events row was created). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PetShareLocationResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
         };
     };
     createOrder: {

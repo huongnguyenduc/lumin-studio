@@ -49,7 +49,16 @@ func (s *Server) GetPetPage(ctx context.Context, request api.GetPetPageRequestOb
 			viewerIsOwner = true
 		}
 	}
-	return api.GetPetPage200JSONResponse(petPageDTO(tag, profile, viewerIsOwner)), nil
+	page := petPageDTO(tag, profile, viewerIsOwner)
+	if viewerIsOwner {
+		// In-app owner notify (spec §10 D4, t-4b): surface the pet's recent finder location-shares on the
+		// owner's OWN page (a stranger never learns where a lost pet was found). Best-effort — a load error
+		// just omits the notify list rather than failing a page the owner needs.
+		if scans, err := tags.RecentLostScans(ctx, tag.ID, recentScanLimit); err == nil {
+			page.RecentScans = recentScansDTO(scans)
+		}
+	}
+	return api.GetPetPage200JSONResponse(page), nil
 }
 
 // ActivatePetTag handles POST /pet-tags/{shortId}/activate (customer-authed, P3-t t-3): onboarding
@@ -147,6 +156,48 @@ func (s *Server) ToggleLostMode(ctx context.Context, request api.ToggleLostModeR
 		return nil, err
 	}
 	return api.ToggleLostMode200JSONResponse(petPageDTO(tag, &profile, true)), nil
+}
+
+// validShareCoords accepts only an in-range WGS84 coordinate; anything else is a 400. The browser geolocation
+// API only ever yields in-range values, so an out-of-range payload is a buggy or hostile client, not a finder.
+func validShareCoords(lat, lng float64) bool {
+	return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+}
+
+// SharePetLocation handles POST /pet-tags/{shortId}/share-location (PUBLIC, P3-t t-4b): the rescue send-once
+// (spec §10 4a→4b). A finder — an anonymous stranger, NOT a customer — shares their location once so the owner
+// of a lost pet can find them. The recorded lost_events row IS the PDPL consent-point-2 artifact: it exists
+// only because the finder saw the stated purpose, tapped send, and granted the browser geolocation permission
+// ({scope=location_share, channel=web, timestamp=scanned_at}, compliance.md §2). The pet MUST be in lost mode
+// (else 409 — an at-home pet's location is never pinged); a not-yet-activated tag has no profile → 409; coords
+// out of range → 400; an unknown shortId → 404; rate-limited → 429 (a public write). owner_notified_at is left
+// NULL — t-4b notifies the owner IN-APP (recent scans on their own page); email push is a later slice.
+func (s *Server) SharePetLocation(ctx context.Context, request api.SharePetLocationRequestObject) (api.SharePetLocationResponseObject, error) {
+	if !s.lostShareLimiter.allow() {
+		return nil, errRateLimited // 429 — public-write backstop (the edge WAF is the per-IP sweep)
+	}
+	if request.Body == nil || !validShareCoords(request.Body.Lat, request.Body.Lng) {
+		return api.SharePetLocation400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
+	}
+	tags := db.NewPetTags(s.pool)
+	tag, err := tags.GetByShortID(ctx, request.ShortId)
+	if err != nil {
+		return nil, err // ErrNotFound → 404; else 500
+	}
+	profile, err := tags.ProfileByTagID(ctx, tag.ID)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return nil, errPetNotLost // not activated → no profile → nothing to rescue → 409
+		}
+		return nil, err
+	}
+	if !profile.LostMode {
+		return nil, errPetNotLost // an at-home pet — never ping the owner's location (409)
+	}
+	if _, err := tags.RecordLostScan(ctx, tag.ID, db.FinderLocation{Lat: request.Body.Lat, Lng: request.Body.Lng}); err != nil {
+		return nil, err
+	}
+	return api.SharePetLocation200JSONResponse{Ok: true}, nil
 }
 
 // validateActivateInput enforces the spec §10 onboarding rules the DB CHECK/regex would otherwise turn
@@ -334,4 +385,36 @@ func trimPtr(s *string) *string {
 		return nil
 	}
 	return &t
+}
+
+// recentScanLimit caps the owner's in-app scan-notify list (spec §10 D4). A handful is enough to show
+// "recently scanned near {map}"; the full history is not a page feature.
+const recentScanLimit = 5
+
+// recentScansDTO projects lost_events to the owner-only in-app notify list. A row whose finder_location won't
+// decode is skipped (never a page 500); the query already filters finder_location IS NOT NULL. Returns nil (an
+// omitted field) when nothing decodes, so a stranger's page — which never calls this — carries no recentScans.
+func recentScansDTO(events []sqlc.LostEvent) *[]api.PetLostScan {
+	scans := make([]api.PetLostScan, 0, len(events))
+	for _, e := range events {
+		var loc db.FinderLocation
+		if len(e.FinderLocation) == 0 || json.Unmarshal(e.FinderLocation, &loc) != nil {
+			continue
+		}
+		scans = append(scans, api.PetLostScan{
+			ScannedAt: e.ScannedAt.Time,
+			MapUrl:    osmMapURL(loc.Lat, loc.Lng),
+		})
+	}
+	if len(scans) == 0 {
+		return nil
+	}
+	return &scans
+}
+
+// osmMapURL builds an OpenStreetMap link to a coordinate (spec §10 D4 "mở bản đồ") — the owner-facing map for a
+// lost-scan. A plain link: no API key, no reverse-geocode (deferred, plan §6). Zoom 17 frames a street-level
+// view; %v renders each float in its shortest round-tripping form.
+func osmMapURL(lat, lng float64) string {
+	return fmt.Sprintf("https://www.openstreetmap.org/?mlat=%v&mlon=%v#map=17/%v/%v", lat, lng, lat, lng)
 }

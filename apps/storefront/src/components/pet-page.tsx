@@ -1,21 +1,23 @@
 import { getTranslations } from 'next-intl/server';
 import type {
   PetContact,
+  PetLostScan,
   PetPage as PetPageData,
   PetPageProfile,
   PetSpecies,
 } from '@/lib/pet-page';
+import { FinderLocationShare } from './finder-location-share';
 import { LostModeToggle } from './lost-mode-toggle';
 
-// The live pet page (spec §10 "1 URL · 3 trạng thái", P3-t t-4a). One URL, three view-states routed by
+// The live pet page (spec §10 "1 URL · 3 trạng thái", P3-t t-4a/t-4b). One URL, three view-states routed by
 // viewerIsOwner + lostMode:
-//   • owner (any lostMode)      → the page + the lost-mode toggle (the in-place editor lands in t-4c)
+//   • owner (any lostMode)      → the page + the lost-mode toggle + the in-app scan notify (t-4b); editor = t-4c
 //   • stranger, lostMode=false  → 4c: read-only "at home · safe", contact masked
-//   • stranger, lostMode=true   → 4a: rescue — lost banner, allergy warning, full contact (call/zalo)
-// Masking is server-side: contact.masked is already the PDPL decision (the raw phone only reaches a
-// revealed view), so this component just renders what it is handed. Safety colours (allergy, lost banner,
-// call CTA) use the system danger/primary tokens — never a theme (theme lands in t-4c). Mobile-first,
-// one-handed, sentence-case, all copy under petTag.page.*.
+//   • stranger, lostMode=true   → 4a: rescue — lost banner, allergy warning, full contact + share-my-location (t-4b)
+// Masking is server-side: contact.masked is already the PDPL decision (the raw phone only reaches a revealed
+// view), so this component just renders what it is handed. Safety colours (allergy, lost banner, call CTA) use
+// the system danger/primary tokens — never a theme (theme lands in t-4c). Mobile-first, one-handed,
+// sentence-case, all copy under petTag.page.*.
 
 const SPECIES_EMOJI: Record<PetSpecies, string> = { dog: '🐶', cat: '🐱', other: '🐾' };
 const WARN = '⚠️';
@@ -67,6 +69,10 @@ export async function PetPage({ page }: { page: PetPageData }) {
         <LostModeToggle shortId={page.shortId} petName={profile.petName} lostMode={lost} />
       )}
 
+      {isOwner && page.recentScans && page.recentScans.length > 0 && (
+        <RecentScans scans={page.recentScans} petName={profile.petName} t={t} />
+      )}
+
       {profile.socials && profile.socials.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {profile.socials.map((s) => (
@@ -103,6 +109,8 @@ export async function PetPage({ page }: { page: PetPageData }) {
 
       <Contact contact={profile.contact} petName={profile.petName} t={t} />
 
+      {lost && !isOwner && <FinderLocationShare shortId={page.shortId} petName={profile.petName} />}
+
       <p className="mt-auto pt-4 text-center font-mono text-[11px] leading-relaxed text-text-muted">
         {isOwner ? t('ownerFooter') : t('poweredBy')}
       </p>
@@ -124,6 +132,56 @@ function MedChip({ children }: { children: React.ReactNode }) {
     <span className="rounded-pill border border-border-subtle bg-surface-sunken px-3 py-1.5 text-xs text-text-body">
       {children}
     </span>
+  );
+}
+
+// RecentScans — the owner-only in-app notify (spec §10 D4, t-4b). When a finder shared a location for this pet,
+// the owner sees it here on their OWN page (a stranger never does — page.recentScans is populated by core-api
+// only for the owner). Each row links to an OpenStreetMap view of where the pet was scanned. Calm teal palette
+// (a found-nearby signal is hopeful, not a warning); the map link is the flame primary action. Times render in
+// VN local time (the shop's locale) from the stored UTC instant.
+function RecentScans({
+  scans,
+  petName,
+  t,
+}: {
+  scans: PetLostScan[];
+  petName: string;
+  t: Awaited<ReturnType<typeof getTranslations<'petTag.page'>>>;
+}) {
+  const fmt = new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Ho_Chi_Minh',
+  });
+  return (
+    <section className="rounded-2xl border-2 border-accent-teal bg-accent-teal-soft p-4">
+      <p className="text-sm font-semibold text-text-strong">
+        {t('scans.heading', { name: petName })}
+      </p>
+      <ul className="mt-2 flex flex-col gap-2">
+        {scans.map((s) => (
+          <li
+            key={`${s.scannedAt}:${s.mapUrl}`}
+            className="flex items-center justify-between gap-3 text-sm"
+          >
+            <span className="font-mono text-[11px] text-text-muted">
+              {t('scans.scannedAt', { time: fmt.format(new Date(s.scannedAt)) })}
+            </span>
+            <a
+              href={s.mapUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-[44px] shrink-0 items-center font-semibold text-primary underline"
+            >
+              {t('scans.viewMap')}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

@@ -60,6 +60,10 @@ type Server struct {
 	// still the per-IP layer; this in-process bucket keeps a missing/misconfigured edge rule from
 	// turning one unauthenticated endpoint into unlimited valid 10MB upload policies.
 	proofUploadLimiter *paymentProofUploadLimiter
+	// lostShareLimiter is a small global token bucket for the public finder location-share write (P3-t t-4b),
+	// mirroring proofUploadLimiter — an unauthenticated public write with no trusted per-IP signal. Generous
+	// limits (ratelimit.go) so a real rescue is never throttled; the edge WAF remains the per-IP layer.
+	lostShareLimiter *paymentProofUploadLimiter
 	// modelUploads signs presigned POST policies for admin source-model uploads (.glb/.stl/.3mf,
 	// P3-j-b/ADR-036) and host-pins the asset-job sourceModelUrl. Nil means the environment has not
 	// wired the catalog-asset bucket credentials; the owner-only endpoint then fails closed with a 500.
@@ -139,6 +143,7 @@ func NewServer(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus, authIss
 		users:              db.NewIdentity(pool),
 		lookup:             newLookupLimiter(defaultLookupLimits()),
 		proofUploadLimiter: newPaymentProofUploadLimiter(defaultPaymentProofUploadLimits()),
+		lostShareLimiter:   newPaymentProofUploadLimiter(defaultLostShareLimits()),
 		tracking:           newTrackingSigner(devTrackingSecret),
 		printHub:           newPrintStreamHub(),
 		petPageBaseURL:     defaultPetPageBaseURL,

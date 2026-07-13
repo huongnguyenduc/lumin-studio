@@ -91,3 +91,26 @@ UPDATE pet_profiles
 SET lost_mode = $2, updated_at = now()
 WHERE tag_id = $1 AND owner_account_id = $3
 RETURNING *;
+
+-- ==== Pet page — rescue: finder location share (t-4b) =========================================
+
+-- InsertLostEvent records ONE finder location share for a lost pet (spec §10 LostEvent). The row itself IS the
+-- PDPL consent artifact (consent point 2): it exists only because an anonymous finder saw the stated purpose,
+-- tapped "send", and granted the browser geolocation permission — so scanned_at (DEFAULT now()) + a non-null
+-- finder_location capture {scope=location_share, channel=web, timestamp} (compliance.md §2). owner_notified_at
+-- stays NULL until a push is actually delivered — the email/notification worker is a later slice; t-4b notifies
+-- the owner IN-APP (RecentLostScansForTag on their own page), which needs no worker.
+-- name: InsertLostEvent :one
+INSERT INTO lost_events (id, tag_id, finder_location)
+VALUES ($1, $2, $3)
+RETURNING *;
+
+-- RecentLostScansForTag lists a tag's most-recent finder location-shares for the OWNER's in-app notify (spec
+-- §10 D4). Only rows that carry a location (a plain scan with no share is not a notify). Bounded by $2, newest
+-- first, via lost_events_tag_idx. ponytail: no time-window filter — the retention sweep (t-6) bounds row age,
+-- so LIMIT is the only cap needed.
+-- name: RecentLostScansForTag :many
+SELECT * FROM lost_events
+WHERE tag_id = $1 AND finder_location IS NOT NULL
+ORDER BY scanned_at DESC
+LIMIT $2;
