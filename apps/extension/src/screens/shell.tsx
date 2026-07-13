@@ -3,6 +3,7 @@ import { Button } from '@lumin/ui';
 import { logout, type SessionUser } from '../lib/auth';
 import { t, type MessageKey } from '../i18n';
 import { CreateOrder } from './create-order';
+import { Lookup } from './lookup';
 
 type Tab = 'create' | 'lookup' | 'templates';
 const TABS: { id: Tab; labelKey: MessageKey }[] = [
@@ -63,9 +64,9 @@ export function Shell({ user, onLogout }: { user: SessionUser; onLogout: () => v
         })}
       </nav>
 
-      {tab === 'create' ? (
-        <CreateOrder />
-      ) : (
+      {tab === 'create' && <CreateOrder />}
+      {tab === 'lookup' && <Lookup role={user.role} />}
+      {tab === 'templates' && (
         <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-text-muted">
           {t('shell.comingSoon')}
         </div>

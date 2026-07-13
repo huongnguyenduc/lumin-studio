@@ -2171,6 +2171,9 @@ type ServerInterface interface {
 	// Admin orders list — paginated, optionally filtered by status (admin-gated).
 	// (GET /admin/orders)
 	GetAdminOrders(w http.ResponseWriter, r *http.Request, params GetAdminOrdersParams)
+	// Admin order detail by human code — staff paste-to-lookup (admin-gated).
+	// (GET /admin/orders/by-code/{code})
+	GetAdminOrderByCode(w http.ResponseWriter, r *http.Request, code string)
 	// Admin order detail by id — the full internal order (admin-gated).
 	// (GET /admin/orders/{id})
 	GetAdminOrder(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -2504,6 +2507,12 @@ func (_ Unimplemented) UpdateMachine(w http.ResponseWriter, r *http.Request, id 
 // Admin orders list — paginated, optionally filtered by status (admin-gated).
 // (GET /admin/orders)
 func (_ Unimplemented) GetAdminOrders(w http.ResponseWriter, r *http.Request, params GetAdminOrdersParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Admin order detail by human code — staff paste-to-lookup (admin-gated).
+// (GET /admin/orders/by-code/{code})
+func (_ Unimplemented) GetAdminOrderByCode(w http.ResponseWriter, r *http.Request, code string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3522,6 +3531,37 @@ func (siw *ServerInterfaceWrapper) GetAdminOrders(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAdminOrders(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAdminOrderByCode operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminOrderByCode(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "code" -------------
+	var code string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "code", chi.URLParam(r, "code"), &code, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAdminOrderByCode(w, r, code)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5562,6 +5602,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/admin/orders", wrapper.GetAdminOrders)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/orders/by-code/{code}", wrapper.GetAdminOrderByCode)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/orders/{id}", wrapper.GetAdminOrder)
 	})
 	r.Group(func(r chi.Router) {
@@ -6732,6 +6775,41 @@ type GetAdminOrders401JSONResponse struct{ UnauthorizedJSONResponse }
 func (response GetAdminOrders401JSONResponse) VisitGetAdminOrdersResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminOrderByCodeRequestObject struct {
+	Code string `json:"code"`
+}
+
+type GetAdminOrderByCodeResponseObject interface {
+	VisitGetAdminOrderByCodeResponse(w http.ResponseWriter) error
+}
+
+type GetAdminOrderByCode200JSONResponse Order
+
+func (response GetAdminOrderByCode200JSONResponse) VisitGetAdminOrderByCodeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminOrderByCode401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetAdminOrderByCode401JSONResponse) VisitGetAdminOrderByCodeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminOrderByCode404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetAdminOrderByCode404JSONResponse) VisitGetAdminOrderByCodeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -9541,6 +9619,9 @@ type StrictServerInterface interface {
 	// Admin orders list — paginated, optionally filtered by status (admin-gated).
 	// (GET /admin/orders)
 	GetAdminOrders(ctx context.Context, request GetAdminOrdersRequestObject) (GetAdminOrdersResponseObject, error)
+	// Admin order detail by human code — staff paste-to-lookup (admin-gated).
+	// (GET /admin/orders/by-code/{code})
+	GetAdminOrderByCode(ctx context.Context, request GetAdminOrderByCodeRequestObject) (GetAdminOrderByCodeResponseObject, error)
 	// Admin order detail by id — the full internal order (admin-gated).
 	// (GET /admin/orders/{id})
 	GetAdminOrder(ctx context.Context, request GetAdminOrderRequestObject) (GetAdminOrderResponseObject, error)
@@ -10430,6 +10511,32 @@ func (sh *strictHandler) GetAdminOrders(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAdminOrdersResponseObject); ok {
 		if err := validResponse.VisitGetAdminOrdersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAdminOrderByCode operation middleware
+func (sh *strictHandler) GetAdminOrderByCode(w http.ResponseWriter, r *http.Request, code string) {
+	var request GetAdminOrderByCodeRequestObject
+
+	request.Code = code
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAdminOrderByCode(ctx, request.(GetAdminOrderByCodeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAdminOrderByCode")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAdminOrderByCodeResponseObject); ok {
+		if err := validResponse.VisitGetAdminOrderByCodeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
