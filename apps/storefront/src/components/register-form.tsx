@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Button, Input } from '@lumin/ui';
 import { registerCustomer } from '@/lib/customer-auth';
+import { safeNextPath } from '@/lib/next-path';
 
 type RegisterError =
   | 'emailTaken'
@@ -18,13 +19,18 @@ type RegisterError =
 /**
  * Customer registration (/tai-khoan/dang-ky, P1-s). name + email + phone + password → a Server Action
  * that creates the account server-side and mints the session cookie (register returns Set-Cookie → the
- * new customer is logged in), then routes to the account hub. Client-side min-checks mirror the server
+ * new customer is logged in), then routes to the return target. Client-side min-checks mirror the server
  * bounds (name 2..60 runes, password ≥8) for fast feedback; the server re-validates authoritatively.
- * The one field-error safe to surface is 409 EMAIL_TAKEN (bound to the email field).
+ * The one field-error safe to surface is 409 EMAIL_TAKEN (bound to the email field). `next` (P3-t t-3)
+ * carries the pet-tag return path through registration too, guarded against open redirects.
  */
-export function RegisterForm() {
+export function RegisterForm({ next }: { next?: string }) {
   const t = useTranslations('account.register');
   const router = useRouter();
+  const returnTo = safeNextPath(next);
+  const loginHref = next
+    ? `/tai-khoan/dang-nhap?next=${encodeURIComponent(returnTo)}`
+    : '/tai-khoan/dang-nhap';
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -59,7 +65,7 @@ export function RegisterForm() {
       password,
     });
     if (res.ok) {
-      router.push('/tai-khoan');
+      router.push(returnTo);
       router.refresh(); // invalidate any prefetched (logged-out) hub payload → re-read the fresh cookie
       return;
     }
@@ -146,7 +152,7 @@ export function RegisterForm() {
       <p className="mt-6 text-sm text-text-muted">
         {t('haveAccount')}{' '}
         <Link
-          href="/tai-khoan/dang-nhap"
+          href={loginHref}
           className="font-medium text-text-strong underline underline-offset-2 hover:text-accent-flame"
         >
           {t('loginLink')}

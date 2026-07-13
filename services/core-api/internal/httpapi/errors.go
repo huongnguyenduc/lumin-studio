@@ -47,6 +47,10 @@ const (
 	// the ONE field a register form may safely surface (a login email is user-known, not a secret —
 	// unlike the login endpoint, which stays uniform to avoid enumeration). PR-P1-r.
 	codeEmailTaken = "EMAIL_TAKEN"
+	// codePetTagNotActivatable is the pet-tag activation 409: the scanned tag is not in an activatable
+	// state — already ACTIVATED (a second activate, or a lost race), or still UNENCODED (chip not written).
+	// A normal scan is ENCODED; this only fires on a re-submit/race or direct API abuse (P3-t t-3).
+	codePetTagNotActivatable = "PET_TAG_NOT_ACTIVATABLE"
 
 	// Checkout (PR-3g) selection/intake codes. Granular where the storefront needs a distinct
 	// user-facing message (hết hàng vs quá dài vs chưa hỗ trợ tỉnh); one INVALID_SELECTION for

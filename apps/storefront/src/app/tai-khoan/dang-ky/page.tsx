@@ -9,7 +9,13 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 // Server shell — the form is interactive (a Server Action creates the account + mints the session), so
-// the work lives in the <RegisterForm> client component.
-export default function RegisterPage() {
-  return <RegisterForm />;
+// the work lives in the <RegisterForm> client component. `next` is read here (server) and passed down so
+// a customer who registers from the pet-tag welcome (P3-t t-3) returns to /t/{shortId} after signing up.
+export default async function RegisterPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const { next } = await searchParams;
+  return <RegisterForm next={next} />;
 }

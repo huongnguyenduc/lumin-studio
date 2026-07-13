@@ -138,9 +138,16 @@ func classify(operationID string) authClass {
 		// can't itself require one (mirrors LoginUser/LogoutUser). Register/login gate on the
 		// credential; logout is idempotent.
 		return authPublic
-	case "GetCustomerOrders":
-		// The authenticated customer's own order history — needs a valid CUSTOMER session (not the
-		// admin cookie). resolveCustomer injects the scoping customer id.
+	case "GetPetPage":
+		// Public pet-page read (P3-t t-3) — the /t/{shortId} scan target. Anyone who taps the chip
+		// reads it (no session); returns status + a data-minimized profile summary (no owner PII). The
+		// active/owner boundaries the full page needs land in t-4; this read is public by design.
+		return authPublic
+	case "GetCustomerOrders", "ActivatePetTag":
+		// GetCustomerOrders — the authenticated customer's own order history. ActivatePetTag (P3-t t-3) —
+		// onboarding attaches the scanned tag to WHICHEVER customer is signed in (spec §10 "tag tự gắn
+		// vào tài khoản vừa đăng nhập"), so it needs a valid CUSTOMER session (not the admin cookie);
+		// resolveCustomer injects the owner id. An absent/invalid customer session → 401.
 		return authCustomer
 	default:
 		// GetDashboard, ListReplyTemplates, GetSettings, TransitionOrder, + any new operation.

@@ -12,6 +12,12 @@ import (
 )
 
 type Querier interface {
+	// AttachAndActivateTag is the atomic claim: attach the tag to the signed-in customer, stamp activated_at,
+	// flip ENCODED → ACTIVATED (spec §10 step 2d). The `status = 'ENCODED'` guard makes it idempotent AND
+	// race-safe: a concurrent activate that already flipped the tag leaves 0 rows, which the handler maps to a
+	// 409 (a tag can only be activated once). A profile is created only alongside this flip, so a tag that
+	// passes the guard has no pet_profiles row yet (the tag_id UNIQUE is a further backstop).
+	AttachAndActivateTag(ctx context.Context, arg AttachAndActivateTagParams) (PetTag, error)
 	// ── Deduct-on-print (slice 4b, ADR-039 pt 2/4) ────────────────────────────────────────────────────────
 	// BatchesToDecrement returns a material's OPEN lots oldest-first for a FIFO draw, row-locked (FOR UPDATE)
 	// so two concurrent deduct-on-print draws of the same filament serialize — the second blocks until the
@@ -139,10 +145,18 @@ type Querier interface {
 	// claimed partId belongs to the SAME product before assigning it (ADR-037: colour ∈ part ∈ product), so a
 	// colour can never be grouped under another product's part. Missing → ErrNoRows → 400 field(partId).
 	GetPartByProduct(ctx context.Context, arg GetPartByProductParams) (Part, error)
+	// GetPetProfileByTagID loads the profile for an ACTIVATED tag's public page (t-3 returns a minimal
+	// summary; t-4 renders the full page). One profile per tag (pet_profiles.tag_id UNIQUE).
+	GetPetProfileByTagID(ctx context.Context, tagID uuid.UUID) (PetProfile, error)
 	// GetPetTagByOrderItem returns the (first) pet tag minted for an order line, or no rows. A qty>1 line
 	// maps to N physical tags (order_item_id is NOT unique — t-1); t-2 mints/encodes ONE per line, so LIMIT
 	// 1 by age is the tag this line's encode operates on (ADR-041 — the per-unit N-tag loop is a follow-up).
 	GetPetTagByOrderItem(ctx context.Context, orderItemID uuid.UUID) (PetTag, error)
+	// ==== Activation + public pet page (t-3) ======================================================
+	// GetPetTagByShortID resolves a tag by its URL routing key (the /t/{shortId} segment burned to the chip),
+	// for the public pet page (t-3) and the activation guard. No lock — the public GET never writes; the
+	// activation race is handled by AttachAndActivateTag's status guard, not a SELECT FOR UPDATE.
+	GetPetTagByShortID(ctx context.Context, shortID string) (PetTag, error)
 	GetPrintJobByID(ctx context.Context, id uuid.UUID) (PrintJob, error)
 	// GetPrintQueueEntry is the single-card read behind the stage PATCH (P3-f): the same enriched shape as
 	// ListPrintQueue for one job, so the mutate response and the board list carry one identical card shape.
@@ -229,6 +243,11 @@ type Querier interface {
 	InsertOutbox(ctx context.Context, arg InsertOutboxParams) error
 	// === ADR-037 configurator: parts (named part groups, each with its own colour set) ===
 	InsertPart(ctx context.Context, arg InsertPartParams) (Part, error)
+	// InsertPetProfile creates the pet page at activation (spec §10). gallery/favorites/theme/blocks +
+	// lost_mode take their table DEFAULTS (empty/[]/{}/false) — onboarding only collects profile + contact +
+	// medical + socials; the rest is filled later on the page (t-4). medical/owner_contact/socials are jsonb
+	// ([]byte in Go). handle is resolved unique before this insert (SlugifyHandle + PetHandleTaken loop).
+	InsertPetProfile(ctx context.Context, arg InsertPetProfileParams) (PetProfile, error)
 	// InsertPetTag mints a tag in the default UNENCODED state (chip_uid/encoded_at NULL until the chip is
 	// written). code + short_id are generated in the Go seam (sequence + crypto/rand); the UNIQUE indexes on
 	// both are the collision backstop.
@@ -442,6 +461,10 @@ type Querier interface {
 	// lines using the product's live parts/colors (grams from parts.est_filament_qty | products.est_filament_qty,
 	// material from colors.filament_material_id).
 	OrderItemForDeduction(ctx context.Context, id uuid.UUID) (OrderItemForDeductionRow, error)
+	// PetHandleTaken reports whether a candidate vanity handle is already used, driving the auto-suffix loop
+	// (pet_profiles.handle UNIQUE is the final backstop against a check-then-insert race — astronomically
+	// rare at one-shop volume, and a lost race just fails the activate, which the customer retries).
+	PetHandleTaken(ctx context.Context, handle string) (bool, error)
 	// ping.sql — the sqlc pipeline smoke query. It gives `sqlc vet`/`sqlc diff`
 	// substantive content before the first domain query lands (InsertOutbox, PR-2b) and
 	// proves codegen end-to-end. Readiness uses pgxpool.Ping directly, not this query.
@@ -475,6 +498,11 @@ type Querier interface {
 	// an order can never reach SHIPPING without both. RETURNING * reflects the new status (already
 	// flipped in this tx) plus both artifacts (§3h / §6 D12 / P3-e).
 	SetShippingArtifacts(ctx context.Context, arg SetShippingArtifactsParams) (Order, error)
+	// SlugifyHandle folds a pet name into a URL-safe vanity handle base, reusing the search stack's
+	// immutable_unaccent (000012) so Vietnamese diacritics fold the same way everywhere (Bơ → bo, Mai Lê →
+	// mai-le). The handle is cosmetic (@handle) — the route key is short_id — so an empty result (e.g. an
+	// all-emoji name) is fine; the handler falls back. Uniqueness is resolved by the PetHandleTaken loop.
+	SlugifyHandle(ctx context.Context, dollar_1 string) (string, error)
 	// SnapshotShopInputs reads the shop-wide, rolling-30-day rate inputs shared by the per-order rollup AND the
 	// costing-summary KPI (so the frozen COGS margins can never diverge from the /vat-tu dashboard — ADR-039
 	// pt 7). One round-trip: scrap+print grams over the last 30 days (the waste factor = scrap ÷ print, guarded

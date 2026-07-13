@@ -83,6 +83,13 @@ const (
 	Imagewebp PaymentProofUploadInputContentType = "image/webp"
 )
 
+// Defines values for PetSpecies.
+const (
+	Cat   PetSpecies = "cat"
+	Dog   PetSpecies = "dog"
+	Other PetSpecies = "other"
+)
+
 // Defines values for PetTagStatus.
 const (
 	ACTIVATED PetTagStatus = "ACTIVATED"
@@ -1065,6 +1072,78 @@ type Personalization struct {
 	ZoneId string `json:"zoneId"`
 }
 
+// PetActivateInput The 2-step onboarding payload (spec §10 steps 2b+2c) submitted to activate a tag. petName + species + ownerContact (phone) are required, the rest optional; consent MUST be true (PDPL consent point 1 — the profile stores pet + owner PII). No microchip field (spec §10: "bỏ field số microchip").
+type PetActivateInput struct {
+	// Age Free-form ("2 tuổi", "6 tháng") — not a number in the design.
+	Age   *string `json:"age,omitempty"`
+	Breed *string `json:"breed,omitempty"`
+
+	// Consent PDPL consent (point 1) to store the pet + owner PII for the pet-page purpose. Must be true — a false/absent consent is a 400. Recorded as a pet_profile consent grant (ADR-042).
+	Consent bool `json:"consent"`
+
+	// Medical The pet's medical block (spec §10) — all optional. `allergies` drives the allergy warning on the page.
+	Medical *PetMedical `json:"medical,omitempty"`
+
+	// OwnerContact The owner's contact block (spec §10). phone is REQUIRED — it is what makes lost mode useful. On the public page phone is masked and revealed only in lost mode / to the owner (PDPL, t-4); the value stored here is the raw number.
+	OwnerContact PetOwnerContact `json:"ownerContact"`
+	PetName      string          `json:"petName"`
+
+	// PhotoUrl Optional avatar URL (reuses the presigned proof upload the checkout receipt uses).
+	PhotoUrl *string      `json:"photoUrl,omitempty"`
+	Socials  *[]PetSocial `json:"socials,omitempty"`
+
+	// Species The pet's species — a fixed 3-choice set on the onboarding form (spec §10). `other` catches the rest.
+	Species PetSpecies `json:"species"`
+	Weight  *string    `json:"weight,omitempty"`
+}
+
+// PetMedical The pet's medical block (spec §10) — all optional. `allergies` drives the allergy warning on the page.
+type PetMedical struct {
+	Allergies  *string `json:"allergies,omitempty"`
+	Neutered   *bool   `json:"neutered,omitempty"`
+	Vaccinated *bool   `json:"vaccinated,omitempty"`
+	VetClinic  *string `json:"vetClinic,omitempty"`
+}
+
+// PetOwnerContact The owner's contact block (spec §10). phone is REQUIRED — it is what makes lost mode useful. On the public page phone is masked and revealed only in lost mode / to the owner (PDPL, t-4); the value stored here is the raw number.
+type PetOwnerContact struct {
+	Name string `json:"name"`
+
+	// Phone VN phone (0… or +84…), validated server-side.
+	Phone string  `json:"phone"`
+	Zalo  *string `json:"zalo,omitempty"`
+}
+
+// PetPage The public /t/{shortId} pet-page read (P3-t t-3). `status` routes the page: UNENCODED/ENCODED = not yet activated (onboarding/welcome), ACTIVATED = live. `profile` is present only when ACTIVATED (the minimal summary — the full page is t-4).
+type PetPage struct {
+	// Profile The MINIMAL public profile summary shown once a tag is ACTIVATED (P3-t t-3). Display-only fields — NO owner PII (contact/medical) — so the public read stays data-minimized. The full page lands in t-4.
+	Profile *PetPageProfile `json:"profile,omitempty"`
+	ShortId string          `json:"shortId"`
+
+	// Status Pet Tag fulfillment lifecycle (spec §10 "Trạng thái tag") — PARALLEL to but SEPARATE from OrderStatus (the order still runs PENDING_CONFIRM→…→COMPLETED). UNENCODED = printed, blank chip; ENCODED = chip written + locked, ready to pack + ship; ACTIVATED = customer logged in + a pet profile exists (t-3). Not a packages/core state machine (DB-only, no statusHistory).
+	Status PetTagStatus `json:"status"`
+}
+
+// PetPageProfile The MINIMAL public profile summary shown once a tag is ACTIVATED (P3-t t-3). Display-only fields — NO owner PII (contact/medical) — so the public read stays data-minimized. The full page lands in t-4.
+type PetPageProfile struct {
+	// Handle The vanity slug shown as @handle (derived from the pet name).
+	Handle   string  `json:"handle"`
+	PetName  string  `json:"petName"`
+	PhotoUrl *string `json:"photoUrl,omitempty"`
+
+	// Species The pet's species — a fixed 3-choice set on the onboarding form (spec §10). `other` catches the rest.
+	Species PetSpecies `json:"species"`
+}
+
+// PetSocial One social link (spec §10) — a handle, not a full URL (e.g. instagram / tiktok).
+type PetSocial struct {
+	Handle   string `json:"handle"`
+	Platform string `json:"platform"`
+}
+
+// PetSpecies The pet's species — a fixed 3-choice set on the onboarding form (spec §10). `other` catches the rest.
+type PetSpecies string
+
 // PetTagRef A minimal reference to the physical Pet Tag behind a print job (spec §10). Returned by the encode endpoint so the admin sheet can show the URL to burn to the chip and the current tag status. The tag is minted lazily on the first encode call for an nfc_tag order line (no order→print_job wiring exists yet — ADR-041); code + shortId are stable once created.
 type PetTagRef struct {
 	// ChipUid The NTAG215 hardware UID recorded at encode; absent until the tag is ENCODED.
@@ -1697,6 +1776,9 @@ type CreateOrderJSONRequestBody = CreateOrderInput
 // TransitionOrderJSONRequestBody defines body for TransitionOrder for application/json ContentType.
 type TransitionOrderJSONRequestBody = TransitionRequest
 
+// ActivatePetTagJSONRequestBody defines body for ActivatePetTag for application/json ContentType.
+type ActivatePetTagJSONRequestBody = PetActivateInput
+
 // QuotePriceJSONRequestBody defines body for QuotePrice for application/json ContentType.
 type QuotePriceJSONRequestBody = PriceQuoteInput
 
@@ -2013,6 +2095,12 @@ type ServerInterface interface {
 	// Advance an order's status (RBAC-gated; reconcile→PAID and →REFUNDED are owner-only).
 	// (POST /orders/{id}/transitions)
 	TransitionOrder(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Public pet-page read by shortId — the /t/{shortId} scan target (spec §10).
+	// (GET /pet-tags/{shortId})
+	GetPetPage(w http.ResponseWriter, r *http.Request, shortId string)
+	// Activate an ENCODED tag — attach it to the signed-in customer + create the pet profile.
+	// (POST /pet-tags/{shortId}/activate)
+	ActivatePetTag(w http.ResponseWriter, r *http.Request, shortId string)
 	// Server-authoritative line/subtotal quote; optional province adds shippingFee + total.
 	// (POST /price/quote)
 	QuotePrice(w http.ResponseWriter, r *http.Request)
@@ -2472,6 +2560,18 @@ func (_ Unimplemented) TrackOrder(w http.ResponseWriter, r *http.Request, params
 // Advance an order's status (RBAC-gated; reconcile→PAID and →REFUNDED are owner-only).
 // (POST /orders/{id}/transitions)
 func (_ Unimplemented) TransitionOrder(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Public pet-page read by shortId — the /t/{shortId} scan target (spec §10).
+// (GET /pet-tags/{shortId})
+func (_ Unimplemented) GetPetPage(w http.ResponseWriter, r *http.Request, shortId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Activate an ENCODED tag — attach it to the signed-in customer + create the pet profile.
+// (POST /pet-tags/{shortId}/activate)
+func (_ Unimplemented) ActivatePetTag(w http.ResponseWriter, r *http.Request, shortId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4604,6 +4704,62 @@ func (siw *ServerInterfaceWrapper) TransitionOrder(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// GetPetPage operation middleware
+func (siw *ServerInterfaceWrapper) GetPetPage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "shortId" -------------
+	var shortId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "shortId", chi.URLParam(r, "shortId"), &shortId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "shortId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPetPage(w, r, shortId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ActivatePetTag operation middleware
+func (siw *ServerInterfaceWrapper) ActivatePetTag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "shortId" -------------
+	var shortId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "shortId", chi.URLParam(r, "shortId"), &shortId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "shortId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CustomerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ActivatePetTag(w, r, shortId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // QuotePrice operation middleware
 func (siw *ServerInterfaceWrapper) QuotePrice(w http.ResponseWriter, r *http.Request) {
 
@@ -5122,6 +5278,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/orders/{id}/transitions", wrapper.TransitionOrder)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/pet-tags/{shortId}", wrapper.GetPetPage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/pet-tags/{shortId}/activate", wrapper.ActivatePetTag)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/price/quote", wrapper.QuotePrice)
@@ -8324,6 +8486,86 @@ func (response TransitionOrder422JSONResponse) VisitTransitionOrderResponse(w ht
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetPetPageRequestObject struct {
+	ShortId string `json:"shortId"`
+}
+
+type GetPetPageResponseObject interface {
+	VisitGetPetPageResponse(w http.ResponseWriter) error
+}
+
+type GetPetPage200JSONResponse PetPage
+
+func (response GetPetPage200JSONResponse) VisitGetPetPageResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetPetPage404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetPetPage404JSONResponse) VisitGetPetPageResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ActivatePetTagRequestObject struct {
+	ShortId string `json:"shortId"`
+	Body    *ActivatePetTagJSONRequestBody
+}
+
+type ActivatePetTagResponseObject interface {
+	VisitActivatePetTagResponse(w http.ResponseWriter) error
+}
+
+type ActivatePetTag200JSONResponse PetPage
+
+func (response ActivatePetTag200JSONResponse) VisitActivatePetTagResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ActivatePetTag400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ActivatePetTag400JSONResponse) VisitActivatePetTagResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ActivatePetTag401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ActivatePetTag401JSONResponse) VisitActivatePetTagResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ActivatePetTag404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ActivatePetTag404JSONResponse) VisitActivatePetTagResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ActivatePetTag409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ActivatePetTag409JSONResponse) VisitActivatePetTagResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type QuotePriceRequestObject struct {
 	Body *QuotePriceJSONRequestBody
 }
@@ -8723,6 +8965,12 @@ type StrictServerInterface interface {
 	// Advance an order's status (RBAC-gated; reconcile→PAID and →REFUNDED are owner-only).
 	// (POST /orders/{id}/transitions)
 	TransitionOrder(ctx context.Context, request TransitionOrderRequestObject) (TransitionOrderResponseObject, error)
+	// Public pet-page read by shortId — the /t/{shortId} scan target (spec §10).
+	// (GET /pet-tags/{shortId})
+	GetPetPage(ctx context.Context, request GetPetPageRequestObject) (GetPetPageResponseObject, error)
+	// Activate an ENCODED tag — attach it to the signed-in customer + create the pet profile.
+	// (POST /pet-tags/{shortId}/activate)
+	ActivatePetTag(ctx context.Context, request ActivatePetTagRequestObject) (ActivatePetTagResponseObject, error)
 	// Server-authoritative line/subtotal quote; optional province adds shippingFee + total.
 	// (POST /price/quote)
 	QuotePrice(ctx context.Context, request QuotePriceRequestObject) (QuotePriceResponseObject, error)
@@ -10907,6 +11155,65 @@ func (sh *strictHandler) TransitionOrder(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(TransitionOrderResponseObject); ok {
 		if err := validResponse.VisitTransitionOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPetPage operation middleware
+func (sh *strictHandler) GetPetPage(w http.ResponseWriter, r *http.Request, shortId string) {
+	var request GetPetPageRequestObject
+
+	request.ShortId = shortId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPetPage(ctx, request.(GetPetPageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPetPage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPetPageResponseObject); ok {
+		if err := validResponse.VisitGetPetPageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ActivatePetTag operation middleware
+func (sh *strictHandler) ActivatePetTag(w http.ResponseWriter, r *http.Request, shortId string) {
+	var request ActivatePetTagRequestObject
+
+	request.ShortId = shortId
+
+	var body ActivatePetTagJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ActivatePetTag(ctx, request.(ActivatePetTagRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ActivatePetTag")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ActivatePetTagResponseObject); ok {
+		if err := validResponse.VisitActivatePetTagResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

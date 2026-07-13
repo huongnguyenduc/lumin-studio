@@ -117,6 +117,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pet-tags/{shortId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Public pet-page read by shortId — the /t/{shortId} scan target (spec §10).
+         * @description Resolves a Pet Tag by its shortId (the URL routing key burned to the chip) for the public /t/{shortId} pet page (P3-t t-3). Public — anyone who scans the chip. Returns the tag's lifecycle status and, once ACTIVATED, a MINIMAL profile summary (pet name + handle + species + photo). The onboarding gate reads status to route (ENCODED → login/onboarding, ACTIVATED → the page). PDPL data-minimization: NO owner PII (phone/contact) here — the public read carries only the display summary; the full page + masked-contact states land in t-4. Unknown shortId → 404.
+         */
+        get: operations["getPetPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pet-tags/{shortId}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate an ENCODED tag — attach it to the signed-in customer + create the pet profile.
+         * @description Onboarding completion (spec §10 step 2d, P3-t t-3): the scanned ENCODED tag auto-attaches to the authenticated customer (owner_account_id), a PetProfile is created from the 2-step onboarding form, and the tag flips to ACTIVATED — all in one tx. PDPL consent point 1 is recorded here (a pet_profile consent grant, ADR-042) — the request MUST carry consent=true. The vanity handle is derived from the pet name (accent-folded) and auto-suffixed on collision (the route key is shortId, so the handle is cosmetic). Requires a valid customer session (401). An already-ACTIVATED or not-yet-ENCODED tag → 409; an unknown shortId → 404; a bad field (name/phone/consent) → 400.
+         */
+        post: operations["activatePetTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orders": {
         parameters: {
             query?: never;
@@ -2562,6 +2602,60 @@ export interface components {
             tag: components["schemas"]["PetTagRef"];
             card: components["schemas"]["PrintQueueJob"];
         };
+        /**
+         * @description The pet's species — a fixed 3-choice set on the onboarding form (spec §10). `other` catches the rest.
+         * @enum {string}
+         */
+        PetSpecies: "dog" | "cat" | "other";
+        /** @description The owner's contact block (spec §10). phone is REQUIRED — it is what makes lost mode useful. On the public page phone is masked and revealed only in lost mode / to the owner (PDPL, t-4); the value stored here is the raw number. */
+        PetOwnerContact: {
+            name: string;
+            /** @description VN phone (0… or +84…), validated server-side. */
+            phone: string;
+            zalo?: string;
+        };
+        /** @description The pet's medical block (spec §10) — all optional. `allergies` drives the allergy warning on the page. */
+        PetMedical: {
+            vaccinated?: boolean;
+            neutered?: boolean;
+            allergies?: string;
+            vetClinic?: string;
+        };
+        /** @description One social link (spec §10) — a handle, not a full URL (e.g. instagram / tiktok). */
+        PetSocial: {
+            platform: string;
+            handle: string;
+        };
+        /** @description The MINIMAL public profile summary shown once a tag is ACTIVATED (P3-t t-3). Display-only fields — NO owner PII (contact/medical) — so the public read stays data-minimized. The full page lands in t-4. */
+        PetPageProfile: {
+            /** @description The vanity slug shown as @handle (derived from the pet name). */
+            handle: string;
+            petName: string;
+            species: components["schemas"]["PetSpecies"];
+            photoUrl?: string;
+        };
+        /** @description The public /t/{shortId} pet-page read (P3-t t-3). `status` routes the page: UNENCODED/ENCODED = not yet activated (onboarding/welcome), ACTIVATED = live. `profile` is present only when ACTIVATED (the minimal summary — the full page is t-4). */
+        PetPage: {
+            shortId: string;
+            status: components["schemas"]["PetTagStatus"];
+            profile?: components["schemas"]["PetPageProfile"];
+        };
+        /** @description The 2-step onboarding payload (spec §10 steps 2b+2c) submitted to activate a tag. petName + species + ownerContact (phone) are required, the rest optional; consent MUST be true (PDPL consent point 1 — the profile stores pet + owner PII). No microchip field (spec §10: "bỏ field số microchip"). */
+        PetActivateInput: {
+            petName: string;
+            species: components["schemas"]["PetSpecies"];
+            breed?: string;
+            /** @description Free-form ("2 tuổi", "6 tháng") — not a number in the design. */
+            age?: string;
+            weight?: string;
+            /** @description Optional avatar URL (reuses the presigned proof upload the checkout receipt uses). */
+            photoUrl?: string;
+            medical?: components["schemas"]["PetMedical"];
+            ownerContact: components["schemas"]["PetOwnerContact"];
+            socials?: components["schemas"]["PetSocial"][];
+            /** @description PDPL consent (point 1) to store the pet + owner PII for the pet-page purpose. Must be true — a false/absent consent is a 400. Recorded as a pet_profile consent grant (ADR-042). */
+            consent: boolean;
+        };
         /** @description The guest-facing order timeline returned by GET /orders/lookup. It is a SEPARATE schema from Order (never a $ref) and exposes ONLY what a customer who already knows their code + phone may see: the code they typed, the current status, a status→time milestone list, an optional carrier tracking code, and the creation instant. It deliberately OMITS every internal field — customer PII, shipping address, line items, money (subtotal/shippingFee/total/unitPrice), payment/refund proof URLs, the internal note, the order uuid, the channel, and the statusHistory actor (byUser) + reason (ADR-032 non-leak). */
         PublicOrderTimeline: {
             /** @description The human order code the guest supplied (e.g. "#LMN-1000"). */
@@ -2805,6 +2899,59 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    getPetPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shortId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tag status and (when ACTIVATED) a minimal pet-page profile summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PetPage"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    activatePetTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shortId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PetActivateInput"];
+            };
+        };
+        responses: {
+            /** @description The now-ACTIVATED pet page (status + profile summary). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PetPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     createOrder: {
