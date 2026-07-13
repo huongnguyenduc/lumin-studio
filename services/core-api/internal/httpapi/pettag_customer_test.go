@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/api"
@@ -241,5 +242,88 @@ func TestPetBlocksDTO(t *testing.T) {
 		if petBlocksDTO(b) != nil {
 			t.Fatalf("petBlocksDTO(%q) should be nil (default order)", b)
 		}
+	}
+}
+
+// TestValidateAppearance pins the fixed theme + block choices (spec §10 "Không picker tự do"): a valid
+// appearance passes; an unknown palette/background/font, an out-of-range opacity, an image bg with no url, an
+// unknown block type, a hidden or missing photo_name block each flag their field.
+func TestValidateAppearance(t *testing.T) {
+	sp := func(s string) *string { return &s }
+	ip := func(n int) *int { return &n }
+	valid := func() api.PetAppearanceInput {
+		return api.PetAppearanceInput{
+			Theme: api.PetTheme{Palette: sp("bac-ha"), Background: sp("dots"), NameFont: sp("display"), BgOpacity: ip(40)},
+			Blocks: []api.PetBlock{
+				{Type: "photo_name", Order: 0, Visible: true},
+				{Type: "bio", Order: 1, Visible: true},
+				{Type: "socials", Order: 2, Visible: false},
+			},
+		}
+	}
+	if f := validateAppearance(valid()); len(f) != 0 {
+		t.Fatalf("valid appearance flagged %v, want none", f)
+	}
+	// an image background WITH its url is valid (the opacity blends it under the page)
+	okImage := valid()
+	okImage.Theme.Background = sp("image")
+	okImage.Theme.BgImageUrl = sp("https://garage.example/bg.jpg")
+	if f := validateAppearance(okImage); len(f) != 0 {
+		t.Fatalf("image bg with url flagged %v, want none", f)
+	}
+	cases := []struct {
+		name  string
+		mut   func(in *api.PetAppearanceInput)
+		field string
+	}{
+		{"unknown palette", func(in *api.PetAppearanceInput) { in.Theme.Palette = sp("neon") }, "theme.palette"},
+		{"nil palette", func(in *api.PetAppearanceInput) { in.Theme.Palette = nil }, "theme.palette"},
+		{"unknown background", func(in *api.PetAppearanceInput) { in.Theme.Background = sp("wave") }, "theme.background"},
+		{"unknown font", func(in *api.PetAppearanceInput) { in.Theme.NameFont = sp("comic") }, "theme.nameFont"},
+		{"opacity over 100", func(in *api.PetAppearanceInput) { in.Theme.BgOpacity = ip(140) }, "theme.bgOpacity"},
+		{"opacity negative", func(in *api.PetAppearanceInput) { in.Theme.BgOpacity = ip(-1) }, "theme.bgOpacity"},
+		{"image bg no url", func(in *api.PetAppearanceInput) { in.Theme.Background = sp("image"); in.Theme.BgImageUrl = nil }, "theme.bgImageUrl"},
+		{"unknown block type", func(in *api.PetAppearanceInput) { in.Blocks[1].Type = "weather" }, "blocks"},
+		{"photo_name hidden", func(in *api.PetAppearanceInput) { in.Blocks[0].Visible = false }, "blocks"},
+		{"photo_name missing", func(in *api.PetAppearanceInput) { in.Blocks = in.Blocks[1:] }, "blocks"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := valid()
+			tc.mut(&in)
+			if f := validateAppearance(in); f[tc.field] == "" {
+				t.Fatalf("%s: expected field %q flagged, got %v", tc.name, tc.field, f)
+			}
+		})
+	}
+}
+
+// TestAppearanceParams pins the marshal: a non-image background drops any stale bgImageUrl so switching away
+// from an image leaves no ghost URL; an image background keeps it; blocks round-trip; tag/owner ids carry.
+func TestAppearanceParams(t *testing.T) {
+	sp := func(s string) *string { return &s }
+	ip := func(n int) *int { return &n }
+	tagID, ownerID := uuid.New(), uuid.New()
+
+	plain := appearanceParams(tagID, ownerID, api.PetAppearanceInput{
+		Theme:  api.PetTheme{Palette: sp("bo"), Background: sp("dots"), NameFont: sp("display"), BgImageUrl: sp("https://old.example/ghost.jpg")},
+		Blocks: []api.PetBlock{{Type: "photo_name", Order: 0, Visible: true}},
+	})
+	if plain.TagID != tagID || plain.OwnerAccountID != ownerID {
+		t.Fatal("appearanceParams dropped the tag/owner id")
+	}
+	if strings.Contains(string(plain.Theme), "bgImageUrl") {
+		t.Fatalf("a non-image bg must drop bgImageUrl, got %s", plain.Theme)
+	}
+
+	img := appearanceParams(tagID, ownerID, api.PetAppearanceInput{
+		Theme:  api.PetTheme{Palette: sp("cocoa"), Background: sp("image"), NameFont: sp("mono"), BgImageUrl: sp("https://garage.example/bg.jpg"), BgOpacity: ip(40)},
+		Blocks: []api.PetBlock{{Type: "photo_name", Order: 0, Visible: true}, {Type: "bio", Order: 1, Visible: false}},
+	})
+	if !strings.Contains(string(img.Theme), "https://garage.example/bg.jpg") {
+		t.Fatalf("an image bg must keep bgImageUrl, got %s", img.Theme)
+	}
+	if !strings.Contains(string(img.Blocks), "photo_name") || !strings.Contains(string(img.Blocks), "bio") {
+		t.Fatalf("blocks must marshal, got %s", img.Blocks)
 	}
 }

@@ -139,6 +139,18 @@ func (t *PetTags) UpdateProfileContent(ctx context.Context, params sqlc.UpdatePe
 	return row, err
 }
 
+// UpdateAppearance replaces the owner-set theme + block order (spec §10 giao diện + sắp xếp, t-4c-2). Thin
+// over the query, same shape as UpdateProfileContent: the handler has marshalled the theme/blocks jsonb and
+// set the owner_account_id guard, so a non-owner matches 0 rows → ErrNotFound → the handler's 403. It never
+// touches the content columns or lost_mode/handle.
+func (t *PetTags) UpdateAppearance(ctx context.Context, params sqlc.UpdatePetAppearanceParams) (sqlc.PetProfile, error) {
+	row, err := t.q.UpdatePetAppearance(ctx, params)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.PetProfile{}, ErrNotFound
+	}
+	return row, err
+}
+
 // FinderLocation is the {lat,lng} stored in lost_events.finder_location (spec §10). Defined here (the write
 // side) so the marshal and the pet-page read decode share one shape.
 type FinderLocation struct {

@@ -448,6 +448,62 @@ func (q *Queries) SlugifyHandle(ctx context.Context, dollar_1 string) (string, e
 	return handle, err
 }
 
+const updatePetAppearance = `-- name: UpdatePetAppearance :one
+UPDATE pet_profiles
+SET theme = $2, blocks = $3, updated_at = now()
+WHERE tag_id = $1 AND owner_account_id = $4
+RETURNING id, tag_id, owner_account_id, handle, pet_name, species, breed, age, weight, photo_url, gallery, bio, favorites, medical, owner_contact, socials, lost_mode, theme, blocks, created_at, updated_at
+`
+
+type UpdatePetAppearanceParams struct {
+	TagID          uuid.UUID `json:"tagId"`
+	Theme          []byte    `json:"theme"`
+	Blocks         []byte    `json:"blocks"`
+	OwnerAccountID uuid.UUID `json:"ownerAccountId"`
+}
+
+// UpdatePetAppearance replaces the owner-set page appearance in one write (spec §10 giao diện + sắp xếp,
+// t-4c-2): the theme jsonb (colorway/background/opacity/font) and the blocks jsonb (order + visibility).
+// A full replace of BOTH — the theme sheet + reorder mode each send the whole appearance — kept apart from
+// UpdatePetProfileContent so an appearance save never touches the page CONTENT (and vice versa). Same
+// owner_account_id guard as the content update: a signed-in non-owner matches 0 rows → the handler maps
+// that to a 403 (not a silent no-op). It touches neither the content columns nor lost_mode/handle. Scoped
+// by tag_id (resolved from shortId first, so an unknown tag 404s before this runs). updated_at moves. The
+// jsonb params ([]byte) are marshalled + validated in the Go seam.
+func (q *Queries) UpdatePetAppearance(ctx context.Context, arg UpdatePetAppearanceParams) (PetProfile, error) {
+	row := q.db.QueryRow(ctx, updatePetAppearance,
+		arg.TagID,
+		arg.Theme,
+		arg.Blocks,
+		arg.OwnerAccountID,
+	)
+	var i PetProfile
+	err := row.Scan(
+		&i.ID,
+		&i.TagID,
+		&i.OwnerAccountID,
+		&i.Handle,
+		&i.PetName,
+		&i.Species,
+		&i.Breed,
+		&i.Age,
+		&i.Weight,
+		&i.PhotoUrl,
+		&i.Gallery,
+		&i.Bio,
+		&i.Favorites,
+		&i.Medical,
+		&i.OwnerContact,
+		&i.Socials,
+		&i.LostMode,
+		&i.Theme,
+		&i.Blocks,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updatePetProfileContent = `-- name: UpdatePetProfileContent :one
 
 UPDATE pet_profiles

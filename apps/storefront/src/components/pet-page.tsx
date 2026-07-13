@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { getTranslations } from 'next-intl/server';
 import type {
   PetContact,
@@ -6,20 +7,25 @@ import type {
   PetPageProfile,
   PetSpecies,
 } from '@/lib/pet-page';
+import { type BlockType, normalizeBlocks } from '@/lib/pet-blocks';
+import { petThemeVars } from '@/lib/pet-theme';
 import { FinderLocationShare } from './finder-location-share';
 import { LostModeToggle } from './lost-mode-toggle';
 import { PetEditor } from './pet-editor';
+import { PetArrange } from './pet-arrange';
+import { PetThemeSheet } from './pet-theme-sheet';
 
 // The live pet page (spec §10 "1 URL · 3 trạng thái", P3-t t-4a/t-4b/t-4c). One URL, three view-states routed
 // by viewerIsOwner + lostMode:
-//   • owner (any lostMode)      → the page + the lost-mode toggle + the in-app scan notify (t-4b) + the in-place
-//                                 editor (t-4c: ✏️ Sửa trang → edit the content in place)
+//   • owner (any lostMode)      → the page + lost-mode toggle + in-app scan notify (t-4b) + the owner toolbar
+//                                 (t-4c: ✏️ sửa · ⠿ sắp xếp · 🎨 giao diện)
 //   • stranger, lostMode=false  → 4c: read-only "at home · safe", contact masked
-//   • stranger, lostMode=true   → 4a: rescue — lost banner, allergy warning, full contact + share-my-location (t-4b)
-// The content blocks bio · album · khoái khẩu (t-4c) render for everyone when present. Masking is server-side:
-// contact.masked is already the PDPL decision, so this component just renders what it is handed. Safety colours
-// (allergy, lost banner, call CTA) use the system danger/primary tokens — never a theme (theme lands in t-4c-2).
-// Mobile-first, one-handed, sentence-case, all copy under petTag.page.*.
+//   • stranger, lostMode=true   → 4a: rescue — lost banner, allergy warning, full contact + share-my-location
+// Content blocks (bio · album · khoái khẩu · medical · socials) render for everyone in the OWNER'S block order,
+// hidden blocks skipped (spec §10 sắp xếp khối, t-4c-2). The THEME (t-4c-2) is applied as CSS custom
+// properties on the page root — but SAFETY is never themed: the lost banner, allergy warning and the emergency
+// call CTA keep the system danger/primary tokens (they own solid surfaces, readable on any palette incl. Đêm
+// cocoa). Masking is server-side (contact.masked). Mobile-first, one-handed, sentence-case, copy under petTag.page.*.
 
 const SPECIES_EMOJI: Record<PetSpecies, string> = { dog: '🐶', cat: '🐱', other: '🐾' };
 const WARN = '⚠️';
@@ -30,7 +36,7 @@ const LOST_ICON = '📣';
 
 export async function PetPage({ page }: { page: PetPageData }) {
   const t = await getTranslations('petTag.page');
-  // page.tsx only renders this for an ACTIVATED tag with a profile; the ! is that invariant.
+  // page.tsx only renders this for an ACTIVATED tag with a profile; the cast is that invariant.
   const profile = page.profile as PetPageProfile;
   const lost = profile.lostMode;
   const isOwner = page.viewerIsOwner;
@@ -39,8 +45,83 @@ export async function PetPage({ page }: { page: PetPageData }) {
     ? t('lostGreeting', { name: profile.petName })
     : t('greeting', { name: profile.petName });
 
+  const theme = petThemeVars(profile.theme);
+  const blocks = normalizeBlocks(profile.blocks);
+  // The content blocks to render, in the owner's order: visible ones — plus the medical block whenever the pet
+  // is lost (safety overrides an owner who hid it, so the allergy warning still reaches a finder).
+  const orderedBlocks = blocks.filter(
+    (b) => b.type !== 'photo_name' && (b.visible || (b.type === 'medical' && lost)),
+  );
+
+  // Each content block's JSX (or null when the owner hasn't filled it) — rendered in orderedBlocks order.
+  const section = (type: BlockType): ReactNode => {
+    switch (type) {
+      case 'bio':
+        return profile.bio ? (
+          <p className="text-sm leading-relaxed text-[var(--pet-ink)]">{profile.bio}</p>
+        ) : null;
+      case 'gallery':
+        return profile.gallery && profile.gallery.length > 0 ? (
+          <section>
+            <h2 className="mb-2 font-display text-base font-bold text-[var(--pet-ink)]">
+              {t('album')}
+            </h2>
+            <div className="grid grid-cols-3 gap-1.5">
+              {profile.gallery.map((src, i) => (
+                // Arbitrary Garage photo host → a plain <img> (matches product-detail — no next/image remotePatterns).
+                <img
+                  key={`${src}:${i}`}
+                  src={src}
+                  alt=""
+                  className="aspect-square w-full rounded-xl border border-border-subtle object-cover"
+                />
+              ))}
+            </div>
+          </section>
+        ) : null;
+      case 'favorites':
+        return profile.favorites && profile.favorites.length > 0 ? (
+          <section>
+            <h2 className="mb-2 font-display text-base font-bold text-[var(--pet-ink)]">
+              {t('favorites')}
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              {profile.favorites.map((fav, i) => (
+                <span
+                  key={`${fav}:${i}`}
+                  className="rounded-pill border border-[var(--pet-chip-border)] bg-[var(--pet-chip-bg)] px-3 py-1.5 text-sm text-[var(--pet-ink)]"
+                >
+                  {fav}
+                </span>
+              ))}
+            </div>
+          </section>
+        ) : null;
+      case 'medical':
+        return <Medical medical={profile.medical} t={t} />;
+      case 'socials':
+        return profile.socials && profile.socials.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {profile.socials.map((s) => (
+              <span
+                key={`${s.platform}:${s.handle}`}
+                className="rounded-pill border border-border-strong bg-surface-card px-3 py-1.5 text-sm text-text-strong"
+              >
+                {socialLabel(s.platform)} @{s.handle}
+              </span>
+            ))}
+          </div>
+        ) : null;
+      default:
+        return null;
+    }
+  };
+
   return (
-    <main className="mx-auto flex min-h-[100dvh] w-full max-w-[420px] flex-col gap-4 px-5 py-6">
+    <main
+      style={theme.root}
+      className="mx-auto flex min-h-[100dvh] w-full max-w-[420px] flex-col gap-4 px-5 py-6"
+    >
       {lost && (
         <div className="rounded-2xl border-2 border-border-strong bg-primary px-4 py-3 text-center text-on-primary shadow-pop">
           <p className="font-display text-lg font-extrabold">
@@ -66,11 +147,16 @@ export async function PetPage({ page }: { page: PetPageData }) {
             {SPECIES_EMOJI[profile.species]}
           </div>
         )}
-        <h1 className="mt-3 font-display text-2xl font-extrabold text-text-strong">{heading}</h1>
-        <p className="mt-1 font-mono text-xs text-text-muted">{`@${profile.handle}`}</p>
-        {meta && <p className="mt-1 text-sm text-text-muted">{meta}</p>}
+        <h1
+          style={{ fontFamily: theme.nameFont }}
+          className="mt-3 text-2xl font-extrabold text-[var(--pet-ink)]"
+        >
+          {heading}
+        </h1>
+        <p className="mt-1 font-mono text-xs text-[var(--pet-muted)]">{`@${profile.handle}`}</p>
+        {meta && <p className="mt-1 text-sm text-[var(--pet-muted)]">{meta}</p>}
         {!lost && !isOwner && (
-          <span className="mt-3 rounded-pill border border-accent-teal bg-accent-teal-soft px-3 py-1 font-mono text-[11px] font-bold text-text-strong">
+          <span className="mt-3 rounded-pill border border-[var(--pet-chip-border)] bg-[var(--pet-chip-bg)] px-3 py-1 font-mono text-[11px] font-bold text-[var(--pet-ink)]">
             {t('homeBadge')}
           </span>
         )}
@@ -79,7 +165,11 @@ export async function PetPage({ page }: { page: PetPageData }) {
       {isOwner && (
         <>
           <LostModeToggle shortId={page.shortId} petName={profile.petName} lostMode={lost} />
-          <PetEditor shortId={page.shortId} profile={profile} />
+          <div className="flex flex-wrap gap-2">
+            <PetEditor shortId={page.shortId} profile={profile} />
+            <PetArrange shortId={page.shortId} profile={profile} />
+            <PetThemeSheet shortId={page.shortId} profile={profile} />
+          </div>
         </>
       )}
 
@@ -87,82 +177,16 @@ export async function PetPage({ page }: { page: PetPageData }) {
         <RecentScans scans={page.recentScans} petName={profile.petName} t={t} />
       )}
 
-      {profile.bio && <p className="text-sm leading-relaxed text-text-body">{profile.bio}</p>}
-
-      {profile.socials && profile.socials.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {profile.socials.map((s) => (
-            <span
-              key={`${s.platform}:${s.handle}`}
-              className="rounded-pill border border-border-strong bg-surface-card px-3 py-1.5 text-sm text-text-strong"
-            >
-              {socialLabel(s.platform)} @{s.handle}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {profile.gallery && profile.gallery.length > 0 && (
-        <section>
-          <h2 className="mb-2 font-display text-base font-bold text-text-strong">{t('album')}</h2>
-          <div className="grid grid-cols-3 gap-1.5">
-            {profile.gallery.map((src, i) => (
-              // Arbitrary Garage photo host → a plain <img> (matches product-detail — no next/image remotePatterns).
-              <img
-                key={`${src}:${i}`}
-                src={src}
-                alt=""
-                className="aspect-square w-full rounded-xl border border-border-subtle object-cover"
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {profile.favorites && profile.favorites.length > 0 && (
-        <section>
-          <h2 className="mb-2 font-display text-base font-bold text-text-strong">
-            {t('favorites')}
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            {profile.favorites.map((fav, i) => (
-              <span
-                key={`${fav}:${i}`}
-                className="rounded-pill border border-accent-sun bg-accent-sun-soft px-3 py-1.5 text-sm text-text-strong"
-              >
-                {fav}
-              </span>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {profile.medical?.allergies && (
-        <div className="flex items-start gap-2.5 rounded-xl border border-accent-flame bg-danger-soft px-3.5 py-3">
-          <span aria-hidden="true" className="text-lg">
-            {WARN}
-          </span>
-          <p className="flex-1 text-sm text-danger">
-            {t('allergy', { allergy: profile.medical.allergies })}
-          </p>
-        </div>
-      )}
-
-      {(profile.medical?.vaccinated || profile.medical?.neutered || profile.medical?.vetClinic) && (
-        <div className="flex flex-wrap gap-2">
-          {profile.medical.vaccinated && <MedChip>{t('vaccinated')}</MedChip>}
-          {profile.medical.neutered && <MedChip>{t('neutered')}</MedChip>}
-          {profile.medical.vetClinic && (
-            <MedChip>{t('vetClinic', { clinic: profile.medical.vetClinic })}</MedChip>
-          )}
-        </div>
-      )}
+      {orderedBlocks.map((b) => {
+        const node = section(b.type);
+        return node ? <div key={b.type}>{node}</div> : null;
+      })}
 
       <Contact contact={profile.contact} petName={profile.petName} t={t} />
 
       {lost && !isOwner && <FinderLocationShare shortId={page.shortId} petName={profile.petName} />}
 
-      <p className="mt-auto pt-4 text-center font-mono text-[11px] leading-relaxed text-text-muted">
+      <p className="mt-auto pt-4 text-center font-mono text-[11px] leading-relaxed text-[var(--pet-muted)]">
         {isOwner ? t('ownerFooter') : t('poweredBy')}
       </p>
     </main>
@@ -178,6 +202,41 @@ function socialLabel(platform: string): string {
   return '🔗';
 }
 
+// Medical — the allergy warning (safety: system danger, NEVER themed) + the vaccinated/neutered/vet chips.
+// Rendered as the `medical` content block; returns null when the owner set no medical data.
+function Medical({
+  medical,
+  t,
+}: {
+  medical: PetPageProfile['medical'];
+  t: Awaited<ReturnType<typeof getTranslations<'petTag.page'>>>;
+}) {
+  if (!medical) return null;
+  const hasChips = medical.vaccinated || medical.neutered || medical.vetClinic;
+  if (!medical.allergies && !hasChips) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      {medical.allergies && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-accent-flame bg-danger-soft px-3.5 py-3">
+          <span aria-hidden="true" className="text-lg">
+            {WARN}
+          </span>
+          <p className="flex-1 text-sm text-danger">
+            {t('allergy', { allergy: medical.allergies })}
+          </p>
+        </div>
+      )}
+      {hasChips && (
+        <div className="flex flex-wrap gap-2">
+          {medical.vaccinated && <MedChip>{t('vaccinated')}</MedChip>}
+          {medical.neutered && <MedChip>{t('neutered')}</MedChip>}
+          {medical.vetClinic && <MedChip>{t('vetClinic', { clinic: medical.vetClinic })}</MedChip>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MedChip({ children }: { children: React.ReactNode }) {
   return (
     <span className="rounded-pill border border-border-subtle bg-surface-sunken px-3 py-1.5 text-xs text-text-body">
@@ -189,8 +248,8 @@ function MedChip({ children }: { children: React.ReactNode }) {
 // RecentScans — the owner-only in-app notify (spec §10 D4, t-4b). When a finder shared a location for this pet,
 // the owner sees it here on their OWN page (a stranger never does — page.recentScans is populated by core-api
 // only for the owner). Each row links to an OpenStreetMap view of where the pet was scanned. Calm teal palette
-// (a found-nearby signal is hopeful, not a warning); the map link is the flame primary action. Times render in
-// VN local time (the shop's locale) from the stored UTC instant.
+// (a found-nearby signal is hopeful, not a warning) — an owner utility, not themed. Times render in VN local
+// time from the stored UTC instant.
 function RecentScans({
   scans,
   petName,
@@ -236,9 +295,10 @@ function RecentScans({
   );
 }
 
-// Contact — the owner-contact card (cocoa surface, cream text). When contact.masked the phone shows as the
-// PDPL partial with NO call action (a stranger at home); otherwise the full number + call/zalo/email CTAs are
-// shown. The call CTA uses bg-primary/text-on-primary (AA-safe, 5.12:1) — never white-on-teal (fails AA).
+// Contact — the owner-contact card (cocoa surface, cream text). Always the brand cocoa — deliberately NOT
+// themed (it's the identity anchor, and its call CTA is the emergency action → system, never a palette colour).
+// When contact.masked the phone shows as the PDPL partial with NO call action (a stranger at home); otherwise
+// the full number + call/zalo/email CTAs are shown. The call CTA uses bg-primary/text-on-primary (AA-safe).
 function Contact({
   contact,
   petName,

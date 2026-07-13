@@ -339,11 +339,12 @@ func TestClassifyFailsClosed(t *testing.T) {
 		// P3-t Pet Tag: the public scan reads (GetPetPage recognises an optional owner cookie; SharePetLocation
 		// is a fully-public finder write) vs the owner writes (ActivatePetTag/ToggleLostMode/UpdatePetProfile —
 		// a valid CUSTOMER session, owner then enforced in SQL). Pins the trust boundary of the whole axis.
-		"GetPetPage":       authOptionalCustomer,
-		"SharePetLocation": authPublic,
-		"ActivatePetTag":   authCustomer,
-		"ToggleLostMode":   authCustomer,
-		"UpdatePetProfile": authCustomer,
+		"GetPetPage":          authOptionalCustomer,
+		"SharePetLocation":    authPublic,
+		"ActivatePetTag":      authCustomer,
+		"ToggleLostMode":      authCustomer,
+		"UpdatePetProfile":    authCustomer,
+		"UpdatePetAppearance": authCustomer,
 	}
 	for op, want := range cases {
 		if got := classify(op); got != want {

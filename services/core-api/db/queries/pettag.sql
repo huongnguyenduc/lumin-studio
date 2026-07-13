@@ -109,6 +109,20 @@ SET pet_name = $2, species = $3, breed = $4, age = $5, weight = $6, photo_url = 
 WHERE tag_id = $1 AND owner_account_id = $14
 RETURNING *;
 
+-- UpdatePetAppearance replaces the owner-set page appearance in one write (spec §10 giao diện + sắp xếp,
+-- t-4c-2): the theme jsonb (colorway/background/opacity/font) and the blocks jsonb (order + visibility).
+-- A full replace of BOTH — the theme sheet + reorder mode each send the whole appearance — kept apart from
+-- UpdatePetProfileContent so an appearance save never touches the page CONTENT (and vice versa). Same
+-- owner_account_id guard as the content update: a signed-in non-owner matches 0 rows → the handler maps
+-- that to a 403 (not a silent no-op). It touches neither the content columns nor lost_mode/handle. Scoped
+-- by tag_id (resolved from shortId first, so an unknown tag 404s before this runs). updated_at moves. The
+-- jsonb params ([]byte) are marshalled + validated in the Go seam.
+-- name: UpdatePetAppearance :one
+UPDATE pet_profiles
+SET theme = $2, blocks = $3, updated_at = now()
+WHERE tag_id = $1 AND owner_account_id = $4
+RETURNING *;
+
 -- ==== Pet page — rescue: finder location share (t-4b) =========================================
 
 -- InsertLostEvent records ONE finder location share for a lost pet (spec §10 LostEvent). The row itself IS the

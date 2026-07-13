@@ -20,6 +20,27 @@ import (
 // a DB CHECK 500 (spec §10 validation: "Tên bé — bắt buộc, 1–40 ký tự").
 const petNameMax = 40
 
+// The fixed theme + block vocabularies (spec §10 "Không picker tự do") the appearance write validates against
+// — kept in lock-step with the storefront's pet-theme.ts / pet-blocks.ts. petBlockPhotoName is the block that
+// must always be present + visible (spec §10: "Khối photo_name luôn ở đầu, không ẩn được").
+const petBlockPhotoName = "photo_name"
+
+var (
+	petPalettes    = set("bo", "bac-ha", "cam-nang", "troi-xanh", "nang", "cocoa")
+	petBackgrounds = set("dots", "plain", "paper", "image")
+	petNameFonts   = set("display", "mono")
+	petBlockTypes  = set(petBlockPhotoName, "bio", "gallery", "favorites", "medical", "socials")
+)
+
+// set builds a membership lookup from a fixed list of allowed string values.
+func set(vals ...string) map[string]bool {
+	m := make(map[string]bool, len(vals))
+	for _, v := range vals {
+		m[v] = true
+	}
+	return m
+}
+
 // errPetTagNotActivatable flags a tag that cannot be activated: already ACTIVATED (a re-submit or a lost
 // race) or still UNENCODED (chip not written). Caught in the handler → 409, never a 500.
 var errPetTagNotActivatable = errors.New("pet tag: not in an activatable (ENCODED) state")
@@ -189,6 +210,40 @@ func (s *Server) UpdatePetProfile(ctx context.Context, request api.UpdatePetProf
 		return nil, err
 	}
 	return api.UpdatePetProfile200JSONResponse(petPageDTO(tag, &profile, true)), nil
+}
+
+// UpdatePetAppearance handles PATCH /pet-tags/{shortId}/appearance (customer-authed, P3-t t-4c-2): the theme
+// sheet + reorder mode save. The owner replaces the page appearance — theme (colorway/background/opacity/
+// font) + block order/visibility — in one write, kept separate from the content PATCH so neither clobbers
+// the other. Owner-only — UpdateAppearance's owner_account_id guard is the authorization boundary, so a
+// signed-in non-owner matches 0 rows → 403 (mirrors UpdatePetProfile). Safety is enforced on render (the FE
+// never themes the allergy warning / lost banner / emergency call, and always renders photo_name first);
+// here we only validate the fixed choices. Unknown shortId → 404; a non-owner → 403; a bad field → 400.
+func (s *Server) UpdatePetAppearance(ctx context.Context, request api.UpdatePetAppearanceRequestObject) (api.UpdatePetAppearanceResponseObject, error) {
+	customerID, ok := customerFrom(ctx)
+	if !ok {
+		return nil, errUnauthenticated // wiring guard — authCustomer injects the owner; a miss is not an anonymous edit
+	}
+	if request.Body == nil {
+		return api.UpdatePetAppearance400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
+	}
+	in := *request.Body
+	if fields := validateAppearance(in); len(fields) > 0 {
+		return api.UpdatePetAppearance400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
+	}
+	tags := db.NewPetTags(s.pool)
+	tag, err := tags.GetByShortID(ctx, request.ShortId)
+	if err != nil {
+		return nil, err // ErrNotFound → 404 (bad link); else 500
+	}
+	profile, err := tags.UpdateAppearance(ctx, appearanceParams(tag.ID, customerID, in))
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return nil, errForbidden // 0 rows = the tag exists but this customer does not own it → 403
+		}
+		return nil, err
+	}
+	return api.UpdatePetAppearance200JSONResponse(petPageDTO(tag, &profile, true)), nil
 }
 
 // validShareCoords accepts only an in-range WGS84 coordinate; anything else is a 400. The browser geolocation
@@ -362,6 +417,73 @@ func profileUpdateParams(tagID, ownerID uuid.UUID, in api.PetProfileUpdateInput)
 		Medical:        medical,
 		OwnerContact:   ownerContact,
 		Socials:        socials,
+		OwnerAccountID: ownerID,
+	}
+}
+
+// validateAppearance enforces the fixed theme + block choices (spec §10 "Không picker tự do") the write must
+// obey — a bad value is a clean 400, not a page that renders an unknown palette. palette/background/nameFont
+// must each be a known id (a nil one is malformed — the client always sends the full appearance); bgOpacity,
+// when present, is 0..100 (spec §10 validation); an image background needs its bgImageUrl. Every block.type is
+// known, and the photo_name block is present + visible (it can't be hidden). Returns per-field VALIDATION keys.
+func validateAppearance(in api.PetAppearanceInput) map[string]string {
+	fields := map[string]string{}
+	t := in.Theme
+	if t.Palette == nil || !petPalettes[*t.Palette] {
+		fields["theme.palette"] = msgKey(codeValidation)
+	}
+	if t.Background == nil || !petBackgrounds[*t.Background] {
+		fields["theme.background"] = msgKey(codeValidation)
+	}
+	if t.NameFont == nil || !petNameFonts[*t.NameFont] {
+		fields["theme.nameFont"] = msgKey(codeValidation)
+	}
+	if t.BgOpacity != nil && (*t.BgOpacity < 0 || *t.BgOpacity > 100) {
+		fields["theme.bgOpacity"] = msgKey(codeValidation)
+	}
+	// A custom-image background is meaningless without the image (its opacity blends the image under the page).
+	if t.Background != nil && *t.Background == "image" && strings.TrimSpace(deref(t.BgImageUrl)) == "" {
+		fields["theme.bgImageUrl"] = msgKey(codeValidation)
+	}
+	seenPhotoName := false
+	for _, b := range in.Blocks {
+		if !petBlockTypes[b.Type] {
+			fields["blocks"] = msgKey(codeValidation)
+		}
+		if b.Type == petBlockPhotoName {
+			seenPhotoName = true
+			if !b.Visible {
+				fields["blocks"] = msgKey(codeValidation) // photo_name can't be hidden (spec §10)
+			}
+		}
+	}
+	if !seenPhotoName {
+		fields["blocks"] = msgKey(codeValidation) // the fixed header block must be present
+	}
+	return fields
+}
+
+// appearanceParams builds the appearance update from the validated payload: theme + blocks each marshalled to
+// jsonb ([]byte), defaulting to {} / [] on the impossible marshal error (never NULL — mirrors profileParams).
+// bgImageUrl is dropped unless the background is actually an image, so switching away from an image bg doesn't
+// leave a stale URL behind. The owner_account_id is the SQL authz guard.
+func appearanceParams(tagID, ownerID uuid.UUID, in api.PetAppearanceInput) sqlc.UpdatePetAppearanceParams {
+	theme := in.Theme
+	if theme.Background == nil || *theme.Background != "image" {
+		theme.BgImageUrl = nil
+	}
+	themeJSON := []byte("{}")
+	if b, err := json.Marshal(theme); err == nil {
+		themeJSON = b
+	}
+	blocksJSON := []byte("[]")
+	if b, err := json.Marshal(in.Blocks); err == nil {
+		blocksJSON = b
+	}
+	return sqlc.UpdatePetAppearanceParams{
+		TagID:          tagID,
+		Theme:          themeJSON,
+		Blocks:         blocksJSON,
 		OwnerAccountID: ownerID,
 	}
 }

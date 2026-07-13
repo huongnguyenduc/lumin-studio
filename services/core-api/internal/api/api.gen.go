@@ -1097,6 +1097,14 @@ type PetActivateInput struct {
 	Weight  *string    `json:"weight,omitempty"`
 }
 
+// PetAppearanceInput The theme sheet + reorder mode save (spec §10, P3-t t-4c-2) — a FULL replace of the page appearance: the theme and the ordered block list, both sent every time (the client holds the loaded appearance). Reuses the loose read shapes (PetTheme / PetBlock); the server validates the fixed choices (palette / background / font enums, opacity 0–100, known block types, a first-and-visible photo_name block). Kept separate from PetProfileUpdateInput so appearance + content never clobber each other.
+type PetAppearanceInput struct {
+	Blocks []PetBlock `json:"blocks"`
+
+	// Theme The pet page's theme (spec §10 "Theme trang pet") — 5 brand colorways + Đêm cocoa, a background style with a per-image opacity, and the name font. This is the READ shape (P3-t t-4c-1) projected as-is from the stored jsonb; the theme SHEET that writes it (with the fixed colorway/background/font choices, no free picker) lands in t-4c-2. All fields optional — an unthemed page carries an empty theme and renders the brand default. Safety colours (allergy warning, lost banner, emergency call) are never themed.
+	Theme PetTheme `json:"theme"`
+}
+
 // PetBlock One content block's placement (spec §10 ProfileBlock) — the order + visibility the owner sets in the reorder mode. READ shape (P3-t t-4c-1) projected from the stored blocks jsonb; the reorder mode that writes it lands in t-4c-2. The photo_name block is always first and cannot be hidden.
 type PetBlock struct {
 	Order int `json:"order"`
@@ -1295,7 +1303,7 @@ type PetTheme struct {
 	// NameFont The pet-name font — display (Bricolage) or mono (Space Mono).
 	NameFont *string `json:"nameFont,omitempty"`
 
-	// Palette A brand colorway id (bo · mint · sun · sky · sunny) or cocoa (dark). Drives bg + chip + CTA.
+	// Palette A brand colorway id — bo · bac-ha · cam-nang · troi-xanh · nang (light) or cocoa (dark), spec §10 "Bơ · Bạc hà · Cam nắng · Trời xanh · Nắng + Đêm cocoa". Drives the page bg + chips + accents. An unknown/absent value renders the bo default (read-passthrough is lenient; the write validates).
 	Palette *string `json:"palette,omitempty"`
 }
 
@@ -1913,6 +1921,9 @@ type TransitionOrderJSONRequestBody = TransitionRequest
 // ActivatePetTagJSONRequestBody defines body for ActivatePetTag for application/json ContentType.
 type ActivatePetTagJSONRequestBody = PetActivateInput
 
+// UpdatePetAppearanceJSONRequestBody defines body for UpdatePetAppearance for application/json ContentType.
+type UpdatePetAppearanceJSONRequestBody = PetAppearanceInput
+
 // ToggleLostModeJSONRequestBody defines body for ToggleLostMode for application/json ContentType.
 type ToggleLostModeJSONRequestBody = PetLostModeInput
 
@@ -2244,6 +2255,9 @@ type ServerInterface interface {
 	// Activate an ENCODED tag — attach it to the signed-in customer + create the pet profile.
 	// (POST /pet-tags/{shortId}/activate)
 	ActivatePetTag(w http.ResponseWriter, r *http.Request, shortId string)
+	// Owner changes the pet page theme + block order (spec §10 giao diện + sắp xếp, P3-t t-4c-2).
+	// (PATCH /pet-tags/{shortId}/appearance)
+	UpdatePetAppearance(w http.ResponseWriter, r *http.Request, shortId string)
 	// Toggle a pet's lost mode — owner only (spec §10 công tắc thất lạc).
 	// (PATCH /pet-tags/{shortId}/lost-mode)
 	ToggleLostMode(w http.ResponseWriter, r *http.Request, shortId string)
@@ -2724,6 +2738,12 @@ func (_ Unimplemented) GetPetPage(w http.ResponseWriter, r *http.Request, shortI
 // Activate an ENCODED tag — attach it to the signed-in customer + create the pet profile.
 // (POST /pet-tags/{shortId}/activate)
 func (_ Unimplemented) ActivatePetTag(w http.ResponseWriter, r *http.Request, shortId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Owner changes the pet page theme + block order (spec §10 giao diện + sắp xếp, P3-t t-4c-2).
+// (PATCH /pet-tags/{shortId}/appearance)
+func (_ Unimplemented) UpdatePetAppearance(w http.ResponseWriter, r *http.Request, shortId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4930,6 +4950,37 @@ func (siw *ServerInterfaceWrapper) ActivatePetTag(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// UpdatePetAppearance operation middleware
+func (siw *ServerInterfaceWrapper) UpdatePetAppearance(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "shortId" -------------
+	var shortId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "shortId", chi.URLParam(r, "shortId"), &shortId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "shortId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CustomerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdatePetAppearance(w, r, shortId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ToggleLostMode operation middleware
 func (siw *ServerInterfaceWrapper) ToggleLostMode(w http.ResponseWriter, r *http.Request) {
 
@@ -5541,6 +5592,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/pet-tags/{shortId}/activate", wrapper.ActivatePetTag)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/pet-tags/{shortId}/appearance", wrapper.UpdatePetAppearance)
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/pet-tags/{shortId}/lost-mode", wrapper.ToggleLostMode)
@@ -8832,6 +8886,60 @@ func (response ActivatePetTag409JSONResponse) VisitActivatePetTagResponse(w http
 	return json.NewEncoder(w).Encode(response)
 }
 
+type UpdatePetAppearanceRequestObject struct {
+	ShortId string `json:"shortId"`
+	Body    *UpdatePetAppearanceJSONRequestBody
+}
+
+type UpdatePetAppearanceResponseObject interface {
+	VisitUpdatePetAppearanceResponse(w http.ResponseWriter) error
+}
+
+type UpdatePetAppearance200JSONResponse PetPage
+
+func (response UpdatePetAppearance200JSONResponse) VisitUpdatePetAppearanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdatePetAppearance400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdatePetAppearance400JSONResponse) VisitUpdatePetAppearanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdatePetAppearance401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdatePetAppearance401JSONResponse) VisitUpdatePetAppearanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdatePetAppearance403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdatePetAppearance403JSONResponse) VisitUpdatePetAppearanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdatePetAppearance404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdatePetAppearance404JSONResponse) VisitUpdatePetAppearanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type ToggleLostModeRequestObject struct {
 	ShortId string `json:"shortId"`
 	Body    *ToggleLostModeJSONRequestBody
@@ -9399,6 +9507,9 @@ type StrictServerInterface interface {
 	// Activate an ENCODED tag — attach it to the signed-in customer + create the pet profile.
 	// (POST /pet-tags/{shortId}/activate)
 	ActivatePetTag(ctx context.Context, request ActivatePetTagRequestObject) (ActivatePetTagResponseObject, error)
+	// Owner changes the pet page theme + block order (spec §10 giao diện + sắp xếp, P3-t t-4c-2).
+	// (PATCH /pet-tags/{shortId}/appearance)
+	UpdatePetAppearance(ctx context.Context, request UpdatePetAppearanceRequestObject) (UpdatePetAppearanceResponseObject, error)
 	// Toggle a pet's lost mode — owner only (spec §10 công tắc thất lạc).
 	// (PATCH /pet-tags/{shortId}/lost-mode)
 	ToggleLostMode(ctx context.Context, request ToggleLostModeRequestObject) (ToggleLostModeResponseObject, error)
@@ -11651,6 +11762,39 @@ func (sh *strictHandler) ActivatePetTag(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ActivatePetTagResponseObject); ok {
 		if err := validResponse.VisitActivatePetTagResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdatePetAppearance operation middleware
+func (sh *strictHandler) UpdatePetAppearance(w http.ResponseWriter, r *http.Request, shortId string) {
+	var request UpdatePetAppearanceRequestObject
+
+	request.ShortId = shortId
+
+	var body UpdatePetAppearanceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdatePetAppearance(ctx, request.(UpdatePetAppearanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdatePetAppearance")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdatePetAppearanceResponseObject); ok {
+		if err := validResponse.VisitUpdatePetAppearanceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
