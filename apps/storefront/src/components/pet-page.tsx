@@ -8,16 +8,18 @@ import type {
 } from '@/lib/pet-page';
 import { FinderLocationShare } from './finder-location-share';
 import { LostModeToggle } from './lost-mode-toggle';
+import { PetEditor } from './pet-editor';
 
-// The live pet page (spec §10 "1 URL · 3 trạng thái", P3-t t-4a/t-4b). One URL, three view-states routed by
-// viewerIsOwner + lostMode:
-//   • owner (any lostMode)      → the page + the lost-mode toggle + the in-app scan notify (t-4b); editor = t-4c
+// The live pet page (spec §10 "1 URL · 3 trạng thái", P3-t t-4a/t-4b/t-4c). One URL, three view-states routed
+// by viewerIsOwner + lostMode:
+//   • owner (any lostMode)      → the page + the lost-mode toggle + the in-app scan notify (t-4b) + the in-place
+//                                 editor (t-4c: ✏️ Sửa trang → edit the content in place)
 //   • stranger, lostMode=false  → 4c: read-only "at home · safe", contact masked
 //   • stranger, lostMode=true   → 4a: rescue — lost banner, allergy warning, full contact + share-my-location (t-4b)
-// Masking is server-side: contact.masked is already the PDPL decision (the raw phone only reaches a revealed
-// view), so this component just renders what it is handed. Safety colours (allergy, lost banner, call CTA) use
-// the system danger/primary tokens — never a theme (theme lands in t-4c). Mobile-first, one-handed,
-// sentence-case, all copy under petTag.page.*.
+// The content blocks bio · album · khoái khẩu (t-4c) render for everyone when present. Masking is server-side:
+// contact.masked is already the PDPL decision, so this component just renders what it is handed. Safety colours
+// (allergy, lost banner, call CTA) use the system danger/primary tokens — never a theme (theme lands in t-4c-2).
+// Mobile-first, one-handed, sentence-case, all copy under petTag.page.*.
 
 const SPECIES_EMOJI: Record<PetSpecies, string> = { dog: '🐶', cat: '🐱', other: '🐾' };
 const WARN = '⚠️';
@@ -49,12 +51,21 @@ export async function PetPage({ page }: { page: PetPageData }) {
       )}
 
       <header className="flex flex-col items-center text-center">
-        <div
-          className="flex h-24 w-24 items-center justify-center rounded-full border-2 border-border-strong bg-surface-card text-4xl shadow-pop"
-          aria-hidden="true"
-        >
-          {SPECIES_EMOJI[profile.species]}
-        </div>
+        {profile.photoUrl ? (
+          // Arbitrary Garage photo host → a plain <img> (matches product-detail — no next/image remotePatterns).
+          <img
+            src={profile.photoUrl}
+            alt=""
+            className="h-24 w-24 rounded-full border-2 border-border-strong object-cover shadow-pop"
+          />
+        ) : (
+          <div
+            className="flex h-24 w-24 items-center justify-center rounded-full border-2 border-border-strong bg-surface-card text-4xl shadow-pop"
+            aria-hidden="true"
+          >
+            {SPECIES_EMOJI[profile.species]}
+          </div>
+        )}
         <h1 className="mt-3 font-display text-2xl font-extrabold text-text-strong">{heading}</h1>
         <p className="mt-1 font-mono text-xs text-text-muted">{`@${profile.handle}`}</p>
         {meta && <p className="mt-1 text-sm text-text-muted">{meta}</p>}
@@ -66,12 +77,17 @@ export async function PetPage({ page }: { page: PetPageData }) {
       </header>
 
       {isOwner && (
-        <LostModeToggle shortId={page.shortId} petName={profile.petName} lostMode={lost} />
+        <>
+          <LostModeToggle shortId={page.shortId} petName={profile.petName} lostMode={lost} />
+          <PetEditor shortId={page.shortId} profile={profile} />
+        </>
       )}
 
       {isOwner && page.recentScans && page.recentScans.length > 0 && (
         <RecentScans scans={page.recentScans} petName={profile.petName} t={t} />
       )}
+
+      {profile.bio && <p className="text-sm leading-relaxed text-text-body">{profile.bio}</p>}
 
       {profile.socials && profile.socials.length > 0 && (
         <div className="flex flex-wrap gap-2">
@@ -84,6 +100,41 @@ export async function PetPage({ page }: { page: PetPageData }) {
             </span>
           ))}
         </div>
+      )}
+
+      {profile.gallery && profile.gallery.length > 0 && (
+        <section>
+          <h2 className="mb-2 font-display text-base font-bold text-text-strong">{t('album')}</h2>
+          <div className="grid grid-cols-3 gap-1.5">
+            {profile.gallery.map((src, i) => (
+              // Arbitrary Garage photo host → a plain <img> (matches product-detail — no next/image remotePatterns).
+              <img
+                key={`${src}:${i}`}
+                src={src}
+                alt=""
+                className="aspect-square w-full rounded-xl border border-border-subtle object-cover"
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {profile.favorites && profile.favorites.length > 0 && (
+        <section>
+          <h2 className="mb-2 font-display text-base font-bold text-text-strong">
+            {t('favorites')}
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {profile.favorites.map((fav, i) => (
+              <span
+                key={`${fav}:${i}`}
+                className="rounded-pill border border-accent-sun bg-accent-sun-soft px-3 py-1.5 text-sm text-text-strong"
+              >
+                {fav}
+              </span>
+            ))}
+          </div>
+        </section>
       )}
 
       {profile.medical?.allergies && (

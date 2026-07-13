@@ -158,6 +158,39 @@ func (s *Server) ToggleLostMode(ctx context.Context, request api.ToggleLostModeR
 	return api.ToggleLostMode200JSONResponse(petPageDTO(tag, &profile, true)), nil
 }
 
+// UpdatePetProfile handles PATCH /pet-tags/{shortId}/profile (customer-authed, P3-t t-4c-1): the in-place
+// editor's save. The owner replaces the page's editable content (display fields + bio/gallery/favorites +
+// medical/socials/contact) in one write. Owner-only — UpdateProfileContent's owner_account_id guard is the
+// authorization boundary, so a signed-in non-owner matches 0 rows → 403 (not a silent no-op), mirroring
+// ToggleLostMode. It never touches theme/blocks (t-4c-2), lostMode, or the handle. Unknown shortId → 404; a
+// tag the caller does not own → 403; a bad field (name/species/phone) → 400.
+func (s *Server) UpdatePetProfile(ctx context.Context, request api.UpdatePetProfileRequestObject) (api.UpdatePetProfileResponseObject, error) {
+	customerID, ok := customerFrom(ctx)
+	if !ok {
+		return nil, errUnauthenticated // wiring guard — authCustomer injects the owner; a miss is not an anonymous edit
+	}
+	if request.Body == nil {
+		return api.UpdatePetProfile400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
+	}
+	in := *request.Body
+	if fields := validateProfileUpdate(in); len(fields) > 0 {
+		return api.UpdatePetProfile400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
+	}
+	tags := db.NewPetTags(s.pool)
+	tag, err := tags.GetByShortID(ctx, request.ShortId)
+	if err != nil {
+		return nil, err // ErrNotFound → 404 (bad link); else 500
+	}
+	profile, err := tags.UpdateProfileContent(ctx, profileUpdateParams(tag.ID, customerID, in))
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return nil, errForbidden // 0 rows = the tag exists but this customer does not own it → 403
+		}
+		return nil, err
+	}
+	return api.UpdatePetProfile200JSONResponse(petPageDTO(tag, &profile, true)), nil
+}
+
 // validShareCoords accepts only an in-range WGS84 coordinate; anything else is a 400. The browser geolocation
 // API only ever yields in-range values, so an out-of-range payload is a buggy or hostile client, not a finder.
 func validShareCoords(lat, lng float64) bool {
@@ -262,10 +295,83 @@ func profileParams(tag sqlc.PetTag, ownerID uuid.UUID, handle string, in api.Pet
 	}
 }
 
+// validateProfileUpdate enforces the same spec §10 rules as onboarding for the in-place edit (t-4c), minus
+// consent (granted once at activation — an edit doesn't re-consent). Only the required fields gate: pet name
+// 1..40 runes, a known species, the owner's VN phone. bio/gallery/favorites and the rest are free-form.
+// Returns per-field VALIDATION keys (empty = valid).
+func validateProfileUpdate(in api.PetProfileUpdateInput) map[string]string {
+	fields := map[string]string{}
+	if n := utf8.RuneCountInString(strings.TrimSpace(in.PetName)); n < 1 || n > petNameMax {
+		fields["petName"] = msgKey(codeValidation)
+	}
+	switch in.Species {
+	case api.Dog, api.Cat, api.Other:
+	default:
+		fields["species"] = msgKey(codeValidation)
+	}
+	if !vnPhoneRe.MatchString(strings.TrimSpace(in.OwnerContact.Phone)) {
+		fields["ownerContact.phone"] = msgKey(codeValidation)
+	}
+	return fields
+}
+
+// profileUpdateParams builds the content update from the validated edit payload: optional text trimmed to nil
+// (no stored ""), the jsonb columns (gallery/favorites string[], medical/ownerContact/socials) marshalled to
+// []byte defaulting to [] / {} (never NULL) — mirrors profileParams. The owner_account_id is the SQL authz
+// guard. theme/blocks/lost_mode/handle are deliberately NOT set (the query leaves them untouched).
+func profileUpdateParams(tagID, ownerID uuid.UUID, in api.PetProfileUpdateInput) sqlc.UpdatePetProfileContentParams {
+	gallery := []byte("[]")
+	if in.Gallery != nil {
+		if b, err := json.Marshal(in.Gallery); err == nil {
+			gallery = b
+		}
+	}
+	favorites := []byte("[]")
+	if in.Favorites != nil {
+		if b, err := json.Marshal(in.Favorites); err == nil {
+			favorites = b
+		}
+	}
+	medical := []byte("{}")
+	if in.Medical != nil {
+		if b, err := json.Marshal(in.Medical); err == nil {
+			medical = b
+		}
+	}
+	socials := []byte("[]")
+	if in.Socials != nil {
+		if b, err := json.Marshal(in.Socials); err == nil {
+			socials = b
+		}
+	}
+	ownerContact := []byte("{}")
+	if b, err := json.Marshal(in.OwnerContact); err == nil {
+		ownerContact = b
+	}
+	return sqlc.UpdatePetProfileContentParams{
+		TagID:          tagID,
+		PetName:        strings.TrimSpace(in.PetName),
+		Species:        sqlc.PetSpecies(in.Species),
+		Breed:          trimPtr(in.Breed),
+		Age:            trimPtr(in.Age),
+		Weight:         trimPtr(in.Weight),
+		PhotoUrl:       trimPtr(in.PhotoUrl),
+		Bio:            trimPtr(in.Bio),
+		Gallery:        gallery,
+		Favorites:      favorites,
+		Medical:        medical,
+		OwnerContact:   ownerContact,
+		Socials:        socials,
+		OwnerAccountID: ownerID,
+	}
+}
+
 // petPageDTO projects a tag (+ optional profile) to the public page read. profile is nil until ACTIVATED.
 // The contact is masked unless the page is in lost mode OR the viewer is the owner — masking is decided HERE
-// (server-side) so the raw phone never reaches the wire in the masked case (PDPL). Owner-only sections
-// (bio/gallery/favorites/theme/blocks) are not projected — they have no writer until the t-4c editor.
+// (server-side) so the raw phone never reaches the wire in the masked case (PDPL). The content blocks
+// (bio/gallery/favorites) render for everyone (subject to block visibility on the FE); theme/blocks are
+// projected as-is so the t-4c-2 theme/reorder FE reads them without a contract change (their WRITER lands
+// there — this slice's editor writes content only).
 func petPageDTO(tag sqlc.PetTag, profile *sqlc.PetProfile, viewerIsOwner bool) api.PetPage {
 	page := api.PetPage{
 		ShortId:       tag.ShortID,
@@ -274,20 +380,68 @@ func petPageDTO(tag sqlc.PetTag, profile *sqlc.PetProfile, viewerIsOwner bool) a
 	}
 	if profile != nil {
 		page.Profile = &api.PetPageProfile{
-			Handle:   profile.Handle,
-			PetName:  profile.PetName,
-			Species:  api.PetSpecies(profile.Species),
-			PhotoUrl: profile.PhotoUrl,
-			Breed:    profile.Breed,
-			Age:      profile.Age,
-			Weight:   profile.Weight,
-			LostMode: profile.LostMode,
-			Medical:  petMedicalDTO(profile.Medical),
-			Socials:  petSocialsDTO(profile.Socials),
-			Contact:  petContactDTO(profile.OwnerContact, viewerIsOwner || profile.LostMode, viewerIsOwner),
+			Handle:    profile.Handle,
+			PetName:   profile.PetName,
+			Species:   api.PetSpecies(profile.Species),
+			PhotoUrl:  profile.PhotoUrl,
+			Breed:     profile.Breed,
+			Age:       profile.Age,
+			Weight:    profile.Weight,
+			Bio:       trimPtr(profile.Bio),
+			Gallery:   petStringsDTO(profile.Gallery),
+			Favorites: petStringsDTO(profile.Favorites),
+			LostMode:  profile.LostMode,
+			Medical:   petMedicalDTO(profile.Medical),
+			Socials:   petSocialsDTO(profile.Socials),
+			Theme:     petThemeDTO(profile.Theme),
+			Blocks:    petBlocksDTO(profile.Blocks),
+			Contact:   petContactDTO(profile.OwnerContact, viewerIsOwner || profile.LostMode, viewerIsOwner),
 		}
 	}
 	return page
+}
+
+// petStringsDTO unmarshals a string[] jsonb (gallery URLs / favorites labels) to the page, returning nil
+// (omitted) when empty or corrupt so the FE renders no section — an empty [] shouldn't draw an empty block.
+func petStringsDTO(b []byte) *[]string {
+	if len(b) == 0 {
+		return nil
+	}
+	var s []string
+	if err := json.Unmarshal(b, &s); err != nil || len(s) == 0 {
+		return nil
+	}
+	return &s
+}
+
+// petThemeDTO unmarshals the theme jsonb to the page, returning nil (omitted) when it carries no set field —
+// an empty {} theme should render the brand default, not an empty theme object. Read-passthrough: no
+// validation here (the theme sheet validates on write in t-4c-2); a corrupt blob just drops to the default.
+func petThemeDTO(b []byte) *api.PetTheme {
+	if len(b) == 0 {
+		return nil
+	}
+	var t api.PetTheme
+	if err := json.Unmarshal(b, &t); err != nil {
+		return nil
+	}
+	if t.Palette == nil && t.Background == nil && t.BgImageUrl == nil && t.BgOpacity == nil && t.NameFont == nil {
+		return nil
+	}
+	return &t
+}
+
+// petBlocksDTO unmarshals the blocks jsonb (order + visibility) to the page, returning nil (omitted) when
+// empty so the FE falls back to its default block order. Read-passthrough; a corrupt blob drops to nil.
+func petBlocksDTO(b []byte) *[]api.PetBlock {
+	if len(b) == 0 {
+		return nil
+	}
+	var blocks []api.PetBlock
+	if err := json.Unmarshal(b, &blocks); err != nil || len(blocks) == 0 {
+		return nil
+	}
+	return &blocks
 }
 
 // petMedicalDTO unmarshals the medical jsonb to the public block, returning nil (omitted) when it carries no

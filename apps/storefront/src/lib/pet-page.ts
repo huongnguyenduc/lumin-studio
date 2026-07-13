@@ -33,6 +33,21 @@ export type PetMedical = {
 
 export type PetSocial = { platform: string; handle: string };
 
+// The page theme (spec §10) — 5 brand colorways + Đêm cocoa, a background style + opacity, a name font. This
+// slice (t-4c-1) carries the type + reads it through, but does NOT apply it; the theme sheet that writes it +
+// the render that applies it land in t-4c-2 (safety colours are never themed).
+export type PetTheme = {
+  palette?: string;
+  background?: string;
+  bgImageUrl?: string;
+  bgOpacity?: number;
+  nameFont?: string;
+};
+
+// One content block's placement (spec §10 ProfileBlock). Read through here; the reorder mode that writes it
+// lands in t-4c-2. photo_name is always first and can't be hidden.
+export type PetBlock = { type: string; order: number; visible: boolean };
+
 export type PetPageProfile = {
   handle: string;
   petName: string;
@@ -41,9 +56,14 @@ export type PetPageProfile = {
   breed?: string;
   age?: string;
   weight?: string;
+  bio?: string;
+  gallery?: string[];
+  favorites?: string[];
   lostMode: boolean;
   medical?: PetMedical;
   socials?: PetSocial[];
+  theme?: PetTheme;
+  blocks?: PetBlock[];
   contact: PetContact;
 };
 
@@ -102,8 +122,13 @@ export async function fetchPetPage(shortId: string): Promise<PetPageResult> {
           ...(p.breed ? { breed: p.breed } : {}),
           ...(p.age ? { age: p.age } : {}),
           ...(p.weight ? { weight: p.weight } : {}),
+          ...(p.bio ? { bio: p.bio } : {}),
+          ...(p.gallery && p.gallery.length ? { gallery: p.gallery } : {}),
+          ...(p.favorites && p.favorites.length ? { favorites: p.favorites } : {}),
           ...(p.medical ? { medical: p.medical } : {}),
           ...(p.socials && p.socials.length ? { socials: p.socials } : {}),
+          ...(p.theme ? { theme: p.theme } : {}),
+          ...(p.blocks && p.blocks.length ? { blocks: p.blocks } : {}),
         };
       }
       const page: PetPage = {

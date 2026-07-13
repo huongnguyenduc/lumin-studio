@@ -95,6 +95,59 @@ export async function toggleLostMode(
   }
 }
 
+// The wire payload for the in-place editor's save (P3-t t-4c-1) — the full editable page content. petName +
+// species + ownerContact are required; the rest optional (an absent field clears it). Mirrors the server's
+// PetProfileUpdateInput; theme/blocks/lostMode/handle are NOT here (their own endpoints / t-4c-2).
+export type ProfileUpdateInput = {
+  petName: string;
+  species: PetSpecies;
+  breed?: string;
+  age?: string;
+  weight?: string;
+  photoUrl?: string;
+  bio?: string;
+  gallery?: string[];
+  favorites?: string[];
+  medical?: { vaccinated?: boolean; neutered?: boolean; allergies?: string; vetClinic?: string };
+  ownerContact: { name: string; phone: string; zalo?: string };
+  socials?: { platform: string; handle: string }[];
+};
+
+// unauthenticated = no/expired session; forbidden = signed in but not this pet's owner (the SQL owner guard);
+// validation = a rejected field (the client mirrors the rules, so this is a rare race); error = network / 5xx.
+export type UpdateProfileResult =
+  | { ok: true }
+  | { ok: false; code: 'unauthenticated' | 'forbidden' | 'validation' | 'error' };
+
+// updatePetProfile bridges the in-place editor's save to PATCH /pet-tags/{shortId}/profile (P3-t t-4c-1). The
+// editor runs in the browser but CORE_API_URL is server-only, so it calls this Server Action, which forwards
+// the customer cookie (the endpoint is customer-authed + owner-guarded server-side). On success the caller
+// router.refresh()es so the server component re-renders with the edited content.
+export async function updatePetProfile(
+  shortId: string,
+  input: ProfileUpdateInput,
+): Promise<UpdateProfileResult> {
+  const jwt = (await cookies()).get(CUSTOMER_COOKIE)?.value;
+  if (!jwt) return { ok: false, code: 'unauthenticated' }; // no session → skip the round-trip
+  try {
+    const client = createApiClient({
+      baseUrl: coreApiBaseUrl(),
+      headers: { cookie: `${CUSTOMER_COOKIE}=${jwt}` },
+    });
+    const { data, response } = await client.PATCH('/pet-tags/{shortId}/profile', {
+      params: { path: { shortId } },
+      body: input,
+    });
+    if (data) return { ok: true };
+    if (response.status === 401) return { ok: false, code: 'unauthenticated' };
+    if (response.status === 403) return { ok: false, code: 'forbidden' };
+    if (response.status === 400) return { ok: false, code: 'validation' };
+    return { ok: false, code: 'error' };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
 // notLost = the pet was un-flagged (409) between page-load and submit — a rare race; error = network / 404 / 400
 // / 429 / else. A denied browser-geolocation permission never reaches here (it is handled in the client).
 export type ShareLocationResult = { ok: true } | { ok: false; code: 'notLost' | 'error' };

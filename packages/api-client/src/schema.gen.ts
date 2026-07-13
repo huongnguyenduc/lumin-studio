@@ -197,6 +197,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pet-tags/{shortId}/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Owner edits the pet page content in place (spec §10 sửa-tại-chỗ, P3-t t-4c).
+         * @description The WYSIWYG in-place editor's save (P3-t t-4c-1): the owner replaces the page's editable content — the display fields (name/species/breed/age/weight/photo), the new content blocks (bio, gallery, favorites), medical, socials, and the owner contact — in one PATCH. Owner-only: the update is guarded by owner_account_id in SQL, so a signed-in non-owner is a 403 (not a silent no-op), exactly like the lost-mode toggle. This does NOT touch theme or block order (the theme sheet + reorder mode land in t-4c-2), lostMode (its own endpoint), the handle (derived, cosmetic), or consent (granted once at onboarding). petName/species/ownerContact.phone follow the same validation as onboarding. Requires a valid customer session (401). Unknown shortId → 404; a tag the caller does not own → 403; a bad field → 400. Returns the updated pet page.
+         */
+        patch: operations["updatePetProfile"];
+        trace?: never;
+    };
     "/orders": {
         parameters: {
             query?: never;
@@ -2666,6 +2686,26 @@ export interface components {
             platform: string;
             handle: string;
         };
+        /** @description The pet page's theme (spec §10 "Theme trang pet") — 5 brand colorways + Đêm cocoa, a background style with a per-image opacity, and the name font. This is the READ shape (P3-t t-4c-1) projected as-is from the stored jsonb; the theme SHEET that writes it (with the fixed colorway/background/font choices, no free picker) lands in t-4c-2. All fields optional — an unthemed page carries an empty theme and renders the brand default. Safety colours (allergy warning, lost banner, emergency call) are never themed. */
+        PetTheme: {
+            /** @description A brand colorway id (bo · mint · sun · sky · sunny) or cocoa (dark). Drives bg + chip + CTA. */
+            palette?: string;
+            /** @description Background style — dots · plain · paper · image (spec §10 Chấm bi · Trơn · Vân giấy · Ảnh riêng). */
+            background?: string;
+            /** @description The custom background image URL, present only when background=image. */
+            bgImageUrl?: string;
+            /** @description Background image opacity 0–100 (default 40 — spec §10 validation). */
+            bgOpacity?: number;
+            /** @description The pet-name font — display (Bricolage) or mono (Space Mono). */
+            nameFont?: string;
+        };
+        /** @description One content block's placement (spec §10 ProfileBlock) — the order + visibility the owner sets in the reorder mode. READ shape (P3-t t-4c-1) projected from the stored blocks jsonb; the reorder mode that writes it lands in t-4c-2. The photo_name block is always first and cannot be hidden. */
+        PetBlock: {
+            /** @description The block kind — photo_name · bio · gallery · favorites · medical · socials. */
+            type: string;
+            order: number;
+            visible: boolean;
+        };
         /** @description The owner-contact block AS PROJECTED to the public page (P3-t t-4a) — the PDPL-safe view of PetOwnerContact. `masked` is the reveal gate: when true (a stranger, at-home page) only `phoneMasked` is present and NO callable value is shipped; when false (lost mode, or the owner viewing) the full `phone`/`zalo`/`email` are included so the finder can reach the owner. `name` is owner-only (a finder never needs it — the CTAs say "sen của {petName}"). Masking is decided server-side: the raw number never reaches the wire in the masked case. */
         PetPageContact: {
             /** @description true = only the masked phone is available (at-home stranger view); false = full contact revealed. */
@@ -2681,7 +2721,7 @@ export interface components {
             /** @description Owner name — present only when the viewer IS the owner (never shown to finders). */
             name?: string;
         };
-        /** @description The pet profile the public /t/{shortId} page renders in its 3 view-states (P3-t t-4a). Display fields + medical (drives the allergy warning) + socials + a PDPL-masked contact block + lostMode (routes the view-state). Owner-only content (bio/gallery/favorites/theme/blocks) has no writer until the t-4c in-place editor, so it lands there — this shape is exactly what onboarding captures + the contact. */
+        /** @description The pet profile the public /t/{shortId} page renders in its 3 view-states (P3-t t-4a/t-4c). Display fields + the content blocks (bio, gallery, favorites) + medical (drives the allergy warning) + socials + a PDPL-masked contact block + lostMode (routes the view-state) + the theme/blocks the page renders with. bio/gallery/favorites gained their writer with the t-4c in-place editor; theme/blocks are projected here (their writer — the theme sheet + reorder mode — lands in t-4c-2). */
         PetPageProfile: {
             /** @description The vanity slug shown as @handle (derived from the pet name). */
             handle: string;
@@ -2691,10 +2731,19 @@ export interface components {
             breed?: string;
             age?: string;
             weight?: string;
+            /** @description The pet's free-text intro (spec §10 "Giới thiệu"). Owner-editable (t-4c). */
+            bio?: string;
+            /** @description Album photo URLs (spec §10 gallery). Owner-editable (t-4c). */
+            gallery?: string[];
+            /** @description "Khoái khẩu" chips (spec §10 favorites) — short free-text labels. Owner-editable (t-4c). */
+            favorites?: string[];
             /** @description false = at-home (default), true = lost/rescue. Routes the view-state + gates the contact reveal. */
             lostMode: boolean;
             medical?: components["schemas"]["PetMedical"];
             socials?: components["schemas"]["PetSocial"][];
+            theme?: components["schemas"]["PetTheme"];
+            /** @description Content-block order + visibility (spec §10). Empty until the owner reorders (t-4c-2); the page falls back to a default order. */
+            blocks?: components["schemas"]["PetBlock"][];
             contact: components["schemas"]["PetPageContact"];
         };
         /** @description The public /t/{shortId} pet-page read (P3-t t-3/t-4a). `status` routes the page: UNENCODED/ENCODED = not yet activated (onboarding/welcome), ACTIVATED = live. `viewerIsOwner` is true when the optional customer session belongs to the tag's owner (drives the owner affordances — the lost-mode toggle now, the editor in t-4c). `profile` is present only when ACTIVATED. */
@@ -2726,6 +2775,21 @@ export interface components {
             socials?: components["schemas"]["PetSocial"][];
             /** @description PDPL consent (point 1) to store the pet + owner PII for the pet-page purpose. Must be true — a false/absent consent is a 400. Recorded as a pet_profile consent grant (ADR-042). */
             consent: boolean;
+        };
+        /** @description The in-place editor's save payload (spec §10 sửa-tại-chỗ, P3-t t-4c-1) — the full editable page content the owner replaces in one PATCH. petName + species + ownerContact (phone) are required (they can't be cleared), the rest optional; an absent optional clears that field. No consent (granted once at onboarding), no handle (derived), no lostMode/theme/blocks (their own endpoints / t-4c-2). Fields mirror onboarding + the new content blocks (bio, gallery, favorites). */
+        PetProfileUpdateInput: {
+            petName: string;
+            species: components["schemas"]["PetSpecies"];
+            breed?: string;
+            age?: string;
+            weight?: string;
+            photoUrl?: string;
+            bio?: string;
+            gallery?: string[];
+            favorites?: string[];
+            medical?: components["schemas"]["PetMedical"];
+            ownerContact: components["schemas"]["PetOwnerContact"];
+            socials?: components["schemas"]["PetSocial"][];
         };
         /** @description The finder's one-shot location share for a lost pet (spec §10 rescue 4a→4b, P3-t t-4b). Only lat/lng — data-minimized (PDPL). Sent once, after the finder grants the browser geolocation permission. */
         PetShareLocationInput: {
@@ -3111,6 +3175,36 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    updatePetProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shortId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PetProfileUpdateInput"];
+            };
+        };
+        responses: {
+            /** @description The updated pet page (the profile now reflects the edited content). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PetPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     createOrder: {

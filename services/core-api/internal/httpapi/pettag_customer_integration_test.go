@@ -430,3 +430,138 @@ func lostEventCount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, short
 	}
 	return n
 }
+
+// TestUpdatePetProfile drives the in-place editor's save (P3-t t-4c-1) over a real Postgres. After activation
+// (onboarding captures no bio/gallery/favorites), the owner PATCHes the full content: the new blocks land, the
+// display fields change, and the projection reflects them on BOTH the owner's and a stranger's page (content
+// is public — only the contact is PDPL-masked). theme/blocks are untouched (still default → projected nil).
+// Owner-only: a different signed-in customer's update is a 403 (the SQL owner guard, not a silent no-op); a bad
+// phone → 400; an unknown shortId → 404; no session → 401.
+func TestUpdatePetProfile(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+
+	catID := seedCategory(t, ctx, pool)
+	tagProduct := seedProductNamed(t, ctx, pool, catID, "pet-tag-edit", "Pet Tag NFC", 390_000)
+	if _, err := pool.Exec(ctx, `UPDATE products SET product_type='nfc_tag' WHERE id=$1`, tagProduct); err != nil {
+		t.Fatalf("mark nfc_tag: %v", err)
+	}
+	orderID := seedAdminOrder(t, ctx, pool, adminOrderSeed{
+		customer: "Mai Lê", channel: order.ChannelWeb, createdAt: "2026-07-07T08:00:00Z",
+		items: []db.NewOrderItem{{ProductID: tagProduct, Quantity: 1, UnitPrice: 390_000}},
+	})
+	item := orderItemID(t, ctx, pool, orderID, tagProduct)
+	shortID := seedEncodedTag(t, ctx, pool, item, "peteditaaa")
+	owner := seedCustomerRow(t, ctx, pool, "Mai Lê", "0905552261", nil, nil, []byte("[]"))
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
+	activatePetTag(t, srv, withCustomer(ctx, owner), shortID, validPetInput())
+
+	// --- Before edit: onboarding set no content blocks. ---
+	pre := getPetPage(t, srv, withCustomer(ctx, owner), shortID)
+	if pre.Profile.Bio != nil || pre.Profile.Gallery != nil || pre.Profile.Favorites != nil {
+		t.Fatalf("pre-edit profile already has content blocks: %+v", pre.Profile)
+	}
+
+	// --- Owner edits the page content in place. ---
+	edited := updatePetProfile(t, srv, withCustomer(ctx, owner), shortID, validUpdateInput())
+	pp := edited.Profile
+	if pp == nil || pp.Bio == nil || *pp.Bio != "Chân ngắn, lòng dài 🧀" {
+		t.Fatalf("edited bio = %+v, want the new bio", pp)
+	}
+	if pp.Gallery == nil || len(*pp.Gallery) != 2 || pp.Favorites == nil || len(*pp.Favorites) != 2 {
+		t.Fatalf("edited gallery/favorites = %+v / %+v, want 2 each", pp.Gallery, pp.Favorites)
+	}
+	if pp.Breed == nil || *pp.Breed != "Corgi" || pp.Socials == nil || len(*pp.Socials) != 1 {
+		t.Fatalf("edited breed/socials = %+v / %+v, want Corgi + 1 social", pp.Breed, pp.Socials)
+	}
+	// theme/blocks were NOT part of the edit → still default → omitted.
+	if pp.Theme != nil || pp.Blocks != nil {
+		t.Fatalf("edit touched theme/blocks: theme=%+v blocks=%+v (t-4c-2 owns those)", pp.Theme, pp.Blocks)
+	}
+
+	// DB: the content columns persisted (gallery/favorites as jsonb, bio as text).
+	var bio string
+	var galleryLen, favLen int
+	if err := pool.QueryRow(ctx, `SELECT bio, jsonb_array_length(gallery), jsonb_array_length(favorites)
+		FROM pet_profiles WHERE tag_id=(SELECT id FROM pet_tags WHERE short_id=$1)`, shortID).Scan(&bio, &galleryLen, &favLen); err != nil {
+		t.Fatalf("read profile content: %v", err)
+	}
+	if bio != "Chân ngắn, lòng dài 🧀" || galleryLen != 2 || favLen != 2 {
+		t.Fatalf("db content = bio %q / gallery %d / fav %d, want the edited values", bio, galleryLen, favLen)
+	}
+
+	// --- A stranger sees the content (it's public) but the contact stays masked. ---
+	stranger := getPetPage(t, srv, ctx, shortID)
+	if stranger.Profile.Bio == nil || stranger.Profile.Gallery == nil {
+		t.Fatalf("stranger should see public content (bio/gallery): %+v", stranger.Profile)
+	}
+	if !stranger.Profile.Contact.Masked || stranger.Profile.Contact.Phone != nil {
+		t.Fatalf("stranger contact should stay masked after an edit: %+v", stranger.Profile.Contact)
+	}
+
+	// --- Reject paths. ---
+	// A different signed-in customer is NOT the owner → 403 (the SQL owner guard).
+	owner2 := seedCustomerRow(t, ctx, pool, "Trần Bình", "0912345678", nil, nil, []byte("[]"))
+	if _, err := srv.UpdatePetProfile(withCustomer(ctx, owner2), api.UpdatePetProfileRequestObject{ShortId: shortID, Body: ptrUpdate(validUpdateInput())}); !errors.Is(err, errForbidden) {
+		t.Fatalf("non-owner edit → %v, want errForbidden (403)", err)
+	}
+	// Bad phone → 400.
+	badPhone := validUpdateInput()
+	badPhone.OwnerContact.Phone = "not-a-phone"
+	if resp, _ := srv.UpdatePetProfile(withCustomer(ctx, owner), api.UpdatePetProfileRequestObject{ShortId: shortID, Body: ptrUpdate(badPhone)}); !isUpdate400(resp) {
+		t.Fatalf("bad phone → %T, want 400", resp)
+	}
+	// Unknown shortId → 404.
+	if _, err := srv.UpdatePetProfile(withCustomer(ctx, owner), api.UpdatePetProfileRequestObject{ShortId: "does-not-exist", Body: ptrUpdate(validUpdateInput())}); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("unknown shortId → %v, want db.ErrNotFound (404)", err)
+	}
+	// No customer session → 401.
+	if _, err := srv.UpdatePetProfile(ctx, api.UpdatePetProfileRequestObject{ShortId: shortID, Body: ptrUpdate(validUpdateInput())}); !errors.Is(err, errUnauthenticated) {
+		t.Fatalf("no session → %v, want errUnauthenticated (401)", err)
+	}
+	// Nil body → 400.
+	if resp, _ := srv.UpdatePetProfile(withCustomer(ctx, owner), api.UpdatePetProfileRequestObject{ShortId: shortID, Body: nil}); !isUpdate400(resp) {
+		t.Fatalf("nil body → %T, want 400", resp)
+	}
+}
+
+// validUpdateInput is a full valid in-place-edit payload: the same required identity (Bơ the corgi + phone)
+// plus the new content blocks (bio, a 2-photo gallery, 2 favorites) and a social handle.
+func validUpdateInput() api.PetProfileUpdateInput {
+	bio := "Chân ngắn, lòng dài 🧀"
+	breed := "Corgi"
+	age := "2 tuổi"
+	weight := "9 kg"
+	return api.PetProfileUpdateInput{
+		PetName:      "Bơ",
+		Species:      api.Dog,
+		Breed:        &breed,
+		Age:          &age,
+		Weight:       &weight,
+		Bio:          &bio,
+		Gallery:      &[]string{"https://cdn.example/a.jpg", "https://cdn.example/b.jpg"},
+		Favorites:    &[]string{"🧀 Phô mai", "🦴 Gặm xương"},
+		OwnerContact: api.PetOwnerContact{Name: "Mai Lê", Phone: "0905552261"},
+		Socials:      &[]api.PetSocial{{Platform: "instagram", Handle: "bo.corgi"}},
+	}
+}
+
+func ptrUpdate(in api.PetProfileUpdateInput) *api.PetProfileUpdateInput { return &in }
+
+func updatePetProfile(t *testing.T, srv *Server, ctx context.Context, shortID string, in api.PetProfileUpdateInput) api.PetPage {
+	t.Helper()
+	resp, err := srv.UpdatePetProfile(ctx, api.UpdatePetProfileRequestObject{ShortId: shortID, Body: &in})
+	if err != nil {
+		t.Fatalf("UpdatePetProfile(%s): %v", shortID, err)
+	}
+	ok, isOK := resp.(api.UpdatePetProfile200JSONResponse)
+	if !isOK {
+		t.Fatalf("UpdatePetProfile response = %T, want 200", resp)
+	}
+	return api.PetPage(ok)
+}
+
+func isUpdate400(resp api.UpdatePetProfileResponseObject) bool {
+	_, ok := resp.(api.UpdatePetProfile400JSONResponse)
+	return ok
+}

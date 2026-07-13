@@ -157,12 +157,13 @@ func classify(operationID string) authClass {
 		// recognised (viewerIsOwner → un-masked contact). A stale/absent cookie must not 401 a page any
 		// stranger can read, so this is authOptionalCustomer (lenient), not authCustomer.
 		return authOptionalCustomer
-	case "GetCustomerOrders", "ActivatePetTag", "ToggleLostMode":
+	case "GetCustomerOrders", "ActivatePetTag", "ToggleLostMode", "UpdatePetProfile":
 		// GetCustomerOrders — the authenticated customer's own order history. ActivatePetTag (P3-t t-3) —
 		// onboarding attaches the scanned tag to WHICHEVER customer is signed in (spec §10 "tag tự gắn
-		// vào tài khoản vừa đăng nhập"). ToggleLostMode (P3-t t-4a) — only the owner flips lost mode; the
-		// owner_account_id guard in SQL is the final authz, but the session is required first (a valid
-		// CUSTOMER session, not the admin cookie). resolveCustomer injects the id; absent/invalid → 401.
+		// vào tài khoản vừa đăng nhập"). ToggleLostMode (P3-t t-4a) + UpdatePetProfile (P3-t t-4c, the
+		// in-place editor's save) — only the owner may write; the owner_account_id guard in SQL is the
+		// final authz, but a valid CUSTOMER session (not the admin cookie) is required first. resolveCustomer
+		// injects the id; absent/invalid → 401.
 		return authCustomer
 	default:
 		// GetDashboard, ListReplyTemplates, GetSettings, TransitionOrder, + any new operation.
