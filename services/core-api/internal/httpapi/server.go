@@ -69,6 +69,14 @@ type Server struct {
 	// wired the catalog-asset bucket credentials; the owner-only endpoint then fails closed with a 500.
 	// No rate limiter twin: the endpoint is owner-authenticated, not public like proofUploads.
 	modelUploads *modelstore.Store
+	// imageUploads signs presigned POST policies for PUBLIC, PERMANENT images — pet-page photos (P3-t t-6)
+	// and product-gallery photos (P3-l) — landing in the world-readable lumin-assets bucket, NOT the private
+	// payment-proof bucket, so they are never retention-swept. Nil means the image-asset bucket credentials
+	// were not wired; the public endpoint then fails closed with a 500. Built once in main.go.
+	imageUploads *proofstore.Store
+	// imageUploadLimiter is the public image-upload signer's global token bucket — same rationale and type
+	// as proofUploadLimiter (an unauthenticated public signer with no trusted per-IP signal in-process).
+	imageUploadLimiter *paymentProofUploadLimiter
 	// tracking mints/verifies the phone-less order-tracking capability token (P2-i, D-P2-8). Never nil:
 	// NewServer defaults it to a dev-secret signer so unit tests need no wiring, and WithTrackingSecret
 	// (called by main.go with the real TRACKING_SECRET) overrides it. See track.go.
@@ -111,6 +119,14 @@ func WithModelUploads(store *modelstore.Store) ServerOption {
 	return func(s *Server) { s.modelUploads = store }
 }
 
+// WithImageUploads wires the Garage/S3 signer for POST /uploads/image — the public, permanent pet-page +
+// product-gallery photo signer (lumin-assets bucket, no retention sweeper). main.go builds the store once;
+// a nil store — invalid/absent image-asset bucket config — makes the public endpoint fail closed at request
+// time, while main.go still boots (local dev may not upload images).
+func WithImageUploads(store *proofstore.Store) ServerOption {
+	return func(s *Server) { s.imageUploads = store }
+}
+
 // WithTrackingSecret sets the HMAC key for the phone-less order-tracking token (P2-i, D-P2-8).
 // main.go passes the resolved TRACKING_SECRET (having fail-fasted on the forgeable dev value); unit
 // tests that don't wire it fall back to NewServer's dev-secret default (track.go), so the signer is
@@ -144,6 +160,7 @@ func NewServer(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus, authIss
 		lookup:             newLookupLimiter(defaultLookupLimits()),
 		proofUploadLimiter: newPaymentProofUploadLimiter(defaultPaymentProofUploadLimits()),
 		lostShareLimiter:   newPaymentProofUploadLimiter(defaultLostShareLimits()),
+		imageUploadLimiter: newPaymentProofUploadLimiter(defaultPaymentProofUploadLimits()),
 		tracking:           newTrackingSigner(devTrackingSecret),
 		printHub:           newPrintStreamHub(),
 		petPageBaseURL:     defaultPetPageBaseURL,

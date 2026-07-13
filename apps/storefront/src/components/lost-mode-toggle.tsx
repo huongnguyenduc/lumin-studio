@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { cn } from '@lumin/ui';
 import { toggleLostMode } from '@/lib/pet-actions';
+import { track } from '@/lib/analytics';
 
 // The owner's lost-mode switch on /t/{shortId} (spec §10 công tắc thất lạc, P3-t t-4a). Rendered only for the
 // owner (page.viewerIsOwner). The WHOLE card is one role="switch" button so the hit target is comfortably
@@ -43,6 +44,7 @@ export function LostModeToggle({
         setError(true);
         return;
       }
+      track('lostmode_toggled', { enabled: next });
       router.refresh(); // server re-renders → view-state + contact reveal follow lostMode
     });
   };

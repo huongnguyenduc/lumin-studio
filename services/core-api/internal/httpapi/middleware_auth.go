@@ -106,6 +106,11 @@ func classify(operationID string) authClass {
 		// policy with a random server-generated key and persists nothing. The resulting finalUrl is
 		// later consumed by the public web POST /orders path.
 		return authPublic
+	case "CreateImageUpload":
+		// Public permanent-image upload bootstrap (P3-t t-6, P3-l) — no session; signs a one-object POST
+		// policy with a random server-generated key to the world-readable lumin-assets bucket and persists
+		// nothing. Mirrors CreatePaymentProofUpload's public + rate-limited posture.
+		return authPublic
 	case "CreateOrder":
 		return authOptional
 	case "UpdateBankAccount",

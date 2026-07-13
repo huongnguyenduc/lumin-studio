@@ -41,6 +41,10 @@ tags:
     description: Admin-gated reads + owner-only money-out config (RBAC, ADR-010/012).
   - name: catalog
     description: Public storefront catalog reads (product detail; active-only). No auth (Phase-1).
+  - name: uploads
+    description: >
+      Public presigned-POST bootstraps that sign a browser→Garage upload contract (the body never
+      transits core-api). Persist nothing money-bearing; rate-limited, not auth-gated.
 
 paths:
   /auth/login:
@@ -903,6 +907,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PaymentProofUpload'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /uploads/image:
+    post:
+      tags: [uploads]
+      operationId: createImageUpload
+      summary: Create a presigned POST form for one public image upload.
+      description: >
+        Public bootstrap for uploading ONE permanent, world-readable image — a pet-page photo (P3-t) or a
+        product-gallery photo (P3-l). Mirrors POST /checkout/payment-proof-upload (random non-PII object
+        key; a signed POST policy pinning `content-length-range` ≤10MB and an exact `Content-Type` of
+        `image/jpeg`, `image/png`, or `image/webp`; short TTL; the browser uploads straight to Garage). The
+        one difference: the object lands in the world-readable `lumin-assets` bucket with NO retention
+        sweeper — these images are permanent, unlike payment receipts (P3-t t-6). The host-pinned `finalUrl`
+        is what the caller stores as the photo/gallery URL.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageUploadInput'
+      responses:
+        '200':
+          description: Browser-ready POST target, form fields, and the host-pinned final object URL.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageUpload'
         '400': { $ref: '#/components/responses/BadRequest' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
@@ -4542,6 +4575,50 @@ components:
           type: string
           format: uri
           description: Host-pinned object URL later passed as `paymentProofUrl` to POST /orders.
+        expiresAt:
+          type: string
+          format: date-time
+          description: Policy expiration timestamp.
+        maxBytes:
+          type: integer
+          format: int64
+          description: Maximum object size enforced by the signed POST policy.
+
+    ImageUploadInput:
+      type: object
+      description: >
+        Browser upload bootstrap for one permanent public image (pet-page or product-gallery photo). Like
+        PaymentProofUploadInput, no file name or client-declared size is accepted: the object key is
+        generated server-side with no PII and the actual size/type gate lives in the signed S3 POST policy.
+      required: [contentType]
+      properties:
+        contentType:
+          type: string
+          enum: [image/jpeg, image/png, image/webp]
+          description: Exact image MIME type the returned POST policy will allow.
+
+    ImageUpload:
+      type: object
+      description: >
+        A short-lived, browser-ready S3/Garage POST form for one public image. Submit every `fields` entry
+        and the file part to `uploadUrl`; after a successful direct upload the image is addressable at the
+        host-pinned `finalUrl`, which the caller stores as the pet-photo or gallery URL. `finalUrl` is
+        host-pinned by the server and never derived from browser input.
+      required: [uploadUrl, fields, finalUrl, expiresAt, maxBytes]
+      properties:
+        uploadUrl:
+          type: string
+          format: uri
+          description: S3/Garage form POST target, usually the bucket endpoint.
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+          description: Exact form fields to include before the file part.
+        finalUrl:
+          type: string
+          format: uri
+          description: Host-pinned object URL the caller stores as the pet-photo or product-gallery image URL.
         expiresAt:
           type: string
           format: date-time

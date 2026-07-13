@@ -13,6 +13,8 @@ import { SESSION_COOKIE, coreApiBaseUrl } from './session';
 type TransitionRequest = components['schemas']['TransitionRequest'];
 type ProofUpload = components['schemas']['PaymentProofUpload'];
 type ProofContentType = components['schemas']['PaymentProofUploadInput']['contentType'];
+type ImageUpload = components['schemas']['ImageUpload'];
+type ImageContentType = components['schemas']['ImageUploadInput']['contentType'];
 
 /** `forbidden` = staff hit an owner-only edge (→PAID/→REFUNDED); `conflict` = the order moved under us
  *  (stale edge, 409 INVALID_EDGE); `validation` = a missing artifact the UI should have supplied
@@ -57,6 +59,22 @@ export async function presignProofUpload(
   try {
     const client = createApiClient({ baseUrl: coreApiBaseUrl() });
     const { data } = await client.POST('/checkout/payment-proof-upload', { body: { contentType } });
+    if (data) return { ok: true, upload: data };
+    return { ok: false };
+  } catch {
+    return { ok: false };
+  }
+}
+
+/** Ask core-api for a presigned POST form for ONE permanent public image (product gallery, P3-l). Same
+ *  dance as presignProofUpload but hits POST /uploads/image → the world-readable lumin-assets bucket with
+ *  NO retention sweeper, so a gallery photo never expires (t-6). Any failure collapses to a retryable miss. */
+export async function presignImageUpload(
+  contentType: ImageContentType,
+): Promise<{ ok: true; upload: ImageUpload } | { ok: false }> {
+  try {
+    const client = createApiClient({ baseUrl: coreApiBaseUrl() });
+    const { data } = await client.POST('/uploads/image', { body: { contentType } });
     if (data) return { ok: true, upload: data };
     return { ok: false };
   } catch {

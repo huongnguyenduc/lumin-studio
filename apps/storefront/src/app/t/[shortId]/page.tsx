@@ -4,6 +4,7 @@ import { fetchPetPage, hasCustomerSession } from '@/lib/pet-page';
 import { NewTagWelcome, PetPageUnavailable } from '@/components/pet-page-states';
 import { PetPage } from '@/components/pet-page';
 import { PetOnboarding } from '@/components/pet-onboarding';
+import { TrackScan } from '@/components/track-scan';
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('petTag');
@@ -28,11 +29,21 @@ export default async function PetTagPage({ params }: { params: Promise<{ shortId
 
   const { page } = result;
   if (page.status === 'ACTIVATED' && page.profile) {
-    return <PetPage page={page} />;
+    return (
+      <>
+        <TrackScan state={page.profile.lostMode ? 'lost' : 'home'} />
+        <PetPage page={page} />
+      </>
+    );
   }
   if (page.status === 'ENCODED') {
     const signedIn = await hasCustomerSession();
-    return signedIn ? <PetOnboarding shortId={shortId} /> : <NewTagWelcome shortId={shortId} />;
+    return (
+      <>
+        <TrackScan state="encoded" />
+        {signedIn ? <PetOnboarding shortId={shortId} /> : <NewTagWelcome shortId={shortId} />}
+      </>
+    );
   }
   // UNENCODED (or an ACTIVATED tag whose profile somehow failed to load) → not yet ready to open.
   return <PetPageUnavailable variant="notReady" />;

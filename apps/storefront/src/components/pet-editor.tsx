@@ -11,6 +11,7 @@ import {
   type EditForm,
 } from '@/lib/pet-editor-form';
 import { updatePetProfile } from '@/lib/pet-actions';
+import { track } from '@/lib/analytics';
 import { uploadPetImage } from '@/lib/upload-pet-image';
 
 // The owner's in-place page editor (spec §10 sửa-tại-chỗ, P3-t t-4c-1). In display mode it is just the sticky
@@ -100,6 +101,7 @@ function EditorPanel({
     const res = await updatePetProfile(shortId, editToUpdateInput(form));
     setSaving(false);
     if (res.ok) {
+      track('pet_profile_edited');
       onSaved();
       return;
     }
