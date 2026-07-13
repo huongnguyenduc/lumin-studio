@@ -227,6 +227,14 @@ type Querier interface {
 	// filament_batches = import lots. Stock + weighted-average cost/unit are DERIVED here (never stored): the
 	// list/get queries LEFT JOIN batches so a never-imported material reads stock 0, avg 0.
 	InsertFilamentMaterial(ctx context.Context, arg InsertFilamentMaterialParams) (FilamentMaterial, error)
+	// ==== Pet page — rescue: finder location share (t-4b) =========================================
+	// InsertLostEvent records ONE finder location share for a lost pet (spec §10 LostEvent). The row itself IS the
+	// PDPL consent artifact (consent point 2): it exists only because an anonymous finder saw the stated purpose,
+	// tapped "send", and granted the browser geolocation permission — so scanned_at (DEFAULT now()) + a non-null
+	// finder_location capture {scope=location_share, channel=web, timestamp} (compliance.md §2). owner_notified_at
+	// stays NULL until a push is actually delivered — the email/notification worker is a later slice; t-4b notifies
+	// the owner IN-APP (RecentLostScansForTag on their own page), which needs no worker.
+	InsertLostEvent(ctx context.Context, arg InsertLostEventParams) (LostEvent, error)
 	// costing.sql — Vật tư cost inputs (ADR-039 slice 4c-1): machines (depreciation) + aux_costs (overhead).
 	// Plain CRUD — the ₫/hour rate and the per-order aux allocation are DERIVED downstream (Go DTO / the 4c-2
 	// rollup), never stored (ADR-039 pt 8), so these queries carry no money math. Scrap has no table here (it is
@@ -475,6 +483,11 @@ type Querier interface {
 	// 4c-1 NOTE — robust to a stray second primary or an inactivated one). No primary set → ErrNoRows → the
 	// rollup contributes machineVnd 0 (guarded), never a fault.
 	PrimaryMachine(ctx context.Context) (Machine, error)
+	// RecentLostScansForTag lists a tag's most-recent finder location-shares for the OWNER's in-app notify (spec
+	// §10 D4). Only rows that carry a location (a plain scan with no share is not a notify). Bounded by $2, newest
+	// first, via lost_events_tag_idx. ponytail: no time-window filter — the retention sweep (t-6) bounds row age,
+	// so LIMIT is the only cap needed.
+	RecentLostScansForTag(ctx context.Context, arg RecentLostScansForTagParams) ([]LostEvent, error)
 	// ReorderCategories sets each category's display_order to its position in the given id list (0-based), in
 	// one atomic statement over the whole ordered set the admin drag produced. unnest(... ) WITH ORDINALITY
 	// pairs each id with its 1-based index (ord), minus 1 for a 0-based order. Ids absent from the list keep

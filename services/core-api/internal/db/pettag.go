@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -124,6 +125,35 @@ func (t *PetTags) SetLostMode(ctx context.Context, tagID, ownerID uuid.UUID, los
 		return sqlc.PetProfile{}, ErrNotFound
 	}
 	return row, err
+}
+
+// FinderLocation is the {lat,lng} stored in lost_events.finder_location (spec §10). Defined here (the write
+// side) so the marshal and the pet-page read decode share one shape.
+type FinderLocation struct {
+	Lat float64 `json:"lat"`
+	Lng float64 `json:"lng"`
+}
+
+// RecordLostScan writes ONE finder location share for a lost pet (spec §10 rescue 4b, P3-t t-4b). A single
+// autocommit insert — money-free, and NO outbox: the tag axis publishes no events (there is no pettag.* NATS
+// stream and no owner-notify worker yet, so there is nothing to co-commit). The row's existence + its non-null
+// finder_location ARE the PDPL consent-point-2 record. The caller has already verified the pet is in lost mode.
+func (t *PetTags) RecordLostScan(ctx context.Context, tagID uuid.UUID, loc FinderLocation) (sqlc.LostEvent, error) {
+	b, err := json.Marshal(loc)
+	if err != nil {
+		return sqlc.LostEvent{}, fmt.Errorf("pet tag: marshal finder location: %w", err)
+	}
+	return t.q.InsertLostEvent(ctx, sqlc.InsertLostEventParams{
+		ID:             uuid.New(),
+		TagID:          tagID,
+		FinderLocation: b,
+	})
+}
+
+// RecentLostScans returns a tag's most-recent finder location-shares for the owner's in-app notify (spec §10
+// D4). Only rows carrying a location come back (the query filters); limit bounds the list.
+func (t *PetTags) RecentLostScans(ctx context.Context, tagID uuid.UUID, limit int32) ([]sqlc.LostEvent, error) {
+	return t.q.RecentLostScansForTag(ctx, sqlc.RecentLostScansForTagParams{TagID: tagID, Limit: limit})
 }
 
 // ResolveHandle folds the pet name into a unique vanity handle (spec §10 "handle auto từ tên, unique").

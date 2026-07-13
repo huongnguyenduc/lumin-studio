@@ -94,3 +94,30 @@ export async function toggleLostMode(
     return { ok: false, code: 'error' };
   }
 }
+
+// notLost = the pet was un-flagged (409) between page-load and submit — a rare race; error = network / 404 / 400
+// / 429 / else. A denied browser-geolocation permission never reaches here (it is handled in the client).
+export type ShareLocationResult = { ok: true } | { ok: false; code: 'notLost' | 'error' };
+
+// sharePetLocation bridges the finder's one-shot location share to POST /pet-tags/{shortId}/share-location
+// (P3-t t-4b). PUBLIC — the finder is an anonymous stranger, so NO cookie is required or forwarded. The lat/lng
+// come from the browser geolocation API (the finder already granted permission client-side); core-api records
+// ONE lost_events row. CORE_API_URL is server-only, so the client control calls this Server Action.
+export async function sharePetLocation(
+  shortId: string,
+  lat: number,
+  lng: number,
+): Promise<ShareLocationResult> {
+  try {
+    const client = createApiClient({ baseUrl: coreApiBaseUrl() });
+    const { data, response } = await client.POST('/pet-tags/{shortId}/share-location', {
+      params: { path: { shortId } },
+      body: { lat, lng },
+    });
+    if (data) return { ok: true };
+    if (response.status === 409) return { ok: false, code: 'notLost' };
+    return { ok: false, code: 'error' };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}

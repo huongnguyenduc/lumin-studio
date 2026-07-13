@@ -52,6 +52,11 @@ const (
 	// A normal scan is ENCODED; this only fires on a re-submit/race or direct API abuse (P3-t t-3).
 	codePetTagNotActivatable = "PET_TAG_NOT_ACTIVATABLE"
 
+	// codePetNotLost is the finder share-location 409 (P3-t t-4b): the scanned pet is not in lost mode (or the
+	// tag is not yet activated, so no profile exists), so a finder's location can't be recorded — an at-home
+	// pet's location is never pinged (spec §10 rescue is lostMode-only). Only fires on an at-home scan or API abuse.
+	codePetNotLost = "PET_NOT_LOST"
+
 	// Checkout (PR-3g) selection/intake codes. Granular where the storefront needs a distinct
 	// user-facing message (hết hàng vs quá dài vs chưa hỗ trợ tỉnh); one INVALID_SELECTION for
 	// the shapes that only a buggy/hostile client produces (foreign color/option, duplicates).
@@ -94,6 +99,11 @@ var errProductInUse = errors.New("httpapi: product has orders or render history"
 // product (the DB raises a foreign_key_violation on the NOT-NULL category_id FK; the handler translates it
 // here so the wire answer is a stable 409, never a leaked pg error). Maps to 409 CATEGORY_IN_USE (P3-o).
 var errCategoryInUse = errors.New("httpapi: category still has products")
+
+// errPetNotLost is the finder share-location boundary rejection (P3-t t-4b): the pet is not in lost mode (or
+// the tag is not yet activated), so there is nothing to rescue and no owner-location ping is recorded. 409 — a
+// well-formed request against a pet whose state does not permit a location share.
+var errPetNotLost = errors.New("httpapi: pet is not in lost mode")
 
 // Checkout (PR-3g) boundary sentinels — HTTP-edge rules the domain/db layers don't model.
 var (
@@ -176,6 +186,9 @@ func mapError(err error) (int, api.ErrorEnvelope) {
 	case errors.Is(err, errCategoryInUse):
 		// Hard category delete blocked by a product's category_id FK — reassign/archive first (P3-o).
 		return http.StatusConflict, envelope(codeCategoryInUse)
+	case errors.Is(err, errPetNotLost):
+		// Finder share-location against a pet not in lost mode (or not activated) — well-formed, 409 (P3-t t-4b).
+		return http.StatusConflict, envelope(codePetNotLost)
 	case errors.Is(err, errPaymentProofRequired):
 		// Web create with no usable CK-receipt URL (CHK-04). Same code the domain guard uses.
 		return http.StatusUnprocessableEntity, envelope(string(order.ErrProofRequired))

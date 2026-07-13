@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -311,4 +312,121 @@ func toggleLostMode(t *testing.T, srv *Server, ctx context.Context, shortID stri
 func isToggle400(resp api.ToggleLostModeResponseObject) bool {
 	_, ok := resp.(api.ToggleLostMode400JSONResponse)
 	return ok
+}
+
+// TestSharePetLocation drives the finder rescue send-once (P3-t t-4b) over a real Postgres. The finder is
+// ANONYMOUS (no session) — the endpoint is public. An at-home pet REFUSES a share (409 — an at-home pet's
+// location is never pinged); once the owner flips lost mode, a finder's {lat,lng} records ONE lost_events row
+// (the PDPL consent-point-2 artifact) with owner_notified_at NULL (there is no push worker in t-4b). The owner
+// then sees the scan IN-APP (recentScans with an OSM mapUrl) on their OWN page; a stranger never does. Bad
+// coords / nil body → 400; an unknown shortId → 404.
+func TestSharePetLocation(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+
+	catID := seedCategory(t, ctx, pool)
+	tagProduct := seedProductNamed(t, ctx, pool, catID, "pet-tag-finder", "Pet Tag NFC", 390_000)
+	if _, err := pool.Exec(ctx, `UPDATE products SET product_type='nfc_tag' WHERE id=$1`, tagProduct); err != nil {
+		t.Fatalf("mark nfc_tag: %v", err)
+	}
+	orderID := seedAdminOrder(t, ctx, pool, adminOrderSeed{
+		customer: "Mai Lê", channel: order.ChannelWeb, createdAt: "2026-07-06T08:00:00Z",
+		items: []db.NewOrderItem{{ProductID: tagProduct, Quantity: 1, UnitPrice: 390_000}},
+	})
+	item := orderItemID(t, ctx, pool, orderID, tagProduct)
+	shortID := seedEncodedTag(t, ctx, pool, item, "petfindaaa")
+	owner := seedCustomerRow(t, ctx, pool, "Mai Lê", "0905552261", nil, nil, []byte("[]"))
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
+	activatePetTag(t, srv, withCustomer(ctx, owner), shortID, validPetInput())
+
+	const lat, lng = 10.762622, 106.660172 // Ho Chi Minh City
+
+	// --- At-home pet: a finder share is REFUSED (409) and writes nothing. ---
+	if _, err := srv.SharePetLocation(ctx, api.SharePetLocationRequestObject{ShortId: shortID, Body: &api.PetShareLocationInput{Lat: lat, Lng: lng}}); !errors.Is(err, errPetNotLost) {
+		t.Fatalf("share at-home → %v, want errPetNotLost (409)", err)
+	}
+	if n := lostEventCount(t, ctx, pool, shortID); n != 0 {
+		t.Fatalf("at-home share created %d lost_events, want 0", n)
+	}
+
+	// --- Owner flips lost mode; now an anonymous finder can share once. ---
+	toggleLostMode(t, srv, withCustomer(ctx, owner), shortID, true)
+	sharePetLocation(t, srv, ctx, shortID, lat, lng) // NO session — a stranger reporting a found pet
+
+	// DB: exactly one lost_events row with the finder location; owner_notified_at still NULL (no push worker).
+	if n := lostEventCount(t, ctx, pool, shortID); n != 1 {
+		t.Fatalf("after share: %d lost_events, want 1", n)
+	}
+	var (
+		gotLat, gotLng float64
+		notified       bool
+	)
+	if err := pool.QueryRow(ctx, `SELECT (finder_location->>'lat')::float8, (finder_location->>'lng')::float8, owner_notified_at IS NOT NULL
+		FROM lost_events WHERE tag_id=(SELECT id FROM pet_tags WHERE short_id=$1)`, shortID).Scan(&gotLat, &gotLng, &notified); err != nil {
+		t.Fatalf("read lost_event: %v", err)
+	}
+	if gotLat != lat || gotLng != lng {
+		t.Fatalf("stored finder_location = %v,%v want %v,%v", gotLat, gotLng, lat, lng)
+	}
+	if notified {
+		t.Fatalf("owner_notified_at set, want NULL (t-4b has no push worker)")
+	}
+
+	// --- Owner sees the scan IN-APP (recentScans with an OSM mapUrl) on their OWN page. ---
+	ownerView := getPetPage(t, srv, withCustomer(ctx, owner), shortID)
+	if ownerView.RecentScans == nil || len(*ownerView.RecentScans) != 1 {
+		t.Fatalf("owner recentScans = %v, want 1 entry", ownerView.RecentScans)
+	}
+	if mapURL := (*ownerView.RecentScans)[0].MapUrl; !strings.Contains(mapURL, "openstreetmap.org") || !strings.Contains(mapURL, "10.762622") {
+		t.Fatalf("recentScan mapUrl = %q, want an OSM link with the coords", mapURL)
+	}
+
+	// --- A stranger NEVER learns where the pet was found (recentScans is owner-only). ---
+	strangerView := getPetPage(t, srv, ctx, shortID)
+	if strangerView.RecentScans != nil {
+		t.Fatalf("stranger recentScans = %v, want nil (owner-only)", strangerView.RecentScans)
+	}
+
+	// --- Reject paths. ---
+	// Coords out of range → 400.
+	if resp, _ := srv.SharePetLocation(ctx, api.SharePetLocationRequestObject{ShortId: shortID, Body: &api.PetShareLocationInput{Lat: 200, Lng: lng}}); !isShare400(resp) {
+		t.Fatalf("bad coords → %T, want 400", resp)
+	}
+	// Nil body → 400.
+	if resp, _ := srv.SharePetLocation(ctx, api.SharePetLocationRequestObject{ShortId: shortID, Body: nil}); !isShare400(resp) {
+		t.Fatalf("nil body → %T, want 400", resp)
+	}
+	// Unknown shortId → 404.
+	if _, err := srv.SharePetLocation(ctx, api.SharePetLocationRequestObject{ShortId: "does-not-exist", Body: &api.PetShareLocationInput{Lat: lat, Lng: lng}}); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("unknown shortId → %v, want db.ErrNotFound (404)", err)
+	}
+}
+
+func sharePetLocation(t *testing.T, srv *Server, ctx context.Context, shortID string, lat, lng float64) {
+	t.Helper()
+	resp, err := srv.SharePetLocation(ctx, api.SharePetLocationRequestObject{
+		ShortId: shortID, Body: &api.PetShareLocationInput{Lat: lat, Lng: lng},
+	})
+	if err != nil {
+		t.Fatalf("SharePetLocation(%s): %v", shortID, err)
+	}
+	ok, isOK := resp.(api.SharePetLocation200JSONResponse)
+	if !isOK || !ok.Ok {
+		t.Fatalf("SharePetLocation response = %T (ok=%v), want 200 ok=true", resp, ok.Ok)
+	}
+}
+
+func isShare400(resp api.SharePetLocationResponseObject) bool {
+	_, ok := resp.(api.SharePetLocation400JSONResponse)
+	return ok
+}
+
+// lostEventCount counts a tag's lost_events rows by short_id (t-4b test helper).
+func lostEventCount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, shortID string) int {
+	t.Helper()
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM lost_events WHERE tag_id=(SELECT id FROM pet_tags WHERE short_id=$1)`, shortID).Scan(&n); err != nil {
+		t.Fatalf("count lost_events: %v", err)
+	}
+	return n
 }

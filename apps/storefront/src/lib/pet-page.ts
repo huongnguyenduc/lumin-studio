@@ -47,11 +47,16 @@ export type PetPageProfile = {
   contact: PetContact;
 };
 
+// One finder location-share surfaced to the OWNER as an in-app notify (spec §10 D4, t-4b). Present in
+// PetPage.recentScans only for the owner; mapUrl is an OpenStreetMap link to where the pet was scanned.
+export type PetLostScan = { scannedAt: string; mapUrl: string };
+
 export type PetPage = {
   shortId: string;
   status: PetTagStatus;
   viewerIsOwner: boolean;
   profile?: PetPageProfile;
+  recentScans?: PetLostScan[];
 };
 
 export type PetPageResult =
@@ -106,6 +111,8 @@ export async function fetchPetPage(shortId: string): Promise<PetPageResult> {
         status: data.status as PetTagStatus,
         viewerIsOwner: data.viewerIsOwner,
         ...(profile ? { profile } : {}),
+        // recentScans is present only for the owner (core-api gates it); a stranger's page omits it.
+        ...(data.recentScans && data.recentScans.length ? { recentScans: data.recentScans } : {}),
       };
       return { status: 'ok', page };
     }

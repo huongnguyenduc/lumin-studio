@@ -3,8 +3,12 @@ package httpapi
 import (
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/api"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
 )
 
 // TestValidateActivateInput pins the onboarding field rules (spec §10) that keep a bad payload a clean 400
@@ -101,5 +105,63 @@ func TestPetContactDTO(t *testing.T) {
 	owner := petContactDTO(raw, true, true)
 	if owner.Name == nil || *owner.Name != "Mai Lê" || owner.Phone == nil {
 		t.Fatalf("owner contact should include name+phone: %+v", owner)
+	}
+}
+
+// TestOsmMapURL pins the owner-facing map link (spec §10 D4): a plain OpenStreetMap URL with the coords in
+// both the marker (mlat/mlon) and the map hash, at a street-level zoom. No API key, no reverse-geocode (t-4b).
+func TestOsmMapURL(t *testing.T) {
+	got := osmMapURL(10.762622, 106.660172)
+	want := "https://www.openstreetmap.org/?mlat=10.762622&mlon=106.660172#map=17/10.762622/106.660172"
+	if got != want {
+		t.Fatalf("osmMapURL = %q, want %q", got, want)
+	}
+}
+
+// TestValidShareCoords pins the finder coord guard (t-4b): in-range WGS84 passes, anything outside is rejected
+// (a buggy/hostile client, not a browser geolocation reading). The boundaries are inclusive.
+func TestValidShareCoords(t *testing.T) {
+	cases := []struct {
+		lat, lng float64
+		ok       bool
+	}{
+		{10.76, 106.66, true},
+		{0, 0, true},
+		{-90, -180, true},
+		{90, 180, true},
+		{90.1, 0, false},
+		{-90.1, 0, false},
+		{0, 180.1, false},
+		{0, -180.1, false},
+	}
+	for _, tc := range cases {
+		if got := validShareCoords(tc.lat, tc.lng); got != tc.ok {
+			t.Fatalf("validShareCoords(%v,%v) = %v, want %v", tc.lat, tc.lng, got, tc.ok)
+		}
+	}
+}
+
+// TestRecentScansDTO pins the owner in-app notify projection (t-4b): rows with a decodable location become
+// cards (query order preserved) with an OSM mapUrl; a row with a corrupt/empty blob is SKIPPED rather than
+// 500-ing the page; an all-undecodable set returns nil — an omitted field, so a stranger's page (which never
+// calls this) ships no recentScans.
+func TestRecentScansDTO(t *testing.T) {
+	at := time.Date(2026, 7, 6, 8, 0, 0, 0, time.UTC)
+	tstamp := pgtype.Timestamptz{Time: at, Valid: true}
+	events := []sqlc.LostEvent{
+		{ScannedAt: tstamp, FinderLocation: []byte(`{"lat":10.5,"lng":106.5}`)},
+		{ScannedAt: tstamp, FinderLocation: []byte(`{bad json`)}, // skipped
+		{ScannedAt: tstamp, FinderLocation: nil},                 // skipped
+		{ScannedAt: tstamp, FinderLocation: []byte(`{"lat":21.02,"lng":105.85}`)},
+	}
+	got := recentScansDTO(events)
+	if got == nil || len(*got) != 2 {
+		t.Fatalf("recentScansDTO = %v, want 2 decodable scans", got)
+	}
+	if !strings.Contains((*got)[0].MapUrl, "10.5") || !(*got)[0].ScannedAt.Equal(at) {
+		t.Fatalf("first scan = %+v, want the coords + timestamp", (*got)[0])
+	}
+	if recentScansDTO([]sqlc.LostEvent{{FinderLocation: []byte(`nope`)}}) != nil {
+		t.Fatalf("all-undecodable recentScans should be nil (omitted field)")
 	}
 }

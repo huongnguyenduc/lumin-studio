@@ -144,6 +144,13 @@ func classify(operationID string) authClass {
 		// can't itself require one (mirrors LoginUser/LogoutUser). Register/login gate on the
 		// credential; logout is idempotent.
 		return authPublic
+	case "SharePetLocation":
+		// Public rescue send-once (P3-t t-4b) — a finder (an anonymous stranger who scanned a LOST pet)
+		// shares their location once so the owner can find them. No session: the finder has no account and
+		// is never the owner. Guarded in the handler by the lost-mode check + a coord range check + a global
+		// token-bucket (a public write; the edge WAF is the per-IP sweep). authPublic, not
+		// authOptionalCustomer — recognising a viewer buys nothing (a finder is not the owner).
+		return authPublic
 	case "GetPetPage":
 		// Public pet-page read (P3-t t-3/t-4a) — the /t/{shortId} scan target. Anyone who taps the chip
 		// reads it (no session required); but the customer session is resolved OPTIONALLY so the owner is
