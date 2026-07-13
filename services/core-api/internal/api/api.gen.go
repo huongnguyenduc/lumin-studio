@@ -1097,6 +1097,15 @@ type PetActivateInput struct {
 	Weight  *string    `json:"weight,omitempty"`
 }
 
+// PetBlock One content block's placement (spec §10 ProfileBlock) — the order + visibility the owner sets in the reorder mode. READ shape (P3-t t-4c-1) projected from the stored blocks jsonb; the reorder mode that writes it lands in t-4c-2. The photo_name block is always first and cannot be hidden.
+type PetBlock struct {
+	Order int `json:"order"`
+
+	// Type The block kind — photo_name · bio · gallery · favorites · medical · socials.
+	Type    string `json:"type"`
+	Visible bool   `json:"visible"`
+}
+
 // PetLostModeInput The PATCH body for toggleLostMode (P3-t t-4a) — the requested lost-mode value.
 type PetLostModeInput struct {
 	LostMode bool `json:"lostMode"`
@@ -1130,7 +1139,7 @@ type PetOwnerContact struct {
 
 // PetPage The public /t/{shortId} pet-page read (P3-t t-3/t-4a). `status` routes the page: UNENCODED/ENCODED = not yet activated (onboarding/welcome), ACTIVATED = live. `viewerIsOwner` is true when the optional customer session belongs to the tag's owner (drives the owner affordances — the lost-mode toggle now, the editor in t-4c). `profile` is present only when ACTIVATED.
 type PetPage struct {
-	// Profile The pet profile the public /t/{shortId} page renders in its 3 view-states (P3-t t-4a). Display fields + medical (drives the allergy warning) + socials + a PDPL-masked contact block + lostMode (routes the view-state). Owner-only content (bio/gallery/favorites/theme/blocks) has no writer until the t-4c in-place editor, so it lands there — this shape is exactly what onboarding captures + the contact.
+	// Profile The pet profile the public /t/{shortId} page renders in its 3 view-states (P3-t t-4a/t-4c). Display fields + the content blocks (bio, gallery, favorites) + medical (drives the allergy warning) + socials + a PDPL-masked contact block + lostMode (routes the view-state) + the theme/blocks the page renders with. bio/gallery/favorites gained their writer with the t-4c in-place editor; theme/blocks are projected here (their writer — the theme sheet + reorder mode — lands in t-4c-2).
 	Profile *PetPageProfile `json:"profile,omitempty"`
 
 	// RecentScans Recent finder location-shares for this pet — the in-app "your pet was scanned" notify (spec §10 D4, P3-t t-4b). Populated ONLY when viewerIsOwner (a stranger never learns where a lost pet was found). Most recent first.
@@ -1165,13 +1174,25 @@ type PetPageContact struct {
 	Zalo *string `json:"zalo,omitempty"`
 }
 
-// PetPageProfile The pet profile the public /t/{shortId} page renders in its 3 view-states (P3-t t-4a). Display fields + medical (drives the allergy warning) + socials + a PDPL-masked contact block + lostMode (routes the view-state). Owner-only content (bio/gallery/favorites/theme/blocks) has no writer until the t-4c in-place editor, so it lands there — this shape is exactly what onboarding captures + the contact.
+// PetPageProfile The pet profile the public /t/{shortId} page renders in its 3 view-states (P3-t t-4a/t-4c). Display fields + the content blocks (bio, gallery, favorites) + medical (drives the allergy warning) + socials + a PDPL-masked contact block + lostMode (routes the view-state) + the theme/blocks the page renders with. bio/gallery/favorites gained their writer with the t-4c in-place editor; theme/blocks are projected here (their writer — the theme sheet + reorder mode — lands in t-4c-2).
 type PetPageProfile struct {
-	Age   *string `json:"age,omitempty"`
-	Breed *string `json:"breed,omitempty"`
+	Age *string `json:"age,omitempty"`
+
+	// Bio The pet's free-text intro (spec §10 "Giới thiệu"). Owner-editable (t-4c).
+	Bio *string `json:"bio,omitempty"`
+
+	// Blocks Content-block order + visibility (spec §10). Empty until the owner reorders (t-4c-2); the page falls back to a default order.
+	Blocks *[]PetBlock `json:"blocks,omitempty"`
+	Breed  *string     `json:"breed,omitempty"`
 
 	// Contact The owner-contact block AS PROJECTED to the public page (P3-t t-4a) — the PDPL-safe view of PetOwnerContact. `masked` is the reveal gate: when true (a stranger, at-home page) only `phoneMasked` is present and NO callable value is shipped; when false (lost mode, or the owner viewing) the full `phone`/`zalo`/`email` are included so the finder can reach the owner. `name` is owner-only (a finder never needs it — the CTAs say "sen của {petName}"). Masking is decided server-side: the raw number never reaches the wire in the masked case.
 	Contact PetPageContact `json:"contact"`
+
+	// Favorites "Khoái khẩu" chips (spec §10 favorites) — short free-text labels. Owner-editable (t-4c).
+	Favorites *[]string `json:"favorites,omitempty"`
+
+	// Gallery Album photo URLs (spec §10 gallery). Owner-editable (t-4c).
+	Gallery *[]string `json:"gallery,omitempty"`
 
 	// Handle The vanity slug shown as @handle (derived from the pet name).
 	Handle string `json:"handle"`
@@ -1184,6 +1205,31 @@ type PetPageProfile struct {
 	PetName  string       `json:"petName"`
 	PhotoUrl *string      `json:"photoUrl,omitempty"`
 	Socials  *[]PetSocial `json:"socials,omitempty"`
+
+	// Species The pet's species — a fixed 3-choice set on the onboarding form (spec §10). `other` catches the rest.
+	Species PetSpecies `json:"species"`
+
+	// Theme The pet page's theme (spec §10 "Theme trang pet") — 5 brand colorways + Đêm cocoa, a background style with a per-image opacity, and the name font. This is the READ shape (P3-t t-4c-1) projected as-is from the stored jsonb; the theme SHEET that writes it (with the fixed colorway/background/font choices, no free picker) lands in t-4c-2. All fields optional — an unthemed page carries an empty theme and renders the brand default. Safety colours (allergy warning, lost banner, emergency call) are never themed.
+	Theme  *PetTheme `json:"theme,omitempty"`
+	Weight *string   `json:"weight,omitempty"`
+}
+
+// PetProfileUpdateInput The in-place editor's save payload (spec §10 sửa-tại-chỗ, P3-t t-4c-1) — the full editable page content the owner replaces in one PATCH. petName + species + ownerContact (phone) are required (they can't be cleared), the rest optional; an absent optional clears that field. No consent (granted once at onboarding), no handle (derived), no lostMode/theme/blocks (their own endpoints / t-4c-2). Fields mirror onboarding + the new content blocks (bio, gallery, favorites).
+type PetProfileUpdateInput struct {
+	Age       *string   `json:"age,omitempty"`
+	Bio       *string   `json:"bio,omitempty"`
+	Breed     *string   `json:"breed,omitempty"`
+	Favorites *[]string `json:"favorites,omitempty"`
+	Gallery   *[]string `json:"gallery,omitempty"`
+
+	// Medical The pet's medical block (spec §10) — all optional. `allergies` drives the allergy warning on the page.
+	Medical *PetMedical `json:"medical,omitempty"`
+
+	// OwnerContact The owner's contact block (spec §10). phone is REQUIRED — it is what makes lost mode useful. On the public page phone is masked and revealed only in lost mode / to the owner (PDPL, t-4); the value stored here is the raw number.
+	OwnerContact PetOwnerContact `json:"ownerContact"`
+	PetName      string          `json:"petName"`
+	PhotoUrl     *string         `json:"photoUrl,omitempty"`
+	Socials      *[]PetSocial    `json:"socials,omitempty"`
 
 	// Species The pet's species — a fixed 3-choice set on the onboarding form (spec §10). `other` catches the rest.
 	Species PetSpecies `json:"species"`
@@ -1234,6 +1280,24 @@ type PetTagRef struct {
 
 // PetTagStatus Pet Tag fulfillment lifecycle (spec §10 "Trạng thái tag") — PARALLEL to but SEPARATE from OrderStatus (the order still runs PENDING_CONFIRM→…→COMPLETED). UNENCODED = printed, blank chip; ENCODED = chip written + locked, ready to pack + ship; ACTIVATED = customer logged in + a pet profile exists (t-3). Not a packages/core state machine (DB-only, no statusHistory).
 type PetTagStatus string
+
+// PetTheme The pet page's theme (spec §10 "Theme trang pet") — 5 brand colorways + Đêm cocoa, a background style with a per-image opacity, and the name font. This is the READ shape (P3-t t-4c-1) projected as-is from the stored jsonb; the theme SHEET that writes it (with the fixed colorway/background/font choices, no free picker) lands in t-4c-2. All fields optional — an unthemed page carries an empty theme and renders the brand default. Safety colours (allergy warning, lost banner, emergency call) are never themed.
+type PetTheme struct {
+	// Background Background style — dots · plain · paper · image (spec §10 Chấm bi · Trơn · Vân giấy · Ảnh riêng).
+	Background *string `json:"background,omitempty"`
+
+	// BgImageUrl The custom background image URL, present only when background=image.
+	BgImageUrl *string `json:"bgImageUrl,omitempty"`
+
+	// BgOpacity Background image opacity 0–100 (default 40 — spec §10 validation).
+	BgOpacity *int `json:"bgOpacity,omitempty"`
+
+	// NameFont The pet-name font — display (Bricolage) or mono (Space Mono).
+	NameFont *string `json:"nameFont,omitempty"`
+
+	// Palette A brand colorway id (bo · mint · sun · sky · sunny) or cocoa (dark). Drives bg + chip + CTA.
+	Palette *string `json:"palette,omitempty"`
+}
 
 // PriceQuote Server-computed line prices + subtotal (raw int-VND). `lines` is positionally aligned with the request `items` (same index) — a line carries no product reference, so a client maps a line back to its selection by array index. `shippingFee` and `total` are present ONLY when the request carried a province (P2-b); without one the response is line/subtotal only.
 type PriceQuote struct {
@@ -1852,6 +1916,9 @@ type ActivatePetTagJSONRequestBody = PetActivateInput
 // ToggleLostModeJSONRequestBody defines body for ToggleLostMode for application/json ContentType.
 type ToggleLostModeJSONRequestBody = PetLostModeInput
 
+// UpdatePetProfileJSONRequestBody defines body for UpdatePetProfile for application/json ContentType.
+type UpdatePetProfileJSONRequestBody = PetProfileUpdateInput
+
 // SharePetLocationJSONRequestBody defines body for SharePetLocation for application/json ContentType.
 type SharePetLocationJSONRequestBody = PetShareLocationInput
 
@@ -2180,6 +2247,9 @@ type ServerInterface interface {
 	// Toggle a pet's lost mode — owner only (spec §10 công tắc thất lạc).
 	// (PATCH /pet-tags/{shortId}/lost-mode)
 	ToggleLostMode(w http.ResponseWriter, r *http.Request, shortId string)
+	// Owner edits the pet page content in place (spec §10 sửa-tại-chỗ, P3-t t-4c).
+	// (PATCH /pet-tags/{shortId}/profile)
+	UpdatePetProfile(w http.ResponseWriter, r *http.Request, shortId string)
 	// Finder shares their location once for a lost pet (spec §10 rescue 4a→4b).
 	// (POST /pet-tags/{shortId}/share-location)
 	SharePetLocation(w http.ResponseWriter, r *http.Request, shortId string)
@@ -2660,6 +2730,12 @@ func (_ Unimplemented) ActivatePetTag(w http.ResponseWriter, r *http.Request, sh
 // Toggle a pet's lost mode — owner only (spec §10 công tắc thất lạc).
 // (PATCH /pet-tags/{shortId}/lost-mode)
 func (_ Unimplemented) ToggleLostMode(w http.ResponseWriter, r *http.Request, shortId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Owner edits the pet page content in place (spec §10 sửa-tại-chỗ, P3-t t-4c).
+// (PATCH /pet-tags/{shortId}/profile)
+func (_ Unimplemented) UpdatePetProfile(w http.ResponseWriter, r *http.Request, shortId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4885,6 +4961,37 @@ func (siw *ServerInterfaceWrapper) ToggleLostMode(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// UpdatePetProfile operation middleware
+func (siw *ServerInterfaceWrapper) UpdatePetProfile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "shortId" -------------
+	var shortId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "shortId", chi.URLParam(r, "shortId"), &shortId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "shortId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CustomerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdatePetProfile(w, r, shortId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SharePetLocation operation middleware
 func (siw *ServerInterfaceWrapper) SharePetLocation(w http.ResponseWriter, r *http.Request) {
 
@@ -5437,6 +5544,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/pet-tags/{shortId}/lost-mode", wrapper.ToggleLostMode)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/pet-tags/{shortId}/profile", wrapper.UpdatePetProfile)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/pet-tags/{shortId}/share-location", wrapper.SharePetLocation)
@@ -8776,6 +8886,60 @@ func (response ToggleLostMode404JSONResponse) VisitToggleLostModeResponse(w http
 	return json.NewEncoder(w).Encode(response)
 }
 
+type UpdatePetProfileRequestObject struct {
+	ShortId string `json:"shortId"`
+	Body    *UpdatePetProfileJSONRequestBody
+}
+
+type UpdatePetProfileResponseObject interface {
+	VisitUpdatePetProfileResponse(w http.ResponseWriter) error
+}
+
+type UpdatePetProfile200JSONResponse PetPage
+
+func (response UpdatePetProfile200JSONResponse) VisitUpdatePetProfileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdatePetProfile400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdatePetProfile400JSONResponse) VisitUpdatePetProfileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdatePetProfile401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdatePetProfile401JSONResponse) VisitUpdatePetProfileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdatePetProfile403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdatePetProfile403JSONResponse) VisitUpdatePetProfileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdatePetProfile404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdatePetProfile404JSONResponse) VisitUpdatePetProfileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type SharePetLocationRequestObject struct {
 	ShortId string `json:"shortId"`
 	Body    *SharePetLocationJSONRequestBody
@@ -9238,6 +9402,9 @@ type StrictServerInterface interface {
 	// Toggle a pet's lost mode — owner only (spec §10 công tắc thất lạc).
 	// (PATCH /pet-tags/{shortId}/lost-mode)
 	ToggleLostMode(ctx context.Context, request ToggleLostModeRequestObject) (ToggleLostModeResponseObject, error)
+	// Owner edits the pet page content in place (spec §10 sửa-tại-chỗ, P3-t t-4c).
+	// (PATCH /pet-tags/{shortId}/profile)
+	UpdatePetProfile(ctx context.Context, request UpdatePetProfileRequestObject) (UpdatePetProfileResponseObject, error)
 	// Finder shares their location once for a lost pet (spec §10 rescue 4a→4b).
 	// (POST /pet-tags/{shortId}/share-location)
 	SharePetLocation(ctx context.Context, request SharePetLocationRequestObject) (SharePetLocationResponseObject, error)
@@ -11517,6 +11684,39 @@ func (sh *strictHandler) ToggleLostMode(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ToggleLostModeResponseObject); ok {
 		if err := validResponse.VisitToggleLostModeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdatePetProfile operation middleware
+func (sh *strictHandler) UpdatePetProfile(w http.ResponseWriter, r *http.Request, shortId string) {
+	var request UpdatePetProfileRequestObject
+
+	request.ShortId = shortId
+
+	var body UpdatePetProfileJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdatePetProfile(ctx, request.(UpdatePetProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdatePetProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdatePetProfileResponseObject); ok {
+		if err := validResponse.VisitUpdatePetProfileResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

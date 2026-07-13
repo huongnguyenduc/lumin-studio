@@ -92,6 +92,23 @@ SET lost_mode = $2, updated_at = now()
 WHERE tag_id = $1 AND owner_account_id = $3
 RETURNING *;
 
+-- ==== Pet page — in-place content edit (t-4c) =================================================
+
+-- UpdatePetProfileContent replaces the owner-editable page content in one write (spec §10 sửa-tại-chỗ): the
+-- display fields + the content blocks (bio, gallery, favorites) + medical/owner_contact/socials jsonb. Like
+-- SetLostMode, the owner_account_id guard IS the authorization boundary — a signed-in non-owner matches 0
+-- rows → the handler maps that to a 403 (not a silent no-op). It deliberately does NOT touch theme/blocks
+-- (the theme sheet + reorder mode write those in t-4c-2), lost_mode (its own endpoint), or handle (derived,
+-- cosmetic — not re-slugged on edit). Scoped by tag_id (resolved from shortId first, so an unknown tag 404s
+-- before this runs). updated_at moves. The jsonb params ([]byte) are marshalled in the Go seam.
+-- name: UpdatePetProfileContent :one
+UPDATE pet_profiles
+SET pet_name = $2, species = $3, breed = $4, age = $5, weight = $6, photo_url = $7,
+    bio = $8, gallery = $9, favorites = $10, medical = $11, owner_contact = $12, socials = $13,
+    updated_at = now()
+WHERE tag_id = $1 AND owner_account_id = $14
+RETURNING *;
+
 -- ==== Pet page — rescue: finder location share (t-4b) =========================================
 
 -- InsertLostEvent records ONE finder location share for a lost pet (spec §10 LostEvent). The row itself IS the

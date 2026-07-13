@@ -127,6 +127,18 @@ func (t *PetTags) SetLostMode(ctx context.Context, tagID, ownerID uuid.UUID, los
 	return row, err
 }
 
+// UpdateProfileContent replaces the owner-editable page content (spec §10 sửa-tại-chỗ, t-4c). Thin over the
+// query: the caller (the handler) has already marshalled the jsonb params and set the owner_account_id guard,
+// so a non-owner matches 0 rows → ErrNotFound, which the handler maps to a 403 (mirrors SetLostMode). The
+// query never touches theme/blocks/lost_mode/handle.
+func (t *PetTags) UpdateProfileContent(ctx context.Context, params sqlc.UpdatePetProfileContentParams) (sqlc.PetProfile, error) {
+	row, err := t.q.UpdatePetProfileContent(ctx, params)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.PetProfile{}, ErrNotFound
+	}
+	return row, err
+}
+
 // FinderLocation is the {lat,lng} stored in lost_events.finder_location (spec §10). Defined here (the write
 // side) so the marshal and the pet-page read decode share one shape.
 type FinderLocation struct {

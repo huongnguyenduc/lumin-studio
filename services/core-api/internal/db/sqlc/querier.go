@@ -567,6 +567,15 @@ type Querier interface {
 	// 404), the same cross-product guard as UpdateColor/UpdateOption. Deleting a part CASCADEs its colours
 	// (000015); a colour pinned by an order_item (FK NO ACTION) blocks the delete → 23503 → 409 (archive).
 	UpdatePart(ctx context.Context, arg UpdatePartParams) (Part, error)
+	// ==== Pet page — in-place content edit (t-4c) =================================================
+	// UpdatePetProfileContent replaces the owner-editable page content in one write (spec §10 sửa-tại-chỗ): the
+	// display fields + the content blocks (bio, gallery, favorites) + medical/owner_contact/socials jsonb. Like
+	// SetLostMode, the owner_account_id guard IS the authorization boundary — a signed-in non-owner matches 0
+	// rows → the handler maps that to a 403 (not a silent no-op). It deliberately does NOT touch theme/blocks
+	// (the theme sheet + reorder mode write those in t-4c-2), lost_mode (its own endpoint), or handle (derived,
+	// cosmetic — not re-slugged on edit). Scoped by tag_id (resolved from shortId first, so an unknown tag 404s
+	// before this runs). updated_at moves. The jsonb params ([]byte) are marshalled in the Go seam.
+	UpdatePetProfileContent(ctx context.Context, arg UpdatePetProfileContentParams) (PetProfile, error)
 	// UpdatePrintJobStage advances the print queue stage (staff drag-drop) and refreshes updated_at.
 	UpdatePrintJobStage(ctx context.Context, arg UpdatePrintJobStageParams) (PrintJob, error)
 	// UpdateProduct saves the editable fields of a product (P3-j). It deliberately does NOT touch model3d_url:

@@ -447,3 +447,82 @@ func (q *Queries) SlugifyHandle(ctx context.Context, dollar_1 string) (string, e
 	err := row.Scan(&handle)
 	return handle, err
 }
+
+const updatePetProfileContent = `-- name: UpdatePetProfileContent :one
+
+UPDATE pet_profiles
+SET pet_name = $2, species = $3, breed = $4, age = $5, weight = $6, photo_url = $7,
+    bio = $8, gallery = $9, favorites = $10, medical = $11, owner_contact = $12, socials = $13,
+    updated_at = now()
+WHERE tag_id = $1 AND owner_account_id = $14
+RETURNING id, tag_id, owner_account_id, handle, pet_name, species, breed, age, weight, photo_url, gallery, bio, favorites, medical, owner_contact, socials, lost_mode, theme, blocks, created_at, updated_at
+`
+
+type UpdatePetProfileContentParams struct {
+	TagID          uuid.UUID  `json:"tagId"`
+	PetName        string     `json:"petName"`
+	Species        PetSpecies `json:"species"`
+	Breed          *string    `json:"breed"`
+	Age            *string    `json:"age"`
+	Weight         *string    `json:"weight"`
+	PhotoUrl       *string    `json:"photoUrl"`
+	Bio            *string    `json:"bio"`
+	Gallery        []byte     `json:"gallery"`
+	Favorites      []byte     `json:"favorites"`
+	Medical        []byte     `json:"medical"`
+	OwnerContact   []byte     `json:"ownerContact"`
+	Socials        []byte     `json:"socials"`
+	OwnerAccountID uuid.UUID  `json:"ownerAccountId"`
+}
+
+// ==== Pet page — in-place content edit (t-4c) =================================================
+// UpdatePetProfileContent replaces the owner-editable page content in one write (spec §10 sửa-tại-chỗ): the
+// display fields + the content blocks (bio, gallery, favorites) + medical/owner_contact/socials jsonb. Like
+// SetLostMode, the owner_account_id guard IS the authorization boundary — a signed-in non-owner matches 0
+// rows → the handler maps that to a 403 (not a silent no-op). It deliberately does NOT touch theme/blocks
+// (the theme sheet + reorder mode write those in t-4c-2), lost_mode (its own endpoint), or handle (derived,
+// cosmetic — not re-slugged on edit). Scoped by tag_id (resolved from shortId first, so an unknown tag 404s
+// before this runs). updated_at moves. The jsonb params ([]byte) are marshalled in the Go seam.
+func (q *Queries) UpdatePetProfileContent(ctx context.Context, arg UpdatePetProfileContentParams) (PetProfile, error) {
+	row := q.db.QueryRow(ctx, updatePetProfileContent,
+		arg.TagID,
+		arg.PetName,
+		arg.Species,
+		arg.Breed,
+		arg.Age,
+		arg.Weight,
+		arg.PhotoUrl,
+		arg.Bio,
+		arg.Gallery,
+		arg.Favorites,
+		arg.Medical,
+		arg.OwnerContact,
+		arg.Socials,
+		arg.OwnerAccountID,
+	)
+	var i PetProfile
+	err := row.Scan(
+		&i.ID,
+		&i.TagID,
+		&i.OwnerAccountID,
+		&i.Handle,
+		&i.PetName,
+		&i.Species,
+		&i.Breed,
+		&i.Age,
+		&i.Weight,
+		&i.PhotoUrl,
+		&i.Gallery,
+		&i.Bio,
+		&i.Favorites,
+		&i.Medical,
+		&i.OwnerContact,
+		&i.Socials,
+		&i.LostMode,
+		&i.Theme,
+		&i.Blocks,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}

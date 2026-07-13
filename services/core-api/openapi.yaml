@@ -331,6 +331,47 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
+  /pet-tags/{shortId}/profile:
+    patch:
+      tags: [pettag]
+      operationId: updatePetProfile
+      summary: Owner edits the pet page content in place (spec §10 sửa-tại-chỗ, P3-t t-4c).
+      description: >
+        The WYSIWYG in-place editor's save (P3-t t-4c-1): the owner replaces the page's editable content —
+        the display fields (name/species/breed/age/weight/photo), the new content blocks (bio, gallery,
+        favorites), medical, socials, and the owner contact — in one PATCH. Owner-only: the update is guarded
+        by owner_account_id in SQL, so a signed-in non-owner is a 403 (not a silent no-op), exactly like the
+        lost-mode toggle. This does NOT touch theme or block order (the theme sheet + reorder mode land in
+        t-4c-2), lostMode (its own endpoint), the handle (derived, cosmetic), or consent (granted once at
+        onboarding). petName/species/ownerContact.phone follow the same validation as onboarding. Requires a
+        valid customer session (401). Unknown shortId → 404; a tag the caller does not own → 403; a bad field
+        → 400. Returns the updated pet page.
+      security:
+        - customerAuth: []
+      parameters:
+        - name: shortId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PetProfileUpdateInput'
+      responses:
+        '200':
+          description: The updated pet page (the profile now reflects the edited content).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PetPage'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /orders:
     post:
       tags: [orders]
@@ -4825,6 +4866,47 @@ components:
         handle:
           type: string
 
+    PetTheme:
+      type: object
+      description: >
+        The pet page's theme (spec §10 "Theme trang pet") — 5 brand colorways + Đêm cocoa, a background style
+        with a per-image opacity, and the name font. This is the READ shape (P3-t t-4c-1) projected as-is from
+        the stored jsonb; the theme SHEET that writes it (with the fixed colorway/background/font choices, no
+        free picker) lands in t-4c-2. All fields optional — an unthemed page carries an empty theme and renders
+        the brand default. Safety colours (allergy warning, lost banner, emergency call) are never themed.
+      properties:
+        palette:
+          type: string
+          description: A brand colorway id (bo · mint · sun · sky · sunny) or cocoa (dark). Drives bg + chip + CTA.
+        background:
+          type: string
+          description: Background style — dots · plain · paper · image (spec §10 Chấm bi · Trơn · Vân giấy · Ảnh riêng).
+        bgImageUrl:
+          type: string
+          description: The custom background image URL, present only when background=image.
+        bgOpacity:
+          type: integer
+          description: Background image opacity 0–100 (default 40 — spec §10 validation).
+        nameFont:
+          type: string
+          description: The pet-name font — display (Bricolage) or mono (Space Mono).
+
+    PetBlock:
+      type: object
+      description: >
+        One content block's placement (spec §10 ProfileBlock) — the order + visibility the owner sets in the
+        reorder mode. READ shape (P3-t t-4c-1) projected from the stored blocks jsonb; the reorder mode that
+        writes it lands in t-4c-2. The photo_name block is always first and cannot be hidden.
+      required: [type, order, visible]
+      properties:
+        type:
+          type: string
+          description: The block kind — photo_name · bio · gallery · favorites · medical · socials.
+        order:
+          type: integer
+        visible:
+          type: boolean
+
     PetPageContact:
       type: object
       description: >
@@ -4858,10 +4940,11 @@ components:
     PetPageProfile:
       type: object
       description: >
-        The pet profile the public /t/{shortId} page renders in its 3 view-states (P3-t t-4a). Display fields
-        + medical (drives the allergy warning) + socials + a PDPL-masked contact block + lostMode (routes the
-        view-state). Owner-only content (bio/gallery/favorites/theme/blocks) has no writer until the t-4c
-        in-place editor, so it lands there — this shape is exactly what onboarding captures + the contact.
+        The pet profile the public /t/{shortId} page renders in its 3 view-states (P3-t t-4a/t-4c). Display
+        fields + the content blocks (bio, gallery, favorites) + medical (drives the allergy warning) + socials
+        + a PDPL-masked contact block + lostMode (routes the view-state) + the theme/blocks the page renders
+        with. bio/gallery/favorites gained their writer with the t-4c in-place editor; theme/blocks are
+        projected here (their writer — the theme sheet + reorder mode — lands in t-4c-2).
       required: [handle, petName, species, lostMode, contact]
       properties:
         handle:
@@ -4879,6 +4962,19 @@ components:
           type: string
         weight:
           type: string
+        bio:
+          type: string
+          description: The pet's free-text intro (spec §10 "Giới thiệu"). Owner-editable (t-4c).
+        gallery:
+          type: array
+          description: Album photo URLs (spec §10 gallery). Owner-editable (t-4c).
+          items:
+            type: string
+        favorites:
+          type: array
+          description: '"Khoái khẩu" chips (spec §10 favorites) — short free-text labels. Owner-editable (t-4c).'
+          items:
+            type: string
         lostMode:
           type: boolean
           description: false = at-home (default), true = lost/rescue. Routes the view-state + gates the contact reveal.
@@ -4888,6 +4984,13 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PetSocial'
+        theme:
+          $ref: '#/components/schemas/PetTheme'
+        blocks:
+          type: array
+          description: Content-block order + visibility (spec §10). Empty until the owner reorders (t-4c-2); the page falls back to a default order.
+          items:
+            $ref: '#/components/schemas/PetBlock'
         contact:
           $ref: '#/components/schemas/PetPageContact'
 
@@ -4963,6 +5066,49 @@ components:
           description: >
             PDPL consent (point 1) to store the pet + owner PII for the pet-page purpose. Must be true — a
             false/absent consent is a 400. Recorded as a pet_profile consent grant (ADR-042).
+
+    PetProfileUpdateInput:
+      type: object
+      description: >
+        The in-place editor's save payload (spec §10 sửa-tại-chỗ, P3-t t-4c-1) — the full editable page
+        content the owner replaces in one PATCH. petName + species + ownerContact (phone) are required (they
+        can't be cleared), the rest optional; an absent optional clears that field. No consent (granted once
+        at onboarding), no handle (derived), no lostMode/theme/blocks (their own endpoints / t-4c-2). Fields
+        mirror onboarding + the new content blocks (bio, gallery, favorites).
+      required: [petName, species, ownerContact]
+      properties:
+        petName:
+          type: string
+          minLength: 1
+          maxLength: 40
+        species:
+          $ref: '#/components/schemas/PetSpecies'
+        breed:
+          type: string
+        age:
+          type: string
+        weight:
+          type: string
+        photoUrl:
+          type: string
+        bio:
+          type: string
+        gallery:
+          type: array
+          items:
+            type: string
+        favorites:
+          type: array
+          items:
+            type: string
+        medical:
+          $ref: '#/components/schemas/PetMedical'
+        ownerContact:
+          $ref: '#/components/schemas/PetOwnerContact'
+        socials:
+          type: array
+          items:
+            $ref: '#/components/schemas/PetSocial'
 
     PetShareLocationInput:
       type: object

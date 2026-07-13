@@ -165,3 +165,81 @@ func TestRecentScansDTO(t *testing.T) {
 		t.Fatalf("all-undecodable recentScans should be nil (omitted field)")
 	}
 }
+
+// TestValidateProfileUpdate pins the in-place edit's field rules (t-4c): the same required gates as
+// onboarding (name 1..40, known species, VN phone) but NO consent field (an edit doesn't re-consent). Each
+// bad case flags exactly its own field; a valid payload flags nothing.
+func TestValidateProfileUpdate(t *testing.T) {
+	valid := func() api.PetProfileUpdateInput {
+		return api.PetProfileUpdateInput{
+			PetName:      "Bơ",
+			Species:      api.Dog,
+			OwnerContact: api.PetOwnerContact{Name: "Mai Lê", Phone: "0905552261"},
+		}
+	}
+	if f := validateProfileUpdate(valid()); len(f) != 0 {
+		t.Fatalf("valid update flagged %v, want none", f)
+	}
+	cases := []struct {
+		name  string
+		mut   func(in *api.PetProfileUpdateInput)
+		field string
+	}{
+		{"empty name", func(in *api.PetProfileUpdateInput) { in.PetName = "   " }, "petName"},
+		{"name too long", func(in *api.PetProfileUpdateInput) { in.PetName = strings.Repeat("a", 41) }, "petName"},
+		{"unknown species", func(in *api.PetProfileUpdateInput) { in.Species = "dragon" }, "species"},
+		{"bad phone", func(in *api.PetProfileUpdateInput) { in.OwnerContact.Phone = "123" }, "ownerContact.phone"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := valid()
+			tc.mut(&in)
+			if f := validateProfileUpdate(in); f[tc.field] == "" {
+				t.Fatalf("%s: expected field %q flagged, got %v", tc.name, tc.field, f)
+			}
+		})
+	}
+}
+
+// TestPetStringsDTO pins the gallery/favorites projection: a non-empty string[] jsonb decodes to a pointer to
+// the same slice; empty [], an empty byte slice, and a corrupt blob all return nil (an omitted field — no
+// empty section drawn).
+func TestPetStringsDTO(t *testing.T) {
+	got := petStringsDTO([]byte(`["🧀 Phô mai","🦴 Gặm xương"]`))
+	if got == nil || len(*got) != 2 || (*got)[0] != "🧀 Phô mai" {
+		t.Fatalf("petStringsDTO = %v, want the 2 labels", got)
+	}
+	for _, b := range [][]byte{[]byte(`[]`), nil, {}, []byte(`{bad`)} {
+		if petStringsDTO(b) != nil {
+			t.Fatalf("petStringsDTO(%q) should be nil (omitted)", b)
+		}
+	}
+}
+
+// TestPetThemeDTO pins the theme read-passthrough: a theme with any set field decodes; an empty {} (or a
+// corrupt/absent blob) returns nil so the page renders the brand default rather than an empty theme object.
+func TestPetThemeDTO(t *testing.T) {
+	got := petThemeDTO([]byte(`{"palette":"cocoa","bgOpacity":40}`))
+	if got == nil || got.Palette == nil || *got.Palette != "cocoa" || got.BgOpacity == nil || *got.BgOpacity != 40 {
+		t.Fatalf("petThemeDTO = %+v, want palette=cocoa opacity=40", got)
+	}
+	for _, b := range [][]byte{[]byte(`{}`), nil, {}, []byte(`{bad`)} {
+		if petThemeDTO(b) != nil {
+			t.Fatalf("petThemeDTO(%q) should be nil (default)", b)
+		}
+	}
+}
+
+// TestPetBlocksDTO pins the blocks read-passthrough: a non-empty block list decodes (order + visibility
+// preserved); empty [], an absent blob, and a corrupt blob return nil so the FE falls back to its default order.
+func TestPetBlocksDTO(t *testing.T) {
+	got := petBlocksDTO([]byte(`[{"type":"bio","order":1,"visible":true},{"type":"socials","order":2,"visible":false}]`))
+	if got == nil || len(*got) != 2 || (*got)[0].Type != "bio" || (*got)[1].Visible {
+		t.Fatalf("petBlocksDTO = %v, want 2 blocks with the 2nd hidden", got)
+	}
+	for _, b := range [][]byte{[]byte(`[]`), nil, {}, []byte(`{bad`)} {
+		if petBlocksDTO(b) != nil {
+			t.Fatalf("petBlocksDTO(%q) should be nil (default order)", b)
+		}
+	}
+}
