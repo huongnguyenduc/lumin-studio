@@ -245,6 +245,35 @@ type AdminOrderSummary struct {
 	Total  int64       `json:"total"`
 }
 
+// AdminPetTag One Pet Tag row in the admin roster (P3-t t-5, GET /admin/pet-tags). code + status + url identify the physical tag and its lifecycle stage; chipUid is present once ENCODED. The pet-derived fields (handle, petName, species, lostMode) come from the linked pet_profiles row (a LEFT JOIN) and are therefore absent for a tag that is not yet ACTIVATED — the roster shows "chưa liên kết" for those. No money, no owner PII (the pet is identified by its public @handle, not the customer account).
+type AdminPetTag struct {
+	// ChipUid The NTAG215 hardware UID; absent until the tag is ENCODED.
+	ChipUid *string `json:"chipUid,omitempty"`
+
+	// Code Display code (e.g.
+	Code      string    `json:"code"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Handle The linked pet's public @handle (absent until the tag is ACTIVATED).
+	Handle *string            `json:"handle,omitempty"`
+	Id     openapi_types.UUID `json:"id"`
+
+	// LostMode Whether the owner has the pet in lost mode (absent until ACTIVATED).
+	LostMode *bool `json:"lostMode,omitempty"`
+
+	// PetName The linked pet's name (absent until ACTIVATED).
+	PetName *string `json:"petName,omitempty"`
+
+	// Species The pet's species — a fixed 3-choice set on the onboarding form (spec §10). `other` catches the rest.
+	Species *PetSpecies `json:"species,omitempty"`
+
+	// Status Pet Tag fulfillment lifecycle (spec §10 "Trạng thái tag") — PARALLEL to but SEPARATE from OrderStatus (the order still runs PENDING_CONFIRM→…→COMPLETED). UNENCODED = printed, blank chip; ENCODED = chip written + locked, ready to pack + ship; ACTIVATED = customer logged in + a pet profile exists (t-3). Not a packages/core state machine (DB-only, no statusHistory).
+	Status PetTagStatus `json:"status"`
+
+	// Url The absolute pet-page URL (/t/{shortId}, PET_TAG_BASE_URL) — what is burned to the chip.
+	Url string `json:"url"`
+}
+
 // AdminProductSummary Admin catalog-list projection (P3-j): the fields the admin product grid needs across ALL statuses — like ProductCard but WITH status (for the tab badges) and createdAt, and without colors/options (the list makes no per-product read → no N+1). basePrice is raw int-VND (always-must #2); the detail read (getAdminProduct) returns the full Product.
 type AdminProductSummary struct {
 	// BasePrice Starting price in int-VND (>= 0).
@@ -2102,6 +2131,9 @@ type ServerInterface interface {
 	// Admin order detail by id — the full internal order (admin-gated).
 	// (GET /admin/orders/{id})
 	GetAdminOrder(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Admin Pet Tag roster — every tag with its lifecycle + linked pet (admin-gated).
+	// (GET /admin/pet-tags)
+	GetAdminPetTags(w http.ResponseWriter, r *http.Request)
 	// Move a print job to a new queue stage (admin-gated; stage-only, no order transition).
 	// (PATCH /admin/print-jobs/{id})
 	AdvancePrintJobStage(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -2432,6 +2464,12 @@ func (_ Unimplemented) GetAdminOrders(w http.ResponseWriter, r *http.Request, pa
 // Admin order detail by id — the full internal order (admin-gated).
 // (GET /admin/orders/{id})
 func (_ Unimplemented) GetAdminOrder(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Admin Pet Tag roster — every tag with its lifecycle + linked pet (admin-gated).
+// (GET /admin/pet-tags)
+func (_ Unimplemented) GetAdminPetTags(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3463,6 +3501,26 @@ func (siw *ServerInterfaceWrapper) GetAdminOrder(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAdminOrder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAdminPetTags operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminPetTags(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAdminPetTags(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5441,6 +5499,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/admin/orders/{id}", wrapper.GetAdminOrder)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/pet-tags", wrapper.GetAdminPetTags)
+	})
+	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/admin/print-jobs/{id}", wrapper.AdvancePrintJobStage)
 	})
 	r.Group(func(r chi.Router) {
@@ -6646,6 +6707,31 @@ type GetAdminOrder404JSONResponse struct{ NotFoundJSONResponse }
 func (response GetAdminOrder404JSONResponse) VisitGetAdminOrderResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminPetTagsRequestObject struct {
+}
+
+type GetAdminPetTagsResponseObject interface {
+	VisitGetAdminPetTagsResponse(w http.ResponseWriter) error
+}
+
+type GetAdminPetTags200JSONResponse []AdminPetTag
+
+func (response GetAdminPetTags200JSONResponse) VisitGetAdminPetTagsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminPetTags401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetAdminPetTags401JSONResponse) VisitGetAdminPetTagsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -9354,6 +9440,9 @@ type StrictServerInterface interface {
 	// Admin order detail by id — the full internal order (admin-gated).
 	// (GET /admin/orders/{id})
 	GetAdminOrder(ctx context.Context, request GetAdminOrderRequestObject) (GetAdminOrderResponseObject, error)
+	// Admin Pet Tag roster — every tag with its lifecycle + linked pet (admin-gated).
+	// (GET /admin/pet-tags)
+	GetAdminPetTags(ctx context.Context, request GetAdminPetTagsRequestObject) (GetAdminPetTagsResponseObject, error)
 	// Move a print job to a new queue stage (admin-gated; stage-only, no order transition).
 	// (PATCH /admin/print-jobs/{id})
 	AdvancePrintJobStage(ctx context.Context, request AdvancePrintJobStageRequestObject) (AdvancePrintJobStageResponseObject, error)
@@ -10260,6 +10349,30 @@ func (sh *strictHandler) GetAdminOrder(w http.ResponseWriter, r *http.Request, i
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAdminOrderResponseObject); ok {
 		if err := validResponse.VisitGetAdminOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAdminPetTags operation middleware
+func (sh *strictHandler) GetAdminPetTags(w http.ResponseWriter, r *http.Request) {
+	var request GetAdminPetTagsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAdminPetTags(ctx, request.(GetAdminPetTagsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAdminPetTags")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAdminPetTagsResponseObject); ok {
+		if err := validResponse.VisitGetAdminPetTagsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

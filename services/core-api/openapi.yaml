@@ -1065,6 +1065,32 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /admin/pet-tags:
+    get:
+      tags: [admin]
+      operationId: getAdminPetTags
+      summary: Admin Pet Tag roster — every tag with its lifecycle + linked pet (admin-gated).
+      description: >
+        Lists every Pet Tag for the /pet-tag roster (P3-t t-5, spec §10): the display code, lifecycle
+        status (UNENCODED/ENCODED/ACTIVATED), the pet-page URL, the chip UID, and — once ACTIVATED — the
+        linked pet's @handle, name, species and lost-mode flag (a LEFT JOIN; the profile-derived fields
+        are absent for a tag with no pet yet). Admin-gated (cookieAuth; owner AND staff — fulfillment
+        work, mirrors the print board + customers). The tag lifecycle is SEPARATE from OrderStatus (no
+        statusHistory). NOT paginated — the client filters the whole set by status in memory (mirrors the
+        customers list). Newest tag first.
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Every Pet Tag with its lifecycle + linked pet (newest first).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminPetTag'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /admin/print-queue:
     get:
       tags: [admin]
@@ -4833,6 +4859,45 @@ components:
         chipUid:
           type: string
           description: The NTAG215 hardware UID recorded at encode; absent until the tag is ENCODED.
+
+    AdminPetTag:
+      type: object
+      description: >
+        One Pet Tag row in the admin roster (P3-t t-5, GET /admin/pet-tags). code + status + url identify
+        the physical tag and its lifecycle stage; chipUid is present once ENCODED. The pet-derived fields
+        (handle, petName, species, lostMode) come from the linked pet_profiles row (a LEFT JOIN) and are
+        therefore absent for a tag that is not yet ACTIVATED — the roster shows "chưa liên kết" for those.
+        No money, no owner PII (the pet is identified by its public @handle, not the customer account).
+      required: [id, code, status, url, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          description: Display code (e.g. #LMN-T0231).
+        status:
+          $ref: '#/components/schemas/PetTagStatus'
+        url:
+          type: string
+          description: The absolute pet-page URL (/t/{shortId}, PET_TAG_BASE_URL) — what is burned to the chip.
+        chipUid:
+          type: string
+          description: The NTAG215 hardware UID; absent until the tag is ENCODED.
+        createdAt:
+          type: string
+          format: date-time
+        handle:
+          type: string
+          description: The linked pet's public @handle (absent until the tag is ACTIVATED).
+        petName:
+          type: string
+          description: The linked pet's name (absent until ACTIVATED).
+        species:
+          $ref: '#/components/schemas/PetSpecies'
+        lostMode:
+          type: boolean
+          description: Whether the owner has the pet in lost mode (absent until ACTIVATED).
 
     PrintTagEncodeInput:
       type: object

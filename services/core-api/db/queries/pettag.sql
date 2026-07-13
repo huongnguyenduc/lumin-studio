@@ -31,6 +31,23 @@ SET status = 'ENCODED', chip_uid = $2, encoded_at = now()
 WHERE id = $1
 RETURNING *;
 
+-- ==== Admin roster (t-5) ======================================================================
+
+-- ListPetTags rolls every tag up with its linked pet for the admin /pet-tag roster (spec §10, P3-t t-5).
+-- LEFT JOIN pet_profiles so a tag with no pet yet (UNENCODED/ENCODED) still appears — the pet-derived
+-- columns come back NULL and the DTO omits them. Newest tag first (mirrors the order the encode mints
+-- them). NOT paginated: the FE filters the whole set by status in memory (mirrors ListAdminCustomers).
+-- MONEY-FREE and no owner PII — the pet is identified by its public @handle, never the customer account.
+-- ponytail: no status predicate here — the 3-status filter is a client chip over the full list (the roster
+-- is small); add a WHERE + server paging only if the tag volume ever outgrows a single fetch.
+-- name: ListPetTags :many
+SELECT
+  pt.id, pt.code, pt.short_id, pt.status, pt.chip_uid, pt.created_at,
+  pp.handle, pp.pet_name, pp.species, pp.lost_mode
+FROM pet_tags pt
+LEFT JOIN pet_profiles pp ON pp.tag_id = pt.id
+ORDER BY pt.created_at DESC;
+
 -- ==== Activation + public pet page (t-3) ======================================================
 
 -- GetPetTagByShortID resolves a tag by its URL routing key (the /t/{shortId} segment burned to the chip),
