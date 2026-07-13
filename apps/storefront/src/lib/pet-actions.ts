@@ -60,3 +60,37 @@ export async function activatePetTag(
     return { ok: false, code: 'error' };
   }
 }
+
+// unauthenticated = no/expired session; forbidden = signed in but not this pet's owner (the SQL owner guard);
+// error = network / 5xx / bad link (retryable). The toggle is owner-only, so these are the meaningful cases.
+export type ToggleLostModeResult =
+  | { ok: true }
+  | { ok: false; code: 'unauthenticated' | 'forbidden' | 'error' };
+
+// toggleLostMode bridges the owner's lost-mode switch to PATCH /pet-tags/{shortId}/lost-mode (P3-t t-4a).
+// The switch runs in the browser but CORE_API_URL is server-only, so it calls this Server Action, which
+// forwards the customer cookie (the endpoint is customer-authed + owner-guarded server-side). On success the
+// caller router.refresh()es so the server component re-renders in the new view-state.
+export async function toggleLostMode(
+  shortId: string,
+  lostMode: boolean,
+): Promise<ToggleLostModeResult> {
+  const jwt = (await cookies()).get(CUSTOMER_COOKIE)?.value;
+  if (!jwt) return { ok: false, code: 'unauthenticated' }; // no session → skip the round-trip
+  try {
+    const client = createApiClient({
+      baseUrl: coreApiBaseUrl(),
+      headers: { cookie: `${CUSTOMER_COOKIE}=${jwt}` },
+    });
+    const { data, response } = await client.PATCH('/pet-tags/{shortId}/lost-mode', {
+      params: { path: { shortId } },
+      body: { lostMode },
+    });
+    if (data) return { ok: true };
+    if (response.status === 401) return { ok: false, code: 'unauthenticated' };
+    if (response.status === 403) return { ok: false, code: 'forbidden' };
+    return { ok: false, code: 'error' };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}

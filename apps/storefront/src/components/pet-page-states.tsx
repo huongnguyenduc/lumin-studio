@@ -1,14 +1,11 @@
 import { getTranslations } from 'next-intl/server';
 import { CtaLink } from './cta-link';
-import type { PetPageProfile, PetSpecies } from '@/lib/pet-page';
 
-// Presentational (server) states for the /t/{shortId} pet page (P3-t t-3): the "new tag" welcome (2a),
-// the unavailable states (not-found / not-ready / error), and the minimal ACTIVATED placeholder. All are
-// zero-JS server components — the only interactive surface is the onboarding wizard (pet-onboarding.tsx).
-// The FULL 3-state pet page (owner-edit / stranger-home / lost mode) lands in t-4; this placeholder is the
-// honest interim. Mobile-first (one-handed), sentence-case copy, all keyed under petTag.*.
+// Presentational (server) states for the /t/{shortId} pet page (P3-t t-3): the "new tag" welcome (2a) and
+// the unavailable states (not-found / not-ready / error). Zero-JS server components — the only interactive
+// surface is the onboarding wizard (pet-onboarding.tsx). The live ACTIVATED page (the 3 view-states) is
+// pet-page.tsx (t-4a). Mobile-first (one-handed), sentence-case copy, all keyed under petTag.*.
 
-const SPECIES_EMOJI: Record<PetSpecies, string> = { dog: '🐶', cat: '🐱', other: '🐾' };
 const PAW = '🐾';
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -66,31 +63,6 @@ export async function PetPageUnavailable({
           {t('home')}
         </CtaLink>
       </div>
-    </Shell>
-  );
-}
-
-// PetPagePlaceholder — an ACTIVATED tag (t-3 interim). Shows the pet's public summary (no owner PII) and is
-// honest that the full page is still coming. ponytail: t-4 replaces this with the real 3-state pet page.
-// Photo upload is deferred to the t-4 in-place edit, so t-3 shows the species emoji, not an avatar image.
-export async function PetPagePlaceholder({ profile }: { profile: PetPageProfile }) {
-  const t = await getTranslations('petTag.placeholder');
-  return (
-    <Shell>
-      <div className="flex flex-1 flex-col items-center justify-center text-center">
-        <div
-          className="flex h-24 w-24 items-center justify-center rounded-full border-2 border-border-subtle bg-surface-card text-4xl"
-          aria-hidden="true"
-        >
-          {SPECIES_EMOJI[profile.species]}
-        </div>
-        <h1 className="mt-4 font-display text-2xl font-extrabold text-text-strong">
-          {t('ready', { name: profile.petName })}
-        </h1>
-        <p className="mt-1 font-mono text-xs text-text-muted">{`@${profile.handle}`}</p>
-        <p className="mt-5 max-w-[280px] text-sm text-text-muted">{t('building')}</p>
-      </div>
-      <p className="mt-6 text-center font-mono text-[11px] text-text-muted">{t('poweredBy')}</p>
     </Shell>
   );
 }

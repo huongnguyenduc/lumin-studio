@@ -114,6 +114,18 @@ func (t *PetTags) ProfileByTagID(ctx context.Context, tagID uuid.UUID) (sqlc.Pet
 	return row, err
 }
 
+// SetLostMode flips the lost-mode flag on the profile behind a tag, but ONLY for the owning customer — the
+// owner_account_id guard is the authorization boundary (spec §10: chỉ chủ bật/tắt). A signed-in non-owner (or
+// a tag with no profile) matches 0 rows → ErrNotFound, which the handler — having already resolved the tag by
+// shortId — maps to a 403, not a 404 (the tag exists; this caller just doesn't own it). Returns the updated row.
+func (t *PetTags) SetLostMode(ctx context.Context, tagID, ownerID uuid.UUID, lost bool) (sqlc.PetProfile, error) {
+	row, err := t.q.SetLostMode(ctx, sqlc.SetLostModeParams{TagID: tagID, LostMode: lost, OwnerAccountID: ownerID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.PetProfile{}, ErrNotFound
+	}
+	return row, err
+}
+
 // ResolveHandle folds the pet name into a unique vanity handle (spec §10 "handle auto từ tên, unique").
 // The base is accent-folded in SQL (SlugifyHandle → immutable_unaccent); a collision auto-suffixes (-2..-9,
 // then a random suffix) rather than 400 — the user never types the handle (it's derived) and the route key

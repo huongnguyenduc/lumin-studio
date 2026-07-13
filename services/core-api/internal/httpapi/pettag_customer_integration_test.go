@@ -89,7 +89,8 @@ func TestActivatePetTagEndToEnd(t *testing.T) {
 		t.Fatalf("pet_profile consent grants = %d, want 1", consents)
 	}
 
-	// --- Public read now shows the ACTIVATED summary (still no owner PII in the DTO). ---
+	// --- Public read now shows the ACTIVATED page; an anonymous read reveals no full owner PII (masked
+	// contact only — the 3 view-states + masking are exercised in TestPetPageLostModeAndMasking). ---
 	post := getPetPage(t, srv, ctx, shortID)
 	if post.Status != api.ACTIVATED || post.Profile == nil || post.Profile.Handle != firstHandle {
 		t.Fatalf("post-activation page = %+v, want ACTIVATED + same handle", post)
@@ -198,5 +199,116 @@ func isActivate400(resp api.ActivatePetTagResponseObject) bool {
 
 func isActivate409(resp api.ActivatePetTagResponseObject) bool {
 	_, ok := resp.(api.ActivatePetTag409JSONResponse)
+	return ok
+}
+
+// TestPetPageLostModeAndMasking drives the t-4a public pet page over a real Postgres: the 3 view-states
+// (stranger-home / owner / stranger-lost) and the owner-only lost-mode toggle. The load-bearing assertions
+// are PDPL: on an at-home page a stranger gets ONLY the masked phone (no callable value on the wire); on a
+// lost page the full contact is revealed BUT the owner name is still withheld from finders; and the owner —
+// recognised via the optional session — sees the full contact incl. their own name regardless of lost mode.
+// The toggle is owner-only: a signed-in non-owner is 403, an unknown tag 404, no session 401, nil body 400.
+func TestPetPageLostModeAndMasking(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+
+	catID := seedCategory(t, ctx, pool)
+	tagProduct := seedProductNamed(t, ctx, pool, catID, "pet-tag-view", "Pet Tag NFC", 390_000)
+	if _, err := pool.Exec(ctx, `UPDATE products SET product_type='nfc_tag' WHERE id=$1`, tagProduct); err != nil {
+		t.Fatalf("mark nfc_tag: %v", err)
+	}
+	orderID := seedAdminOrder(t, ctx, pool, adminOrderSeed{
+		customer: "Mai Lê", channel: order.ChannelWeb, createdAt: "2026-07-05T08:00:00Z",
+		items: []db.NewOrderItem{{ProductID: tagProduct, Quantity: 1, UnitPrice: 390_000}},
+	})
+	item := orderItemID(t, ctx, pool, orderID, tagProduct)
+	shortID := seedEncodedTag(t, ctx, pool, item, "petviewaaa")
+	owner := seedCustomerRow(t, ctx, pool, "Mai Lê", "0905552261", nil, nil, []byte("[]"))
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
+
+	// Activate so a profile exists (Bơ the corgi: phone 0905552261 + zalo + a chicken allergy).
+	activatePetTag(t, srv, withCustomer(ctx, owner), shortID, validPetInput())
+
+	// --- Stranger, at-home (lostMode=false): contact masked, NOTHING callable, but the allergy shows. ---
+	stranger := getPetPage(t, srv, ctx, shortID)
+	if stranger.ViewerIsOwner {
+		t.Fatalf("anonymous read should not be recognised as owner")
+	}
+	sp := stranger.Profile
+	if sp == nil || sp.LostMode || !sp.Contact.Masked || sp.Contact.Phone != nil || sp.Contact.Name != nil {
+		t.Fatalf("stranger at-home page leaked contact / wrong lostMode: %+v", sp)
+	}
+	if sp.Contact.PhoneMasked != "+84 90 •••• 261" {
+		t.Fatalf("stranger masked phone = %q, want the partial", sp.Contact.PhoneMasked)
+	}
+	if sp.Medical == nil || sp.Medical.Allergies == nil {
+		t.Fatalf("allergy data missing from the stranger page (safety info is not PII)")
+	}
+
+	// --- Owner viewing (still at-home): recognised via the optional session, full contact incl. own name. ---
+	ownerView := getPetPage(t, srv, withCustomer(ctx, owner), shortID)
+	if !ownerView.ViewerIsOwner || ownerView.Profile.Contact.Masked ||
+		ownerView.Profile.Contact.Phone == nil || ownerView.Profile.Contact.Name == nil {
+		t.Fatalf("owner view should be recognised + fully revealed: %+v", ownerView.Profile.Contact)
+	}
+
+	// --- Owner toggles lost mode ON. ---
+	lostPage := toggleLostMode(t, srv, withCustomer(ctx, owner), shortID, true)
+	if lostPage.Profile == nil || !lostPage.Profile.LostMode {
+		t.Fatalf("toggle-on page lostMode = %+v, want true", lostPage.Profile)
+	}
+	var dbLost bool
+	if err := pool.QueryRow(ctx, `SELECT lost_mode FROM pet_profiles WHERE tag_id=(SELECT id FROM pet_tags WHERE short_id=$1)`, shortID).Scan(&dbLost); err != nil {
+		t.Fatalf("read lost_mode: %v", err)
+	}
+	if !dbLost {
+		t.Fatalf("db lost_mode = false after toggle-on, want true")
+	}
+
+	// --- Stranger on the LOST page: full contact revealed (callable) BUT still no owner name. ---
+	finder := getPetPage(t, srv, ctx, shortID)
+	if finder.ViewerIsOwner {
+		t.Fatalf("anonymous finder should not be owner")
+	}
+	fc := finder.Profile.Contact
+	if fc.Masked || fc.Phone == nil || *fc.Phone != "0905552261" || fc.Name != nil {
+		t.Fatalf("finder lost page: want revealed phone + NO owner name, got %+v", fc)
+	}
+
+	// --- Toggle reject paths. ---
+	// A different signed-in customer is NOT the owner → 403 (the SQL owner guard, not a silent no-op).
+	owner2 := seedCustomerRow(t, ctx, pool, "Trần Bình", "0912345678", nil, nil, []byte("[]"))
+	if _, err := srv.ToggleLostMode(withCustomer(ctx, owner2), api.ToggleLostModeRequestObject{ShortId: shortID, Body: &api.PetLostModeInput{LostMode: true}}); !errors.Is(err, errForbidden) {
+		t.Fatalf("non-owner toggle → %v, want errForbidden (403)", err)
+	}
+	// Unknown shortId → 404.
+	if _, err := srv.ToggleLostMode(withCustomer(ctx, owner), api.ToggleLostModeRequestObject{ShortId: "does-not-exist", Body: &api.PetLostModeInput{LostMode: true}}); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("unknown-tag toggle → %v, want db.ErrNotFound (404)", err)
+	}
+	// No customer session → 401.
+	if _, err := srv.ToggleLostMode(ctx, api.ToggleLostModeRequestObject{ShortId: shortID, Body: &api.PetLostModeInput{LostMode: true}}); !errors.Is(err, errUnauthenticated) {
+		t.Fatalf("no-session toggle → %v, want errUnauthenticated (401)", err)
+	}
+	// Nil body → 400.
+	if resp, _ := srv.ToggleLostMode(withCustomer(ctx, owner), api.ToggleLostModeRequestObject{ShortId: shortID, Body: nil}); !isToggle400(resp) {
+		t.Fatalf("nil-body toggle → %T, want 400", resp)
+	}
+}
+
+func toggleLostMode(t *testing.T, srv *Server, ctx context.Context, shortID string, lost bool) api.PetPage {
+	t.Helper()
+	resp, err := srv.ToggleLostMode(ctx, api.ToggleLostModeRequestObject{ShortId: shortID, Body: &api.PetLostModeInput{LostMode: lost}})
+	if err != nil {
+		t.Fatalf("ToggleLostMode(%s,%v): %v", shortID, lost, err)
+	}
+	ok, isOK := resp.(api.ToggleLostMode200JSONResponse)
+	if !isOK {
+		t.Fatalf("ToggleLostMode response = %T, want 200", resp)
+	}
+	return api.PetPage(ok)
+}
+
+func isToggle400(resp api.ToggleLostModeResponseObject) bool {
+	_, ok := resp.(api.ToggleLostMode400JSONResponse)
 	return ok
 }
