@@ -1,0 +1,44 @@
+# One-shot DEMO/smoke catalog seed — gives the deployed storefront products to browse so the order flow
+# can be tested end-to-end. NOT part of any `up`; run by hand AFTER the migrate Job + core-api are up.
+# The SQL lives in infra/k8s/seed-catalog.sql (reusable for local dev); load it into a ConfigMap, then
+# run the Job (idempotent — fixed UUIDs + ON CONFLICT DO NOTHING, safe to re-run):
+#
+#   kubectl -n prod create configmap seed-catalog-sql \
+#     --from-file=seed-catalog.sql=infra/k8s/seed-catalog.sql \
+#     --dry-run=client -o yaml | kubectl -n prod apply -f -
+#   kubectl -n prod delete job seed-catalog --ignore-not-found && kubectl apply -f infra/k8s/seed-catalog-job.yaml
+#   kubectl -n prod wait --for=condition=complete job/seed-catalog --timeout=90s
+#
+# Demo data — delete these rows before a real launch, or just build the real catalog in Admin and skip this.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seed-catalog
+  namespace: prod
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: seed-catalog
+          image: postgres:17-alpine # psql only; no new image to build (matches postgres.yaml's image)
+          # k8s substitutes $(DATABASE_URL) from the env below into the args (same trick as migrate-job).
+          # psql takes the connection URI as its first positional arg; ON_ERROR_STOP fails the Job on any
+          # SQL error (a clean re-run is a no-op, not an error, thanks to ON CONFLICT DO NOTHING).
+          command: [psql]
+          args:
+            - $(DATABASE_URL)
+            - -v
+            - ON_ERROR_STOP=1
+            - -f
+            - /seed/seed-catalog.sql
+          env:
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: lumin-secrets, key: DATABASE_URL } }
+          volumeMounts:
+            - { name: seed, mountPath: /seed, readOnly: true }
+      volumes:
+        - name: seed
+          configMap: { name: seed-catalog-sql }
