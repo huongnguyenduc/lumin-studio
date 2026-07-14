@@ -34,7 +34,43 @@ spec:
             - { name: ALLOW_DEV_JWT_SECRET, value: 'false' }
             # Cloudflare terminates TLS → browser sees HTTPS → Secure cookies are correct.
             - { name: COOKIE_SECURE, value: 'true' }
-            # Upload creds omitted → uploads fail closed, server still boots (garage/S3 is a follow-up).
+            # --- Garage/S3 uploads (ADR-005/035/036). The endpoint is baked into the browser's
+            # presigned-POST URL, so it MUST be the public S3 host, not the in-cluster Service DNS
+            # (browser → s3.luminstudio.vn → tunnel → traefik → garage:3900). The payment-proof
+            # retention sweep's server-side delete hairpins back through the same public host — fine
+            # for a 6-hourly, non-fatal sweep. bucket/region/key-prefix keep their config defaults
+            # (lumin-payment-proofs · lumin-assets · garage), so only endpoint+base-url+creds are set.
+            # Two keys: a PROOF key scoped to the private proof bucket, an ASSETS key scoped to the
+            # public lumin-assets bucket (shared by model + image uploads). Creds absent → that store
+            # fails closed, server still boots. Buckets/keys/CORS: see README bootstrap.
+            - { name: PAYMENT_PROOF_S3_ENDPOINT, value: 'https://s3.luminstudio.vn' }
+            - {
+                name: PAYMENT_PROOF_PUBLIC_BASE_URL,
+                value: 'https://s3.luminstudio.vn/lumin-payment-proofs',
+              }
+            - name: PAYMENT_PROOF_ACCESS_KEY_ID
+              valueFrom: { secretKeyRef: { name: lumin-secrets, key: PAYMENT_PROOF_ACCESS_KEY_ID } }
+            - name: PAYMENT_PROOF_SECRET_ACCESS_KEY
+              valueFrom:
+                { secretKeyRef: { name: lumin-secrets, key: PAYMENT_PROOF_SECRET_ACCESS_KEY } }
+            - { name: MODEL_UPLOAD_S3_ENDPOINT, value: 'https://s3.luminstudio.vn' }
+            - {
+                name: MODEL_UPLOAD_PUBLIC_BASE_URL,
+                value: 'https://s3.luminstudio.vn/lumin-assets',
+              }
+            - name: MODEL_UPLOAD_ACCESS_KEY_ID
+              valueFrom: { secretKeyRef: { name: lumin-secrets, key: ASSETS_ACCESS_KEY_ID } }
+            - name: MODEL_UPLOAD_SECRET_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: lumin-secrets, key: ASSETS_SECRET_ACCESS_KEY } }
+            - { name: IMAGE_UPLOAD_S3_ENDPOINT, value: 'https://s3.luminstudio.vn' }
+            - {
+                name: IMAGE_UPLOAD_PUBLIC_BASE_URL,
+                value: 'https://s3.luminstudio.vn/lumin-assets',
+              }
+            - name: IMAGE_UPLOAD_ACCESS_KEY_ID
+              valueFrom: { secretKeyRef: { name: lumin-secrets, key: ASSETS_ACCESS_KEY_ID } }
+            - name: IMAGE_UPLOAD_SECRET_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: lumin-secrets, key: ASSETS_SECRET_ACCESS_KEY } }
           readinessProbe:
             httpGet: { path: /healthz, port: 8080 }
             initialDelaySeconds: 5

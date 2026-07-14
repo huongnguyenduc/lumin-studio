@@ -1,0 +1,121 @@
+# Garage — S3-compatible object storage (ADR-005). Single node, replication=1, no versioning →
+# restic backup is the only safety net (operations.md §5). All-home (ADR-009, accept downtime) →
+# a plain Deployment (Recreate) on local-path PVCs, mirroring postgres.yaml; no HA/StatefulSet.
+#
+# Config is a file (garage needs /etc/garage.toml — only secrets come from env), so it lives in a
+# ConfigMap. rpc_secret / admin_token load from the Secret, never the file.
+#
+# Buckets, keys, CORS and the one-time layout are NOT manifest state (they need the live node id and
+# the garage CLI) — see README "Garage — bootstrap". Until then core-api uploads fail closed.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: garage-config
+  namespace: prod
+data:
+  garage.toml: |
+    metadata_dir = "/var/lib/garage/meta"
+    data_dir = "/var/lib/garage/data"
+    db_engine = "lmdb"
+
+    replication_factor = 1
+
+    rpc_bind_addr = "[::]:3901"
+    # Single node → the only RPC peer is itself, so loopback is correct. Adding a 2nd node or an
+    # external RPC client means changing this to a pod-reachable address.
+    rpc_public_addr = "127.0.0.1:3901"
+
+    [s3_api]
+    s3_region = "garage"
+    api_bind_addr = "[::]:3900"
+    root_domain = ".s3.garage.localhost"
+
+    [s3_web]
+    bind_addr = "[::]:3902"
+    root_domain = ".web.garage.localhost"
+    index = "index.html"
+
+    [admin]
+    api_bind_addr = "[::]:3903"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: garage
+  namespace: prod
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # two PVCs — never run two pods against the same volumes
+  selector:
+    matchLabels: { app: garage }
+  template:
+    metadata:
+      labels: { app: garage }
+    spec:
+      containers:
+        - name: garage
+          image: dxflrs/garage:v1.0.1
+          ports:
+            - { containerPort: 3900 } # S3 API
+            - { containerPort: 3903 } # admin API
+          env:
+            # Secrets (openssl rand -hex 32) — loaded from env, never the toml (ADR-024).
+            - name: GARAGE_RPC_SECRET
+              valueFrom: { secretKeyRef: { name: lumin-secrets, key: GARAGE_RPC_SECRET } }
+            - name: GARAGE_ADMIN_TOKEN
+              valueFrom: { secretKeyRef: { name: lumin-secrets, key: GARAGE_ADMIN_TOKEN } }
+          volumeMounts:
+            - { name: config, mountPath: /etc/garage.toml, subPath: garage.toml, readOnly: true }
+            - { name: meta, mountPath: /var/lib/garage/meta }
+            - { name: data, mountPath: /var/lib/garage/data }
+          readinessProbe:
+            # `garage status` exits 0 once RPC is live. NOTE: this is liveness only — a fresh node that
+            # has not had `layout apply` reports healthy but 503s every PutObject (see README bootstrap).
+            exec: { command: [/garage, status] }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            exec: { command: [/garage, status] }
+            initialDelaySeconds: 20
+            periodSeconds: 20
+      volumes:
+        - name: config
+          configMap: { name: garage-config }
+        - name: meta
+          persistentVolumeClaim: { claimName: garage-meta }
+        - name: data
+          persistentVolumeClaim: { claimName: garage-data }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: garage-meta
+  namespace: prod
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests: { storage: 1Gi }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: garage-data
+  namespace: prod
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests: { storage: 20Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: garage
+  namespace: prod
+spec:
+  selector: { app: garage }
+  ports:
+    - { name: s3, port: 3900, targetPort: 3900 }
+    - { name: admin, port: 3903, targetPort: 3903 } # cluster-internal only — never in the Ingress
