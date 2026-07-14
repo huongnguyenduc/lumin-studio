@@ -1,0 +1,30 @@
+# One-shot owner bootstrap (ADR-030). Reads DATABASE_URL from lumin-secrets (in-cluster — the DB
+# password never leaves the cluster) + OWNER_PASSWORD from a short-lived `lumin-owner-cred` secret
+# created + deleted around this run (never committed). Idempotent on OWNER_EMAIL — rerun to rotate:
+#   PW=$(openssl rand -hex 16)
+#   kubectl -n prod create secret generic lumin-owner-cred --from-literal=OWNER_PASSWORD="$PW"
+#   kubectl -n prod delete job seed-owner --ignore-not-found && kubectl apply -f infra/k8s/seed-owner-job.yaml
+#   kubectl -n prod wait --for=condition=complete job/seed-owner --timeout=90s
+#   kubectl -n prod delete secret lumin-owner-cred     # password is bcrypt-hashed in the DB now
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seed-owner
+  namespace: prod
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: seed-owner
+          image: lumin-seed-owner:prod
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: lumin-secrets, key: DATABASE_URL } }
+            - { name: OWNER_EMAIL, value: owner@luminstudio.vn }
+            - { name: OWNER_NAME, value: 'Chủ shop' }
+            - name: OWNER_PASSWORD
+              valueFrom: { secretKeyRef: { name: lumin-owner-cred, key: OWNER_PASSWORD } }
