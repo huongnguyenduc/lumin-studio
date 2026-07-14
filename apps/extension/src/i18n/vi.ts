@@ -137,6 +137,8 @@ export const vi = {
   'templates.copy': 'Copy mẫu',
   'templates.copied': 'Đã copy ✓',
   'templates.adminHint': 'Thêm hoặc sửa mẫu trả lời trong Admin nhé.',
+
+  'popup.subtitle': 'Chọn việc bạn muốn làm nhé — bảng sẽ mở bên khung chat.',
 } as const;
 
 export type MessageKey = keyof typeof vi;
