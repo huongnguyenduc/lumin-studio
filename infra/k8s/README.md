@@ -57,6 +57,13 @@ kubectl -n prod rollout restart deploy/core-api
 # 7. asset-worker — ONLY on a GPU-schedulable node (see "asset-worker — GPU prerequisite")
 docker build -t lumin-asset-worker:prod services/asset-worker && k3d image import lumin-asset-worker:prod -c luminstudio
 kubectl apply -f infra/k8s/asset-worker.yaml && kubectl -n prod rollout status deploy/asset-worker
+
+# 8. (optional) demo catalog so the storefront has products to browse / smoke-test the order flow.
+#    Idempotent; demo data — see seed-catalog-job.yaml. Delete the rows before a real launch.
+kubectl -n prod create configmap seed-catalog-sql --from-file=seed-catalog.sql=infra/k8s/seed-catalog.sql \
+  --dry-run=client -o yaml | kubectl -n prod apply -f -
+kubectl -n prod delete job seed-catalog --ignore-not-found && kubectl apply -f infra/k8s/seed-catalog-job.yaml
+kubectl -n prod wait --for=condition=complete job/seed-catalog --timeout=90s
 ```
 
 Redeploy after a code change = rebuild the affected image → `k3d image import` → `kubectl -n prod
