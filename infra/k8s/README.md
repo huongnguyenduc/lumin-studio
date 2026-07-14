@@ -24,7 +24,7 @@ cd ~/lumin-studio                       # a clone of huongnguyenduc/lumin-studio
 # 1. Build + import images (amd64, on the box). storefront needs a LIVE core-api → built in step 6.
 docker build -f services/core-api/Dockerfile      -t lumin-core-api:prod services/core-api
 docker build -f infra/k8s/migrate.Dockerfile      -t lumin-migrate:prod  services/core-api/db/migrations
-docker build -f apps/admin/Dockerfile             -t lumin-admin:prod    .
+docker build --network=host -f apps/admin/Dockerfile -t lumin-admin:prod .   # --network=host: next/font fetches Google Fonts at build (the docker bridge can't reach it)
 for i in lumin-core-api lumin-migrate lumin-admin; do k3d image import $i:prod -c luminstudio; done
 
 # 2. Secret (values from `openssl rand -hex 32`, all JWT secrets DISTINCT) — see secret.example.yaml.
