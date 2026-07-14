@@ -28,3 +28,13 @@ spec:
           - path: /
             pathType: Prefix
             backend: { service: { name: core-api, port: { number: 8080 } } }
+    # Public S3 API — browsers presign-POST uploads straight to Garage (never proxied through
+    # core-api, ADR: no POST-proxy through the tunnel). Path-style, so one host serves every bucket.
+    # The tunnel's 100MB body cap is already baked into the upload MaxBytes. Admin :3903 is NOT
+    # routed — it stays cluster-internal.
+    - host: s3.luminstudio.vn
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: garage, port: { number: 3900 } } }

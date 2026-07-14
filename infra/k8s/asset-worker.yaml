@@ -1,0 +1,38 @@
+# asset-worker — Rust + Blender render pipeline (services/asset-worker). Image built on the box and
+# `k3d image import`ed as lumin-asset-worker:prod (no registry), like the other lumin-* images.
+#
+# GPU-locked: Cycles + CUDA on the GTX 1060 (ADR-007), concurrency=1 (ADR-014, enforced in the
+# JetStream consumer — a single replica is the deploy-side half). Off the web-live critical path: no
+# order render blocks go-live, so this is a separate manifest the owner applies ONLY once the cluster
+# can schedule a GPU (see README "asset-worker — GPU prerequisite"); until then it stays Pending,
+# which is the honest signal, not a silent failure. The worker is a scaffold today (connects to NATS +
+# idles); the image bakes Blender so GPU passthrough is proven before the pipeline lands.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: asset-worker
+  namespace: prod
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # one GPU — a rolling update would deadlock the new pod Pending on the held card
+  selector:
+    matchLabels: { app: asset-worker }
+  template:
+    metadata:
+      labels: { app: asset-worker }
+    spec:
+      # k3s auto-creates this RuntimeClass when the NVIDIA container runtime is detected on the node.
+      runtimeClassName: nvidia
+      containers:
+        - name: asset-worker
+          image: lumin-asset-worker:prod
+          imagePullPolicy: IfNotPresent # locally imported (no registry) — never try to pull
+          env:
+            # Server-to-server (internal DNS). Worker pulls AssetJob off JetStream here.
+            - { name: NATS_URL, value: nats://nats:4222 }
+            # Garage creds land here when the render→sprite upload pipeline lands (mirrors core-api's
+            # ASSETS_* key). The scaffold only consumes NATS, so it needs none yet.
+          resources:
+            limits:
+              nvidia.com/gpu: 1 # requires the NVIDIA k8s device plugin (see README)
