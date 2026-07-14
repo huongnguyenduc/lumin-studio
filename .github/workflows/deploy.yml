@@ -1,0 +1,103 @@
+# Deploy — a self-hosted runner ON the WSL2 box builds the app images, imports them into the k3d
+# cluster `luminstudio` (no registry — `k3d image import`), and rolls the Deployments in namespace
+# `prod`. Images are tagged by commit SHA so a `kubectl apply` actually triggers a rollout and an old
+# SHA can be re-deployed to roll back. Manifests + runbook live in infra/k8s/.
+#
+# ⚠ SECURITY GUARDRAIL (D4): the runner executes on the prod box, so this triggers ONLY on push→main
+# and manual dispatch. It MUST NOT gain a `pull_request` trigger — a fork PR would then run
+# attacker-controlled code on the box (RCE). Keep it push-main + manual.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+    # Skip docs-only pushes; a workflow_dispatch always runs regardless of paths.
+    paths:
+      - 'services/**'
+      - 'apps/**'
+      - 'packages/**'
+      - 'infra/k8s/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+# One deploy at a time; let a running deploy finish rather than cancel mid-rollout.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+# Scripts use bash-isms (${SHA::12} substring, functions) — pin bash, not the runner's default sh.
+defaults:
+  run:
+    shell: bash
+
+env:
+  # Box-specific (single all-home node). The runner user owns this kubeconfig + docker + k3d.
+  KUBECONFIG: /home/duchuong/.config/k3d/kubeconfig-luminstudio.yaml
+  CLUSTER: luminstudio
+  NS: prod
+  SITE_URL: https://www.luminstudio.vn
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      # core-api / migrate / admin build without a live backend. (Go + baked-migrations images use the
+      # default bridge network; admin is a Next build so it needs --network=host for next/font's Google
+      # Fonts fetch — the docker bridge can't reach it, the host can.)
+      - name: Build core-api / migrate / admin (+ import, SHA-tagged)
+        run: |
+          set -euo pipefail
+          TAG=${GITHUB_SHA::12}
+          docker build -f services/core-api/Dockerfile -t "lumin-core-api:$TAG" services/core-api
+          docker build -f infra/k8s/migrate.Dockerfile -t "lumin-migrate:$TAG"  services/core-api/db/migrations
+          docker build --network=host -f apps/admin/Dockerfile -t "lumin-admin:$TAG" .
+          k3d image import "lumin-core-api:$TAG" "lumin-migrate:$TAG" "lumin-admin:$TAG" -c "$CLUSTER"
+
+      # Bring the data tier + schema + core-api to this SHA first — the storefront build (next step)
+      # ISR-prerenders the home against a LIVE core-api (ADR-009), so core-api must be up before it.
+      - name: Apply infra + migrate + roll core-api
+        run: |
+          set -euo pipefail
+          TAG=${GITHUB_SHA::12}
+          img() { sed -E "s|(image: lumin-[a-z-]+):prod|\1:$TAG|g" "$1"; }
+          kubectl apply -f infra/k8s/postgres.yaml -f infra/k8s/nats.yaml
+          kubectl -n "$NS" rollout status deploy/postgres --timeout=180s
+          kubectl -n "$NS" rollout status deploy/nats --timeout=120s
+          # Migrations: one-shot, idempotent (golang-migrate `up` no-ops when current, ADR-028). A Job's
+          # pod template is immutable → delete + recreate.
+          kubectl -n "$NS" delete job migrate --ignore-not-found
+          img infra/k8s/migrate-job.yaml | kubectl apply -f -
+          kubectl -n "$NS" wait --for=condition=complete job/migrate --timeout=180s
+          img infra/k8s/core-api.yaml | kubectl apply -f -
+          kubectl -n "$NS" rollout status deploy/core-api --timeout=180s
+
+      # storefront needs the now-live core-api at build time → port-forward it (mirrors the compose
+      # build.network:host + localhost core-api trick).
+      - name: Build storefront against live core-api + roll storefront/admin + ingress
+        run: |
+          set -euo pipefail
+          TAG=${GITHUB_SHA::12}
+          img() { sed -E "s|(image: lumin-[a-z-]+):prod|\1:$TAG|g" "$1"; }
+          kubectl -n "$NS" port-forward svc/core-api 8080:8080 >/tmp/pf-coreapi.log 2>&1 &
+          PF=$!
+          for i in $(seq 1 20); do curl -sf http://localhost:8080/healthz >/dev/null 2>&1 && break; sleep 1; done
+          docker build --network=host \
+            --build-arg SITE_URL="$SITE_URL" --build-arg CORE_API_URL=http://localhost:8080 \
+            -f apps/storefront/Dockerfile -t "lumin-storefront:$TAG" .
+          kill "$PF" 2>/dev/null || true
+          k3d image import "lumin-storefront:$TAG" -c "$CLUSTER"
+          img infra/k8s/storefront.yaml | kubectl apply -f -
+          img infra/k8s/admin.yaml | kubectl apply -f -
+          kubectl apply -f infra/k8s/ingress.yaml
+          kubectl -n "$NS" rollout status deploy/storefront --timeout=180s
+          kubectl -n "$NS" rollout status deploy/admin --timeout=180s
+
+      - name: Deployed state
+        if: always()
+        run: kubectl -n "$NS" get deploy,pods -o wide 2>&1 | head -30

@@ -1,0 +1,55 @@
+# core-api (Go + Chi BFF). Image built from services/core-api → imported to k3d as lumin-core-api:prod.
+# Boot is env-only; migrations run separately (the migrate Job) before this rolls out.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: core-api
+  namespace: prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: core-api }
+  template:
+    metadata:
+      labels: { app: core-api }
+    spec:
+      containers:
+        - name: core-api
+          image: lumin-core-api:prod
+          imagePullPolicy: IfNotPresent # locally imported (no registry) — never try to pull
+          ports:
+            - { containerPort: 8080 }
+          env:
+            - { name: PORT, value: '8080' }
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: lumin-secrets, key: DATABASE_URL } }
+            - { name: NATS_URL, value: nats://nats:4222 }
+            # Fail-fast secrets — core-api refuses to boot without real values (ADR-030). All distinct.
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: lumin-secrets, key: JWT_SECRET } }
+            - name: CUSTOMER_JWT_SECRET
+              valueFrom: { secretKeyRef: { name: lumin-secrets, key: CUSTOMER_JWT_SECRET } }
+            - name: TRACKING_SECRET
+              valueFrom: { secretKeyRef: { name: lumin-secrets, key: TRACKING_SECRET } }
+            - { name: ALLOW_DEV_JWT_SECRET, value: 'false' }
+            # Cloudflare terminates TLS → browser sees HTTPS → Secure cookies are correct.
+            - { name: COOKIE_SECURE, value: 'true' }
+            # Upload creds omitted → uploads fail closed, server still boots (garage/S3 is a follow-up).
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: core-api
+  namespace: prod
+spec:
+  selector: { app: core-api }
+  ports:
+    - { port: 8080, targetPort: 8080 }

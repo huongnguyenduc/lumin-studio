@@ -1,0 +1,30 @@
+# Traefik ingress — HTTP entrypoint only; TLS terminates at Cloudflare (matches the cluster's existing
+# hello- pattern). Path: wildcard *.luminstudio.vn → Cloudflare tunnel → traefik :80 → routed by Host.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: lumin
+  namespace: prod
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: www.luminstudio.vn
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: storefront, port: { number: 3000 } } }
+    - host: admin.luminstudio.vn
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: admin, port: { number: 3000 } } }
+    - host: api.luminstudio.vn
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: core-api, port: { number: 8080 } } }
