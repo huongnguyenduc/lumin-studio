@@ -265,15 +265,31 @@ services:
       start_period: 15s
     networks: [lumin]
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Còn deferred (image chưa tồn tại — bật khi có Dockerfile):
-#
-#   asset-worker:    # Rust + Blender — services/asset-worker; cần GPU (o-1c, operations.md §3)
-#     build: ../services/asset-worker
-#     gpus: all                      # nvidia-container-toolkit; concurrency=1 (ADR-014)
-#     depends_on: [nats, garage]
-#     networks: [lumin]
-# ─────────────────────────────────────────────────────────────────────────────
+  # --- asset-worker: Rust + Blender render pipeline (services/asset-worker). ---
+  # GPU-locked (Cycles + CUDA on the GTX 1060, ADR-007) → gated behind the `gpu` profile so a
+  # GPU-less dev `up` stays green; the WSL2 box brings it up with `--profile gpu`. Off the web-live
+  # critical path (o-1c): no order render blocks go-live. The worker is a Phase-0 scaffold today
+  # (connects to NATS + idles) — the image bakes Blender now so GPU passthrough + the in-container
+  # render gate (operations.md §3, `blender -b --debug-cycles`) are proven before the pipeline lands.
+  asset-worker:
+    build:
+      context: ../services/asset-worker
+    profiles: [gpu]
+    restart: unless-stopped
+    depends_on:
+      nats:
+        condition: service_healthy
+      garage:
+        condition: service_started
+    environment:
+      # Server-to-server (internal DNS). Worker pulls AssetJob off JetStream here.
+      NATS_URL: nats://nats:4222
+    # GPU passthrough via nvidia-container-toolkit — the whole reason for the `gpu` profile.
+    gpus: all
+    # concurrency=1 (ADR-014) is enforced in the worker's JetStream consumer, not here (a single
+    # replica is the default). Off-peak scheduling (ADR-014 CPU contention) is a deploy-time
+    # concern (o-1d/o-3), not a compose flag.
+    networks: [lumin]
 
 volumes:
   pg-data:
