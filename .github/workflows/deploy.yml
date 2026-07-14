@@ -1,0 +1,65 @@
+# Deploy — a self-hosted runner ON the WSL2 box builds the app images locally and (re)starts the
+# stack in place. NO registry, NO GHCR, NO Watchtower (plan D4 / operations.md §4): the runner
+# lives on the prod box, so it just `docker compose build` + `up -d` where the app already runs.
+# Rollback = check out a prior git SHA on the box and re-run this via `workflow_dispatch`.
+#
+# ⚠ SECURITY GUARDRAIL (D4): the runner executes on the prod box, so this triggers ONLY on
+# push→main (post-merge, trusted) and manual dispatch. It MUST NOT gain a `pull_request` trigger —
+# a fork PR would then run attacker-controlled code on the box (RCE). Keep it push-main + manual.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time. Let a running deploy finish rather than cancel mid-`up` — a half-restarted
+# stack is worse than a queued deploy.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      # clean:false — the gitignored `infra/.env` (real secrets, placed on the box at o-1e; SOPS+age
+      # at o-5) lives in the workspace and `docker compose` auto-loads it. checkout's default
+      # `git clean -ffdx` would wipe it, so keep untracked files.
+      - uses: actions/checkout@v4
+        with:
+          clean: false
+
+      - name: Build images + (re)start the app stack in place
+        working-directory: infra
+        run: |
+          set -euo pipefail
+
+          # 1. Migrations first — one-shot, gated, idempotent (golang-migrate `up` no-ops when the
+          #    schema is current; ADR-028). `run` brings postgres up healthy via depends_on. Schema
+          #    must be applied before the new core-api boots. A failed migrate aborts the deploy
+          #    (set -e) so a broken schema never restarts core-api.
+          docker compose --profile migrate run --rm migrate
+
+          # 2. core-api FIRST: the storefront image ISR-prerenders the home against a LIVE core-api
+          #    at build time (ADR-009), so core-api must be up + publishing its host port before the
+          #    storefront image builds.
+          docker compose up -d --build core-api
+
+          # 3. Build + (re)start the rest of the default-profile stack (storefront/admin — now
+          #    reaching the live core-api; nats/garage/caddy). Compose's layer cache + change
+          #    detection IS the "affected-only" mechanism: unchanged services rebuild from cache in
+          #    seconds and their containers aren't recreated.
+          #    Excluded on purpose: the GPU `asset-worker` (`gpu` profile — heavy CUDA image, built
+          #    off-peak + deployed out-of-band, see services/asset-worker/README.md) and
+          #    `cloudflared` (`edge` profile — the tunnel is managed separately).
+          docker compose up -d --build
+
+      - name: Stack status
+        if: always()
+        working-directory: infra
+        run: docker compose ps
