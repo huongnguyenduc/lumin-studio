@@ -13,15 +13,16 @@ export default defineManifest({
   name: 'Lumin Studio',
   description: 'Trợ lý bán hàng Lumin Studio — tạo đơn, tra cứu, mẫu trả lời ngay bên khung chat.',
   version: '0.0.0',
-  // No default_popup → clicking the toolbar icon opens the side panel directly in one click
-  // (background.ts sets openPanelOnActionClick). ponytail: a toolbar quick-actions popup was weighed for
-  // e-4 and DROPPED — a default_popup would *replace* this one-click open with a two-step popup→panel
-  // dance, and its actions just duplicate the panel's own tab nav (the popup's chat/domain chrome is the
-  // auto-scan cosmetics ADR-011 forbids). Add one only if a real need appears that the tabs can't serve.
-  action: { default_title: 'Mở bảng Lumin Studio' },
+  // action.default_popup → the toolbar icon opens a small quick-actions popup (popup.html): three
+  // deep-links (Tạo đơn / Tra cứu / Mẫu) that open the docked side panel on the chosen screen. This
+  // REPLACES the former one-click-straight-to-panel (the old background.ts + openPanelOnActionClick, now
+  // removed) — a deliberate e-4 trade: the picker costs one extra click to reach the panel but lands
+  // staff on the right screen. ASSISTIVE-ONLY (ADR-011): the popup only deep-links — it never scans the
+  // chat, reads the page domain, or auto-fills (the auto-scan chrome in the hi-fi stays out).
+  action: { default_title: 'Mở bảng Lumin Studio', default_popup: 'popup.html' },
   side_panel: { default_path: 'index.html' },
-  background: { service_worker: 'src/background.ts', type: 'module' },
-  // storage: the Bearer token/session (chrome.storage.local, ADR-043). sidePanel: the docked panel.
+  // storage: the Bearer token/session (chrome.storage.local, ADR-043). sidePanel: the popup opens the
+  // docked panel via chrome.sidePanel.open — so there is no background service worker anymore.
   permissions: ['storage', 'sidePanel'],
   host_permissions: ['http://localhost:8090/*'],
 });

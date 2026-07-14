@@ -1,22 +1,30 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@lumin/ui';
 import { logout, type SessionUser } from '../lib/auth';
-import { t, type MessageKey } from '../i18n';
+import { t } from '../i18n';
+import { isLaunchTab, LAUNCH_KEY, TABS, type Tab } from '../lib/tabs';
 import { CreateOrder } from './create-order';
 import { Lookup } from './lookup';
 import { Templates } from './templates';
 
-type Tab = 'create' | 'lookup' | 'templates';
-const TABS: { id: Tab; labelKey: MessageKey }[] = [
-  { id: 'create', labelKey: 'nav.create' },
-  { id: 'lookup', labelKey: 'nav.lookup' },
-  { id: 'templates', labelKey: 'nav.templates' },
-];
-
-// Authed shell: the panel frame once signed in — header + greeting + tab nav. The tab bodies (create
-// order / lookup / templates) arrive in slices e-2..e-4; for now each shows a "coming soon" placeholder.
+// Authed shell: the panel frame once signed in — header + greeting + tab nav over the three screens
+// (create order / lookup / templates). The active tab can also be deep-linked from the toolbar popup.
 export function Shell({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>('create');
+
+  // Honor a deep-link from the toolbar popup: it writes the target screen to storage before opening the
+  // panel. Read it on open, and keep listening so a popup click switches the tab while the panel is open.
+  useEffect(() => {
+    function apply(value: unknown) {
+      if (isLaunchTab(value)) setTab(value);
+    }
+    void chrome.storage.local.get(LAUNCH_KEY).then((stored) => apply(stored[LAUNCH_KEY]));
+    function onChanged(changes: Record<string, chrome.storage.StorageChange>, area: string) {
+      if (area === 'local' && changes[LAUNCH_KEY]) apply(changes[LAUNCH_KEY].newValue);
+    }
+    chrome.storage.onChanged.addListener(onChanged);
+    return () => chrome.storage.onChanged.removeListener(onChanged);
+  }, []);
 
   async function onLogoutClick() {
     await logout();
