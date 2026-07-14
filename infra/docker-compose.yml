@@ -121,21 +121,84 @@ services:
         condition: service_healthy
     networks: [lumin]
 
+  # --- core-api: Go + Chi BFF (services/core-api). Caddy reverse-proxies tới :8080. ---
+  # Boot chỉ bằng env (internal/config). Uploads TẮT tới khi có cred (o-1e) — server log warning
+  # rồi vẫn chạy; o-1a chỉ nối DB + NATS bằng tên service nội bộ. Migrations chạy RIÊNG (service
+  # `migrate` bên dưới), core-api KHÔNG tự migrate.
+  core-api:
+    build:
+      context: ../services/core-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    environment:
+      PORT: '8080'
+      # Server-to-server (DNS nội bộ). ponytail: POSTGRES_PASSWORD nội suy thẳng vào DSN — secret
+      # openssl-hex là URL-safe; url-encode nếu mật khẩu có ký tự đặc biệt (@ : / #).
+      DATABASE_URL: postgres://${POSTGRES_USER:-lumin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-lumin}?sslmode=disable
+      NATS_URL: nats://nats:4222
+      # Secret ký token — core-api TỪ CHỐI khởi động nếu thiếu bản thật (token giả mạo = rủi ro
+      # money-out / lộ PII). Dev để trống cả 3 + đặt ALLOW_DEV_JWT_SECRET=true; prod đặt đủ 3, khác
+      # nhau (JWT_SECRET ≠ CUSTOMER_JWT_SECRET — realm isolation, ADR-030).
+      JWT_SECRET: ${JWT_SECRET:-}
+      CUSTOMER_JWT_SECRET: ${CUSTOMER_JWT_SECRET:-}
+      TRACKING_SECRET: ${TRACKING_SECRET:-}
+      ALLOW_DEV_JWT_SECRET: ${ALLOW_DEV_JWT_SECRET:-false}
+      # Mặc định true (sau Cloudflare HTTPS); COOKIE_SECURE=false CHỈ cho dev http-thuần.
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      # Upload creds (ADR-035/036, P3-t): trống → uploads fail-closed, server vẫn boot. Endpoint giữ
+      # default trong config (Garage localhost, browser-facing) tới khi chốt ở go-live (o-1e).
+      PAYMENT_PROOF_ACCESS_KEY_ID: ${PAYMENT_PROOF_ACCESS_KEY_ID:-}
+      PAYMENT_PROOF_SECRET_ACCESS_KEY: ${PAYMENT_PROOF_SECRET_ACCESS_KEY:-}
+      MODEL_UPLOAD_ACCESS_KEY_ID: ${MODEL_UPLOAD_ACCESS_KEY_ID:-}
+      MODEL_UPLOAD_SECRET_ACCESS_KEY: ${MODEL_UPLOAD_SECRET_ACCESS_KEY:-}
+      IMAGE_UPLOAD_ACCESS_KEY_ID: ${IMAGE_UPLOAD_ACCESS_KEY_ID:-}
+      IMAGE_UPLOAD_SECRET_ACCESS_KEY: ${IMAGE_UPLOAD_SECRET_ACCESS_KEY:-}
+    ports:
+      - '127.0.0.1:${CORE_API_PORT:-8090}:8080'
+    healthcheck:
+      # /healthz = liveness (200 khi process phục vụ). /readyz báo NATS/DB readiness riêng;
+      # depends_on dùng cái này nên "healthy" = "server đã lên". busybox wget có sẵn trong alpine.
+      test: ['CMD', 'wget', '-q', '-O-', 'http://localhost:8080/healthz']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [lumin]
+
+  # --- migrate: one-shot golang-migrate có cổng (ADR-028). KHÔNG chạy trong `up` mặc định. ---
+  # Áp migration trước khi (re)start core-api khi schema đổi:
+  #   docker compose --profile migrate run --rm migrate
+  # Đây là lần ĐẦU chạy đường golang-migrate thật end-to-end (test áp .sql qua pgx applier, không
+  # qua binary này) — nên một `up` trên DB mới ở đây kiểm luôn thứ tự migration thật.
+  migrate:
+    image: migrate/migrate:v4.18.1
+    profiles: [migrate]
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../services/core-api/db/migrations:/migrations:ro
+    command:
+      - '-path=/migrations'
+      - '-database=postgres://${POSTGRES_USER:-lumin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-lumin}?sslmode=disable'
+      - 'up'
+    networks: [lumin]
+
 # ─────────────────────────────────────────────────────────────────────────────
-# Deferred app services (image chưa tồn tại — bật khi services/ có Dockerfile):
+# Còn deferred (image chưa tồn tại — bật khi có Dockerfile):
 #
-#   core-api:        # Go + Chi BFF — services/core-api
-#     build: ../services/core-api
-#     depends_on: [postgres, nats, garage]
-#     networks: [lumin]
-#
-#   asset-worker:    # Rust + Blender — services/asset-worker; cần GPU (operations.md §3)
+#   asset-worker:    # Rust + Blender — services/asset-worker; cần GPU (o-1c, operations.md §3)
 #     build: ../services/asset-worker
 #     gpus: all                      # nvidia-container-toolkit; concurrency=1 (ADR-014)
 #     depends_on: [nats, garage]
 #     networks: [lumin]
 #
-# Storefront/Admin (Next) build thành image, Caddy reverse_proxy tới (xem Caddyfile).
+# Storefront/Admin (Next) build thành image, Caddy reverse_proxy tới — o-1b (xem Caddyfile).
 # ─────────────────────────────────────────────────────────────────────────────
 
 volumes:
