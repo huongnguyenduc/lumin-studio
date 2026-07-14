@@ -1,0 +1,12 @@
+# Keep the build context to just the Go sources the binary needs — no go:embed pulls any of
+# these in (verified), so trimming them shrinks the context and stops doc/openapi/test churn
+# from busting the `COPY . .` layer cache.
+**/*_test.go
+**/testdata
+db/
+openapi.yaml
+sqlc.yaml
+.golangci.yml
+README.md
+Dockerfile
+.dockerignore
