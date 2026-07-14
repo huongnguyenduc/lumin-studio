@@ -23,7 +23,7 @@ cd ~/lumin-studio                       # a clone of huongnguyenduc/lumin-studio
 
 # 1. Build + import images (amd64, on the box). storefront needs a LIVE core-api → built in step 6.
 docker build -f services/core-api/Dockerfile      -t lumin-core-api:prod services/core-api
-docker build -f infra/k8s/migrate.Dockerfile      -t lumin-migrate:prod  .
+docker build -f infra/k8s/migrate.Dockerfile      -t lumin-migrate:prod  services/core-api/db/migrations
 docker build -f apps/admin/Dockerfile             -t lumin-admin:prod    .
 for i in lumin-core-api lumin-migrate lumin-admin; do k3d image import $i:prod -c luminstudio; done
 
