@@ -23,7 +23,6 @@ export const vi = {
   'shell.hint':
     'Mở trang Fanpage hoặc Instagram của cửa hàng, rồi dùng các thẻ dưới đây để trợ giúp bên khung chat.',
   'shell.logout': 'Đăng xuất',
-  'shell.comingSoon': 'Phần này sắp có ở bước tiếp theo.',
 
   'nav.create': 'Tạo đơn',
   'nav.lookup': 'Tra cứu',
@@ -127,6 +126,17 @@ export const vi = {
   'lookup.cancelReason.changedMind': 'Khách đổi ý',
   'lookup.cancelReason.outOfMaterial': 'Hết vật liệu',
   'lookup.cancelReason.duplicate': 'Đơn trùng',
+
+  'templates.loading': 'Đang tải mẫu…',
+  'templates.error': 'Chưa tải được mẫu trả lời. Bạn thử lại nhé.',
+  'templates.retry': 'Thử lại',
+  'templates.search.label': 'Tìm mẫu',
+  'templates.search.placeholder': 'Tìm mẫu…',
+  'templates.empty': 'Chưa có mẫu trả lời nào. Bạn thêm mẫu trong Admin nhé.',
+  'templates.noMatch': 'Không có mẫu nào khớp. Bạn thử từ khoá khác nhé.',
+  'templates.copy': 'Copy mẫu',
+  'templates.copied': 'Đã copy ✓',
+  'templates.adminHint': 'Thêm hoặc sửa mẫu trả lời trong Admin nhé.',
 } as const;
 
 export type MessageKey = keyof typeof vi;
