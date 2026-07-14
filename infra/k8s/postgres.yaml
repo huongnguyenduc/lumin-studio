@@ -1,0 +1,63 @@
+# PostgreSQL — app data + outbox + queue/job state. Single instance on a local-path PVC.
+# All-home (ADR-009, accept downtime) → a plain Deployment (Recreate) suffices; no HA/StatefulSet.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: prod
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # one PVC — never run two pods against the same volume
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - { name: POSTGRES_USER, value: lumin }
+            - { name: POSTGRES_DB, value: lumin }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: lumin-secrets, key: POSTGRES_PASSWORD } }
+            # Subdir keeps PGDATA off the volume root (local-path mount root can carry lost+found).
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+          readinessProbe:
+            exec: { command: [pg_isready, -U, lumin, -d, lumin] }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec: { command: [pg_isready, -U, lumin, -d, lumin] }
+            initialDelaySeconds: 20
+            periodSeconds: 20
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: postgres-data }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: prod
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests: { storage: 5Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: prod
+spec:
+  selector: { app: postgres }
+  ports:
+    - { port: 5432, targetPort: 5432 }

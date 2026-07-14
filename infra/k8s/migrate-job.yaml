@@ -1,0 +1,27 @@
+# One-shot DB migration (golang-migrate, ADR-028) — runs BEFORE core-api on a schema change.
+# Image = migrate/migrate + the repo's migrations baked in (infra/k8s/migrate.Dockerfile), imported
+# into k3d as lumin-migrate:prod. Idempotent: `up` no-ops when the schema is current.
+# Re-run:  kubectl -n prod delete job migrate --ignore-not-found && kubectl apply -f infra/k8s/migrate-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+  namespace: prod
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600 # auto-clean the finished Job after 10m
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: lumin-migrate:prod
+          imagePullPolicy: IfNotPresent
+          # k8s substitutes $(DATABASE_URL) from the env below into the args.
+          args:
+            - -path=/migrations
+            - -database=$(DATABASE_URL)
+            - up
+          env:
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: lumin-secrets, key: DATABASE_URL } }

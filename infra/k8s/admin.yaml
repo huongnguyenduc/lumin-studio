@@ -1,0 +1,39 @@
+# admin (Next standalone, desktop + mobile responsive). Build is hermetic (every route auth-gated/
+# dynamic → no build-time backend) → imported to k3d as lumin-admin:prod.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin
+  namespace: prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: admin }
+  template:
+    metadata:
+      labels: { app: admin }
+    spec:
+      containers:
+        - name: admin
+          image: lumin-admin:prod
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { containerPort: 3000 }
+          env:
+            - { name: PORT, value: '3000' }
+            - { name: CORE_API_URL, value: http://core-api:8080 }
+          readinessProbe:
+            # `/` 307-redirects to /login (auth gate) — httpGet treats 2xx/3xx as ready.
+            httpGet: { path: /, port: 3000 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin
+  namespace: prod
+spec:
+  selector: { app: admin }
+  ports:
+    - { port: 3000, targetPort: 3000 }
