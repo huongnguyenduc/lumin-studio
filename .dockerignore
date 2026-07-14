@@ -1,0 +1,23 @@
+# Root build context is used by the Next app images (apps/storefront|admin/Dockerfile, context=repo
+# root — they need pnpm-workspace + packages/*). Ship only what `pnpm install` + `next build` need:
+# workspace manifests, lockfile, shared config, and app/package SOURCE. Everything installed or built
+# is regenerated in-image. (core-api uses its own context services/core-api + its own .dockerignore,
+# so excluding services/ here is safe for the Next builds.)
+**/node_modules
+**/.next
+**/dist
+**/*.tsbuildinfo
+**/.turbo
+**/coverage
+**/test-results
+.git
+.github
+.claude
+docs
+designs
+services
+*.md
+# Never let a real secret into the build context (keep the template).
+**/.env
+**/.env.*
+!**/.env.example

@@ -1,30 +1,41 @@
-# Lumin Studio — Caddy routing nội bộ (Phase 0 skeleton).
-# cloudflared trỏ public hostname → http://caddy:80. Phase 0: chỉ "hello" + healthz.
-# Phase 1+: reverse_proxy tới Next storefront/admin + core-api (xem khối comment dưới).
+# Lumin Studio — Caddy routing nội bộ (o-1b).
+# cloudflared trỏ mỗi public hostname → http://caddy:80; Caddy match theo Host header → app tương ứng.
+# Hostname THẬT chốt ở o-1e (tunnel); tới đó default *.localhost để smoke-test local (gửi Host header).
+# Mỗi app Next phục vụ ở ROOT origin riêng (origin-per-surface: extension gọi core-api qua origin,
+# admin có origin riêng cho Cloudflare Access) → KHÔNG cần basePath.
 
 {
 	admin off
 	auto_https off
 }
 
+# Fallback + health trên :80 cho MỌI host: healthcheck container + probe tunnel/Uptime-Kuma. Khớp khi
+# không hostname-site nào khớp (vd `wget localhost/healthz` khi SHOP_HOSTNAME đã là domain thật).
 :80 {
 	handle /healthz {
 		respond "ok" 200
 	}
-
-	# Phase 0 "tunnel ra hello" (plan.md §Phase 0 Done)
 	handle {
-		respond "Lumin Studio — Phase 0 skeleton. Caddy up. Nếu bạn thấy dòng này qua hostname Cloudflare thì tunnel OK." 200
+		respond "Lumin Studio — host không khớp route." 404
 	}
+}
 
-	# --- Phase 1+ (bật khi app services có image) ---
-	# handle /api/* {
-	# 	reverse_proxy core-api:8080
-	# }
-	# handle /admin* {
-	# 	reverse_proxy admin:3000
-	# }
-	# handle {
-	# 	reverse_proxy storefront:3000
-	# }
+# core-api origin — extension Bearer (ADR-043); /healthz + /readyz đi thẳng tới core-api.
+{$API_HOSTNAME:api.localhost}:80 {
+	reverse_proxy core-api:8080
+}
+
+# admin origin — Cloudflare Access gate danh tính ở edge (operations.md §edge).
+{$ADMIN_HOSTNAME:admin.localhost}:80 {
+	reverse_proxy admin:3000
+}
+
+# storefront (shop công khai) — origin apex/shop; /healthz cho probe hostname công khai (Uptime Kuma).
+{$SHOP_HOSTNAME:localhost}:80 {
+	handle /healthz {
+		respond "ok" 200
+	}
+	handle {
+		reverse_proxy storefront:3000
+	}
 }
