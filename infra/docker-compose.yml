@@ -86,6 +86,19 @@ services:
   caddy:
     image: caddy:2.11.4-alpine
     restart: unless-stopped
+    depends_on:
+      core-api:
+        condition: service_healthy
+      storefront:
+        condition: service_healthy
+      admin:
+        condition: service_healthy
+    environment:
+      # Public hostname per surface — real values set in .env at o-1e (tunnel). Default *.localhost so
+      # a local `up` + Host-header smoke test works. Caddy substitutes {$VAR:default} in the Caddyfile.
+      SHOP_HOSTNAME: ${SHOP_HOSTNAME:-localhost}
+      ADMIN_HOSTNAME: ${ADMIN_HOSTNAME:-admin.localhost}
+      API_HOSTNAME: ${API_HOSTNAME:-api.localhost}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -189,6 +202,69 @@ services:
       - 'up'
     networks: [lumin]
 
+  # --- storefront: Next 15 (khách). Caddy route host SHOP → storefront:3000. ---
+  # Build cần core-api SỐNG (ISR prerender home, ADR-009 — apps/storefront/src/app/page.tsx) →
+  # build.network:host + CORE_API_URL trỏ cổng core-api published trên host. Runtime CORE_API_URL =
+  # DNS nội bộ. Thứ tự deploy: up core-api TRƯỚC (publish host port) → build storefront → up storefront.
+  storefront:
+    build:
+      context: ..
+      dockerfile: apps/storefront/Dockerfile
+      network: host
+      args:
+        SITE_URL: ${SITE_URL:?set SITE_URL in .env}
+        CORE_API_URL: http://localhost:${CORE_API_PORT:-8090}
+    restart: unless-stopped
+    depends_on:
+      core-api:
+        condition: service_healthy
+    environment:
+      # Request-time: ISR revalidate + Server Actions reach core-api by internal DNS.
+      CORE_API_URL: http://core-api:8080
+      SITE_URL: ${SITE_URL:?set SITE_URL in .env}
+      PORT: '3000'
+    ports:
+      - '127.0.0.1:${STOREFRONT_PORT:-3000}:3000'
+    healthcheck:
+      # ISR home; core-api is healthy first (depends_on) so the first render caches, then it serves
+      # even while the origin reboots (ADR-009). busybox wget follows the redirect chain.
+      # 127.0.0.1 not localhost: the Next standalone server binds IPv4 only; `localhost` resolves to
+      # IPv6 ::1 first and busybox wget then fails the probe (core-api's Go :8080 is dual-stack, so it
+      # doesn't hit this). busybox wget follows admin's 307→login redirect to a 200.
+      test: ['CMD', 'wget', '-q', '-O-', 'http://127.0.0.1:3000/']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks: [lumin]
+
+  # --- admin: Next 15 (desktop + mobile responsive, ADR-002). Caddy route host ADMIN → admin:3000. ---
+  # Build HERMETIC (mọi route auth-gated/dynamic) → không cần core-api/SITE_URL lúc build. Runtime
+  # CORE_API_URL = DNS nội bộ (Server Actions/route handlers gọi core-api server-side).
+  admin:
+    build:
+      context: ..
+      dockerfile: apps/admin/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      core-api:
+        condition: service_healthy
+    environment:
+      CORE_API_URL: http://core-api:8080
+      PORT: '3000'
+    ports:
+      - '127.0.0.1:${ADMIN_PORT:-3001}:3000'
+    healthcheck:
+      # 127.0.0.1 not localhost: the Next standalone server binds IPv4 only; `localhost` resolves to
+      # IPv6 ::1 first and busybox wget then fails the probe (core-api's Go :8080 is dual-stack, so it
+      # doesn't hit this). busybox wget follows admin's 307→login redirect to a 200.
+      test: ['CMD', 'wget', '-q', '-O-', 'http://127.0.0.1:3000/']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks: [lumin]
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Còn deferred (image chưa tồn tại — bật khi có Dockerfile):
 #
@@ -197,8 +273,6 @@ services:
 #     gpus: all                      # nvidia-container-toolkit; concurrency=1 (ADR-014)
 #     depends_on: [nats, garage]
 #     networks: [lumin]
-#
-# Storefront/Admin (Next) build thành image, Caddy reverse_proxy tới — o-1b (xem Caddyfile).
 # ─────────────────────────────────────────────────────────────────────────────
 
 volumes:
