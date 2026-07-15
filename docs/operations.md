@@ -48,8 +48,8 @@ Migration **`000012`** chạy `CREATE EXTENSION IF NOT EXISTS unaccent` (search 
 - **Rollback:** `000012` down **chỉ xoá function + index** nó tạo, **KHÔNG** `DROP EXTENSION` — vì UP dùng `IF NOT EXISTS` (có thể không phải nó tạo, extension có thể dùng chung) + role hạn chế không xoá được extension không sở-hữu. Extension còn lại sau rollback là **cố ý** (vô hại, re-CREATE idempotent).
 - **Lưu ý:** nếu về sau đổi `unaccent.rules` (từ điển) thì phải `REINDEX INDEX products_search_idx` — `immutable_unaccent` được khai IMMUTABLE dựa trên từ điển cố định (xem comment migration 000012).
 
-## 5. Backup & DR (điều kiện launch — ADR-018)
-- **Postgres:** WAL-G (Go, S3-native — hợp; hoặc pgBackRest đã hồi sinh 5/2026) — base backup + WAL liên tục → bucket offsite.
+## 5. Backup & DR (điều kiện launch — ADR-018; cơ chế Postgres = ADR-044)
+- **Postgres:** `pg_dump -Fc` hằng ngày → **restic** → bucket offsite (**ADR-044** thay cơ chế WAL-G của ADR-018; invariant offsite + test-restore giữ nguyên, RPO≈24h khớp accept-downtime; nâng WAL-G/PITR sau nếu cần). Manifest `infra/k8s/backup-cronjob.yaml`, runbook `infra/k8s/README §Backup & restore`.
 - **Object (Garage) + compose/secrets:** **restic** (mã hoá, dedup) → offsite + 1 ổ ngoài để restore nhanh (3-2-1).
 - Garage **không versioning** → backup là lưới an toàn duy nhất; thêm soft-delete + key content-hash bất biến trong BFF.
 - Lịch off-peak (backup upload đua băng thông nhà). **TEST một lần restore trước launch.**

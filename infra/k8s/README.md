@@ -154,3 +154,60 @@ catalog (see `seed-catalog-job.yaml`) so there is something to order.
 - k3d caveat: the k3s node is itself a container — it must be started with GPU access for passthrough
   to reach the pod. Validate with `kubectl -n prod exec deploy/asset-worker -- blender -b --debug-cycles`
   seeing the CUDA device before calling the pipeline done (Blender #126014).
+
+## Backup & restore (ADR-018)
+
+Daily `pg_dump -Fc` → **restic** snapshot to an **offsite** encrypted repo, retention 7d/4w/6m
+(`backup-cronjob.yaml`). Deliberately **not** WAL-G/PITR: one all-home box that accepts downtime (ADR-009)
+doesn't need near-zero RPO — this gives ~24h RPO, offsite + encrypted + dedup + a trivial `pg_restore`,
+which is exactly ADR-018's invariant. Want point-in-time recovery instead? That's WAL-G (a custom Postgres
+image + `archive_command` + a WAL store) — swap the mechanism, keep the offsite+tested-restore rule.
+
+```sh
+# 1. backup image = pg_dump + restic (once; not in deploy.yml — a backup image needn't rebuild per roll)
+docker build -f infra/k8s/backup.Dockerfile -t lumin-backup:prod infra/k8s
+k3d image import lumin-backup:prod -c luminstudio
+
+# 2. offsite creds (see backup-secret.example.yaml). STORE RESTIC_PASSWORD OFFLINE TOO — lose it = lose
+#    every backup. That offline copy is the "1" of 3-2-1.
+kubectl -n prod create secret generic lumin-backup-secrets --from-literal=RESTIC_REPOSITORY=... # etc
+
+# 3. init the repo ONCE, then schedule + prove it runs now (don't wait for 03:00)
+kubectl -n prod run restic-init --rm -it --restart=Never --image=lumin-backup:prod \
+  --overrides='{"spec":{"containers":[{"name":"restic-init","image":"lumin-backup:prod","command":["restic","init"],"envFrom":[{"secretRef":{"name":"lumin-backup-secrets"}}]}]}}'
+kubectl apply -f infra/k8s/backup-cronjob.yaml
+kubectl -n prod create job --from=cronjob/postgres-backup backup-now
+kubectl -n prod logs -f job/backup-now   # expect: backup ok
+```
+
+**Restore drill — ADR-018 makes this non-negotiable; a backup you have never restored is not a backup.**
+Non-destructive: it restores into a scratch DB beside prod, never over prod. Run it once now (the site is
+already live) and after any repo change. `lumin-backup:prod` carries restic + pg_restore + psql, so one pod
+does it all:
+
+```sh
+kubectl -n prod run restore-drill --rm -it --restart=Never --image=lumin-backup:prod \
+  --overrides='{"spec":{"containers":[{"name":"r","image":"lumin-backup:prod","stdin":true,"tty":true,"command":["sh"],"envFrom":[{"secretRef":{"name":"lumin-backup-secrets"}}],"env":[{"name":"DATABASE_URL","valueFrom":{"secretKeyRef":{"name":"lumin-secrets","key":"DATABASE_URL"}}}]}]}}'
+# inside the pod:
+restic dump latest /scratch/lumin.dump > /tmp/lumin.dump          # pull the newest snapshot back
+RT=$(echo "$DATABASE_URL" | sed 's,/lumin?,/restore_test?,')      # same server, scratch db
+psql "$DATABASE_URL" -c 'DROP DATABASE IF EXISTS restore_test' -c 'CREATE DATABASE restore_test'
+pg_restore -d "$RT" /tmp/lumin.dump
+psql "$RT" -c 'SELECT count(*) FROM orders;'                       # sanity-check real data landed
+psql "$DATABASE_URL" -c 'DROP DATABASE restore_test'
+```
+
+Real disaster (restore **over** prod — only when prod is already lost): from the same pod,
+`restic dump latest /scratch/lumin.dump | pg_restore --clean --if-exists -d "$DATABASE_URL"`.
+
+## Down-alert (operations.md §6)
+
+Two layers — the external one is load-bearing:
+
+- **Whole box down → Cloudflare Health Checks** (Traffic → Health Checks on `www` + `api.luminstudio.vn`,
+  wired to Notifications → email/webhook). Cloudflare already fronts the site, so this pings from the edge
+  and fires when the box/tunnel dies — the exact case an in-cluster monitor can't see. No new infra.
+- **Per-service depth → Uptime Kuma** (`kubectl apply -f infra/k8s/uptime-kuma.yaml`, then
+  `kubectl -n prod port-forward svc/uptime-kuma 3001:3001` to add monitors: core-api `/readyz`, storefront,
+  admin, garage, and a **push** monitor for the backup's `BACKUP_HEARTBEAT_URL` so a silently-dead backup
+  alerts too). Keep its UI off the public internet — port-forward, or a Cloudflare-Access-gated hostname.
