@@ -88,20 +88,59 @@ G bucket create lumin-payment-proofs
 # ASSETS_ACCESS_KEY_ID/ASSETS_SECRET_ACCESS_KEY and PAYMENT_PROOF_ACCESS_KEY_ID/…_SECRET_ACCESS_KEY.
 G key create lumin-assets-key
 G key create lumin-proof-key
-G bucket allow --read --write lumin-assets           --key lumin-assets-key
-G bucket allow --read --write lumin-payment-proofs   --key lumin-proof-key
+# --owner (not just read/write) — PutBucketCors below needs an owner-capable key.
+G bucket allow --read --write --owner lumin-assets         --key lumin-assets-key
+G bucket allow --read --write --owner lumin-payment-proofs --key lumin-proof-key
 ```
 
-Two more settings, per the Garage v1.0 docs (exact subcommands vary by version — check `G bucket --help`):
+Then put the two key pairs into `lumin-secrets` (`ASSETS_ACCESS_KEY_ID`/`ASSETS_SECRET_ACCESS_KEY` +
+`PAYMENT_PROOF_ACCESS_KEY_ID`/`…_SECRET_ACCESS_KEY`) and `kubectl -n prod rollout restart deploy/core-api`
+so the upload stores pick them up (an empty pair keeps that store fail-closed — the server still boots).
 
-- **Public read on `lumin-assets`** — models/sprites/pet photos are served by anonymous GET through
-  Cloudflare. `lumin-payment-proofs` stays private (keyed access only; PDPL receipts).
-- **CORS on both buckets** — allow the browser to presign-POST cross-origin: origins
-  `https://www.luminstudio.vn` + `https://admin.luminstudio.vn`, methods GET/PUT/POST, the `x-amz-*`
-  - `Content-Type` headers.
+### CORS (required for browser uploads)
 
-Then create the secret keys and `kubectl -n prod rollout restart deploy/core-api` so the stores pick
-them up (an empty pair keeps that upload path fail-closed — the server still boots).
+The storefront/admin upload receipts + photos by presigned POST **directly to `s3.luminstudio.vn`**, a
+cross-origin request — without CORS the browser blocks reading the response (the object still uploads:
+`POST … net::ERR_FAILED 201 (Created)`). Garage v1.0.1 has **no `garage bucket cors` CLI**, so set it via
+the S3 `PutBucketCors` API. **One rule PER origin** — a single rule with multiple `AllowedOrigins` makes
+Garage echo them comma-joined, which browsers reject (the response's `Access-Control-Allow-Origin` must be
+exactly the request's `Origin`). aws-cli must be forced to path-style (Garage is path-style; the bucket is
+not a DNS vhost):
+
+```sh
+cat > cors.json <<'JSON'
+{"CORSRules":[
+ {"AllowedOrigins":["https://admin.luminstudio.vn"],"AllowedMethods":["GET","PUT","POST","HEAD"],"AllowedHeaders":["*"],"ExposeHeaders":["ETag","Location"],"MaxAgeSeconds":600},
+ {"AllowedOrigins":["https://www.luminstudio.vn"],"AllowedMethods":["GET","PUT","POST","HEAD"],"AllowedHeaders":["*"],"ExposeHeaders":["ETag","Location"],"MaxAgeSeconds":600}
+]}
+JSON
+aws configure set default.s3.addressing_style path
+for b in lumin-payment-proofs lumin-assets; do   # use that bucket's owner key for AWS_ACCESS_KEY_ID/SECRET
+  AWS_ACCESS_KEY_ID=<key> AWS_SECRET_ACCESS_KEY=<secret> AWS_DEFAULT_REGION=garage \
+    aws --endpoint-url https://s3.luminstudio.vn s3api put-bucket-cors --bucket $b --cors-configuration file://cors.json
+done
+# verify — must echo the SINGLE requesting origin, not a comma list:
+curl -si -X OPTIONS https://s3.luminstudio.vn/lumin-payment-proofs/ \
+  -H 'Origin: https://admin.luminstudio.vn' -H 'Access-Control-Request-Method: POST' | grep -i access-control-allow-origin
+```
+
+> **This CORS is prod state NOT captured in a manifest** — re-run it after any garage/bucket rebuild, or
+> browser uploads silently break again.
+
+### Known limitation — no public image serving on v1.0.1
+
+Garage v1.0.1 has **no anonymous S3 read** (`Forbidden: Garage does not support anonymous access yet`), so
+product/model/pet images CANNOT be served by a plain public GET on `s3.luminstudio.vn/lumin-assets/…`.
+`lumin-payment-proofs` is unaffected (private, presigned/authenticated reads). Public images need a
+follow-up: a same-origin proxy via core-api/storefront, presigned GETs, or a Garage build with anon read.
+The order/proof data path does **not** depend on this.
+
+### Go-live app config (not k8s, but the deploy needs it)
+
+A freshly-deployed shop rejects every order until the owner configures, in Admin → Settings:
+**bank account (STK)** — else `422 NO_STK_CONFIGURED`; and **shipping rules** — else `422 NO_SHIPPING_RULE`
+(the order's `shippingAddress.province` must match a rule key or a `*` wildcard). Optionally seed a demo
+catalog (see `seed-catalog-job.yaml`) so there is something to order.
 
 ## asset-worker — GPU prerequisite
 
