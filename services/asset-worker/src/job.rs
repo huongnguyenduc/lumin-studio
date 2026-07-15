@@ -43,7 +43,7 @@ mod tests {
 
     // The EXACT shape the Go relay forwards (camelCase keys, snake_case jobType) — pins the wire
     // contract against db/jobs.go `assetJobCreatedPayload`. A drift here means silent zero-consumption.
-    const CREATED: &str = r#"{"assetJobId":"018f8b2c-0000-7000-8000-000000000001","productId":"018f8b2c-0000-7000-8000-000000000002","jobType":"model_ingest","sourceModelUrl":"https://s3.luminstudio.vn/lumin-assets/models/2026/07/15/abc.glb","sourceVersion":"cafebabecafebabe"}"#;
+    const CREATED: &str = r#"{"assetJobId":"018f8b2c-0000-7000-8000-000000000001","productId":"018f8b2c-0000-7000-8000-000000000002","jobType":"model_ingest","sourceModelUrl":"https://assets.luminstudio.vn/models/2026/07/15/abc.glb","sourceVersion":"cafebabecafebabe"}"#;
 
     #[test]
     fn parses_model_ingest_created_payload() {

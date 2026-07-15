@@ -132,13 +132,48 @@ curl -si -X OPTIONS https://s3.luminstudio.vn/lumin-payment-proofs/ \
 > **This CORS is prod state NOT captured in a manifest** — re-run it after any garage/bucket rebuild, or
 > browser uploads silently break again.
 
-### Known limitation — no public image serving on v1.0.1
+### Public asset serving — Garage website mode (anon read)
 
 Garage v1.0.1 has **no anonymous S3 read** (`Forbidden: Garage does not support anonymous access yet`), so
-product/model/pet images CANNOT be served by a plain public GET on `s3.luminstudio.vn/lumin-assets/…`.
-`lumin-payment-proofs` is unaffected (private, presigned/authenticated reads). Public images need a
-follow-up: a same-origin proxy via core-api/storefront, presigned GETs, or a Garage build with anon read.
-The order/proof data path does **not** depend on this.
+`lumin-assets` objects (product/pet/review images + the derivative `.glb`) can't be served by a plain GET
+on `s3.luminstudio.vn/lumin-assets/…`. They're served instead through Garage **website mode** on the web
+endpoint (`:3902`), exposed as `https://assets.luminstudio.vn` (Ingress → `garage:3902`). In website mode the
+**Host is the bucket** (resolved via a global alias) and the **path is the object key**, so the public URL is
+`https://assets.luminstudio.vn/<key>` — no `/lumin-assets` segment. That is why the three public-base envs
+(`MODEL_UPLOAD_PUBLIC_BASE_URL`, `IMAGE_UPLOAD_PUBLIC_BASE_URL`, `ASSETS_PUBLIC_BASE_URL`) are host-only.
+Uploads still PUT/POST path-style to `s3.luminstudio.vn` (the S3 endpoint is unchanged); only the serve /
+host-pin origin moved. `lumin-payment-proofs` stays private (authenticated/presigned reads) — never given a
+website alias, never routed to `:3902`.
+
+Enable it once, on the box (cluster state, NOT in a manifest — like the layout + CORS bootstrap):
+
+```sh
+# 1. website mode + a global alias equal to the serve domain (the web endpoint resolves Host → bucket by alias)
+kubectl -n prod exec deploy/garage -- /garage bucket website --allow lumin-assets
+kubectl -n prod exec deploy/garage -- /garage bucket alias lumin-assets assets.luminstudio.vn
+kubectl -n prod exec deploy/garage -- /garage bucket info lumin-assets   # verify: "Website access: true" + the alias
+```
+
+2. **DNS/tunnel:** add `assets.luminstudio.vn` the same way as `s3.luminstudio.vn` (CF DNS → cloudflared
+   tunnel → traefik `:80`; the Ingress routes Host → `garage:3902`). TLS terminates at Cloudflare.
+
+3. **CORS (model-viewer only):** plain `<img>` needs none, but the storefront `<model-viewer>` fetches the
+   `.glb` cross-origin (`www.` → `assets.`), so the web endpoint must return `Access-Control-Allow-Origin`.
+   Verify against a real key:
+
+   ```sh
+   curl -sI https://assets.luminstudio.vn/<key> -H 'Origin: https://www.luminstudio.vn' \
+     | grep -iE 'HTTP/|access-control-allow-origin'   # want 200 + an ACAO echoing the origin
+   ```
+
+   If ACAO is missing (Garage's web endpoint may not replay the bucket CORS rules), add a Cloudflare
+   **Response Header Transform Rule** on `assets.luminstudio.vn` setting `Access-Control-Allow-Origin: *` —
+   the assets are public + immutable, so `*` is safe.
+
+> **Website mode + the alias are prod state NOT in a manifest** — like the CORS/layout bootstrap, re-run the
+> two `garage bucket` commands after any garage/bucket rebuild, or every public image + `.glb` 404s.
+
+The order/proof data path does **not** depend on any of this.
 
 ### Go-live app config (not k8s, but the deploy needs it)
 

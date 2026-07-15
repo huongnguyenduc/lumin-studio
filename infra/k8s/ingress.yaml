@@ -38,3 +38,14 @@ spec:
           - path: /
             pathType: Prefix
             backend: { service: { name: garage, port: { number: 3900 } } }
+    # Public assets — Garage website mode serves lumin-assets ANONYMOUSLY on the web endpoint (:3902),
+    # bucket resolved by Host = the global alias `assets.luminstudio.vn` (v1.0.1 has no anon S3 read, so
+    # product/model/pet images + the derivative .glb serve here, NOT off s3.luminstudio.vn). Path = object
+    # key (bucket implied by host). Enabling website + the alias is prod-box CLI state, not this manifest —
+    # see README §public asset serving. proofs stay private on s3.luminstudio.vn (never routed here).
+    - host: assets.luminstudio.vn
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: garage, port: { number: 3902 } } }

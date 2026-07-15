@@ -2,7 +2,8 @@
 //!
 //! Two URLs, deliberately different (mirrors core-api's modelstore split): `s3_endpoint` is the INTERNAL
 //! API the worker does GET/PUT against (e.g. http://garage:3900, in-cluster, plain http); `public_base_url`
-//! is the PUBLIC origin (https://s3.luminstudio.vn/lumin-assets) used only to parse the source key out of a
+//! is the PUBLIC origin (https://assets.luminstudio.vn — Garage website mode, bucket implied by host, so no
+//! /lumin-assets segment) used only to parse the source key out of a
 //! `source_model_url` and to form the output `model3d_url`. The output URL must sit under `public_base_url`
 //! so core-api's `OwnsOutputURL` host-pin (ADR-045) accepts it.
 
@@ -147,5 +148,24 @@ mod tests {
             "https://s3.luminstudio.vn/lumin-assets/derivatives/cafebabe/model.glb"
         );
         assert_eq!(key_from_public_url(BASE, &url), Some(key.to_string()));
+    }
+
+    // Website-mode public base is host-only — Garage serves lumin-assets by Host on its web endpoint, so the
+    // URL has NO /lumin-assets path segment (infra/k8s/README §public asset serving). output_url must still
+    // round-trip through key_from_public_url, and a foreign host must still be rejected.
+    #[test]
+    fn website_mode_host_only_base_round_trips() {
+        const WEB: &str = "https://assets.luminstudio.vn";
+        let key = "derivatives/cafebabe/model.glb";
+        let url = format!("{WEB}/{key}");
+        assert_eq!(
+            url,
+            "https://assets.luminstudio.vn/derivatives/cafebabe/model.glb"
+        );
+        assert_eq!(key_from_public_url(WEB, &url), Some(key.to_string()));
+        assert_eq!(
+            key_from_public_url(WEB, "https://evil.test/derivatives/x.glb"),
+            None
+        );
     }
 }
