@@ -20,6 +20,15 @@ bakes trimesh/gltf-transform into the image and wires the Garage upload creds.
 The reliability logic (payload parse, `pipeline::decide`, `handle_job`) is fully unit-tested Docker-free;
 the live NATS bind + drain is a **deploy-time smoke** (below), mirroring the o-1c Blender-sees-GPU gate.
 
+**model_ingest geometry step** (`pysrc/ingest.py` + `src/ingest.rs`) — the CPU transform is now built:
+trimesh loads a source model (.glb/.stl/.obj/.3mf), recenters it, exports a glb, and reports its
+bounding-box dims (the values that prefill Product). The Rust wrapper runs it as a subprocess (ADR-007)
+and classifies failures (bad model → Permanent/`failed`; missing tool → Transient/redeliver). It is NOT
+yet wired into the live `Processor` — the S3 fetch/upload + `ModelIngestProcessor` + the Dockerfile
+trimesh bake are the next slice. Verified: pure parse/classify tests run in CI; the **real trimesh**
+transform runs against `testdata/box.obj` when `INGEST_PYTHON` points at a trimesh-capable python
+(`INGEST_PYTHON=/path/to/venv/bin/python3 cargo test real_trimesh`) — skips otherwise.
+
 ### Locked constraints for later phases (do not relitigate)
 
 - **Blender: Cycles + CUDA only** — no OptiX (Pascal has no RT cores), no EEVEE
