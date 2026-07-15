@@ -56,3 +56,18 @@ spec:
   ports:
     - { name: client, port: 4222, targetPort: 4222 }
     - { name: monitor, port: 8222, targetPort: 8222 }
+---
+# NodePort so the render worker — which runs OUT of the cluster (`docker run --gpus`, ADR-048: k3d+WSL2
+# can't inject the GPU into a pod) — can reach JetStream. The worker joins the `k3d-luminstudio` docker
+# network and dials `nats://k3d-luminstudio-server-0:30422`. NOT browser-exposed (ADR-008): the Cloudflare
+# tunnel only routes :80/:443, so this port lives on the box's docker network, never the internet.
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats-ext
+  namespace: prod
+spec:
+  type: NodePort
+  selector: { app: nats }
+  ports:
+    - { name: client, port: 4222, targetPort: 4222, nodePort: 30422 }
