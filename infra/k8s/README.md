@@ -54,14 +54,14 @@ kubectl apply -f infra/k8s/ingress.yaml
 # 6. Garage bootstrap (once) — see "Garage — bootstrap" below, then roll core-api so it picks up creds
 kubectl -n prod rollout restart deploy/core-api
 
-# 7. asset-worker — ONLY on a GPU-schedulable node (see "asset-worker — GPU prerequisite").
-#    Apply the device plugin FIRST so the scheduler learns the node has a GPU, else the worker
-#    stays Pending. Wait for the node to report the resource before rolling the worker.
-kubectl apply -f infra/k8s/nvidia-device-plugin.yaml
-kubectl -n kube-system rollout status ds/nvidia-device-plugin-daemonset
-kubectl get nodes -o "custom-columns=NODE:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu"  # want GPU: 1, not <none>
-docker build -t lumin-asset-worker:prod services/asset-worker && k3d image import lumin-asset-worker:prod -c luminstudio
-kubectl apply -f infra/k8s/asset-worker.yaml && kubectl -n prod rollout status deploy/asset-worker
+# 7. Render worker — runs OUT of the cluster on this WSL2 box (ADR-048; k3d+WSL2 can't inject the GPU
+#    into a pod — see "asset-worker — GPU prerequisite"). Build the image, ensure the NATS NodePort is
+#    applied (nats.yaml), then run it (reads creds from lumin-secrets, joins the k3d docker net for NATS,
+#    reaches core-api/garage over their public hostnames). asset-worker.yaml is kept but NOT applied.
+docker build -t lumin-asset-worker:prod services/asset-worker
+kubectl apply -f infra/k8s/nats.yaml                  # includes the nats-ext NodePort (:30422)
+bash infra/k8s/run-asset-worker.sh                    # docker run --gpus all …
+docker logs -f lumin-asset-worker                     # want: "connected to NATS" + "consumer bound"
 
 # 8. (optional) demo catalog so the storefront has products to browse / smoke-test the order flow.
 #    Idempotent; demo data — see seed-catalog-job.yaml. Delete the rows before a real launch.
