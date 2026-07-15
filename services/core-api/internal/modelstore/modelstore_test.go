@@ -121,6 +121,39 @@ func TestStoreOwnsOnlyHostPinnedURLs(t *testing.T) {
 	}
 }
 
+func TestStoreHostOnlyPublicBase(t *testing.T) {
+	// Website mode serves lumin-assets by Host (Garage web endpoint), so the public base is host-only — no
+	// /lumin-assets path segment. finalURL, OwnsURL and OwnsOutputURL must all still round-trip through the
+	// objectKeyFromFinalPath empty-base branch. See infra/k8s/README §public asset serving.
+	cfg := validConfig()
+	cfg.PublicBaseURL = "https://assets.luminstudio.vn"
+	store, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New host-only base: %v", err)
+	}
+	store.now = func() time.Time { return time.Date(2026, 7, 11, 0, 0, 0, 0, time.UTC) }
+	store.newID = func() uuid.UUID { return uuid.MustParse("11111111-2222-3333-4444-555555555555") }
+
+	up, err := store.PresignPost(context.Background(), "model/gltf-binary")
+	if err != nil {
+		t.Fatalf("PresignPost: %v", err)
+	}
+	wantFinal := "https://assets.luminstudio.vn/models/2026/07/11/11111111-2222-3333-4444-555555555555.glb"
+	if up.FinalURL != wantFinal {
+		t.Fatalf("finalURL = %q, want host-only %q", up.FinalURL, wantFinal)
+	}
+	if !store.OwnsURL(up.FinalURL) {
+		t.Fatalf("store must own the host-only finalURL it minted: %q", up.FinalURL)
+	}
+	// The worker's derivative output (different key namespace, no minted-key shape) host-pins here too.
+	if !store.OwnsOutputURL("https://assets.luminstudio.vn/derivatives/cafebabe/model.glb") {
+		t.Fatalf("OwnsOutputURL rejected a valid host-only derivative URL")
+	}
+	if store.OwnsOutputURL("https://evil.test/derivatives/cafebabe/model.glb") {
+		t.Fatalf("OwnsOutputURL accepted a foreign host")
+	}
+}
+
 func TestStoreRejectsBadInput(t *testing.T) {
 	store := mustStore(t)
 	// Images (the proofstore class) and octet-stream are rejected — the editor must declare a model MIME.

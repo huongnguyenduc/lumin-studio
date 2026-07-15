@@ -58,6 +58,7 @@ spec:
           image: dxflrs/garage:v1.0.1
           ports:
             - { containerPort: 3900 } # S3 API
+            - { containerPort: 3902 } # web endpoint — anon website serving of public assets (README)
             - { containerPort: 3903 } # admin API
           env:
             # Secrets (openssl rand -hex 32) — loaded from env, never the toml (ADR-024).
@@ -118,4 +119,5 @@ spec:
   selector: { app: garage }
   ports:
     - { name: s3, port: 3900, targetPort: 3900 }
+    - { name: web, port: 3902, targetPort: 3902 } # anon website serving → Ingress assets.luminstudio.vn
     - { name: admin, port: 3903, targetPort: 3903 } # cluster-internal only — never in the Ingress

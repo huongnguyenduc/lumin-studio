@@ -76,10 +76,10 @@ spec:
                   key: PAYMENT_PROOF_SECRET_ACCESS_KEY
                   optional: true
             - { name: MODEL_UPLOAD_S3_ENDPOINT, value: 'https://s3.luminstudio.vn' }
-            - {
-                name: MODEL_UPLOAD_PUBLIC_BASE_URL,
-                value: 'https://s3.luminstudio.vn/lumin-assets',
-              }
+            # Serve/host-pin base ≠ upload endpoint: uploads PUT path-style to s3.luminstudio.vn (above),
+            # but the model3d_url browsers load is Garage website mode on assets.luminstudio.vn — anon,
+            # bucket implied by host so NO /lumin-assets path segment (v1.0.1 has no anon S3 read). README.
+            - { name: MODEL_UPLOAD_PUBLIC_BASE_URL, value: 'https://assets.luminstudio.vn' }
             - name: MODEL_UPLOAD_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
@@ -93,10 +93,8 @@ spec:
                   key: ASSETS_SECRET_ACCESS_KEY
                   optional: true
             - { name: IMAGE_UPLOAD_S3_ENDPOINT, value: 'https://s3.luminstudio.vn' }
-            - {
-                name: IMAGE_UPLOAD_PUBLIC_BASE_URL,
-                value: 'https://s3.luminstudio.vn/lumin-assets',
-              }
+            # Website-mode serve host (see MODEL_UPLOAD_PUBLIC_BASE_URL note) — product/pet/review images.
+            - { name: IMAGE_UPLOAD_PUBLIC_BASE_URL, value: 'https://assets.luminstudio.vn' }
             - name: IMAGE_UPLOAD_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:

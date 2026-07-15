@@ -44,13 +44,14 @@ spec:
                   optional: true
             # Assets bucket (lumin-assets): fetch the source model + upload the derivative glb. Endpoint is
             # the INTERNAL Garage (in-cluster, plain http); PUBLIC base is the origin core-api host-pins the
-            # output URL against (must match core-api's MODEL_UPLOAD_PUBLIC_BASE_URL). Creds are the ASSETS
-            # key (read+write), optional:true — unset ⇒ model_ingest redelivers until the Garage bootstrap
-            # (README) creates the key. sprite_render's own upload joins here when Blender lands.
+            # output URL against (must match core-api's MODEL_UPLOAD_PUBLIC_BASE_URL) — Garage website mode
+            # on assets.luminstudio.vn, anon + bucket implied by host so NO /lumin-assets segment (README).
+            # Creds are the ASSETS key (read+write), optional:true — unset ⇒ model_ingest redelivers until
+            # the Garage bootstrap (README) creates the key. sprite_render's own upload joins here later.
             - { name: ASSETS_S3_ENDPOINT, value: http://garage:3900 }
             - { name: ASSETS_S3_REGION, value: garage }
             - { name: ASSETS_BUCKET, value: lumin-assets }
-            - { name: ASSETS_PUBLIC_BASE_URL, value: 'https://s3.luminstudio.vn/lumin-assets' }
+            - { name: ASSETS_PUBLIC_BASE_URL, value: 'https://assets.luminstudio.vn' }
             - name: ASSETS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
