@@ -204,6 +204,79 @@ catalog (see `seed-catalog-job.yaml`) so there is something to order.
   `kubectl -n prod exec deploy/asset-worker -- blender -b --debug-cycles`
   seeing the CUDA device before calling the pipeline done (Blender #126014).
 
+### GPU cluster recreate (maintenance window) — ADR-047
+
+The running cluster was created WITHOUT `--gpus`, and k3d cannot add a GPU to a live cluster (`--gpus` is
+`cluster create`-only; `node create` has none). So the k3d caveat above is resolved by **recreating** the
+cluster with `--gpus all` + the `k3s-cuda` node image (`k3s-cuda.Dockerfile` = the current k3s version +
+nvidia-container-toolkit, so k3s inside auto-creates the `nvidia` RuntimeClass).
+
+> ⚠️ **DESTRUCTIVE.** `k3d cluster delete` removes the docker volume holding every local-path PVC —
+> `postgres-data` (real orders) **and** `garage-data`/`garage-meta` (payment-proof objects). Back up and
+> PROVE a restore of BOTH before deleting. restic covers only postgres; garage needs a separate copy.
+
+**0. Prereqs (once, no prod impact):**
+
+```sh
+docker run --rm --gpus all ubuntu:22.04 nvidia-smi -L                 # host GPU works → GTX 1060
+docker build -f infra/k8s/k3s-cuda.Dockerfile -t k3s-cuda:v1.35.5-k3s1-cuda12.4.1 infra/k8s
+```
+
+**1. Back up everything, verify each — BEFORE any delete:**
+
+```sh
+export KUBECONFIG=~/.config/k3d/kubeconfig-luminstudio.yaml
+# postgres → restic/B2 (existing CronJob) + verify a fresh snapshot
+kubectl -n prod create job --from=cronjob/postgres-backup backup-prerecreate
+kubectl -n prod wait --for=condition=complete job/backup-prerecreate --timeout=300s
+# garage payment-proof objects → mirror out, key-preserving (no S3 client on the box → mc in a container).
+kubectl -n prod port-forward svc/garage 3900:3900 &
+docker run --rm --network host -e MC_HOST_g="http://<proof-owner-key>:<secret>@localhost:3900" \
+  -v /home/duchuong/garage-proofs:/out minio/mc mirror --overwrite g/lumin-payment-proofs /out
+# record garage config so the re-bootstrap reproduces it (bucket + key IDs, not secrets)
+kubectl -n prod exec deploy/garage -- /garage bucket list
+kubectl -n prod exec deploy/garage -- /garage key list
+```
+
+Do NOT proceed until both restore-check: `restic snapshots` shows the new one (and `pg_restore --list` it),
+and the mirrored `/home/duchuong/garage-proofs` is non-empty.
+
+**2. Recreate with GPU** (reproduce the current flags — serverlb `80/443/6443`, k3s-bundled traefik):
+
+```sh
+k3d cluster delete luminstudio
+k3d cluster create luminstudio \
+  --gpus all --image k3s-cuda:v1.35.5-k3s1-cuda12.4.1 \
+  --port '80:80@loadbalancer' --port '443:443@loadbalancer'
+# default k3s bundles traefik (the current install) + serves the API on 6443 — do NOT --disable=traefik.
+```
+
+**3. Redeploy + restore:**
+
+- Recreate `lumin-secrets` + `lumin-backup-secrets` (secret.example.yaml).
+- Rebuild + `k3d image import` the `lumin-*` images (or run the `deploy` workflow), then apply the stateful
+  tier: `kubectl apply -f infra/k8s/postgres.yaml -f infra/k8s/nats.yaml -f infra/k8s/garage.yaml`.
+- **Restore postgres** into the fresh DB (§Backup & restore below).
+- **Re-bootstrap garage** fully: §Garage bootstrap (layout/keys/buckets) → §CORS → §Public asset serving
+  (`bucket website --allow` + alias). Then mirror the proofs back:
+  `docker run … minio/mc mirror --overwrite /out g/lumin-payment-proofs`.
+- Apply the rest of the deploy runbook (migrate, core-api, storefront, admin, ingress, backup, uptime-kuma).
+
+**4. GPU up:** `kubectl apply -f infra/k8s/nvidia-device-plugin.yaml` → node reports `nvidia.com/gpu: 1` →
+deploy asset-worker → the Blender-sees-GPU check above (o-1c).
+
+**5. Verify:** www/admin/api `200`, an existing order still opens, a public asset serves via
+`assets.luminstudio.vn`.
+
+> ⚠️ **WSL2 outcome (proven 2026-07-15).** This recreate DOES put the GPU into the k3d node container
+> (`docker exec k3d-luminstudio-server-0 nvidia-smi -L` → the GTX 1060; `/dev/dxg` present) and k3s
+> auto-creates RuntimeClass `nvidia` — BUT **pods still can't use it**: the device-plugin's NVML init
+> fails (`ERROR_NOT_SUPPORTED`) and a pod under `runtimeClassName: nvidia` gets `NVML: N/A`. The
+> nvidia-container-toolkit injects the WSL GPU libs host→node-container but NOT node-container→pod (nested
+> containerd doesn't detect WSL). **In-cluster GPU is not viable on this k3d + WSL2 box** — step 4 never
+> advertises `nvidia.com/gpu`. Run the render worker OUT of the cluster (`docker run --gpus all`, which
+> works — the ADR-047 rejected-option (a)) instead. The recreate is still fine for the web stack.
+
 ## Backup & restore (ADR-018)
 
 Daily `pg_dump -Fc` → **restic** snapshot to an **offsite** encrypted repo, retention 7d/4w/6m
