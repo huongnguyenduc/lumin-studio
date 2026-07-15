@@ -2,10 +2,12 @@ import { cookies } from 'next/headers';
 import { createApiClient, type components } from '@lumin/api-client';
 import { SESSION_COOKIE, coreApiBaseUrl } from './session';
 
-// Server-only category read for the editor's category picker (P3-l l-1). Reuses the PUBLIC GET /categories
-// (there is no admin category endpoint until P3-o), forwarding the session cookie harmlessly. Known limit
-// (plan §6): only categories with >= 1 ACTIVE product appear, so the editor merges the product's own
-// categoryId as a fallback option. Throws to (app)/error.tsx on failure.
+// Server-only category read for the editor's category picker (P3-l l-1). Uses the ADMIN GET /admin/categories
+// (owner+staff) so EVERY category is selectable — the create form must offer a category even before any of
+// them has an active product. It formerly reused the PUBLIC /categories, which only lists categories with
+// >= 1 ACTIVE product (plan §6): on a fresh/cleaned catalog that left the picker EMPTY even though categories
+// existed (the P3-o admin endpoint didn't exist yet when this was first written). Projects the AdminCategory
+// list down to the plain {id, slug, name} the picker needs. Throws to (app)/error.tsx on failure.
 export async function fetchCategories(): Promise<components['schemas']['Category'][]> {
   const session = (await cookies()).get(SESSION_COOKIE)?.value;
   const client = createApiClient({
@@ -13,13 +15,11 @@ export async function fetchCategories(): Promise<components['schemas']['Category
     headers: session ? { cookie: `${SESSION_COOKIE}=${session}` } : {},
   });
 
-  const { data, error, response } = await client.GET('/categories', { params: {} });
-  // /categories declares no error response (200/304), so `error` narrows to never — capture status first.
-  const status = response.status;
+  const { data, error, response } = await client.GET('/admin/categories', { cache: 'no-store' });
   if (error || !data) {
-    throw new Error(`categories fetch failed (${status})`);
+    throw new Error(`categories fetch failed (${response.status})`);
   }
-  return data;
+  return data.map((c) => ({ id: c.id, slug: c.slug, name: c.name }));
 }
 
 // Server-only read for the admin categories MANAGEMENT page (/danh-muc, P3-o). Unlike fetchCategories above

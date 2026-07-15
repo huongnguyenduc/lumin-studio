@@ -61,8 +61,9 @@ export function ProductEditor({
   const [saved, setSaved] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  // /categories only lists categories that have an active product (plan §6), so when editing keep the
-  // product's own category selectable even if it isn't in the list.
+  // Defensive: keep the product's own category selectable even if the fetched list somehow lacks it. A no-op
+  // in practice now that fetchCategories returns EVERY category (/admin/categories) and FK RESTRICT keeps a
+  // product's category alive — but it costs nothing and guards a stale-list edge on edit.
   const categoryOptions = useMemo(() => {
     if (product && !categories.some((c) => c.id === product.categoryId)) {
       return [{ id: product.categoryId, slug: '', name: t('edit.currentCategory') }, ...categories];
