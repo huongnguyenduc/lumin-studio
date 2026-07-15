@@ -382,13 +382,16 @@ type AssetJobInput struct {
 	SourceVersion string `json:"sourceVersion"`
 }
 
-// AssetJobResultInput The asset-worker's render-callback body (PATCH /internal/asset-jobs/{id}, ADR-045). `status` is the worker-reachable lifecycle subset (never `queued` — that is the initial state). `model3dUrl` is the derivative LOD glb the worker uploaded, required on a `ready` `model_ingest` and written to the product's `model3d_url`; it MUST be under this store's assets origin. `lastError` accompanies `failed`. The productId is resolved from the job row, never the body.
+// AssetJobResultInput The asset-worker's render-callback body (PATCH /internal/asset-jobs/{id}, ADR-045). `status` is the worker-reachable lifecycle subset (never `queued` — that is the initial state). `model3dUrl` is the derivative LOD glb a `model_ingest` uploaded; `spriteSheetUrl` is the 360° sprite sheet a `sprite_render` uploaded (ADR-049). Each is required on a `ready` job OF ITS KIND, written to the matching product column, and MUST be under this store's assets origin. `lastError` accompanies `failed`. The productId is resolved from the job row, never the body.
 type AssetJobResultInput struct {
 	// LastError Failure reason, set with `failed`. Cleared when the job reaches `ready`.
 	LastError *string `json:"lastError,omitempty"`
 
-	// Model3dUrl The uploaded derivative LOD glb URL. Required on a `ready` `model_ingest`; must be under this store's assets origin (host-pinned). Ignored for `sprite_render` (its output has no product column yet).
+	// Model3dUrl The uploaded derivative LOD glb URL. Required on a `ready` `model_ingest`; must be a `.glb` under this store's assets origin (host-pinned). Ignored for `sprite_render` (which reports `spriteSheetUrl`).
 	Model3dUrl *string `json:"model3dUrl,omitempty"`
+
+	// SpriteSheetUrl The uploaded 360° sprite-sheet URL (ADR-049). Required on a `ready` `sprite_render`; must be a `.webp` under this store's assets origin (host-pinned). Ignored for `model_ingest` (which reports `model3dUrl`).
+	SpriteSheetUrl *string `json:"spriteSheetUrl,omitempty"`
 
 	// Status The worker-reported lifecycle state (a subset of AssetJobStatus — never `queued`).
 	Status AssetJobResultInputStatus `json:"status"`
@@ -1533,6 +1536,9 @@ type Product struct {
 	// Slug Unique URL slug (spec §02).
 	Slug string `json:"slug"`
 
+	// SpriteSheetUrl 360° sprite-sheet URL (ADR-049) — the card-hover turntable and the model-viewer's no-WebGL fallback. Omitted until a `sprite_render` job has produced one. Grid is the fixed shared const (24 frames, 6 cols).
+	SpriteSheetUrl *string `json:"spriteSheetUrl,omitempty"`
+
 	// Status Product lifecycle (spec §02, Postgres `product_status`). The detail read returns `active` only.
 	Status ProductStatus `json:"status"`
 }
@@ -1556,6 +1562,9 @@ type ProductCard struct {
 
 	// Slug Unique URL slug (spec §02).
 	Slug string `json:"slug"`
+
+	// SpriteSheetUrl 360° sprite-sheet URL for the card hover (ADR-049). Omitted until a `sprite_render` job has produced one. Grid is the fixed shared const (24 frames, 6 cols).
+	SpriteSheetUrl *string `json:"spriteSheetUrl,omitempty"`
 }
 
 // ProductInput Create/replace body for a product (P3-j, owner-only). Same editable fields as Product MINUS the server/pipeline-owned ones: no id/createdAt/ratingAvg/reviewCount (server-owned), no colors/options (managed via their own nested endpoints), and no model3dUrl (owned by the asset pipeline, P3-j-b — the editor form can never set or blank it). basePrice is raw int-VND (always-must #2). description and images are optional (default "" / []).

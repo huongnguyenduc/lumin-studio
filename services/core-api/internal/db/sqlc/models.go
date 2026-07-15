@@ -925,6 +925,7 @@ type Product struct {
 	EstFilamentQty  int64              `json:"estFilamentQty"`
 	EstPrintMinutes int32              `json:"estPrintMinutes"`
 	ProductType     ProductType        `json:"productType"`
+	SpriteSheetUrl  string             `json:"spriteSheetUrl"`
 }
 
 type ReplyTemplate struct {

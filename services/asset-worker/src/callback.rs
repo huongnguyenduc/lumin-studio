@@ -8,14 +8,17 @@ use serde::Serialize;
 use crate::config::Config;
 
 /// The callback body — the camelCase JSON core-api's `AssetJobResultInput` expects. `status` is the
-/// worker-lifecycle subset (`processing`|`ready`|`failed`, never `queued`); `model3dUrl`/`lastError`
-/// are omitted when absent, matching the optional openapi fields.
+/// worker-lifecycle subset (`processing`|`ready`|`failed`, never `queued`); `model3dUrl` (model_ingest),
+/// `spriteSheetUrl` (sprite_render, ADR-049) and `lastError` are omitted when absent, matching the optional
+/// openapi fields. A `ready` carries exactly ONE output URL — the one for its job kind.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResultBody {
     pub status: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model3d_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sprite_sheet_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
 }
@@ -79,6 +82,7 @@ mod tests {
         let b = ResultBody {
             status: "ready",
             model3d_url: Some("https://s3/lumin-assets/x.glb".into()),
+            sprite_sheet_url: None,
             last_error: None,
         };
         let j = serde_json::to_string(&b).unwrap();
@@ -88,11 +92,27 @@ mod tests {
         );
     }
 
+    // A sprite_render ready reports spriteSheetUrl (not model3dUrl) — the camelCase key core-api reads.
+    #[test]
+    fn ready_body_serializes_with_sprite_url_only() {
+        let b = ResultBody {
+            status: "ready",
+            model3d_url: None,
+            sprite_sheet_url: Some("https://s3/lumin-assets/sprite.webp".into()),
+            last_error: None,
+        };
+        assert_eq!(
+            serde_json::to_string(&b).unwrap(),
+            r#"{"status":"ready","spriteSheetUrl":"https://s3/lumin-assets/sprite.webp"}"#
+        );
+    }
+
     #[test]
     fn failed_body_serializes_with_last_error_only() {
         let b = ResultBody {
             status: "failed",
             model3d_url: None,
+            sprite_sheet_url: None,
             last_error: Some("bad model".into()),
         };
         assert_eq!(

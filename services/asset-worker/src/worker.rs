@@ -19,7 +19,8 @@ use crate::job::AssetJob;
 use crate::model_ingest::{Dispatcher, ModelIngestProcessor};
 use crate::objectstore::AssetStore;
 use crate::pipeline::{handle_job, Ack};
-use crate::processor::{Processor, Unimplemented};
+use crate::processor::Processor;
+use crate::sprite_render::SpriteRenderProcessor;
 
 /// Connect to NATS and run the consumer until a shutdown signal arrives.
 pub async fn run(cfg: Config) -> Result<()> {
@@ -33,32 +34,36 @@ pub async fn run(cfg: Config) -> Result<()> {
     consume(client, &cfg, &processor, &reporter).await
 }
 
-/// Builds the job dispatcher: a real `ModelIngestProcessor` (trimesh) for `model_ingest`, and
-/// `Unimplemented` for `sprite_render` (Blender/GPU, a later slice). The assets store is None when its
-/// creds are unwired (or fail to build) — model_ingest then redelivers (fail-closed), never failed.
+/// Builds the job dispatcher: a `ModelIngestProcessor` (trimesh CPU) and a `SpriteRenderProcessor` (Blender
+/// GPU, ADR-049), sharing one cheaply-cloned assets store. The store is None when its creds are unwired (or
+/// fail to build) — both processors then redeliver (fail-closed), never `failed`.
 fn build_processor(cfg: &Config) -> Dispatcher {
     let store = match cfg.assets_config() {
         Some(sc) => match AssetStore::new(sc) {
             Ok(s) => Some(s),
             Err(e) => {
-                tracing::error!(error = %e, "assets store build failed — model_ingest will redeliver");
+                tracing::error!(error = %e, "assets store build failed — jobs will redeliver");
                 None
             }
         },
         None => {
             tracing::warn!(
-                "assets bucket unconfigured — model_ingest redelivers until ASSETS_* creds are set"
+                "assets bucket unconfigured — model_ingest/sprite_render redeliver until ASSETS_* creds are set"
             );
             None
         }
     };
     Dispatcher {
         model_ingest: ModelIngestProcessor {
-            store,
+            store: store.clone(),
             python: cfg.ingest_python.clone(),
             script: cfg.ingest_script.clone().into(),
         },
-        sprite_render: Unimplemented,
+        sprite_render: SpriteRenderProcessor {
+            store,
+            python: cfg.ingest_python.clone(),
+            script: cfg.render_script.clone().into(),
+        },
     }
 }
 

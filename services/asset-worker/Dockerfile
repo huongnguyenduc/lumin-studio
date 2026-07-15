@@ -8,9 +8,10 @@
 #
 # Render constraints (ADR-007 — do not relitigate): Cycles + CUDA only (no OptiX — Pascal has no
 # RT cores; no EEVEE — dies headless), Blender run as a subprocess, concurrency=1, off-peak. The
-# worker consumes the ASSET_JOBS WorkQueue and runs model_ingest (trimesh, CPU — baked below);
-# sprite_render (Blender/GPU) is wired but still Unimplemented, so Blender stays baked in NOW to keep
-# the GPU deploy substrate + in-container CUDA gate proven ahead of that step.
+# worker consumes the ASSET_JOBS WorkQueue and runs model_ingest (trimesh, CPU — baked below) and
+# sprite_render (Blender Cycles+CUDA turntable → WebP sprite sheet, ADR-049; pysrc/render.py +
+# _bl_render.py below). The in-container CUDA gate (`blender -b --debug-cycles`, operations.md §3) is
+# the remaining ON-BOX check (o-1c) — this image builds GPU-less, the render is proven on the box.
 
 # --- build: compile the worker binary ---
 # bullseye (glibc 2.31), NOT bookworm (2.36): the binary must run on the ubuntu 22.04 runtime
@@ -51,9 +52,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libxrandr2 libxinerama1 libxcursor1 libsm6 libgl1 libglx-mesa0 libglu1-mesa \
     && rm -rf /var/lib/apt/lists/*
 
-# model_ingest CPU tooling: the trimesh geometry step (pysrc/ingest.py) runs as a subprocess (ADR-007).
-# This is CPU-only (no GPU) — sprite_render's Blender is the GPU half. Baked here so a deployed worker can
-# actually process model_ingest; the box build confirms the wheels resolve on the image's python (3.10).
+# CPU sidecar tooling (subprocess, ADR-007): trimesh for model_ingest (pysrc/ingest.py) + Pillow for
+# sprite_render's frame-tiling orchestrator (pysrc/render.py). Blender itself is the GPU half (baked below).
+# Baked here so a deployed worker can process both; the box build confirms the wheels resolve on py 3.10.
 COPY pysrc/ /opt/asset-worker/pysrc/
 RUN pip3 install --no-cache-dir -r /opt/asset-worker/pysrc/requirements.txt
 

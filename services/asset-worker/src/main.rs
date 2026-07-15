@@ -3,11 +3,11 @@
 //! Consumes `asset_job.created` off the JetStream **WorkQueue** ASSET_JOBS (concurrency = 1), runs the
 //! pipeline, and reports each result back to core-api via the render callback (ADR-045). This slice
 //! ships the reliability spine — the durable consumer, the process→report→ack lifecycle (at-least-once,
-//! InProgress heartbeat, DLQ on max-deliver), and the callback client — with the actual per-kind
-//! processing behind a seam (`processor::Processor`). The real processors — `model_ingest` (trimesh
-//! normalize + gltf-transform LOD glb, CPU) and `sprite_render` (Blender Cycles+CUDA on the GTX 1060,
-//! never a poster) — shell out to subprocesses and land in a later, tooling/GPU-gated slice. See
-//! `docs/architecture.md` §5.3 and `conventions.md` §3D-upload / §Queue.
+//! InProgress heartbeat, DLQ on max-deliver), and the callback client — with the per-kind processing behind
+//! a seam (`processor::Processor`). The real processors — `model_ingest` (trimesh normalize + LOD glb, CPU)
+//! and `sprite_render` (Blender Cycles+CUDA turntable → WebP sprite sheet on the GTX 1060, never a poster;
+//! ADR-049) — shell out to subprocesses (ADR-007). See `docs/architecture.md` §5.3 and `conventions.md`
+//! §3D-upload / §Queue.
 
 mod callback;
 mod config;
@@ -17,6 +17,8 @@ mod model_ingest;
 mod objectstore;
 mod pipeline;
 mod processor;
+mod render;
+mod sprite_render;
 mod worker;
 
 use anyhow::Result;

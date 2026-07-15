@@ -1,0 +1,76 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { SPRITE_COLS, SPRITE_FRAMES, SPRITE_ROWS, spriteFrameCss } from '@/lib/product-view';
+
+// Per-frame dwell for the turntable cycle. ponytail: tuned blind — the feel needs real sprites on the box;
+// ~11fps reads the 360° "rock" without churn. Bump/trim once real assets land (calibration knob).
+const FRAME_MS = 90;
+
+/** True when the OS asks for reduced motion — gates the JS frame loop (the global CSS rule can't stop a
+ *  setInterval). Client-only; starts false so SSR/first paint match, then syncs after mount. */
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const sync = () => setReduced(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+  return reduced;
+}
+
+/**
+ * The 360° sprite-sheet turntable (ADR-049 / ADR-007 "lắc trái-phải"). Renders one frame of the sheet as a
+ * background and, while `active`, ping-pongs through the frames (0→N-1→0) — a rock left-right preview.
+ * prefers-reduced-motion (or `active=false`) pins it to frame 0: no autonomous motion (a11y rule). The pure
+ * frame math lives in product-view.spriteFrameCss; this only owns the timer + the reduced-motion gate.
+ *
+ * Used two ways: the catalog card drives `active` from hover; the model-viewer no-WebGL fallback passes
+ * `active` steadily so the product turns on its own (still stilled under reduced-motion).
+ */
+export function SpriteTurntable({
+  src,
+  alt,
+  active,
+  className,
+}: {
+  src: string;
+  alt: string;
+  active: boolean;
+  className?: string;
+}) {
+  const reduced = usePrefersReducedMotion();
+  const [frame, setFrame] = useState(0);
+
+  useEffect(() => {
+    if (!active || reduced) {
+      setFrame(0); // idle / reduced-motion → the static first frame, no timer
+      return;
+    }
+    let i = 0;
+    let dir = 1;
+    const id = setInterval(() => {
+      i += dir;
+      if (i >= SPRITE_FRAMES - 1) dir = -1;
+      else if (i <= 0) dir = 1;
+      setFrame(i);
+    }, FRAME_MS);
+    return () => clearInterval(id);
+  }, [active, reduced]);
+
+  return (
+    <div
+      role="img"
+      aria-label={alt}
+      className={className}
+      style={{
+        backgroundImage: `url("${src}")`,
+        backgroundRepeat: 'no-repeat',
+        backgroundSize: `${SPRITE_COLS * 100}% ${SPRITE_ROWS * 100}%`,
+        ...spriteFrameCss(frame),
+      }}
+    />
+  );
+}

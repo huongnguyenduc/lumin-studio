@@ -1560,6 +1560,11 @@ export interface components {
             /** @description .glb URL for the on-demand model viewer; empty string when none. */
             model3dUrl: string;
             model3dView?: components["schemas"]["Model3dView"];
+            /**
+             * Format: uri
+             * @description 360° sprite-sheet URL (ADR-049) — the card-hover turntable and the model-viewer's no-WebGL fallback. Omitted until a `sprite_render` job has produced one. Grid is the fixed shared const (24 frames, 6 cols).
+             */
+            spriteSheetUrl?: string;
             /** @description Shop photos; images[0] is the card cover (sprite-first, ADR-007). May be empty. */
             images: string[];
             colors: components["schemas"]["Color"][];
@@ -1656,6 +1661,11 @@ export interface components {
             categoryId: string;
             /** @description Shop photos; images[0] is the card cover (ADR-007). May be empty. */
             images: string[];
+            /**
+             * Format: uri
+             * @description 360° sprite-sheet URL for the card hover (ADR-049). Omitted until a `sprite_render` job has produced one. Grid is the fixed shared const (24 frames, 6 cols).
+             */
+            spriteSheetUrl?: string;
             /**
              * Format: float
              * @description Denormalized average rating; null until the first review.
@@ -2081,7 +2091,7 @@ export interface components {
             /** @description Content hash of the uploaded source object (ADR-004 — Garage has no versioning). */
             sourceVersion: string;
         };
-        /** @description The asset-worker's render-callback body (PATCH /internal/asset-jobs/{id}, ADR-045). `status` is the worker-reachable lifecycle subset (never `queued` — that is the initial state). `model3dUrl` is the derivative LOD glb the worker uploaded, required on a `ready` `model_ingest` and written to the product's `model3d_url`; it MUST be under this store's assets origin. `lastError` accompanies `failed`. The productId is resolved from the job row, never the body. */
+        /** @description The asset-worker's render-callback body (PATCH /internal/asset-jobs/{id}, ADR-045). `status` is the worker-reachable lifecycle subset (never `queued` — that is the initial state). `model3dUrl` is the derivative LOD glb a `model_ingest` uploaded; `spriteSheetUrl` is the 360° sprite sheet a `sprite_render` uploaded (ADR-049). Each is required on a `ready` job OF ITS KIND, written to the matching product column, and MUST be under this store's assets origin. `lastError` accompanies `failed`. The productId is resolved from the job row, never the body. */
         AssetJobResultInput: {
             /**
              * @description The worker-reported lifecycle state (a subset of AssetJobStatus — never `queued`).
@@ -2090,9 +2100,14 @@ export interface components {
             status: "processing" | "ready" | "failed";
             /**
              * Format: uri
-             * @description The uploaded derivative LOD glb URL. Required on a `ready` `model_ingest`; must be under this store's assets origin (host-pinned). Ignored for `sprite_render` (its output has no product column yet).
+             * @description The uploaded derivative LOD glb URL. Required on a `ready` `model_ingest`; must be a `.glb` under this store's assets origin (host-pinned). Ignored for `sprite_render` (which reports `spriteSheetUrl`).
              */
             model3dUrl?: string;
+            /**
+             * Format: uri
+             * @description The uploaded 360° sprite-sheet URL (ADR-049). Required on a `ready` `sprite_render`; must be a `.webp` under this store's assets origin (host-pinned). Ignored for `model_ingest` (which reports `model3dUrl`).
+             */
+            spriteSheetUrl?: string;
             /** @description Failure reason, set with `failed`. Cleared when the job reaches `ready`. */
             lastError?: string;
         };

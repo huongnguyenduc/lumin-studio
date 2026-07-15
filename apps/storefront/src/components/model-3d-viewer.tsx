@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { SpriteTurntable } from './sprite-turntable';
 
 // Minimal typing for Google's <model-viewer> custom element — we use only these attributes. (React 18
 // does not map className→class for custom elements, so sizing goes through inline `style`, not a class.)
@@ -35,11 +36,20 @@ function hasWebGL(): boolean {
  * (storefront rule: `model-viewer` chỉ load khi khách bấm; đừng auto-load WebGL nặng). The ~1MB module
  * is pulled via a dynamic import so it stays out of the initial bundle. No auto-rotate and no
  * interaction-prompt ⇒ no autonomous motion, so prefers-reduced-motion is honoured by construction (the
- * a11y rule's viewer-3D clause). When the browser lacks WebGL the button is hidden and the static gallery
- * is the fallback — the spec's sprite fallback doesn't exist in degrade-only (no spriteUrl in the
- * contract yet). `src` is the product's `.glb` URL, already gated non-empty by the parent.
+ * a11y rule's viewer-3D clause). When the browser lacks WebGL, the 360° sprite sheet (ADR-049) is the
+ * fallback if the product has one — a self-turning turntable, stilled under reduced-motion — else the
+ * button is hidden and the static gallery is the fallback. `src` is the product's `.glb` URL, already gated
+ * non-empty by the parent; `spriteSheetUrl` is optional (absent until a sprite_render job runs).
  */
-export function Model3dViewer({ src, productName }: { src: string; productName: string }) {
+export function Model3dViewer({
+  src,
+  productName,
+  spriteSheetUrl,
+}: {
+  src: string;
+  productName: string;
+  spriteSheetUrl?: string;
+}) {
   const t = useTranslations('productDetail');
   const containerRef = useRef<HTMLDivElement>(null);
   const [webglOk, setWebglOk] = useState(false);
@@ -72,7 +82,21 @@ export function Model3dViewer({ src, productName }: { src: string; productName: 
     };
   }, [shown]);
 
-  if (!webglOk) return null;
+  // No WebGL → the 360° sprite sheet is the fallback (ADR-007/ADR-049): a self-turning turntable so a
+  // WebGL-less browser still gets a rotating preview (stilled under reduced-motion). No sprite yet → hide,
+  // so the parent's static gallery is the fallback (as before).
+  if (!webglOk) {
+    return spriteSheetUrl ? (
+      <div className="mt-3 aspect-square overflow-hidden rounded-lg bg-surface-sunken">
+        <SpriteTurntable
+          src={spriteSheetUrl}
+          alt={t('sprite360Alt', { name: productName })}
+          active
+          className="h-full w-full"
+        />
+      </div>
+    ) : null;
+  }
 
   if (!shown) {
     return (

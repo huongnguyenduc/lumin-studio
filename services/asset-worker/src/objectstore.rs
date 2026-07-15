@@ -24,6 +24,9 @@ pub struct AssetStoreConfig {
     pub secret_access_key: String,
 }
 
+/// Clone is cheap — `AmazonS3` is Arc-backed internally, so the two processors (model_ingest, sprite_render)
+/// share one store without a second client.
+#[derive(Clone)]
 pub struct AssetStore {
     s3: AmazonS3,
     public_base_url: String, // trimmed, no trailing slash
@@ -71,11 +74,23 @@ impl AssetStore {
             .to_vec())
     }
 
-    /// PUT a glb with the correct content-type (so it serves as a model once public reads land).
+    /// PUT a glb with the model content-type (so it serves as a model once public reads land).
     pub async fn put_glb(&self, key: &str, data: Vec<u8>) -> Result<()> {
+        self.put_typed(key, data, "model/gltf-binary").await
+    }
+
+    /// PUT a WebP sprite sheet (ADR-049) with the image content-type — the storefront serves it as an
+    /// `<img>`/background for the card-hover turntable + the model-viewer no-WebGL fallback.
+    pub async fn put_webp(&self, key: &str, data: Vec<u8>) -> Result<()> {
+        self.put_typed(key, data, "image/webp").await
+    }
+
+    /// PUT `data` at `key` with an explicit Content-Type (the one attribute serving cares about). Shared by
+    /// put_glb / put_webp — the only difference between a derivative model and a derivative sprite is its type.
+    async fn put_typed(&self, key: &str, data: Vec<u8>, content_type: &str) -> Result<()> {
         let attrs = Attributes::from_iter([(
             Attribute::ContentType,
-            AttributeValue::from("model/gltf-binary"),
+            AttributeValue::from(content_type.to_string()),
         )]);
         self.s3
             .put_opts(

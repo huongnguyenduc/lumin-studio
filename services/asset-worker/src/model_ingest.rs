@@ -7,7 +7,8 @@ use std::path::PathBuf;
 use crate::ingest::run_ingest;
 use crate::job::{AssetJob, JobType};
 use crate::objectstore::AssetStore;
-use crate::processor::{Outcome, ProcessError, Processor, Unimplemented};
+use crate::processor::{Outcome, ProcessError, Processor};
+use crate::sprite_render::SpriteRenderProcessor;
 
 /// Processes `model_ingest` jobs. `store` is None when the assets bucket creds are unwired — then every
 /// job is Transient (redeliver, wait for creds) rather than failed, mirroring core-api's fail-closed
@@ -75,15 +76,17 @@ impl Processor for ModelIngestProcessor {
 
         Ok(Outcome {
             model3d_url: Some(store.output_url(&out_key)),
+            ..Default::default()
         })
     }
 }
 
-/// Routes a job to the right processor by kind. `sprite_render` stays `Unimplemented` (Blender/GPU, a
-/// later slice) → Transient, so a sprite job parks in the queue instead of being consumed or failed.
+/// Routes a job to the right processor by kind (ADR-049): `model_ingest` → the trimesh LOD glb,
+/// `sprite_render` → the Blender turntable WebP sprite sheet. Each is fail-closed on an unconfigured assets
+/// store (Transient redeliver), so a job parks in the queue rather than being consumed or failed.
 pub struct Dispatcher {
     pub model_ingest: ModelIngestProcessor,
-    pub sprite_render: Unimplemented,
+    pub sprite_render: SpriteRenderProcessor,
 }
 
 impl Processor for Dispatcher {
@@ -95,9 +98,10 @@ impl Processor for Dispatcher {
     }
 }
 
-/// The lower-cased file extension of a bucket key (`models/…/abc.GLB` → `glb`), so the fetched source is
-/// written to a temp file trimesh can detect the format of. None when there is no extension.
-fn extension_of(key: &str) -> Option<&str> {
+/// The file extension of a bucket key (`models/…/abc.GLB` → `GLB`), so the fetched source is written to a
+/// temp file the tool (trimesh / Blender) can detect the format of. None when there is no extension. Shared
+/// with sprite_render (both write the source by its extension before shelling out).
+pub(crate) fn extension_of(key: &str) -> Option<&str> {
     key.rsplit('/')
         .next()
         .and_then(|f| f.rsplit_once('.'))
@@ -193,16 +197,21 @@ mod tests {
         assert!(glb.len() > 8 && &glb[0..4] == b"glTF", "valid glb magic");
     }
 
-    // Dispatcher routes sprite_render to Unimplemented (Transient) without touching the model path.
+    // Dispatcher routes a sprite_render job to the SpriteRenderProcessor (here unconfigured → Transient),
+    // never to the model path — the two kinds stay separated by job_type (ADR-049).
     #[tokio::test]
-    async fn dispatcher_routes_sprite_to_unimplemented() {
+    async fn dispatcher_routes_sprite_to_sprite_processor() {
         let d = Dispatcher {
             model_ingest: ModelIngestProcessor {
                 store: None,
                 python: "python3".into(),
                 script: "ingest.py".into(),
             },
-            sprite_render: Unimplemented,
+            sprite_render: SpriteRenderProcessor {
+                store: None,
+                python: "python3".into(),
+                script: "render.py".into(),
+            },
         };
         let err = d
             .process(&job(JobType::SpriteRender, "https://s3/lumin-assets/x.glb"))

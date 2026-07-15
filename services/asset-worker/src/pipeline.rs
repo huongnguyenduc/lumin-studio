@@ -36,7 +36,9 @@ pub fn decide(result: Result<Outcome, ProcessError>, delivered: u64, max_deliver
         Ok(outcome) => Decision {
             body: Some(ResultBody {
                 status: "ready",
+                // exactly one of these is Some, per job kind (ADR-049); core-api writes whichever it is.
                 model3d_url: outcome.model3d_url,
+                sprite_sheet_url: outcome.sprite_sheet_url,
                 last_error: None,
             }),
             ack: Ack::Ack,
@@ -45,6 +47,7 @@ pub fn decide(result: Result<Outcome, ProcessError>, delivered: u64, max_deliver
             body: Some(ResultBody {
                 status: "failed",
                 model3d_url: None,
+                sprite_sheet_url: None,
                 last_error: Some(msg),
             }),
             ack: Ack::Ack,
@@ -55,6 +58,7 @@ pub fn decide(result: Result<Outcome, ProcessError>, delivered: u64, max_deliver
                     body: Some(ResultBody {
                         status: "failed",
                         model3d_url: None,
+                        sprite_sheet_url: None,
                         last_error: Some(format!("giving up after {delivered} attempts: {msg}")),
                     }),
                     ack: Ack::Term,
@@ -113,12 +117,33 @@ mod tests {
         let d = decide(
             Ok(Outcome {
                 model3d_url: Some("u.glb".into()),
+                ..Default::default()
             }),
             1,
             5,
         );
         assert_eq!(d.ack, Ack::Ack);
         assert_eq!(d.body.unwrap().status, "ready");
+    }
+
+    // A sprite_render Outcome flows spriteSheetUrl (not model3dUrl) into the ready callback (ADR-049).
+    #[test]
+    fn ready_sprite_reports_sprite_url() {
+        let d = decide(
+            Ok(Outcome {
+                sprite_sheet_url: Some("s.webp".into()),
+                ..Default::default()
+            }),
+            1,
+            5,
+        );
+        let body = d.body.unwrap();
+        assert_eq!(body.status, "ready");
+        assert_eq!(body.sprite_sheet_url.as_deref(), Some("s.webp"));
+        assert!(
+            body.model3d_url.is_none(),
+            "sprite ready must not carry a model url"
+        );
     }
 
     #[test]
@@ -180,6 +205,7 @@ mod tests {
     async fn handle_ready_reports_once_and_acks() {
         let p = FakeProcessor(Ok(Outcome {
             model3d_url: Some("out.glb".into()),
+            ..Default::default()
         }));
         let r = FakeReporter::default();
         let ack = handle_job(&job(), &p, &r, 1, 5).await;
@@ -202,6 +228,7 @@ mod tests {
         // A ready job whose callback is unreachable must redeliver (Nak), not ack-and-lose the result.
         let p = FakeProcessor(Ok(Outcome {
             model3d_url: Some("out.glb".into()),
+            ..Default::default()
         }));
         let r = FakeReporter {
             fail: true,

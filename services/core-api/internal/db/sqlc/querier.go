@@ -288,8 +288,9 @@ type Querier interface {
 	ItemCostInputs(ctx context.Context, id uuid.UUID) (ItemCostInputsRow, error)
 	ListActiveConsents(ctx context.Context, customerID uuid.UUID) ([]ConsentGrant, error)
 	// ListActiveProducts is the storefront catalog list (PR-P1-c). It returns ACTIVE products ONLY as a
-	// CARD projection (a subset of columns — no description/model3d_url, and no colors/options join → no
-	// N+1). The optional category filter matches by category SLUG via an UNCORRELATED subquery (Postgres
+	// CARD projection (a subset of columns — no description/model3d_url [the .glb loads on the detail page,
+	// not the card], but sprite_sheet_url IS included for the card-hover turntable [ADR-049], and no
+	// colors/options join → no N+1). The optional category filter matches by category SLUG via an UNCORRELATED subquery (Postgres
 	// runs it once as an InitPlan, not per row); an unknown slug simply matches no rows → an empty page,
 	// never a 404. Sort is a WHITELISTED CASE so the ORDER BY can never be built from raw client text; the
 	// non-selected CASE arms evaluate to a constant NULL and drop out, and created_at DESC, id DESC give a
@@ -537,6 +538,12 @@ type Querier interface {
 	// URL is host-pinned to the assets origin at the HTTP boundary before it reaches here. :execrows so a
 	// vanished product surfaces (0 rows) — though asset_jobs.product_id is RESTRICT, so it should always hit 1.
 	SetProductModel3dUrl(ctx context.Context, arg SetProductModel3dUrlParams) (int64, error)
+	// SetProductSpriteSheetUrl is the asset pipeline's write of the 360° sprite-sheet URL (ADR-049) — the
+	// sprite_render analogue of SetProductModel3dUrl. Called only from the render callback when a
+	// `sprite_render` job reaches `ready`, so the storefront's card hover + no-WebGL fallback have a sheet to
+	// show. The URL is host-pinned (.webp under the assets origin) at the HTTP boundary before it reaches here.
+	// UpdateProduct never touches this column. :execrows so a vanished product surfaces (0 rows).
+	SetProductSpriteSheetUrl(ctx context.Context, arg SetProductSpriteSheetUrlParams) (int64, error)
 	// SetShippingArtifacts persists the two mandatory SHIPPING artifacts — the carrier tracking code
 	// and the QC packing photo (D-P3-6) — on the PRINTING→SHIPPING transition. The status flip itself
 	// goes through UpdateOrderStatus (order.Transition guard); the transition handler runs this in the
