@@ -128,6 +128,14 @@ RETURNING *;
 -- name: UpdateProductModelView :execrows
 UPDATE products SET model3d_view = $2 WHERE id = $1;
 
+-- SetProductModel3dUrl is the asset pipeline's write of the LOD glb URL (the column UpdateProduct
+-- deliberately never touches). Called only from the worker render callback (ReportAssetJobResult) when a
+-- `model_ingest` job reaches `ready`, so the storefront's on-demand 3D viewer has a model to load. The
+-- URL is host-pinned to the assets origin at the HTTP boundary before it reaches here. :execrows so a
+-- vanished product surfaces (0 rows) — though asset_jobs.product_id is RESTRICT, so it should always hit 1.
+-- name: SetProductModel3dUrl :execrows
+UPDATE products SET model3d_url = $2 WHERE id = $1;
+
 -- DeleteProduct is a HARD delete, allowed only for never-ordered/never-rendered products (drafts, mistakes):
 -- order_items and asset_jobs reference products ON DELETE RESTRICT (migrations 000005/000006), so deleting a
 -- product with history raises a foreign_key_violation the handler maps to 409 "hãy lưu trữ thay vì xoá" — the

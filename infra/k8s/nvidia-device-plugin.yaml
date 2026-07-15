@@ -1,0 +1,74 @@
+# nvidia-device-plugin — advertises `nvidia.com/gpu` to the k3s scheduler so `asset-worker.yaml`
+# (which requests `nvidia.com/gpu: 1`) can actually schedule instead of staying Pending forever.
+# This is the missing half of the GPU substrate: k3s auto-creates the `nvidia` RuntimeClass when it
+# detects the NVIDIA container runtime, but WITHOUT this DaemonSet no node ever reports the gpu
+# resource, so the scheduler can never satisfy the request. Apply this ONCE, before asset-worker
+# (README "asset-worker — GPU prerequisite" / operations.md §3). Box-only — never in deploy.yml (the
+# CI deploy runs GPU-less and must stay green), exactly like asset-worker.yaml.
+#
+# This is NVIDIA's canonical static manifest (github.com/NVIDIA/k8s-device-plugin) pinned to a
+# Pascal-safe release — NOT hand-rolled. Two box-specific deltas from upstream, both load-bearing here:
+#   * runtimeClassName: nvidia — on k3s the nvidia runtime is NOT the default, so the plugin's own
+#     NVML probe only sees the GTX 1060 when its pod runs under the nvidia runtime (same RuntimeClass
+#     asset-worker uses). Without this the plugin starts, finds 0 GPUs, and advertises nothing.
+#   * FAIL_ON_INIT_ERROR=false — a single mixed home node (ADR-009): if the GPU is briefly absent
+#     (driver reload, WSL2 /dev/dxg hiccup) the plugin should idle, not crashloop the DaemonSet.
+#
+# The image is third-party (nvcr.io) — unlike the lumin-* images it is pulled once (needs box internet
+# on first schedule) or `k3d image import nvcr.io/nvidia/k8s-device-plugin:v0.14.5 -c luminstudio`.
+# Bump the pin freely; Pascal (CC 6.1) is supported across all current releases.
+#
+# ponytail: vendored static manifest, matching this repo's raw-manifest convention (no Helm/HelmChart
+# CR anywhere in infra/k8s). If the node ever grows past one GPU or needs MIG/time-slicing, switch to
+# the NVIDIA GPU Operator — overkill for one 6GB card, concurrency=1 (ADR-007/ADR-014).
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-device-plugin-daemonset
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      name: nvidia-device-plugin-ds
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        name: nvidia-device-plugin-ds
+    spec:
+      # See header: the plugin needs the nvidia runtime to enumerate the card via NVML on k3s.
+      runtimeClassName: nvidia
+      tolerations:
+        # Schedule on GPU nodes even if they carry the conventional nvidia.com/gpu taint, and don't
+        # get evicted by the usual control-plane taints (single-node cluster — the node is both).
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+        - key: CriticalAddonsOnly
+          operator: Exists
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      priorityClassName: system-node-critical
+      containers:
+        - name: nvidia-device-plugin-ctr
+          image: nvcr.io/nvidia/k8s-device-plugin:v0.14.5
+          imagePullPolicy: IfNotPresent # pulled once or k3d-imported — never re-pull on every roll
+          env:
+            - name: FAIL_ON_INIT_ERROR
+              value: 'false' # idle (not crashloop) if the GPU is transiently absent — see header
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ['ALL']
+          volumeMounts:
+            - name: device-plugin
+              mountPath: /var/lib/kubelet/device-plugins
+      volumes:
+        - name: device-plugin
+          hostPath:
+            path: /var/lib/kubelet/device-plugins

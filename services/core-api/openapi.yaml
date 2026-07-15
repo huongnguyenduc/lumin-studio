@@ -2282,6 +2282,47 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /internal/asset-jobs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [internal]
+      operationId: reportAssetJobResult
+      summary: Asset-worker render callback — report a job's lifecycle result (service-auth).
+      description: >
+        The in-cluster asset-worker calls this to report an AssetJob's progress/result (ADR-045). It is
+        the OUTPUT half of the pipeline: the worker drains `asset_job.created` off the JetStream
+        WorkQueue, renders/ingests, then reports `processing` → `ready` (with the derivative `model3dUrl`
+        for a `model_ingest` job) or `failed` (with `lastError`). On a `ready` `model_ingest` the server
+        writes the LOD `model3d_url` onto the product (D3) — the ONE writer of that column.
+
+        Auth is `serviceAuth` (a static worker bearer), NOT a user session — the worker has no identity.
+        Idempotent + at-least-once safe: `ready` is terminal + sticky, so a redelivered callback returns
+        the job unchanged and never clobbers the stored result. `model3dUrl`, when present, MUST be a URL
+        under this store's assets origin (a stored content-injection guard — it becomes a client-side
+        `<model-viewer src>`); a `ready` `model_ingest` with no `model3dUrl` is a 400. Unknown job → 404.
+      security:
+        - serviceAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssetJobResultInput'
+      responses:
+        '200':
+          description: The updated asset job (or the unchanged job when it was already `ready`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetJob'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /admin/filament-materials:
     get:
       tags: [admin]
@@ -2632,6 +2673,14 @@ components:
       description: >
         Storefront customer session JWT in an httpOnly+Secure cookie (PR-P1-r). SEPARATE realm from
         cookieAuth — signed with a different secret, so an admin token can never authenticate here.
+    serviceAuth:
+      type: http
+      scheme: bearer
+      description: >
+        Static shared-secret bearer for the in-cluster asset-worker's render callback (ADR-045). A
+        THIRD realm, distinct from cookieAuth/customerAuth: it carries no user identity — it only
+        proves the caller is the trusted worker. Compared in constant time; an unset secret rejects
+        every request (fail-closed). Never a user credential, never issued to a browser.
 
   responses:
     BadRequest:
@@ -3600,6 +3649,31 @@ components:
         sourceVersion:
           type: string
           description: Content hash of the uploaded source object (ADR-004 — Garage has no versioning).
+
+    AssetJobResultInput:
+      type: object
+      description: >
+        The asset-worker's render-callback body (PATCH /internal/asset-jobs/{id}, ADR-045). `status` is the
+        worker-reachable lifecycle subset (never `queued` — that is the initial state). `model3dUrl` is the
+        derivative LOD glb the worker uploaded, required on a `ready` `model_ingest` and written to the
+        product's `model3d_url`; it MUST be under this store's assets origin. `lastError` accompanies
+        `failed`. The productId is resolved from the job row, never the body.
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [processing, ready, failed]
+          description: The worker-reported lifecycle state (a subset of AssetJobStatus — never `queued`).
+        model3dUrl:
+          type: string
+          format: uri
+          description: >
+            The uploaded derivative LOD glb URL. Required on a `ready` `model_ingest`; must be under this
+            store's assets origin (host-pinned). Ignored for `sprite_render` (its output has no product column yet).
+        lastError:
+          type: string
+          maxLength: 2000
+          description: Failure reason, set with `failed`. Cleared when the job reaches `ready`.
 
     AssetJob:
       type: object

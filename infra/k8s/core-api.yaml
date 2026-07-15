@@ -31,6 +31,17 @@ spec:
               valueFrom: { secretKeyRef: { name: lumin-secrets, key: CUSTOMER_JWT_SECRET } }
             - name: TRACKING_SECRET
               valueFrom: { secretKeyRef: { name: lumin-secrets, key: TRACKING_SECRET } }
+            # WORKER_CALLBACK_TOKEN — the static shared secret the asset-worker presents to the render
+            # callback PATCH /internal/asset-jobs/{id} (ADR-045). optional:true — the endpoint is
+            # fail-closed until set (unset → it rejects every call), so a missing key just keeps the
+            # worker output path disabled rather than stalling the rollout; add it (same value on the
+            # worker) when the render pipeline lands. Put the identical value in the worker's env.
+            - name: WORKER_CALLBACK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: lumin-secrets
+                  key: WORKER_CALLBACK_TOKEN
+                  optional: true
             - { name: ALLOW_DEV_JWT_SECRET, value: 'false' }
             # Cloudflare terminates TLS → browser sees HTTPS → Secure cookies are correct.
             - { name: COOKIE_SECURE, value: 'true' }

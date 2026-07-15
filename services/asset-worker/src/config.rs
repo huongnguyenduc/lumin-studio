@@ -5,7 +5,11 @@
 pub struct Config {
     /// NATS server URL (JetStream). Default targets the compose `nats` service.
     pub nats_url: String,
-    /// Subject the AssetJob WorkQueue consumer binds to.
+    /// Subject filter the AssetJob consumer binds with. The producer (core-api) provisions a
+    /// WorkQueue stream `ASSET_JOBS` capturing `asset_job.>` and the relay publishes
+    /// `asset_job.created` onto it (natsx/conn.go, db/jobs.go) — so this is the real wire subject,
+    /// NOT the old `asset.job` placeholder. The durable pull consumer that binds this stream lands
+    /// with the pipeline; it will add a stream + durable name here then (YAGNI until it exists).
     pub job_subject: String,
 }
 
@@ -14,7 +18,7 @@ impl Config {
     pub fn from_env() -> Self {
         Self {
             nats_url: env_or("NATS_URL", "nats://127.0.0.1:4222"),
-            job_subject: env_or("ASSET_JOB_SUBJECT", "asset.job"),
+            job_subject: env_or("ASSET_JOB_SUBJECT", "asset_job.created"),
         }
     }
 }
@@ -50,8 +54,8 @@ mod tests {
             "nats://127.0.0.1:4222"
         );
         assert_eq!(
-            env_or("LUMIN_ASSET_WORKER_UNSET_SUBJECT", "asset.job"),
-            "asset.job"
+            env_or("LUMIN_ASSET_WORKER_UNSET_SUBJECT", "asset_job.created"),
+            "asset_job.created"
         );
     }
 

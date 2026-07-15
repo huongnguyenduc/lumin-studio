@@ -114,6 +114,33 @@ func (q *Queries) GetAssetJobByID(ctx context.Context, id uuid.UUID) (AssetJob, 
 	return i, err
 }
 
+const getAssetJobByIDForUpdate = `-- name: GetAssetJobByIDForUpdate :one
+SELECT id, product_id, job_type, source_model_url, source_version, status, attempts, last_error, created_at, updated_at, completed_at FROM asset_jobs WHERE id = $1 FOR UPDATE
+`
+
+// GetAssetJobByIDForUpdate row-locks the job for the worker-callback tx (ReportAssetJobResult): the
+// handler reads the job under FOR UPDATE, decides idempotency (a `ready` job is terminal + sticky),
+// then writes status + the product's model3d_url in the SAME tx. The lock serializes overlapping
+// at-least-once redeliveries so two callbacks can't race a lost update onto one row.
+func (q *Queries) GetAssetJobByIDForUpdate(ctx context.Context, id uuid.UUID) (AssetJob, error) {
+	row := q.db.QueryRow(ctx, getAssetJobByIDForUpdate, id)
+	var i AssetJob
+	err := row.Scan(
+		&i.ID,
+		&i.ProductID,
+		&i.JobType,
+		&i.SourceModelUrl,
+		&i.SourceVersion,
+		&i.Status,
+		&i.Attempts,
+		&i.LastError,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CompletedAt,
+	)
+	return i, err
+}
+
 const getPrintJobByID = `-- name: GetPrintJobByID :one
 SELECT id, order_item_id, stage, printer, color_name, eta, created_at, updated_at, filament_deducted_at FROM print_jobs WHERE id = $1
 `

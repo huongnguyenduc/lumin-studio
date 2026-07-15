@@ -20,14 +20,22 @@ import (
 const (
 	CookieAuthScopes   = "cookieAuth.Scopes"
 	CustomerAuthScopes = "customerAuth.Scopes"
+	ServiceAuthScopes  = "serviceAuth.Scopes"
+)
+
+// Defines values for AssetJobResultInputStatus.
+const (
+	AssetJobResultInputStatusFailed     AssetJobResultInputStatus = "failed"
+	AssetJobResultInputStatusProcessing AssetJobResultInputStatus = "processing"
+	AssetJobResultInputStatusReady      AssetJobResultInputStatus = "ready"
 )
 
 // Defines values for AssetJobStatus.
 const (
-	Failed     AssetJobStatus = "failed"
-	Processing AssetJobStatus = "processing"
-	Queued     AssetJobStatus = "queued"
-	Ready      AssetJobStatus = "ready"
+	AssetJobStatusFailed     AssetJobStatus = "failed"
+	AssetJobStatusProcessing AssetJobStatus = "processing"
+	AssetJobStatusQueued     AssetJobStatus = "queued"
+	AssetJobStatusReady      AssetJobStatus = "ready"
 )
 
 // Defines values for AssetJobType.
@@ -373,6 +381,21 @@ type AssetJobInput struct {
 	// SourceVersion Content hash of the uploaded source object (ADR-004 — Garage has no versioning).
 	SourceVersion string `json:"sourceVersion"`
 }
+
+// AssetJobResultInput The asset-worker's render-callback body (PATCH /internal/asset-jobs/{id}, ADR-045). `status` is the worker-reachable lifecycle subset (never `queued` — that is the initial state). `model3dUrl` is the derivative LOD glb the worker uploaded, required on a `ready` `model_ingest` and written to the product's `model3d_url`; it MUST be under this store's assets origin. `lastError` accompanies `failed`. The productId is resolved from the job row, never the body.
+type AssetJobResultInput struct {
+	// LastError Failure reason, set with `failed`. Cleared when the job reaches `ready`.
+	LastError *string `json:"lastError,omitempty"`
+
+	// Model3dUrl The uploaded derivative LOD glb URL. Required on a `ready` `model_ingest`; must be under this store's assets origin (host-pinned). Ignored for `sprite_render` (its output has no product column yet).
+	Model3dUrl *string `json:"model3dUrl,omitempty"`
+
+	// Status The worker-reported lifecycle state (a subset of AssetJobStatus — never `queued`).
+	Status AssetJobResultInputStatus `json:"status"`
+}
+
+// AssetJobResultInputStatus The worker-reported lifecycle state (a subset of AssetJobStatus — never `queued`).
+type AssetJobResultInputStatus string
 
 // AssetJobStatus Lifecycle of a render/ingest job (migration 000006). The client maps it to an i18n label.
 type AssetJobStatus string
@@ -1981,6 +2004,9 @@ type LoginCustomerJSONRequestBody = LoginRequest
 // RegisterCustomerJSONRequestBody defines body for RegisterCustomer for application/json ContentType.
 type RegisterCustomerJSONRequestBody = CustomerRegisterInput
 
+// ReportAssetJobResultJSONRequestBody defines body for ReportAssetJobResult for application/json ContentType.
+type ReportAssetJobResultJSONRequestBody = AssetJobResultInput
+
 // CreateOrderJSONRequestBody defines body for CreateOrder for application/json ContentType.
 type CreateOrderJSONRequestBody = CreateOrderInput
 
@@ -2315,6 +2341,9 @@ type ServerInterface interface {
 	// Register a storefront customer account; sets the customer session cookie on success.
 	// (POST /customer/register)
 	RegisterCustomer(w http.ResponseWriter, r *http.Request)
+	// Asset-worker render callback — report a job's lifecycle result (service-auth).
+	// (PATCH /internal/asset-jobs/{id})
+	ReportAssetJobResult(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// Create an order (web → PENDING_CONFIRM, public; inbox → PAID, staff/owner only).
 	// (POST /orders)
 	CreateOrder(w http.ResponseWriter, r *http.Request)
@@ -2795,6 +2824,12 @@ func (_ Unimplemented) GetCustomerOrders(w http.ResponseWriter, r *http.Request)
 // Register a storefront customer account; sets the customer session cookie on success.
 // (POST /customer/register)
 func (_ Unimplemented) RegisterCustomer(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Asset-worker render callback — report a job's lifecycle result (service-auth).
+// (PATCH /internal/asset-jobs/{id})
+func (_ Unimplemented) ReportAssetJobResult(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4895,6 +4930,37 @@ func (siw *ServerInterfaceWrapper) RegisterCustomer(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ReportAssetJobResult operation middleware
+func (siw *ServerInterfaceWrapper) ReportAssetJobResult(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, ServiceAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReportAssetJobResult(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateOrder operation middleware
 func (siw *ServerInterfaceWrapper) CreateOrder(w http.ResponseWriter, r *http.Request) {
 
@@ -5744,6 +5810,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/customer/register", wrapper.RegisterCustomer)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/internal/asset-jobs/{id}", wrapper.ReportAssetJobResult)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/orders", wrapper.CreateOrder)
@@ -8835,6 +8904,51 @@ func (response RegisterCustomer409JSONResponse) VisitRegisterCustomerResponse(w 
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ReportAssetJobResultRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *ReportAssetJobResultJSONRequestBody
+}
+
+type ReportAssetJobResultResponseObject interface {
+	VisitReportAssetJobResultResponse(w http.ResponseWriter) error
+}
+
+type ReportAssetJobResult200JSONResponse AssetJob
+
+func (response ReportAssetJobResult200JSONResponse) VisitReportAssetJobResultResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ReportAssetJobResult400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ReportAssetJobResult400JSONResponse) VisitReportAssetJobResultResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ReportAssetJobResult401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ReportAssetJobResult401JSONResponse) VisitReportAssetJobResultResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ReportAssetJobResult404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ReportAssetJobResult404JSONResponse) VisitReportAssetJobResultResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type CreateOrderRequestObject struct {
 	Body *CreateOrderJSONRequestBody
 }
@@ -9763,6 +9877,9 @@ type StrictServerInterface interface {
 	// Register a storefront customer account; sets the customer session cookie on success.
 	// (POST /customer/register)
 	RegisterCustomer(ctx context.Context, request RegisterCustomerRequestObject) (RegisterCustomerResponseObject, error)
+	// Asset-worker render callback — report a job's lifecycle result (service-auth).
+	// (PATCH /internal/asset-jobs/{id})
+	ReportAssetJobResult(ctx context.Context, request ReportAssetJobResultRequestObject) (ReportAssetJobResultResponseObject, error)
 	// Create an order (web → PENDING_CONFIRM, public; inbox → PAID, staff/owner only).
 	// (POST /orders)
 	CreateOrder(ctx context.Context, request CreateOrderRequestObject) (CreateOrderResponseObject, error)
@@ -11914,6 +12031,39 @@ func (sh *strictHandler) RegisterCustomer(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RegisterCustomerResponseObject); ok {
 		if err := validResponse.VisitRegisterCustomerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReportAssetJobResult operation middleware
+func (sh *strictHandler) ReportAssetJobResult(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request ReportAssetJobResultRequestObject
+
+	request.Id = id
+
+	var body ReportAssetJobResultJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReportAssetJobResult(ctx, request.(ReportAssetJobResultRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReportAssetJobResult")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReportAssetJobResultResponseObject); ok {
+		if err := validResponse.VisitReportAssetJobResultResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

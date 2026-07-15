@@ -31,8 +31,11 @@ spec:
           env:
             # Server-to-server (internal DNS). Worker pulls AssetJob off JetStream here.
             - { name: NATS_URL, value: nats://nats:4222 }
-            # Garage creds land here when the render→sprite upload pipeline lands (mirrors core-api's
-            # ASSETS_* key). The scaffold only consumes NATS, so it needs none yet.
+            # Reserved for the render pipeline (consumer not built yet — the scaffold only idles on NATS):
+            #   - Garage creds (mirrors core-api's ASSETS_* key) for uploading the derivative glb/sprite.
+            #   - CORE_API_URL=http://core-api:8080 + WORKER_CALLBACK_TOKEN (the SAME value as core-api's,
+            #     ADR-045) for PATCH /internal/asset-jobs/{id} to report results. Add both when the
+            #     JetStream WorkQueue consumer + Blender pipeline land.
           resources:
             limits:
               nvidia.com/gpu: 1 # requires the NVIDIA k8s device plugin (see README)

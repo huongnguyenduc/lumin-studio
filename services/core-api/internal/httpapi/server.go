@@ -89,6 +89,11 @@ type Server struct {
 	// (P3-t t-2). Never a secret — NewServer defaults it (defaultPetPageBaseURL); main.go overrides via
 	// WithPetPageBaseURL from PET_TAG_BASE_URL. See admin_pettag_encode.go.
 	petPageBaseURL string
+	// workerCallbackToken is the static shared secret the asset-worker presents to the render callback
+	// PATCH /internal/asset-jobs/{id} (ADR-045, authService class). Empty by default (unwired) → the
+	// endpoint is fail-closed: authMiddleware rejects every call a constant-time compare can't match, and
+	// an empty secret matches nothing. main.go sets it via WithWorkerCallbackToken from WORKER_CALLBACK_TOKEN.
+	workerCallbackToken string
 }
 
 // ServerOption customizes an optional Server dependency without churning every existing
@@ -144,6 +149,14 @@ func WithPetPageBaseURL(base string) ServerOption {
 			s.petPageBaseURL = base
 		}
 	}
+}
+
+// WithWorkerCallbackToken sets the static shared secret the asset-worker's render callback presents
+// (ADR-045). main.go passes the resolved WORKER_CALLBACK_TOKEN; an empty value (unwired) keeps the
+// /internal/asset-jobs endpoint fail-closed — authMiddleware's constant-time compare never matches an
+// empty secret, so nothing authenticates until it is set on BOTH core-api and the worker.
+func WithWorkerCallbackToken(token string) ServerOption {
+	return func(s *Server) { s.workerCallbackToken = token }
 }
 
 // NewServer builds the handler root. pool/nats may be nil in unit tests that don't

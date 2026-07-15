@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"net/http"
 	"strings"
@@ -54,6 +55,11 @@ const (
 	// only unlocks the un-masked contact; a stale cookie must never 401 a page any stranger can read. It is
 	// deliberately more lenient than admin authOptional (which 401s a present-but-bad cookie) for that reason.
 	authOptionalCustomer
+	// authService gates the in-cluster asset-worker's render callback (ReportAssetJobResult, ADR-045). A
+	// THIRD realm: the credential is a static shared secret (a Bearer), NOT a user/customer session, so it
+	// injects NO actor — the worker has no identity, only proof-of-trust. Compared constant-time against the
+	// configured workerCallbackToken; an unset token (empty) matches nothing → the endpoint is fail-closed.
+	authService
 )
 
 // classify maps a generated operationID to its gate. Unlisted operations fall through to
@@ -145,6 +151,12 @@ func classify(operationID string) authClass {
 		// access to "Cài đặt & nhân viên"). This is the ONE owner-only admin READ; every other admin
 		// read stays owner+staff via the default. The RBAC matrix the FE draws is display-only.
 		return authOwnerOnly
+	case "ReportAssetJobResult":
+		// The asset-worker render callback (ADR-045) — service-token auth, no user session. It writes an
+		// asset job's result + the product's model3d_url, so it must never be reachable by a browser/user
+		// credential; authService gates it on the static worker secret alone. Explicit (not the fail-closed
+		// default) because the default requires a USER actor, which a headless worker can never present.
+		return authService
 	case "RegisterCustomer", "LoginCustomer", "LogoutCustomer":
 		// Storefront customer auth entry points (PR-P1-r) — issuing or clearing a customer cookie
 		// can't itself require one (mirrors LoginUser/LogoutUser). Register/login gate on the
@@ -187,6 +199,20 @@ func (s *Server) authMiddleware(next api.StrictHandlerFunc, operationID string) 
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		class := classify(operationID)
 		if class == authPublic {
+			return next(ctx, w, r, request)
+		}
+
+		// authService: the asset-worker render callback (ADR-045). A static shared-secret Bearer, compared
+		// constant-time — no actor is resolved or injected (the worker has no identity). Fail-closed on an
+		// unset token: an empty workerCallbackToken can never equal a presented Bearer AND we reject up front,
+		// so a forgotten secret disables the endpoint rather than accepting an empty credential.
+		if class == authService {
+			if s.workerCallbackToken == "" {
+				return nil, errUnauthenticated
+			}
+			if subtle.ConstantTimeCompare([]byte(bearerToken(r)), []byte(s.workerCallbackToken)) != 1 {
+				return nil, errUnauthenticated
+			}
 			return next(ctx, w, r, request)
 		}
 

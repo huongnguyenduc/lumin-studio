@@ -54,7 +54,12 @@ kubectl apply -f infra/k8s/ingress.yaml
 # 6. Garage bootstrap (once) — see "Garage — bootstrap" below, then roll core-api so it picks up creds
 kubectl -n prod rollout restart deploy/core-api
 
-# 7. asset-worker — ONLY on a GPU-schedulable node (see "asset-worker — GPU prerequisite")
+# 7. asset-worker — ONLY on a GPU-schedulable node (see "asset-worker — GPU prerequisite").
+#    Apply the device plugin FIRST so the scheduler learns the node has a GPU, else the worker
+#    stays Pending. Wait for the node to report the resource before rolling the worker.
+kubectl apply -f infra/k8s/nvidia-device-plugin.yaml
+kubectl -n kube-system rollout status ds/nvidia-device-plugin-daemonset
+kubectl get nodes -o "custom-columns=NODE:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu"  # want GPU: 1, not <none>
 docker build -t lumin-asset-worker:prod services/asset-worker && k3d image import lumin-asset-worker:prod -c luminstudio
 kubectl apply -f infra/k8s/asset-worker.yaml && kubectl -n prod rollout status deploy/asset-worker
 
@@ -150,9 +155,13 @@ catalog (see `seed-catalog-job.yaml`) so there is something to order.
 - the **NVIDIA Container Toolkit** on the WSL2 host (driver on Windows, cuda-toolkit in WSL2 — never a
   Linux driver inside WSL2, ADR-007 / operations.md §GPU);
 - k3s to see the `nvidia` container runtime (it auto-creates the RuntimeClass), and the **NVIDIA k8s
-  device plugin** DaemonSet advertising `nvidia.com/gpu`;
+  device plugin** advertising `nvidia.com/gpu` — `kubectl apply -f infra/k8s/nvidia-device-plugin.yaml`
+  (runbook step 7). It stays `0/1 Running` until the node's GPU is visible; confirm the node reports
+  the resource before rolling the worker:
+  `kubectl get nodes -o "custom-columns=GPU:.status.allocatable.nvidia\.com/gpu"` → want `1`, not `<none>`.
 - k3d caveat: the k3s node is itself a container — it must be started with GPU access for passthrough
-  to reach the pod. Validate with `kubectl -n prod exec deploy/asset-worker -- blender -b --debug-cycles`
+  to reach BOTH the device plugin and the worker pod. Validate with
+  `kubectl -n prod exec deploy/asset-worker -- blender -b --debug-cycles`
   seeing the CUDA device before calling the pipeline done (Blender #126014).
 
 ## Backup & restore (ADR-018)
