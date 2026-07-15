@@ -1,0 +1,56 @@
+# Uptime Kuma — in-cluster uptime monitor + status page. Covers per-service DEPTH: is core-api up while
+# postgres is down, is garage reachable, is the worker stuck. It runs ON the box, so by itself it CANNOT
+# tell you the box/cluster died — pair it with an EXTERNAL check (Cloudflare Health Checks on www/api, see
+# README "Down-alert") for the whole-machine-down alert (operations.md §6).
+#
+# No public Ingress on purpose: reach the UI via `kubectl -n prod port-forward svc/uptime-kuma 3001:3001`
+# for setup, and only expose it behind Cloudflare Access if you want it remotely (don't leak an obs UI).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: uptime-kuma
+  namespace: prod
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # one sqlite PVC — never two pods on the same volume
+  selector:
+    matchLabels: { app: uptime-kuma }
+  template:
+    metadata:
+      labels: { app: uptime-kuma }
+    spec:
+      containers:
+        - name: uptime-kuma
+          image: louislam/uptime-kuma:1
+          ports:
+            - containerPort: 3001
+          volumeMounts:
+            - { name: data, mountPath: /app/data }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi } # ADR-014: cap so render/BFF win CPU
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: uptime-kuma-data }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: uptime-kuma-data
+  namespace: prod
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests: { storage: 1Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: uptime-kuma
+  namespace: prod
+spec:
+  selector: { app: uptime-kuma }
+  ports:
+    - { port: 3001, targetPort: 3001 }
