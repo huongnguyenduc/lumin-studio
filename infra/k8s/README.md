@@ -168,9 +168,13 @@ image + `archive_command` + a WAL store) — swap the mechanism, keep the offsit
 docker build -f infra/k8s/backup.Dockerfile -t lumin-backup:prod infra/k8s
 k3d image import lumin-backup:prod -c luminstudio
 
-# 2. offsite creds (see backup-secret.example.yaml). STORE RESTIC_PASSWORD OFFLINE TOO — lose it = lose
-#    every backup. That offline copy is the "1" of 3-2-1.
-kubectl -n prod create secret generic lumin-backup-secrets --from-literal=RESTIC_REPOSITORY=... # etc
+# 2. offsite creds (full command in backup-secret.example.yaml). Two things that bite:
+#    - RESTIC_REPOSITORY MUST carry the restic scheme: s3:https://s3.<region>.backblazeb2.com/<bucket>/lumin-pg
+#      A bare host (no s3:https://) is read as a LOCAL path — restic fake-inits an in-pod dir that vanishes,
+#      then backup fails with a MISLEADING ".../config: no such file or directory". (Bit us live 2026-07-15.)
+#    - STORE RESTIC_PASSWORD OFFLINE too (a password manager) — lose it = every backup is unrecoverable.
+kubectl -n prod create secret generic lumin-backup-secrets \
+  --from-literal=RESTIC_REPOSITORY="s3:https://s3.<region>.backblazeb2.com/<bucket>/lumin-pg" ... # see example file
 
 # 3. init the repo ONCE, then schedule + prove it runs now (don't wait for 03:00)
 kubectl -n prod run restic-init --rm -it --restart=Never --image=lumin-backup:prod \
@@ -179,6 +183,13 @@ kubectl apply -f infra/k8s/backup-cronjob.yaml
 kubectl -n prod create job --from=cronjob/postgres-backup backup-now
 kubectl -n prod logs -f job/backup-now   # expect: backup ok
 ```
+
+> **Backblaze B2 (the live backend, activated + verified 2026-07-15):** repo =
+> `s3:https://s3.us-east-005.backblazeb2.com/lumin-backup/lumin-pg`. Scope the B2 app key to just the bucket
+> (least privilege), and **leave B2 lifecycle rules OFF** — restic's `forget --prune` owns retention; a B2
+> auto-delete rule would drop pack files restic still needs and corrupt the repo. Verify anytime from a
+> `lumin-backup:prod` pod (`envFrom` `lumin-backup-secrets`): `restic snapshots` + `restic check` → expect the
+> daily snapshot and "no errors were found".
 
 **Restore drill — ADR-018 makes this non-negotiable; a backup you have never restored is not a backup.**
 Non-destructive: it restores into a scratch DB beside prod, never over prod. Run it once now (the site is
