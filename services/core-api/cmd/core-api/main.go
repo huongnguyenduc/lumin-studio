@@ -199,6 +199,7 @@ func main() {
 			httpapi.WithImageUploads(imageStore),
 			httpapi.WithTrackingSecret(cfg.TrackingSecret),
 			httpapi.WithPetPageBaseURL(cfg.PetPageBaseURL),
+			httpapi.WithWorkerCallbackToken(cfg.WorkerCallbackToken),
 		),
 		// ReadHeaderTimeout covers the Slowloris header vector. Read/Write/Idle
 		// timeouts are intentionally unset for now — TODO(phase-1): source

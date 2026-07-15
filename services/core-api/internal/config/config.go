@@ -92,6 +92,15 @@ type Config struct {
 	// carries a URL that serves today. Defaults to the canonical https://lumin.pet.
 	PetPageBaseURL string
 
+	// WorkerCallbackToken is the static shared secret the in-cluster asset-worker presents (as a Bearer)
+	// to the render callback PATCH /internal/asset-jobs/{id} (ADR-045). It is a SERVICE credential, not a
+	// user session — the worker has no identity. Deliberately NO dev fallback: an unset token leaves the
+	// callback fail-closed (it rejects every request via a constant-time compare that an empty secret can
+	// never satisfy), so a forgotten secret disables the endpoint rather than opening it. Set it in prod
+	// AND set the identical value in the worker (WORKER_CALLBACK_TOKEN). Compared constant-time in
+	// authMiddleware; rotating it just needs both sides updated.
+	WorkerCallbackToken string
+
 	// PaymentProofUploads configures the presigned POST surface that lets the storefront upload a
 	// receipt image directly to Garage/S3 before POST /orders references the returned finalUrl.
 	PaymentProofUploads PaymentProofUploadConfig
@@ -261,6 +270,8 @@ func Load() Config {
 		CustomerJWTTTL:    getenvDuration("CUSTOMER_JWT_TTL", 720*time.Hour),
 		TrackingSecret:    getenv("TRACKING_SECRET", DevTrackingSecret),
 		PetPageBaseURL:    getenv("PET_TAG_BASE_URL", "https://lumin.pet"),
+		// No dev fallback — empty leaves /internal/asset-jobs fail-closed (see the field doc).
+		WorkerCallbackToken: getenv("WORKER_CALLBACK_TOKEN", ""),
 		PaymentProofUploads: PaymentProofUploadConfig{
 			S3Endpoint:      getenv("PAYMENT_PROOF_S3_ENDPOINT", "http://127.0.0.1:3900"),
 			S3Region:        getenv("PAYMENT_PROOF_S3_REGION", "garage"),

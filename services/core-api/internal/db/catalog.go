@@ -258,6 +258,21 @@ func (c *Catalog) UpdateProductModelView(ctx context.Context, id uuid.UUID, view
 	return nil
 }
 
+// SetProductModel3dURL writes the LOD glb URL onto a product — the asset pipeline's ONE write of the
+// column UpdateProduct never touches (ADR-045). Called only from the render callback when a model_ingest
+// job reaches `ready`; the URL is host-pinned at the HTTP boundary. :execrows, so an unknown id (0 rows)
+// returns ErrNotFound — though asset_jobs.product_id is RESTRICT, so a live job always has its product.
+func (c *Catalog) SetProductModel3dURL(ctx context.Context, id uuid.UUID, url string) error {
+	rows, err := c.q.SetProductModel3dUrl(ctx, sqlc.SetProductModel3dUrlParams{ID: id, Model3dUrl: url})
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // CreateColor inserts a color and returns the persisted row.
 func (c *Catalog) CreateColor(ctx context.Context, arg sqlc.InsertColorParams) (sqlc.Color, error) {
 	return c.q.InsertColor(ctx, arg)

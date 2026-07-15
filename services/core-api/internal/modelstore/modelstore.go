@@ -154,6 +154,32 @@ func (s *Store) OwnsURL(raw string) bool {
 	return ok
 }
 
+// OwnsOutputURL reports whether raw is a URL under this store's assets origin — same scheme+host+base
+// path, no query/fragment/encoded path, non-empty key — WITHOUT the strict minted-key-shape check OwnsURL
+// applies. The asset worker writes derivative OUTPUTS (the LOD glb) under its own key namespace in the same
+// bucket, so the render callback (ReportAssetJobResult) host-pins them to this origin — a stored
+// content-injection guard, since model3d_url becomes a client-side <model-viewer src> — while allowing a
+// key shape this server never minted (that is why OwnsURL, which demands <prefix>/YYYY/MM/DD/<uuid>.<ext>,
+// is too strict for an output URL).
+func (s *Store) OwnsOutputURL(raw string) bool {
+	if s == nil {
+		return false
+	}
+	u, err := parseHTTPURL(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+	base, err := parseHTTPURL(s.cfg.PublicBaseURL)
+	if err != nil {
+		return false
+	}
+	if !sameURLOrigin(u, base) || u.RawQuery != "" || u.Fragment != "" || u.RawPath != "" {
+		return false
+	}
+	_, ok := objectKeyFromFinalPath(u.Path, base.Path)
+	return ok
+}
+
 // objectKeyFromURL returns the object key iff raw is a URL this store owns (see OwnsURL).
 func (s *Store) objectKeyFromURL(raw string) (string, bool) {
 	if s == nil {

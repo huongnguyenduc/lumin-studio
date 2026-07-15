@@ -123,6 +123,11 @@ type Querier interface {
 	// rather than silently succeeding on a bogus id.
 	DeleteReplyTemplate(ctx context.Context, id uuid.UUID) (int64, error)
 	GetAssetJobByID(ctx context.Context, id uuid.UUID) (AssetJob, error)
+	// GetAssetJobByIDForUpdate row-locks the job for the worker-callback tx (ReportAssetJobResult): the
+	// handler reads the job under FOR UPDATE, decides idempotency (a `ready` job is terminal + sticky),
+	// then writes status + the product's model3d_url in the SAME tx. The lock serializes overlapping
+	// at-least-once redeliveries so two callbacks can't race a lost update onto one row.
+	GetAssetJobByIDForUpdate(ctx context.Context, id uuid.UUID) (AssetJob, error)
 	GetCustomerByID(ctx context.Context, id uuid.UUID) (Customer, error)
 	// GetCustomerByLoginEmail resolves a login (PR-P1-r): only CREDENTIALED customers (password_hash
 	// NOT NULL) are candidates, matched case-insensitively on lower(email) — the exact predicate +
@@ -526,6 +531,12 @@ type Querier interface {
 	// SetOrderItemCostSnapshot writes the frozen COGS blob (the rollup marshals it in Go). Best-effort,
 	// post-commit — a failure leaves cost_snapshot NULL ("chưa chốt", backfillable), never blocking the board.
 	SetOrderItemCostSnapshot(ctx context.Context, arg SetOrderItemCostSnapshotParams) error
+	// SetProductModel3dUrl is the asset pipeline's write of the LOD glb URL (the column UpdateProduct
+	// deliberately never touches). Called only from the worker render callback (ReportAssetJobResult) when a
+	// `model_ingest` job reaches `ready`, so the storefront's on-demand 3D viewer has a model to load. The
+	// URL is host-pinned to the assets origin at the HTTP boundary before it reaches here. :execrows so a
+	// vanished product surfaces (0 rows) — though asset_jobs.product_id is RESTRICT, so it should always hit 1.
+	SetProductModel3dUrl(ctx context.Context, arg SetProductModel3dUrlParams) (int64, error)
 	// SetShippingArtifacts persists the two mandatory SHIPPING artifacts — the carrier tracking code
 	// and the QC packing photo (D-P3-6) — on the PRINTING→SHIPPING transition. The status flip itself
 	// goes through UpdateOrderStatus (order.Transition guard); the transition handler runs this in the

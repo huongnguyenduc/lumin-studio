@@ -20,6 +20,7 @@ Service: `core-api` (Go), `asset-worker` (Rust+Blender, `--gpus all`), `postgres
 1. Cài **driver NVIDIA trên Windows** (R535+). **KHÔNG** cài driver GPU Linux trong WSL2 (ghi đè libcuda → hỏng `/dev/dxg`).
 2. Trong WSL2 Ubuntu: cài **`cuda-toolkit-12-x`** từ repo `wsl-ubuntu`.
 3. **NVIDIA Container Toolkit**: `nvidia-ctk runtime configure --runtime=docker`; verify bằng container `nbody`/`nvidia-smi`.
+3b. **k8s device plugin** (khi deploy qua k3s, không phải compose): `kubectl apply -f infra/k8s/nvidia-device-plugin.yaml` để node quảng bá `nvidia.com/gpu` — nếu thiếu, `asset-worker` treo **Pending** mãi (scheduler không biết node có GPU). Xác nhận `kubectl get nodes -o "custom-columns=GPU:.status.allocatable.nvidia\.com/gpu"` ra `1`. Chi tiết: `infra/k8s/README.md` §asset-worker — GPU prerequisite.
 4. **Validate Blender thấy GPU trong chính container worker** (`blender -b --debug-cycles`) — Blender hay báo "No Compatible GPUs Found on WSL2" (#126014), thường fix bằng cuda-toolkit ở bước 2. Chưa pass = pipeline chưa xong.
 
 ## 4. CI/CD

@@ -14,6 +14,13 @@ RETURNING *;
 -- name: GetAssetJobByID :one
 SELECT * FROM asset_jobs WHERE id = $1;
 
+-- GetAssetJobByIDForUpdate row-locks the job for the worker-callback tx (ReportAssetJobResult): the
+-- handler reads the job under FOR UPDATE, decides idempotency (a `ready` job is terminal + sticky),
+-- then writes status + the product's model3d_url in the SAME tx. The lock serializes overlapping
+-- at-least-once redeliveries so two callbacks can't race a lost update onto one row.
+-- name: GetAssetJobByIDForUpdate :one
+SELECT * FROM asset_jobs WHERE id = $1 FOR UPDATE;
+
 -- name: ListAssetJobsByStatus :many
 SELECT * FROM asset_jobs WHERE status = $1 ORDER BY created_at;
 

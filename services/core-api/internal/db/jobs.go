@@ -36,6 +36,18 @@ func (j *Jobs) AssetJobByID(ctx context.Context, id uuid.UUID) (sqlc.AssetJob, e
 	return row, err
 }
 
+// AssetJobByIDForUpdate reads the job under a FOR UPDATE row lock, or ErrNotFound. Construct Jobs over a
+// pgx.Tx (NewJobs(tx)) so the lock is held for the render-callback tx: the handler reads → decides
+// idempotency (a `ready` job is terminal, left untouched) → writes status + model3d_url, and the lock
+// serializes overlapping at-least-once redeliveries so two callbacks can't race a lost update.
+func (j *Jobs) AssetJobByIDForUpdate(ctx context.Context, id uuid.UUID) (sqlc.AssetJob, error) {
+	row, err := j.q.GetAssetJobByIDForUpdate(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.AssetJob{}, ErrNotFound
+	}
+	return row, err
+}
+
 // AssetJobsByStatus lists asset jobs in a status, oldest first (the worker/relay drain order).
 func (j *Jobs) AssetJobsByStatus(ctx context.Context, status sqlc.AssetJobStatus) ([]sqlc.AssetJob, error) {
 	return j.q.ListAssetJobsByStatus(ctx, status)

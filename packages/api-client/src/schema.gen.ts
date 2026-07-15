@@ -1229,6 +1229,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/asset-jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Asset-worker render callback — report a job's lifecycle result (service-auth).
+         * @description The in-cluster asset-worker calls this to report an AssetJob's progress/result (ADR-045). It is the OUTPUT half of the pipeline: the worker drains `asset_job.created` off the JetStream WorkQueue, renders/ingests, then reports `processing` → `ready` (with the derivative `model3dUrl` for a `model_ingest` job) or `failed` (with `lastError`). On a `ready` `model_ingest` the server writes the LOD `model3d_url` onto the product (D3) — the ONE writer of that column.
+         *     Auth is `serviceAuth` (a static worker bearer), NOT a user session — the worker has no identity. Idempotent + at-least-once safe: `ready` is terminal + sticky, so a redelivered callback returns the job unchanged and never clobbers the stored result. `model3dUrl`, when present, MUST be a URL under this store's assets origin (a stored content-injection guard — it becomes a client-side `<model-viewer src>`); a `ready` `model_ingest` with no `model3dUrl` is a 400. Unknown job → 404.
+         */
+        patch: operations["reportAssetJobResult"];
+        trace?: never;
+    };
     "/admin/filament-materials": {
         parameters: {
             query?: never;
@@ -2057,6 +2080,21 @@ export interface components {
             sourceModelUrl: string;
             /** @description Content hash of the uploaded source object (ADR-004 — Garage has no versioning). */
             sourceVersion: string;
+        };
+        /** @description The asset-worker's render-callback body (PATCH /internal/asset-jobs/{id}, ADR-045). `status` is the worker-reachable lifecycle subset (never `queued` — that is the initial state). `model3dUrl` is the derivative LOD glb the worker uploaded, required on a `ready` `model_ingest` and written to the product's `model3d_url`; it MUST be under this store's assets origin. `lastError` accompanies `failed`. The productId is resolved from the job row, never the body. */
+        AssetJobResultInput: {
+            /**
+             * @description The worker-reported lifecycle state (a subset of AssetJobStatus — never `queued`).
+             * @enum {string}
+             */
+            status: "processing" | "ready" | "failed";
+            /**
+             * Format: uri
+             * @description The uploaded derivative LOD glb URL. Required on a `ready` `model_ingest`; must be under this store's assets origin (host-pinned). Ignored for `sprite_render` (its output has no product column yet).
+             */
+            model3dUrl?: string;
+            /** @description Failure reason, set with `failed`. Cleared when the job reaches `ready`. */
+            lastError?: string;
         };
         /** @description One render/ingest job for a product (migration 000006). The admin editor reads this to show render status. attempts/lastError/completedAt are written by the slice-3 worker; a freshly enqueued job is `queued` with 0 attempts and null lastError/completedAt. */
         AssetJob: {
@@ -5017,6 +5055,35 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    reportAssetJobResult: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssetJobResultInput"];
+            };
+        };
+        responses: {
+            /** @description The updated asset job (or the unchanged job when it was already `ready`). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetJob"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
     };

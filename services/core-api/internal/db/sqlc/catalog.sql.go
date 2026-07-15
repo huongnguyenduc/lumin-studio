@@ -1136,6 +1136,28 @@ func (q *Queries) ReorderCategories(ctx context.Context, ids []uuid.UUID) error 
 	return err
 }
 
+const setProductModel3dUrl = `-- name: SetProductModel3dUrl :execrows
+UPDATE products SET model3d_url = $2 WHERE id = $1
+`
+
+type SetProductModel3dUrlParams struct {
+	ID         uuid.UUID `json:"id"`
+	Model3dUrl string    `json:"model3dUrl"`
+}
+
+// SetProductModel3dUrl is the asset pipeline's write of the LOD glb URL (the column UpdateProduct
+// deliberately never touches). Called only from the worker render callback (ReportAssetJobResult) when a
+// `model_ingest` job reaches `ready`, so the storefront's on-demand 3D viewer has a model to load. The
+// URL is host-pinned to the assets origin at the HTTP boundary before it reaches here. :execrows so a
+// vanished product surfaces (0 rows) — though asset_jobs.product_id is RESTRICT, so it should always hit 1.
+func (q *Queries) SetProductModel3dUrl(ctx context.Context, arg SetProductModel3dUrlParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setProductModel3dUrl, arg.ID, arg.Model3dUrl)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateCategory = `-- name: UpdateCategory :one
 UPDATE categories
 SET slug = $2, name = $3, description = $4, image_url = $5, visible = $6
