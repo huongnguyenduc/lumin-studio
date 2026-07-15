@@ -32,9 +32,9 @@ spec:
             # Server-to-server (internal DNS). Worker binds the ASSET_JOBS JetStream WorkQueue here and
             # pulls asset_job.created (core-api provisions the stream; the worker owns the consumer).
             - { name: NATS_URL, value: nats://nats:4222 }
-            # Render callback (ADR-045): report each job's result to core-api. WORKER_CALLBACK_TOKEN MUST
-            # equal core-api's; optional:true — until it is set the callback 401s and the job redelivers
-            # (harmless this slice: the Unimplemented processor naks every job anyway, so nothing reports).
+            # Render callback (ADR-045): report each model_ingest result to core-api. WORKER_CALLBACK_TOKEN
+            # MUST equal core-api's; optional:true — until it is set the callback 401s and the job
+            # redelivers (a good model re-renders idempotently; core-api's `ready` is sticky).
             - { name: CORE_API_URL, value: http://core-api:8080 }
             - name: WORKER_CALLBACK_TOKEN
               valueFrom:
@@ -42,8 +42,27 @@ spec:
                   name: lumin-secrets
                   key: WORKER_CALLBACK_TOKEN
                   optional: true
-            # Reserved for the NEXT slice (the real per-kind processors that write derivatives): Garage
-            # creds (mirrors core-api's ASSETS_* key) for uploading the LOD glb / 360° sprite.
+            # Assets bucket (lumin-assets): fetch the source model + upload the derivative glb. Endpoint is
+            # the INTERNAL Garage (in-cluster, plain http); PUBLIC base is the origin core-api host-pins the
+            # output URL against (must match core-api's MODEL_UPLOAD_PUBLIC_BASE_URL). Creds are the ASSETS
+            # key (read+write), optional:true — unset ⇒ model_ingest redelivers until the Garage bootstrap
+            # (README) creates the key. sprite_render's own upload joins here when Blender lands.
+            - { name: ASSETS_S3_ENDPOINT, value: http://garage:3900 }
+            - { name: ASSETS_S3_REGION, value: garage }
+            - { name: ASSETS_BUCKET, value: lumin-assets }
+            - { name: ASSETS_PUBLIC_BASE_URL, value: 'https://s3.luminstudio.vn/lumin-assets' }
+            - name: ASSETS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: lumin-secrets
+                  key: ASSETS_ACCESS_KEY_ID
+                  optional: true
+            - name: ASSETS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: lumin-secrets
+                  key: ASSETS_SECRET_ACCESS_KEY
+                  optional: true
           resources:
             limits:
               nvidia.com/gpu: 1 # requires the NVIDIA k8s device plugin (see README)

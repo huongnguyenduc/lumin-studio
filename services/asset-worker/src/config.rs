@@ -29,6 +29,20 @@ pub struct Config {
     /// Static service Bearer the callback presents (ADR-045 `authService`). Empty until wired — the
     /// endpoint is fail-closed, so reports 401 and the job redelivers (harmless until both sides are set).
     pub worker_callback_token: String,
+    /// Interpreter that has trimesh, for the model_ingest subprocess (INGEST_PYTHON). `python3` on the
+    /// baked image; a venv path in local dev/tests.
+    pub ingest_python: String,
+    /// Path to the baked `ingest.py` (INGEST_SCRIPT). Defaults to its image location.
+    pub ingest_script: String,
+    /// Assets bucket (lumin-assets) access — the worker fetches the source model + uploads the glb here.
+    /// `endpoint` is the INTERNAL Garage API; `public_base` the PUBLIC origin for URLs (see objectstore).
+    /// Empty endpoint/public_base/creds ⇒ model_ingest is fail-closed (jobs redeliver, never failed).
+    pub assets_endpoint: String,
+    pub assets_region: String,
+    pub assets_bucket: String,
+    pub assets_public_base: String,
+    pub assets_access_key: String,
+    pub assets_secret: String,
 }
 
 impl Config {
@@ -46,7 +60,35 @@ impl Config {
             heartbeat: Duration::from_secs(env_u64("ASSET_HEARTBEAT_SECS", 10)),
             core_api_url: env_or("CORE_API_URL", "http://127.0.0.1:8080"),
             worker_callback_token: env_or("WORKER_CALLBACK_TOKEN", ""),
+            ingest_python: env_or("INGEST_PYTHON", "python3"),
+            ingest_script: env_or("INGEST_SCRIPT", "/opt/asset-worker/pysrc/ingest.py"),
+            assets_endpoint: env_or("ASSETS_S3_ENDPOINT", ""),
+            assets_region: env_or("ASSETS_S3_REGION", "garage"),
+            assets_bucket: env_or("ASSETS_BUCKET", "lumin-assets"),
+            assets_public_base: env_or("ASSETS_PUBLIC_BASE_URL", ""),
+            assets_access_key: env_or("ASSETS_ACCESS_KEY_ID", ""),
+            assets_secret: env_or("ASSETS_SECRET_ACCESS_KEY", ""),
         }
+    }
+
+    /// The assets store config, iff the load-bearing fields (endpoint, public base, creds) are wired.
+    /// None ⇒ model_ingest can't fetch/upload, so it fails closed (redeliver) — see ModelIngestProcessor.
+    pub fn assets_config(&self) -> Option<crate::objectstore::AssetStoreConfig> {
+        if self.assets_endpoint.is_empty()
+            || self.assets_public_base.is_empty()
+            || self.assets_access_key.is_empty()
+            || self.assets_secret.is_empty()
+        {
+            return None;
+        }
+        Some(crate::objectstore::AssetStoreConfig {
+            s3_endpoint: self.assets_endpoint.clone(),
+            s3_region: self.assets_region.clone(),
+            bucket: self.assets_bucket.clone(),
+            public_base_url: self.assets_public_base.clone(),
+            access_key_id: self.assets_access_key.clone(),
+            secret_access_key: self.assets_secret.clone(),
+        })
     }
 }
 
