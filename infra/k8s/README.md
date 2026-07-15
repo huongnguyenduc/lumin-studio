@@ -263,6 +263,15 @@ deploy asset-worker → the Blender-sees-GPU check above (o-1c).
 **5. Verify:** www/admin/api `200`, an existing order still opens, a public asset serves via
 `assets.luminstudio.vn`.
 
+> ⚠️ **WSL2 outcome (proven 2026-07-15).** This recreate DOES put the GPU into the k3d node container
+> (`docker exec k3d-luminstudio-server-0 nvidia-smi -L` → the GTX 1060; `/dev/dxg` present) and k3s
+> auto-creates RuntimeClass `nvidia` — BUT **pods still can't use it**: the device-plugin's NVML init
+> fails (`ERROR_NOT_SUPPORTED`) and a pod under `runtimeClassName: nvidia` gets `NVML: N/A`. The
+> nvidia-container-toolkit injects the WSL GPU libs host→node-container but NOT node-container→pod (nested
+> containerd doesn't detect WSL). **In-cluster GPU is not viable on this k3d + WSL2 box** — step 4 never
+> advertises `nvidia.com/gpu`. Run the render worker OUT of the cluster (`docker run --gpus all`, which
+> works — the ADR-047 rejected-option (a)) instead. The recreate is still fine for the web stack.
+
 ## Backup & restore (ADR-018)
 
 Daily `pg_dump -Fc` → **restic** snapshot to an **offsite** encrypted repo, retention 7d/4w/6m

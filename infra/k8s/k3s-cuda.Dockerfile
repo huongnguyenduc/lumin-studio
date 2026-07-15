@@ -21,7 +21,7 @@ FROM nvcr.io/nvidia/cuda:${CUDA_TAG}
 # nvidia-container-toolkit + wire it into containerd (writes the `nvidia` runtime handler). k3s then
 # auto-detects that runtime on start and creates the `nvidia` RuntimeClass the device-plugin + worker use.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl gnupg ca-certificates \
+    && apt-get install -y --no-install-recommends curl gnupg ca-certificates tzdata \
     && curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
        | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
     && curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
