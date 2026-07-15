@@ -1,14 +1,19 @@
 //! asset-worker — Lumin Studio asset pipeline worker (Rust + Blender).
 //!
-//! Phase 0 scaffold: process boot only. It initialises structured logging,
-//! loads config from the environment, connects to NATS and idles until a
-//! shutdown signal. The real pipeline — consuming AssetJob from a JetStream
-//! WorkQueue (`concurrency = 1`), normalising the model with trimesh, rendering
-//! a 360° sprite with Blender (Cycles + CUDA, run as a subprocess — never a
-//! poster) and writing derivatives to Garage — lands in later phases. See
+//! Consumes `asset_job.created` off the JetStream **WorkQueue** ASSET_JOBS (concurrency = 1), runs the
+//! pipeline, and reports each result back to core-api via the render callback (ADR-045). This slice
+//! ships the reliability spine — the durable consumer, the process→report→ack lifecycle (at-least-once,
+//! InProgress heartbeat, DLQ on max-deliver), and the callback client — with the actual per-kind
+//! processing behind a seam (`processor::Processor`). The real processors — `model_ingest` (trimesh
+//! normalize + gltf-transform LOD glb, CPU) and `sprite_render` (Blender Cycles+CUDA on the GTX 1060,
+//! never a poster) — shell out to subprocesses and land in a later, tooling/GPU-gated slice. See
 //! `docs/architecture.md` §5.3 and `conventions.md` §3D-upload / §Queue.
 
+mod callback;
 mod config;
+mod job;
+mod pipeline;
+mod processor;
 mod worker;
 
 use anyhow::Result;

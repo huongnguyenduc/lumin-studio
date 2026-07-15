@@ -29,13 +29,21 @@ spec:
           image: lumin-asset-worker:prod
           imagePullPolicy: IfNotPresent # locally imported (no registry) — never try to pull
           env:
-            # Server-to-server (internal DNS). Worker pulls AssetJob off JetStream here.
+            # Server-to-server (internal DNS). Worker binds the ASSET_JOBS JetStream WorkQueue here and
+            # pulls asset_job.created (core-api provisions the stream; the worker owns the consumer).
             - { name: NATS_URL, value: nats://nats:4222 }
-            # Reserved for the render pipeline (consumer not built yet — the scaffold only idles on NATS):
-            #   - Garage creds (mirrors core-api's ASSETS_* key) for uploading the derivative glb/sprite.
-            #   - CORE_API_URL=http://core-api:8080 + WORKER_CALLBACK_TOKEN (the SAME value as core-api's,
-            #     ADR-045) for PATCH /internal/asset-jobs/{id} to report results. Add both when the
-            #     JetStream WorkQueue consumer + Blender pipeline land.
+            # Render callback (ADR-045): report each job's result to core-api. WORKER_CALLBACK_TOKEN MUST
+            # equal core-api's; optional:true — until it is set the callback 401s and the job redelivers
+            # (harmless this slice: the Unimplemented processor naks every job anyway, so nothing reports).
+            - { name: CORE_API_URL, value: http://core-api:8080 }
+            - name: WORKER_CALLBACK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: lumin-secrets
+                  key: WORKER_CALLBACK_TOKEN
+                  optional: true
+            # Reserved for the NEXT slice (the real per-kind processors that write derivatives): Garage
+            # creds (mirrors core-api's ASSETS_* key) for uploading the LOD glb / 360° sprite.
           resources:
             limits:
               nvidia.com/gpu: 1 # requires the NVIDIA k8s device plugin (see README)
