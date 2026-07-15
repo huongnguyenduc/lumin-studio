@@ -2,6 +2,7 @@
 # artifacts) and would bust the COPY layer cache; the rest is docs/build-meta the binary
 # never embeds.
 /target
+/testdata
 Dockerfile
 .dockerignore
 .gitignore

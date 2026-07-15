@@ -11,11 +11,10 @@
 
 mod callback;
 mod config;
-// allow(dead_code): the model_ingest Processor that calls run_ingest lands in the next slice (it needs
-// the S3 fetch/upload too); this module is built + verified in isolation first. Remove the allow then.
-#[allow(dead_code)]
 mod ingest;
 mod job;
+mod model_ingest;
+mod objectstore;
 mod pipeline;
 mod processor;
 mod worker;

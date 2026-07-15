@@ -16,6 +16,8 @@ use futures::StreamExt;
 use crate::callback::{HttpReporter, Reporter};
 use crate::config::Config;
 use crate::job::AssetJob;
+use crate::model_ingest::{Dispatcher, ModelIngestProcessor};
+use crate::objectstore::AssetStore;
 use crate::pipeline::{handle_job, Ack};
 use crate::processor::{Processor, Unimplemented};
 
@@ -27,10 +29,37 @@ pub async fn run(cfg: Config) -> Result<()> {
     tracing::info!("connected to NATS");
 
     let reporter = HttpReporter::new(&cfg);
-    // The real per-kind processors (trimesh ingest, Blender sprite) land in a later, tooling/GPU-gated
-    // slice; until then Unimplemented returns Transient so jobs redeliver and wait (never failed/lost).
-    let processor = Unimplemented;
+    let processor = build_processor(&cfg);
     consume(client, &cfg, &processor, &reporter).await
+}
+
+/// Builds the job dispatcher: a real `ModelIngestProcessor` (trimesh) for `model_ingest`, and
+/// `Unimplemented` for `sprite_render` (Blender/GPU, a later slice). The assets store is None when its
+/// creds are unwired (or fail to build) — model_ingest then redelivers (fail-closed), never failed.
+fn build_processor(cfg: &Config) -> Dispatcher {
+    let store = match cfg.assets_config() {
+        Some(sc) => match AssetStore::new(sc) {
+            Ok(s) => Some(s),
+            Err(e) => {
+                tracing::error!(error = %e, "assets store build failed — model_ingest will redeliver");
+                None
+            }
+        },
+        None => {
+            tracing::warn!(
+                "assets bucket unconfigured — model_ingest redelivers until ASSETS_* creds are set"
+            );
+            None
+        }
+    };
+    Dispatcher {
+        model_ingest: ModelIngestProcessor {
+            store,
+            python: cfg.ingest_python.clone(),
+            script: cfg.ingest_script.clone().into(),
+        },
+        sprite_render: Unimplemented,
+    }
 }
 
 /// consume binds the durable WorkQueue consumer and drives the drain loop.

@@ -8,9 +8,9 @@
 #
 # Render constraints (ADR-007 — do not relitigate): Cycles + CUDA only (no OptiX — Pascal has no
 # RT cores; no EEVEE — dies headless), Blender run as a subprocess, concurrency=1, off-peak. The
-# Rust worker today is a Phase-0 scaffold (connects to NATS + idles — no consumer, no Blender call
-# yet); Blender is baked in NOW so the deploy substrate + GPU gate are proven before the render
-# pipeline lands (a later worker phase).
+# worker consumes the ASSET_JOBS WorkQueue and runs model_ingest (trimesh, CPU — baked below);
+# sprite_render (Blender/GPU) is wired but still Unimplemented, so Blender stays baked in NOW to keep
+# the GPU deploy substrate + in-container CUDA gate proven ahead of that step.
 
 # --- build: compile the worker binary ---
 # bullseye (glibc 2.31), NOT bookworm (2.36): the binary must run on the ubuntu 22.04 runtime
@@ -46,9 +46,16 @@ ARG BLENDER_VERSION=4.2.3
 # The exact lib set is superset-then-prune: the on-box render gate is what confirms/trims it.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates xz-utils \
+      python3 python3-pip \
       libx11-6 libxext6 libxrender1 libxi6 libxxf86vm1 libxfixes3 libxkbcommon0 \
       libxrandr2 libxinerama1 libxcursor1 libsm6 libgl1 libglx-mesa0 libglu1-mesa \
     && rm -rf /var/lib/apt/lists/*
+
+# model_ingest CPU tooling: the trimesh geometry step (pysrc/ingest.py) runs as a subprocess (ADR-007).
+# This is CPU-only (no GPU) — sprite_render's Blender is the GPU half. Baked here so a deployed worker can
+# actually process model_ingest; the box build confirms the wheels resolve on the image's python (3.10).
+COPY pysrc/ /opt/asset-worker/pysrc/
+RUN pip3 install --no-cache-dir -r /opt/asset-worker/pysrc/requirements.txt
 
 # ponytail: no --checksum on the download — HTTPS from blender.org is the v1; add
 # `ADD --checksum=sha256:<hash>` to pin the tarball if supply-chain hardening is wanted.

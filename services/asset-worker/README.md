@@ -20,14 +20,20 @@ bakes trimesh/gltf-transform into the image and wires the Garage upload creds.
 The reliability logic (payload parse, `pipeline::decide`, `handle_job`) is fully unit-tested Docker-free;
 the live NATS bind + drain is a **deploy-time smoke** (below), mirroring the o-1c Blender-sees-GPU gate.
 
-**model_ingest geometry step** (`pysrc/ingest.py` + `src/ingest.rs`) — the CPU transform is now built:
-trimesh loads a source model (.glb/.stl/.obj/.3mf), recenters it, exports a glb, and reports its
-bounding-box dims (the values that prefill Product). The Rust wrapper runs it as a subprocess (ADR-007)
-and classifies failures (bad model → Permanent/`failed`; missing tool → Transient/redeliver). It is NOT
-yet wired into the live `Processor` — the S3 fetch/upload + `ModelIngestProcessor` + the Dockerfile
-trimesh bake are the next slice. Verified: pure parse/classify tests run in CI; the **real trimesh**
-transform runs against `testdata/box.obj` when `INGEST_PYTHON` points at a trimesh-capable python
-(`INGEST_PYTHON=/path/to/venv/bin/python3 cargo test real_trimesh`) — skips otherwise.
+**model_ingest is WIRED end-to-end.** `Dispatcher` routes `model_ingest` to `ModelIngestProcessor`
+(`sprite_render` stays `Unimplemented`). The processor: fetch the source model from lumin-assets
+(`objectstore.rs`, object_store/S3) → run the trimesh step (`pysrc/ingest.py` via `ingest.rs`, on a
+`spawn_blocking` thread so the heartbeat keeps firing) → upload the glb at a content-addressed key
+(`derivatives/<source_version>/model.glb`, so a re-render is idempotent) → report `ready` + the URL via
+the callback. The output URL is under the assets public base, so core-api's `OwnsOutputURL` host-pin
+accepts it. `sprite_render` (Blender/GPU) and the dims→Product prefill (needs a callback field) are the
+remaining follow-ups.
+
+Verified: pure URL/dispatch/classify tests run in CI; the **real trimesh** transform runs against
+`testdata/box.obj` with `INGEST_PYTHON`; the **full fetch→ingest→upload round-trip** runs against a local
+S3 with `MODEL_INGEST_TEST_S3` + `INGEST_PYTHON` + `ASSETS_*` (create the bucket, put `testdata/box.obj`
+at `test/box.obj`, then `cargo test real_e2e`) — both skip in CI. The image build (python3 + trimesh) is
+box-verified, like the Blender bake.
 
 ### Locked constraints for later phases (do not relitigate)
 
