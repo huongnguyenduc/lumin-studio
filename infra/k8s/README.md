@@ -159,16 +159,21 @@ kubectl -n prod exec deploy/garage -- /garage bucket info lumin-assets   # verif
 
 3. **CORS (model-viewer only):** plain `<img>` needs none, but the storefront `<model-viewer>` fetches the
    `.glb` cross-origin (`www.` → `assets.`), so the web endpoint must return `Access-Control-Allow-Origin`.
-   Verify against a real key:
+   **Confirmed live 2026-07-15 (ADR-046): Garage v1.0.1's web endpoint DOES replay the bucket CORS rules** —
+   an OPTIONS preflight from `https://www.luminstudio.vn` returns `200` + `access-control-allow-origin`
+   echoing the origin, so the existing `PutBucketCors` GET rules for `www.`/`admin.` (set above) already
+   cover model-viewer with no extra config. Re-verify after any bucket/CORS rebuild (CORS is prod state, not
+   in a manifest):
 
    ```sh
-   curl -sI https://assets.luminstudio.vn/<key> -H 'Origin: https://www.luminstudio.vn' \
+   curl -si -X OPTIONS https://assets.luminstudio.vn/<key> \
+     -H 'Origin: https://www.luminstudio.vn' -H 'Access-Control-Request-Method: GET' \
      | grep -iE 'HTTP/|access-control-allow-origin'   # want 200 + an ACAO echoing the origin
    ```
 
-   If ACAO is missing (Garage's web endpoint may not replay the bucket CORS rules), add a Cloudflare
-   **Response Header Transform Rule** on `assets.luminstudio.vn` setting `Access-Control-Allow-Origin: *` —
-   the assets are public + immutable, so `*` is safe.
+   Fallback, only if the bucket CORS is ever lost and can't be replayed: a Cloudflare **Response Header
+   Transform Rule** on `assets.luminstudio.vn` setting `Access-Control-Allow-Origin: *` — the assets are
+   public + immutable, so `*` is safe.
 
 > **Website mode + the alias are prod state NOT in a manifest** — like the CORS/layout bootstrap, re-run the
 > two `garage bucket` commands after any garage/bucket rebuild, or every public image + `.glb` 404s.
