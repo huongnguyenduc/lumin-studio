@@ -8,9 +8,17 @@ and [`conventions.md`](../../docs/conventions.md) §3D-upload / §Queue.
 
 ## Status
 
-**Phase 0 scaffold.** Process boot only: JSON structured logging, env config,
-a NATS connection, and graceful shutdown on SIGINT/SIGTERM. No JetStream
-consumer and no Blender yet.
+**Consumer spine (ADR-045).** A durable JetStream **WorkQueue** pull consumer over `ASSET_JOBS` binds
+`asset_job.created` (concurrency = 1), runs the process→report→ack lifecycle — at-least-once, InProgress
+heartbeat, DLQ on max-deliver — and reports each result to core-api via the render callback
+(`PATCH /internal/asset-jobs/{id}`). The **actual per-kind processing is a seam** (`processor::Processor`):
+the binary wires `Unimplemented` (every job → Transient → redeliver, so nothing is consumed or failed) until
+the real processors land — `model_ingest` (trimesh normalize + gltf-transform LOD glb, **CPU**) and
+`sprite_render` (Blender Cycles+CUDA on the GTX 1060, **GPU**) — a later, tooling/GPU-gated slice that also
+bakes trimesh/gltf-transform into the image and wires the Garage upload creds.
+
+The reliability logic (payload parse, `pipeline::decide`, `handle_job`) is fully unit-tested Docker-free;
+the live NATS bind + drain is a **deploy-time smoke** (below), mirroring the o-1c Blender-sees-GPU gate.
 
 ### Locked constraints for later phases (do not relitigate)
 
@@ -34,8 +42,16 @@ cargo test
 make verify-rs   # cargo fmt --check + clippy -D warnings + cargo test
 ```
 
-Env: `NATS_URL` (default `nats://127.0.0.1:4222`), `ASSET_JOB_SUBJECT`
-(default `asset.job`), `RUST_LOG` (default `info`).
+Env: `NATS_URL` (`nats://127.0.0.1:4222`), `ASSET_STREAM` (`ASSET_JOBS`), `ASSET_DURABLE`
+(`asset-worker`), `ASSET_JOB_SUBJECT` (`asset_job.created`), `ASSET_MAX_DELIVER` (`5`),
+`ASSET_ACK_WAIT_SECS` (`30`), `ASSET_HEARTBEAT_SECS` (`10`), `CORE_API_URL` (`http://127.0.0.1:8080`),
+`WORKER_CALLBACK_TOKEN` (empty → callback 401s, harmless until the real processor + token land),
+`RUST_LOG` (`info`).
+
+**Live drain smoke (on the deployed cluster, once the real processor lands):** publish a test
+`asset_job.created` onto `ASSET_JOBS`, then confirm the worker logs `processing asset job` and (for a
+`model_ingest`) the product's `model3d_url` is set. With the current `Unimplemented` processor the job
+just redelivers — the honest signal that no real processor is wired yet.
 
 ## Container image + GPU gate (o-1c)
 

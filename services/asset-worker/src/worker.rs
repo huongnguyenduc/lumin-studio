@@ -1,33 +1,138 @@
-//! The asset-pipeline worker loop.
+//! The asset-pipeline worker loop: a durable JetStream **WorkQueue** pull consumer over the ASSET_JOBS
+//! stream (core-api provisions the stream; the worker owns the consumer — natsx/conn.go). It pulls one
+//! `asset_job.created` at a time (concurrency = 1, ADR-007/ADR-014), runs the pipeline with an InProgress
+//! heartbeat so a long render is not redelivered mid-flight, then settles the message (ack/nak/term).
+//! Durability lives in JetStream + the committed asset_jobs row, so a crash loses nothing (restart
+//! rebinds the durable consumer and redelivers un-acked messages).
 
-use anyhow::{Context, Result};
+use std::future::Future;
+use std::time::Duration;
 
+use anyhow::{Context as _, Result};
+use async_nats::jetstream::consumer::{pull, AckPolicy};
+use async_nats::jetstream::{self, AckKind, Message};
+use futures::StreamExt;
+
+use crate::callback::{HttpReporter, Reporter};
 use crate::config::Config;
+use crate::job::AssetJob;
+use crate::pipeline::{handle_job, Ack};
+use crate::processor::{Processor, Unimplemented};
 
-/// Connect to NATS and run until a shutdown signal arrives.
-///
-/// Phase 0: establishes the NATS connection and idles until SIGINT/SIGTERM,
-/// then flushes and exits. The JetStream WorkQueue consumer (durable,
-/// `concurrency = 1`, long ack-wait with InProgress heartbeats, DLQ on
-/// MaxDeliver — `conventions.md` §Queue) and the Blender render stages attach
-/// here in later phases.
+/// Connect to NATS and run the consumer until a shutdown signal arrives.
 pub async fn run(cfg: Config) -> Result<()> {
     let client = async_nats::connect(cfg.nats_url.as_str())
         .await
         .with_context(|| format!("connecting to NATS at {}", cfg.nats_url))?;
     tracing::info!("connected to NATS");
 
-    // TODO(phase-1): bind a JetStream WorkQueue pull consumer on
-    // `cfg.job_subject` with concurrency = 1 and drive the AssetJob pipeline.
+    let reporter = HttpReporter::new(&cfg);
+    // The real per-kind processors (trimesh ingest, Blender sprite) land in a later, tooling/GPU-gated
+    // slice; until then Unimplemented returns Transient so jobs redeliver and wait (never failed/lost).
+    let processor = Unimplemented;
+    consume(client, &cfg, &processor, &reporter).await
+}
 
-    shutdown_signal().await;
-    tracing::info!("shutdown signal received, flushing NATS");
-    // Phase-1 TODO: once the JetStream WorkQueue consumer exists, replace this
-    // flush with a graceful drain (unsubscribe + finish in-flight acks).
-    if let Err(e) = client.flush().await {
-        tracing::warn!(error = %e, "flush on shutdown failed");
+/// consume binds the durable WorkQueue consumer and drives the drain loop.
+async fn consume<P: Processor, R: Reporter>(
+    client: async_nats::Client,
+    cfg: &Config,
+    processor: &P,
+    reporter: &R,
+) -> Result<()> {
+    let js = jetstream::new(client);
+    let stream = js
+        .get_stream(&cfg.asset_stream)
+        .await
+        .with_context(|| format!("get JetStream stream {}", cfg.asset_stream))?;
+    let consumer = stream
+        .create_consumer(pull::Config {
+            durable_name: Some(cfg.durable_name.clone()),
+            filter_subject: cfg.job_subject.clone(),
+            ack_policy: AckPolicy::Explicit,
+            ack_wait: cfg.ack_wait,
+            max_deliver: cfg.max_deliver as i64,
+            ..Default::default()
+        })
+        .await
+        .context("create durable WorkQueue consumer")?;
+    tracing::info!(stream = %cfg.asset_stream, subject = %cfg.job_subject, "consumer bound");
+
+    let mut messages = consumer.messages().await.context("open message stream")?;
+    loop {
+        tokio::select! {
+            _ = shutdown_signal() => {
+                tracing::info!("shutdown signal received — exiting after the current message");
+                break;
+            }
+            next = messages.next() => match next {
+                Some(Ok(msg)) => handle_message(&msg, cfg, processor, reporter).await,
+                Some(Err(e)) => tracing::warn!(error = %e, "message stream error (will retry)"),
+                None => break, // stream closed
+            },
+        }
     }
     Ok(())
+}
+
+/// handle_message parses one message, runs the pipeline under an InProgress heartbeat, and settles the
+/// message per the returned Ack. A poison (unparseable) message is Termed to the DLQ straight away —
+/// redelivering a body that can't be parsed never helps.
+async fn handle_message<P: Processor, R: Reporter>(
+    msg: &Message,
+    cfg: &Config,
+    processor: &P,
+    reporter: &R,
+) {
+    let delivered = msg.info().map(|i| i.delivered as u64).unwrap_or(1);
+    let job = match AssetJob::parse(&msg.payload) {
+        Ok(j) => j,
+        Err(e) => {
+            tracing::warn!(error = %e, "poison message (unparseable AssetJob) — Term to DLQ");
+            let _ = msg.ack_with(AckKind::Term).await;
+            return;
+        }
+    };
+    tracing::info!(job = %job.asset_job_id, delivered, "processing asset job");
+
+    let ack = with_heartbeat(
+        msg,
+        cfg.heartbeat,
+        handle_job(&job, processor, reporter, delivered, cfg.max_deliver),
+    )
+    .await;
+
+    let settled = match ack {
+        Ack::Ack => msg.ack().await,
+        Ack::Nak => msg.ack_with(AckKind::Nak(None)).await,
+        Ack::Term => msg.ack_with(AckKind::Term).await,
+    };
+    if let Err(e) = settled {
+        // The ack itself failed (broker blip); the message redelivers on ack-wait. The callback is
+        // idempotent (core-api `ready` is sticky), so re-processing a done job is a safe no-op.
+        tracing::warn!(job = %job.asset_job_id, error = %e, "settling message failed — will redeliver");
+    }
+}
+
+/// with_heartbeat runs `fut` while sending AckKind::Progress every `interval`, resetting the JetStream
+/// ack-wait so a long render is not redelivered mid-flight (conventions §Queue). Returns `fut`'s output.
+async fn with_heartbeat<F>(msg: &Message, interval: Duration, fut: F) -> F::Output
+where
+    F: Future,
+{
+    tokio::pin!(fut);
+    let mut tick = tokio::time::interval(interval);
+    tick.tick().await; // interval's first tick is immediate — consume it so the first heartbeat waits
+    loop {
+        tokio::select! {
+            out = &mut fut => return out,
+            _ = tick.tick() => {
+                if let Err(e) = msg.ack_with(AckKind::Progress).await {
+                    tracing::warn!(error = %e, "heartbeat (InProgress) failed");
+                }
+            }
+        }
+    }
 }
 
 /// Resolve when the process receives SIGINT (Ctrl-C) or SIGTERM.
