@@ -41,6 +41,8 @@ export const vi = {
     add: 'Thêm vào giỏ',
     favLabel: 'Lưu {name} vào yêu thích',
     ratingLabel: '{value} trên 5 sao',
+    // aria-label for the card-hover 360° sprite turntable (ADR-049).
+    sprite360Alt: 'Ảnh xoay 360° của {name}',
   },
   catalog: {
     // <title> for /danh-muc (kept out of the index — see the route's generateMetadata).
@@ -117,6 +119,8 @@ export const vi = {
     view3dLoading: 'Đang tải mẫu 3D…',
     view3dError: 'Chưa tải được mẫu 3D — bạn xem ảnh phía trên nhé.',
     view3dAlt: 'Mẫu 3D của {name}',
+    // aria-label for the 360° sprite turntable shown as the no-WebGL fallback (ADR-049).
+    sprite360Alt: 'Ảnh xoay 360° của {name}',
     // <title> for the detail route.
     metaTitle: '{name} — Lumin Studio',
     // 404 (unknown slug or draft/archived — uniform, no leak).

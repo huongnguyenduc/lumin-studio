@@ -15,6 +15,9 @@ export type ProductCardView = {
   /** Card cover = images[0] (ADR-007 sprite-first). Undefined when the product has no photo yet →
    *  ProductCard falls back to its dotgrid placeholder. */
   imageSrc?: string;
+  /** 360° sprite-sheet URL (ADR-049) — the card-hover turntable. Undefined until a `sprite_render` job
+   *  has produced one; the card then shows the static cover only. */
+  spriteSheetUrl?: string;
   /** Average rating, or null until the first review (ProductCard renders the Rating block only when
    *  non-null). */
   rating: number | null;
@@ -33,6 +36,8 @@ export function toProductCardView(card: components['schemas']['ProductCard']): P
     // `|| undefined` collapses BOTH a missing cover (empty images[]) AND an empty-string URL to the
     // placeholder path — never an empty `src` that a stricter renderer (e.g. next/image) would reject.
     imageSrc: card.images[0] || undefined,
+    // Empty-string / absent ⇒ no sprite yet → undefined (the card shows the static cover only).
+    spriteSheetUrl: card.spriteSheetUrl || undefined,
     rating: card.ratingAvg ?? null,
     reviewCount: card.reviewCount,
   };
@@ -127,9 +132,11 @@ export type ProductDetailView = {
   material: string;
   /** `.glb` URL for the on-demand 3D viewer (P1-i), or undefined when the product has no model yet.
    *  Empty-string collapses to undefined (same guard as imageSrc) so the "Xem 3D" button never mounts
-   *  model-viewer with an empty src. The sprite-first 360° hover (ADR-007) is deferred — no spriteUrl in
-   *  the contract until the render-worker emits sprite-sheets. */
+   *  model-viewer with an empty src. */
   model3dUrl?: string;
+  /** 360° sprite-sheet URL (ADR-049) — the model-viewer's no-WebGL fallback. Undefined until a
+   *  `sprite_render` job has produced one; the viewer then just hides on a WebGL-less browser (as before). */
+  spriteSheetUrl?: string;
   /** Bounding size in mm, shown "w × d × h mm" (spec §02). */
   dimensions: { w: number; d: number; h: number };
   /** Gallery: cover (images[0]) first, then the rest. Empty-string entries dropped; `[]` when the
@@ -160,6 +167,8 @@ export function toProductDetailView(product: components['schemas']['Product']): 
     material: product.material,
     // Empty string ⇒ no model → undefined (mirrors imageSrc), so the viewer button never mounts on an empty src.
     model3dUrl: product.model3dUrl || undefined,
+    // Empty-string / absent ⇒ no sprite yet → undefined (the viewer then has no no-WebGL fallback).
+    spriteSheetUrl: product.spriteSheetUrl || undefined,
     dimensions: { w: product.dimensions.w, d: product.dimensions.d, h: product.dimensions.h },
     // Drop empty-string URLs (broken src never reaches <img>) AND de-duplicate — the contract makes no
     // uniqueness guarantee, and a repeated photo would produce a duplicate React key / doubled thumbnail
@@ -399,4 +408,32 @@ export function canAddConfiguredToCart(input: {
     allChoicesSelected(input.options, input.choiceByOption) &&
     input.engraveEntries.every((e) => isEngraveWithinLimit(e.text, e.maxChars))
   );
+}
+
+// === 360° sprite sheet (ADR-049) — the fixed grid shared with the render worker (pysrc/render.py). ===
+
+/** Frames per turntable + the sheet's column count. FIXED shared constants: the render worker tiles to
+ *  exactly this grid, so the sprite-sheet URL alone describes its layout (no metadata field). Changing
+ *  them means re-rendering existing products — keep in lockstep with SPRITE_FRAMES/SPRITE_COLS there. */
+export const SPRITE_FRAMES = 24;
+export const SPRITE_COLS = 6;
+export const SPRITE_ROWS = Math.ceil(SPRITE_FRAMES / SPRITE_COLS); // 4
+
+/**
+ * The CSS background-position for one frame of the sprite-sheet grid (ADR-049). With the element sized to
+ * one tile and `background-size: (SPRITE_COLS*100)% (SPRITE_ROWS*100)%`, percentage positioning lands frame
+ * `n` exactly on its tile: column `n % COLS` at `col/(COLS-1)*100%`, row `floor(n / COLS)` at
+ * `row/(ROWS-1)*100%`. `frame` is clamped into range so a bad index never scrolls off the sheet. Pure →
+ * unit-tested; SpriteTurntable steps `frame` over time (respecting prefers-reduced-motion).
+ */
+export function spriteFrameCss(frame: number): {
+  backgroundPositionX: string;
+  backgroundPositionY: string;
+} {
+  const n = Math.max(0, Math.min(Math.trunc(frame), SPRITE_FRAMES - 1));
+  const col = n % SPRITE_COLS;
+  const row = Math.floor(n / SPRITE_COLS);
+  const x = SPRITE_COLS > 1 ? (col / (SPRITE_COLS - 1)) * 100 : 0;
+  const y = SPRITE_ROWS > 1 ? (row / (SPRITE_ROWS - 1)) * 100 : 0;
+  return { backgroundPositionX: `${x}%`, backgroundPositionY: `${y}%` };
 }

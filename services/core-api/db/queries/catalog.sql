@@ -136,6 +136,14 @@ UPDATE products SET model3d_view = $2 WHERE id = $1;
 -- name: SetProductModel3dUrl :execrows
 UPDATE products SET model3d_url = $2 WHERE id = $1;
 
+-- SetProductSpriteSheetUrl is the asset pipeline's write of the 360° sprite-sheet URL (ADR-049) — the
+-- sprite_render analogue of SetProductModel3dUrl. Called only from the render callback when a
+-- `sprite_render` job reaches `ready`, so the storefront's card hover + no-WebGL fallback have a sheet to
+-- show. The URL is host-pinned (.webp under the assets origin) at the HTTP boundary before it reaches here.
+-- UpdateProduct never touches this column. :execrows so a vanished product surfaces (0 rows).
+-- name: SetProductSpriteSheetUrl :execrows
+UPDATE products SET sprite_sheet_url = $2 WHERE id = $1;
+
 -- DeleteProduct is a HARD delete, allowed only for never-ordered/never-rendered products (drafts, mistakes):
 -- order_items and asset_jobs reference products ON DELETE RESTRICT (migrations 000005/000006), so deleting a
 -- product with history raises a foreign_key_violation the handler maps to 409 "hãy lưu trữ thay vì xoá" — the
@@ -145,8 +153,9 @@ UPDATE products SET model3d_url = $2 WHERE id = $1;
 DELETE FROM products WHERE id = $1 RETURNING id;
 
 -- ListActiveProducts is the storefront catalog list (PR-P1-c). It returns ACTIVE products ONLY as a
--- CARD projection (a subset of columns — no description/model3d_url, and no colors/options join → no
--- N+1). The optional category filter matches by category SLUG via an UNCORRELATED subquery (Postgres
+-- CARD projection (a subset of columns — no description/model3d_url [the .glb loads on the detail page,
+-- not the card], but sprite_sheet_url IS included for the card-hover turntable [ADR-049], and no
+-- colors/options join → no N+1). The optional category filter matches by category SLUG via an UNCORRELATED subquery (Postgres
 -- runs it once as an InitPlan, not per row); an unknown slug simply matches no rows → an empty page,
 -- never a 404. Sort is a WHITELISTED CASE so the ORDER BY can never be built from raw client text; the
 -- non-selected CASE arms evaluate to a constant NULL and drop out, and created_at DESC, id DESC give a
@@ -163,7 +172,7 @@ DELETE FROM products WHERE id = $1 RETURNING id;
 -- matching on a tiny catalog, so relevance ranking (ts_rank) is a deliberate non-goal (it would also mean a
 -- new sort enum value — a contract change P1-e avoids).
 -- name: ListActiveProducts :many
-SELECT id, slug, name, base_price, category_id, images, rating_avg, review_count
+SELECT id, slug, name, base_price, category_id, images, sprite_sheet_url, rating_avg, review_count
 FROM products
 WHERE status = 'active'
   AND (

@@ -1,9 +1,11 @@
-# Python deps for the model_ingest step (pysrc/ingest.py), baked into the worker image.
+# Python deps for the CPU sidecars baked into the worker image: model_ingest (pysrc/ingest.py, trimesh) and
+# sprite_render's orchestrator (pysrc/render.py, Pillow — it tiles Blender's frames into the WebP sheet).
 #
-# trimesh is pinned to the version verified locally (4.12.2). numpy + lxml are left UNPINNED on purpose:
-# the image's python is ubuntu 22.04's 3.10, which may resolve a different numpy than a newer dev python
-# — pinning the dev machine's numpy would break the box build. lxml gives trimesh .3mf support. The image
-# build on the box is the gate (like the Blender bake); adjust these pins there if a wheel is missing.
+# trimesh is pinned to the version verified locally (4.12.2). numpy + lxml + Pillow are left UNPINNED on
+# purpose: the image's python is ubuntu 22.04's 3.10, which may resolve different wheels than a newer dev
+# python — pinning the dev machine's versions would break the box build. lxml gives trimesh .3mf support.
+# The image build on the box is the gate (like the Blender bake); adjust these pins there if a wheel is missing.
 trimesh==4.12.2
 numpy
 lxml
+Pillow

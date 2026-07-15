@@ -273,6 +273,21 @@ func (c *Catalog) SetProductModel3dURL(ctx context.Context, id uuid.UUID, url st
 	return nil
 }
 
+// SetProductSpriteSheetURL writes the 360° sprite-sheet URL onto a product (ADR-049) — the sprite_render
+// analogue of SetProductModel3dURL, and the ONE write of a column UpdateProduct never touches. Called only
+// from the render callback when a sprite_render job reaches `ready`; the URL is host-pinned (.webp) at the
+// HTTP boundary. :execrows, so an unknown id (0 rows) returns ErrNotFound.
+func (c *Catalog) SetProductSpriteSheetURL(ctx context.Context, id uuid.UUID, url string) error {
+	rows, err := c.q.SetProductSpriteSheetUrl(ctx, sqlc.SetProductSpriteSheetUrlParams{ID: id, SpriteSheetUrl: url})
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // CreateColor inserts a color and returns the persisted row.
 func (c *Catalog) CreateColor(ctx context.Context, arg sqlc.InsertColorParams) (sqlc.Color, error) {
 	return c.q.InsertColor(ctx, arg)

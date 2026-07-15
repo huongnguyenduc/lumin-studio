@@ -29,11 +29,16 @@ pub struct Config {
     /// Static service Bearer the callback presents (ADR-045 `authService`). Empty until wired — the
     /// endpoint is fail-closed, so reports 401 and the job redelivers (harmless until both sides are set).
     pub worker_callback_token: String,
-    /// Interpreter that has trimesh, for the model_ingest subprocess (INGEST_PYTHON). `python3` on the
-    /// baked image; a venv path in local dev/tests.
+    /// The baked python3 that runs BOTH CPU sidecars — `ingest.py` (trimesh) and `render.py`'s Pillow
+    /// tiling (ADR-049). `python3` on the image; a venv path in local dev/tests. (INGEST_PYTHON, kept for
+    /// compat — one interpreter serves both.)
     pub ingest_python: String,
     /// Path to the baked `ingest.py` (INGEST_SCRIPT). Defaults to its image location.
     pub ingest_script: String,
+    /// Path to the baked `render.py` (RENDER_SCRIPT) — the sprite_render orchestrator that drives Blender
+    /// (a subprocess it spawns) then tiles the frames into a WebP sheet (ADR-049). Defaults to its image
+    /// location; runs on `ingest_python`.
+    pub render_script: String,
     /// Assets bucket (lumin-assets) access — the worker fetches the source model + uploads the glb here.
     /// `endpoint` is the INTERNAL Garage API; `public_base` the PUBLIC origin for URLs (see objectstore).
     /// Empty endpoint/public_base/creds ⇒ model_ingest is fail-closed (jobs redeliver, never failed).
@@ -62,6 +67,7 @@ impl Config {
             worker_callback_token: env_or("WORKER_CALLBACK_TOKEN", ""),
             ingest_python: env_or("INGEST_PYTHON", "python3"),
             ingest_script: env_or("INGEST_SCRIPT", "/opt/asset-worker/pysrc/ingest.py"),
+            render_script: env_or("RENDER_SCRIPT", "/opt/asset-worker/pysrc/render.py"),
             assets_endpoint: env_or("ASSETS_S3_ENDPOINT", ""),
             assets_region: env_or("ASSETS_S3_REGION", "garage"),
             assets_bucket: env_or("ASSETS_BUCKET", "lumin-assets"),

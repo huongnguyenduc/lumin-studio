@@ -2,15 +2,17 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Card, PriceTag, Rating } from '@lumin/ui';
 import type { ProductCardView } from '@/lib/product-view';
+import { CardCover } from './card-cover';
 
 /**
  * Compact catalog-grid card (/danh-muc). Matches the hi-fi browse grid: image tile + name + price
  * (+ rating when present) — DELIBERATELY without the fav/add controls of the home merch card
  * (@lumin/ui ProductCard). On browse, a card is a navigation target; add-to-cart happens on the detail
  * page after a colour is picked (the add-to-cart lock, P1-h), so an add button here would be a dead
- * control. A server component (zero interactivity → no client JS): the whole card navigates via a
- * stretched link (::after overlay), and money/rating format through the leaf primitives (@lumin/core),
- * never here. The card name uses the body font (design: grid names are Hanken, not the display face).
+ * control. Still a server component — the whole card navigates via a stretched link (::after overlay),
+ * and money/rating format through the leaf primitives (@lumin/core), never here. The ONLY client JS is
+ * the cover's hover 360° turntable (the CardCover island, ADR-049), mounted only when a product has a
+ * sprite sheet. The card name uses the body font (design: grid names are Hanken, not the display face).
  */
 export function CatalogCard({ product }: { product: ProductCardView }) {
   const t = useTranslations('product');
@@ -20,21 +22,12 @@ export function CatalogCard({ product }: { product: ProductCardView }) {
       elevation="md"
       className="group relative flex flex-col gap-2 p-2.5 transition-transform duration-150 ease-out hover:-translate-x-px hover:-translate-y-px motion-reduce:transform-none"
     >
-      <div className="relative aspect-square overflow-hidden rounded-md bg-surface-sunken">
-        {product.imageSrc ? (
-          // Plain <img> (matches @lumin/ui ProductCard + product-detail): shop photos are remote
-          // content-hash URLs served immutable via Cloudflare (storefront rule §CWV); a next/image
-          // optimiser/loader is a later ops concern. Alt is the product name.
-          <img
-            src={product.imageSrc}
-            alt={product.name}
-            loading="lazy"
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <div className="lumin-dotgrid h-full w-full" aria-hidden="true" />
-        )}
-      </div>
+      <CardCover
+        imageSrc={product.imageSrc}
+        spriteSheetUrl={product.spriteSheetUrl}
+        name={product.name}
+        spriteAlt={t('sprite360Alt', { name: product.name })}
+      />
 
       <h3 className="line-clamp-2 text-sm font-semibold leading-tight text-text-strong">
         {/* Stretched link: the ::after overlay makes the whole card navigate to the detail page. The

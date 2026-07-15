@@ -207,7 +207,7 @@ func (q *Queries) GetPartByProduct(ctx context.Context, arg GetPartByProductPara
 }
 
 const getProductByID = `-- name: GetProductByID :one
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type FROM products WHERE id = $1
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url FROM products WHERE id = $1
 `
 
 // GetProductByID is the by-id read the checkout handler (PR-3g) needs to derive a
@@ -236,12 +236,13 @@ func (q *Queries) GetProductByID(ctx context.Context, id uuid.UUID) (Product, er
 		&i.EstFilamentQty,
 		&i.EstPrintMinutes,
 		&i.ProductType,
+		&i.SpriteSheetUrl,
 	)
 	return i, err
 }
 
 const getProductBySlug = `-- name: GetProductBySlug :one
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type FROM products WHERE slug = $1
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url FROM products WHERE slug = $1
 `
 
 func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (Product, error) {
@@ -266,6 +267,7 @@ func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (Product, e
 		&i.EstFilamentQty,
 		&i.EstPrintMinutes,
 		&i.ProductType,
+		&i.SpriteSheetUrl,
 	)
 	return i, err
 }
@@ -466,7 +468,7 @@ const insertProduct = `-- name: InsertProduct :one
 INSERT INTO products (
   id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, est_filament_qty, est_print_minutes
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type
+RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url
 `
 
 type InsertProductParams struct {
@@ -521,6 +523,7 @@ func (q *Queries) InsertProduct(ctx context.Context, arg InsertProductParams) (P
 		&i.EstFilamentQty,
 		&i.EstPrintMinutes,
 		&i.ProductType,
+		&i.SpriteSheetUrl,
 	)
 	return i, err
 }
@@ -569,7 +572,7 @@ func (q *Queries) InsertReview(ctx context.Context, arg InsertReviewParams) (Rev
 }
 
 const listActiveProducts = `-- name: ListActiveProducts :many
-SELECT id, slug, name, base_price, category_id, images, rating_avg, review_count
+SELECT id, slug, name, base_price, category_id, images, sprite_sheet_url, rating_avg, review_count
 FROM products
 WHERE status = 'active'
   AND (
@@ -599,19 +602,21 @@ type ListActiveProductsParams struct {
 }
 
 type ListActiveProductsRow struct {
-	ID          uuid.UUID `json:"id"`
-	Slug        string    `json:"slug"`
-	Name        string    `json:"name"`
-	BasePrice   int64     `json:"basePrice"`
-	CategoryID  uuid.UUID `json:"categoryId"`
-	Images      []byte    `json:"images"`
-	RatingAvg   *float32  `json:"ratingAvg"`
-	ReviewCount int32     `json:"reviewCount"`
+	ID             uuid.UUID `json:"id"`
+	Slug           string    `json:"slug"`
+	Name           string    `json:"name"`
+	BasePrice      int64     `json:"basePrice"`
+	CategoryID     uuid.UUID `json:"categoryId"`
+	Images         []byte    `json:"images"`
+	SpriteSheetUrl string    `json:"spriteSheetUrl"`
+	RatingAvg      *float32  `json:"ratingAvg"`
+	ReviewCount    int32     `json:"reviewCount"`
 }
 
 // ListActiveProducts is the storefront catalog list (PR-P1-c). It returns ACTIVE products ONLY as a
-// CARD projection (a subset of columns — no description/model3d_url, and no colors/options join → no
-// N+1). The optional category filter matches by category SLUG via an UNCORRELATED subquery (Postgres
+// CARD projection (a subset of columns — no description/model3d_url [the .glb loads on the detail page,
+// not the card], but sprite_sheet_url IS included for the card-hover turntable [ADR-049], and no
+// colors/options join → no N+1). The optional category filter matches by category SLUG via an UNCORRELATED subquery (Postgres
 // runs it once as an InitPlan, not per row); an unknown slug simply matches no rows → an empty page,
 // never a 404. Sort is a WHITELISTED CASE so the ORDER BY can never be built from raw client text; the
 // non-selected CASE arms evaluate to a constant NULL and drop out, and created_at DESC, id DESC give a
@@ -649,6 +654,7 @@ func (q *Queries) ListActiveProducts(ctx context.Context, arg ListActiveProducts
 			&i.BasePrice,
 			&i.CategoryID,
 			&i.Images,
+			&i.SpriteSheetUrl,
 			&i.RatingAvg,
 			&i.ReviewCount,
 		); err != nil {
@@ -663,7 +669,7 @@ func (q *Queries) ListActiveProducts(ctx context.Context, arg ListActiveProducts
 }
 
 const listAdminProducts = `-- name: ListAdminProducts :many
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type FROM products
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url FROM products
 WHERE ($1::product_status IS NULL OR status = $1::product_status)
 ORDER BY created_at DESC, id DESC
 `
@@ -703,6 +709,7 @@ func (q *Queries) ListAdminProducts(ctx context.Context, status NullProductStatu
 			&i.EstFilamentQty,
 			&i.EstPrintMinutes,
 			&i.ProductType,
+			&i.SpriteSheetUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -1019,7 +1026,7 @@ func (q *Queries) ListPartsByProduct(ctx context.Context, productID uuid.UUID) (
 }
 
 const listProductsByStatus = `-- name: ListProductsByStatus :many
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type FROM products WHERE status = $1 ORDER BY created_at DESC
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url FROM products WHERE status = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListProductsByStatus(ctx context.Context, status ProductStatus) ([]Product, error) {
@@ -1050,6 +1057,7 @@ func (q *Queries) ListProductsByStatus(ctx context.Context, status ProductStatus
 			&i.EstFilamentQty,
 			&i.EstPrintMinutes,
 			&i.ProductType,
+			&i.SpriteSheetUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -1152,6 +1160,28 @@ type SetProductModel3dUrlParams struct {
 // vanished product surfaces (0 rows) — though asset_jobs.product_id is RESTRICT, so it should always hit 1.
 func (q *Queries) SetProductModel3dUrl(ctx context.Context, arg SetProductModel3dUrlParams) (int64, error) {
 	result, err := q.db.Exec(ctx, setProductModel3dUrl, arg.ID, arg.Model3dUrl)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setProductSpriteSheetUrl = `-- name: SetProductSpriteSheetUrl :execrows
+UPDATE products SET sprite_sheet_url = $2 WHERE id = $1
+`
+
+type SetProductSpriteSheetUrlParams struct {
+	ID             uuid.UUID `json:"id"`
+	SpriteSheetUrl string    `json:"spriteSheetUrl"`
+}
+
+// SetProductSpriteSheetUrl is the asset pipeline's write of the 360° sprite-sheet URL (ADR-049) — the
+// sprite_render analogue of SetProductModel3dUrl. Called only from the render callback when a
+// `sprite_render` job reaches `ready`, so the storefront's card hover + no-WebGL fallback have a sheet to
+// show. The URL is host-pinned (.webp under the assets origin) at the HTTP boundary before it reaches here.
+// UpdateProduct never touches this column. :execrows so a vanished product surfaces (0 rows).
+func (q *Queries) SetProductSpriteSheetUrl(ctx context.Context, arg SetProductSpriteSheetUrlParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setProductSpriteSheetUrl, arg.ID, arg.SpriteSheetUrl)
 	if err != nil {
 		return 0, err
 	}
@@ -1369,7 +1399,7 @@ UPDATE products
 SET slug = $2, name = $3, description = $4, category_id = $5, base_price = $6,
     dimensions = $7, material = $8, images = $9, status = $10, est_filament_qty = $11, est_print_minutes = $12
 WHERE id = $1
-RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type
+RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url
 `
 
 type UpdateProductParams struct {
@@ -1426,6 +1456,7 @@ func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (P
 		&i.EstFilamentQty,
 		&i.EstPrintMinutes,
 		&i.ProductType,
+		&i.SpriteSheetUrl,
 	)
 	return i, err
 }

@@ -120,7 +120,8 @@ func productDTO(p sqlc.Product, colors []sqlc.Color, options []sqlc.Option, part
 		Dimensions:     dims,
 		Material:       p.Material,
 		Model3dUrl:     p.Model3dUrl,
-		Model3dView:    view, // ADR-038: owner-saved default camera pose; nil = auto-frame
+		Model3dView:    view,                           // ADR-038: owner-saved default camera pose; nil = auto-frame
+		SpriteSheetUrl: spriteURLPtr(p.SpriteSheetUrl), // ADR-049: 360° sprite sheet; nil until rendered
 		Images:         images,
 		Colors:         colorsDTO(colors),
 		Options:        optionsDTO(options, choices),
@@ -247,6 +248,15 @@ func maxCharsPtr(v *int32) *int {
 	}
 	n := int(*v)
 	return &n
+}
+
+// spriteURLPtr maps an empty sprite_sheet_url column to nil, so the optional wire field (ADR-049) is
+// OMITTED until a sprite_render job has written one — presence signals "this product has a 360° sprite".
+func spriteURLPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 // uuidPtrFromPg widens a nullable pgtype.UUID (colors.part_id) to the wire *uuid pointer — nil when the
@@ -428,14 +438,15 @@ func productCardsDTO(rows []sqlc.ListActiveProductsRow) ([]api.ProductCard, erro
 			}
 		}
 		out[i] = api.ProductCard{
-			Id:          r.ID,
-			Slug:        r.Slug,
-			Name:        r.Name,
-			BasePrice:   r.BasePrice, // raw int-VND, never formatted server-side (always-must #2)
-			CategoryId:  r.CategoryID,
-			Images:      images,
-			RatingAvg:   r.RatingAvg,
-			ReviewCount: int(r.ReviewCount),
+			Id:             r.ID,
+			Slug:           r.Slug,
+			Name:           r.Name,
+			BasePrice:      r.BasePrice, // raw int-VND, never formatted server-side (always-must #2)
+			CategoryId:     r.CategoryID,
+			Images:         images,
+			SpriteSheetUrl: spriteURLPtr(r.SpriteSheetUrl), // ADR-049: card-hover 360° sprite; nil until rendered
+			RatingAvg:      r.RatingAvg,
+			ReviewCount:    int(r.ReviewCount),
 		}
 	}
 	return out, nil

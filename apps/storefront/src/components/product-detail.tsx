@@ -210,7 +210,8 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
 
       <div className="flex flex-col gap-8 md:flex-row md:gap-9">
         {/* Media — static cover + thumbnail gallery, then the on-demand 3D viewer (P1-i) when present.
-            Sprite-first 360° hover (ADR-007) is deferred (no spriteUrl in the contract yet). */}
+            The viewer's no-WebGL fallback is the 360° sprite sheet (ADR-049) when the product has one; the
+            card-hover turntable lives on the grid card (CatalogCard), not here. */}
         <div className="md:w-[460px] md:shrink-0">
           <div className="aspect-square overflow-hidden rounded-lg bg-surface-sunken">
             {cover ? (
@@ -247,7 +248,11 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
           {/* On-demand 3D viewer (P1-i). Only rendered when the product has a .glb; the component itself
               loads model-viewer on click and hides itself when WebGL is unavailable. */}
           {product.model3dUrl ? (
-            <Model3dViewer src={product.model3dUrl} productName={product.name} />
+            <Model3dViewer
+              src={product.model3dUrl}
+              productName={product.name}
+              spriteSheetUrl={product.spriteSheetUrl}
+            />
           ) : null}
         </div>
 

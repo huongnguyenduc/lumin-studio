@@ -1,1 +1,5 @@
 /target
+
+# Python bytecode from the pysrc sidecars (e.g. a local py_compile syntax check)
+__pycache__/
+*.pyc
