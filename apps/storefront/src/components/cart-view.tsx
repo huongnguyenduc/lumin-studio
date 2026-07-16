@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { PriceTag } from '@lumin/ui';
-import { cartCount, cartQuoteItems, cartSignature } from '@/lib/cart';
+import { Checkbox, PriceTag } from '@lumin/ui';
+import { cartCount, cartQuoteItems, cartSignature, selectedItems } from '@/lib/cart';
 import { useCart } from '@/lib/cart-store';
 import { quoteCart, type QuoteLine } from '@/lib/quote';
 import { CartLine, type LinePriceStatus } from './cart-line';
 import { CtaLink } from './cta-link';
+import { BagIcon } from './icons';
 
 /** Debounce before (re-)quoting: coalesces a burst of stepper taps into one server round-trip. Short
  *  enough that a settled cart prices almost immediately. */
@@ -27,20 +28,19 @@ type QuoteState =
   | { status: 'error'; signature: string; code: 'unavailable' | 'no_shipping_rule' | 'error' };
 
 /**
- * The cart page (/gio-hang). Reads the persisted cart (useCart), then prices it server-side via the
- * quoteCart Server Action — the subtotal and every line total are ALWAYS server-authoritative (POST
- * /price/quote), never summed on the client (conventions §Tiền). Quantity edits are instant (local
- * store) while the price re-quotes; a removed last unit drops the line. Renders the full state set:
- * a mount skeleton (localStorage isn't readable during SSR), empty, priced, and a retryable error.
- *
- * The footer shows the subtotal, a "shipping is calculated later" note, and the primary CTA into
- * checkout (/thanh-toan). The cart itself still creates no order and takes no address/payment — that
- * all begins on /thanh-toan (the Phase-2 checkout flow, P2-d→g).
+ * The cart page (/gio-hang), on the hi-fi 05 layout: the line list (each with its "chọn món" checkbox
+ * + a "Chọn tất cả" header control) and, on desktop, the cream "Tóm tắt" summary card on the right.
+ * ONLY the selected lines are priced — server-side via the quoteCart Server Action (POST /price/quote);
+ * the subtotal and every line total stay server-authoritative, never summed on the client (conventions
+ * §Tiền). Quantity edits are instant (local store) while the price re-quotes; a removed last unit drops
+ * the line; deselected lines stay in the cart but out of the quote and out of checkout. Renders the
+ * full state set: a mount skeleton (localStorage isn't readable during SSR), empty, priced, and a
+ * retryable error.
  */
 export function CartView() {
   const t = useTranslations('cart');
   const tCore = useTranslations('core.cart');
-  const { items, setQuantity } = useCart();
+  const { items, setQuantity, setSelected, selectAll } = useCart();
 
   // localStorage is unreadable during SSR/first paint → gate on mount so we show a skeleton instead of
   // flashing the empty state before the persisted cart loads.
@@ -49,17 +49,21 @@ export function CartView() {
 
   const [quote, setQuote] = useState<QuoteState>({ status: 'idle' });
   const [retryNonce, setRetryNonce] = useState(0);
+  // The priced shape is the SELECTED lines only (hi-fi 05 chọn món) — the signature spans selection
+  // state, so a checkbox toggle re-quotes.
+  const selected = selectedItems(items);
   const signature = cartSignature(items);
+  const allSelected = items.length > 0 && selected.length === items.length;
 
   useEffect(() => {
-    if (items.length === 0) {
+    if (selected.length === 0) {
       setQuote({ status: 'idle' });
       return;
     }
     let cancelled = false;
     setQuote({ status: 'loading' });
     const timer = setTimeout(async () => {
-      const result = await quoteCart(cartQuoteItems(items));
+      const result = await quoteCart(cartQuoteItems(selected));
       // A newer cart shape (or unmount) supersedes this in-flight quote — the cleanup flips `cancelled`.
       if (cancelled) return;
       setQuote(
@@ -72,71 +76,106 @@ export function CartView() {
       cancelled = true;
       clearTimeout(timer);
     };
-    // Keyed on `signature` (a stable string of the priced shape derived from `items`) rather than the
-    // `items` array, whose identity changes every render; retryNonce re-runs the same quote after a
-    // failure. The new-items closure is always current because a signature change follows a re-render.
+    // Keyed on `signature` (a stable string of the priced shape — configuration + qty + SELECTION —
+    // derived from `items`) rather than the `items`/`selected` arrays, whose identity changes every
+    // render; retryNonce re-runs the same quote after a failure. The selected-items closure is always
+    // current because a signature change follows a re-render.
   }, [signature, retryNonce]);
 
   // A resolved quote counts only while it still describes the CURRENT cart (signature match) — a
   // superseded quote (from before the latest edit) is treated as loading, so line totals stay
-  // positionally aligned with `items` and no stale subtotal/line paints during the re-quote window.
-  // (Narrowed to the variant-or-null so TS keeps `okQuote.lines`/`errQuote.code` typed below.)
+  // positionally aligned with the SELECTED lines and no stale subtotal/line paints during the re-quote
+  // window. (Narrowed to the variant-or-null so TS keeps `okQuote.lines`/`errQuote.code` typed below.)
   const okQuote = quote.status === 'ok' && quote.signature === signature ? quote : null;
   const errQuote = quote.status === 'error' && quote.signature === signature ? quote : null;
   const priceStatus: LinePriceStatus = okQuote ? 'ok' : errQuote ? 'error' : 'loading';
+  // Quote lines align positionally with `selected`; map each selected key to its priced total.
+  const totalByKey = new Map<string, number>();
+  if (okQuote) {
+    selected.forEach((item, i) => {
+      const line = okQuote.lines[i];
+      if (line) totalByKey.set(item.key, line.lineTotal);
+    });
+  }
 
   if (!mounted) {
     return <CartSkeleton label={t('heading')} />;
   }
 
   return (
-    <section className="mx-auto w-full max-w-[720px] px-4 py-6 md:px-6 md:py-10">
-      <h1 className="font-display text-2xl font-bold text-text-strong md:text-3xl">
-        {t('heading')}
-      </h1>
+    <section className="mx-auto w-full max-w-[1100px] px-4 py-6 md:px-6 md:py-10">
+      <div className="flex items-baseline justify-between gap-4">
+        <h1 className="font-display text-2xl font-bold text-text-strong md:text-3xl">
+          {t('heading')}
+        </h1>
+        {items.length > 0 ? (
+          <Checkbox
+            label={t('selectAll')}
+            checked={allSelected}
+            onChange={(event) => selectAll(event.target.checked)}
+          />
+        ) : null}
+      </div>
 
       {items.length === 0 ? (
-        <div className="mt-6 rounded-lg border-2 border-dashed border-border-default bg-surface-sunken p-10 text-center">
-          <p className="text-text-muted">{tCore('empty')}</p>
-          <CtaLink href="/" className="mt-4">
+        <div className="mx-auto mt-8 flex max-w-md flex-col items-center gap-3 rounded-lg border-2 border-border-strong bg-surface-card p-10 text-center shadow-pop-sm">
+          <span
+            aria-hidden="true"
+            className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-dashed border-border-default bg-surface-sunken text-text-subtle"
+          >
+            <BagIcon className="h-9 w-9" />
+          </span>
+          <p className="font-display text-lg font-bold text-text-strong">{tCore('empty')}</p>
+          <CtaLink href="/" className="mt-2">
             {tCore('exploreCta')}
           </CtaLink>
         </div>
       ) : (
-        <>
-          <p className="mt-1 text-sm text-text-muted">
-            {t('itemCount', { count: cartCount(items) })}
-          </p>
+        <div className="mt-4 gap-8 lg:grid lg:grid-cols-[1fr_320px] lg:items-start">
+          <div>
+            <p className="text-sm text-text-muted">
+              {t('itemCount', { count: cartCount(selected) })}
+            </p>
 
-          <ul className="mt-4">
-            {items.map((item, i) => (
-              <CartLine
-                key={item.key}
-                item={item}
-                lineTotal={okQuote ? (okQuote.lines[i]?.lineTotal ?? null) : null}
-                priceStatus={priceStatus}
-                onQuantityChange={(qty) => setQuantity(item.key, qty)}
-              />
-            ))}
-          </ul>
+            <ul className="mt-2">
+              {items.map((item) => (
+                <CartLine
+                  key={item.key}
+                  item={item}
+                  lineTotal={totalByKey.get(item.key) ?? null}
+                  priceStatus={item.selected ? priceStatus : 'ok'}
+                  onQuantityChange={(qty) => setQuantity(item.key, qty)}
+                  onSelectedChange={(on) => setSelected(item.key, on)}
+                />
+              ))}
+            </ul>
+          </div>
 
-          <div className="mt-6 rounded-lg border-2 border-border-strong bg-surface-card p-4">
-            <div className="flex items-center justify-between gap-3">
-              <span className="font-display text-base font-semibold text-text-strong">
-                {t('subtotalLabel')}
+          {/* Hi-fi "Tóm tắt": cream card, cocoa border, pop shadow; the CTA lives inside the card. */}
+          <div className="mt-6 rounded-md border-2 border-border-strong bg-surface-sunken p-5 shadow-pop-sm lg:sticky lg:top-24 lg:mt-0">
+            <h2 className="font-display text-lg font-bold text-text-strong">
+              {t('summaryHeading')}
+            </h2>
+
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <span className="text-sm text-text-body">
+                {t('subtotalLabel')}{' '}
+                <span className="font-mono text-xs text-text-muted">({selected.length})</span>
               </span>
               {/* aria-live so assistive tech announces the recomputed subtotal after a quote settles. */}
               <span aria-live="polite">
-                {okQuote ? (
-                  <PriceTag amount={okQuote.subtotal} className="text-xl" />
+                {selected.length === 0 ? (
+                  <span className="text-sm text-text-muted">—</span>
+                ) : okQuote ? (
+                  <PriceTag amount={okQuote.subtotal} className="text-lg" />
                 ) : errQuote ? (
-                  <span className="text-sm font-semibold text-accent-flame">
+                  <span className="text-sm font-semibold text-danger">
                     {errQuote.code === 'unavailable' ? t('unavailableError') : t('pricingError')}
                   </span>
                 ) : (
                   <span
                     aria-hidden="true"
-                    className="inline-block h-6 w-24 animate-pulse rounded bg-surface-sunken motion-reduce:animate-none"
+                    className="inline-block h-6 w-24 animate-pulse rounded bg-surface-card motion-reduce:animate-none"
                   />
                 )}
               </span>
@@ -156,17 +195,23 @@ export function CartView() {
                 </button>
               </div>
             ) : errQuote ? null : (
-              <p className="mt-2 text-sm text-text-muted">{t('shippingNote')}</p>
+              <p className="mt-2 border-t border-dashed border-border-default pt-2 font-mono text-xs text-text-muted">
+                {t('shippingNote')}
+              </p>
+            )}
+
+            {/* Primary entry into checkout. Available whenever ≥1 line is selected — the cart's own
+                debounced quote is display-only; /thanh-toan re-prices + validates server-side and owns
+                every error/empty state, so navigation is never gated on a transient cart-quote hiccup. */}
+            {selected.length > 0 ? (
+              <CtaLink href="/thanh-toan" className="mt-4 w-full">
+                {t('checkoutCta')} <span aria-hidden="true">→</span>
+              </CtaLink>
+            ) : (
+              <p className="mt-4 text-sm text-text-muted">{t('noneSelected')}</p>
             )}
           </div>
-
-          {/* Primary entry into checkout. Always available on a non-empty cart — the cart's own
-              debounced quote is display-only; /thanh-toan re-prices + validates server-side and owns
-              every error/empty state, so navigation is never gated on a transient cart-quote hiccup. */}
-          <CtaLink href="/thanh-toan" className="mt-4 w-full">
-            {t('checkoutCta')}
-          </CtaLink>
-        </>
+        </div>
       )}
     </section>
   );
@@ -175,7 +220,7 @@ export function CartView() {
 /** Mount-time placeholder while the persisted cart loads (localStorage is client-only). */
 function CartSkeleton({ label }: { label: string }) {
   return (
-    <section className="mx-auto w-full max-w-[720px] px-4 py-6 md:px-6 md:py-10">
+    <section className="mx-auto w-full max-w-[1100px] px-4 py-6 md:px-6 md:py-10">
       <h1 className="font-display text-2xl font-bold text-text-strong md:text-3xl">{label}</h1>
       <ul className="mt-6" aria-hidden="true">
         {[0, 1].map((i) => (

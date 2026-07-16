@@ -196,12 +196,17 @@ export const vi = {
     decrementLabel: 'Giảm số lượng',
     incrementLabel: 'Tăng số lượng',
     removeLabel: 'Xoá {name} khỏi giỏ',
-    // Summary card.
+    // Hi-fi 05 "chọn món / chọn tất cả": per-line checkbox + the header toggle.
+    selectAll: 'Chọn tất cả',
+    selectItemLabel: 'Chọn {name} để đặt',
+    noneSelected: 'Chọn ít nhất một món để đặt hàng nhé.',
+    // Summary card (hi-fi "Tóm tắt").
+    summaryHeading: 'Tóm tắt',
     subtotalLabel: 'Tạm tính',
     shippingNote: 'Phí ship tính theo khu vực ở bước sau.',
     // Primary CTA into the checkout flow (/thanh-toan). The cart creates no order — it just navigates;
     // address + payment + order creation all begin on /thanh-toan.
-    checkoutCta: 'Tiến hành đặt hàng',
+    checkoutCta: 'Đặt hàng',
     // States. `unavailableError` = a line's product/colour/option is no longer valid (server 422);
     // `pricingError` = a transient failure computing the subtotal. Both offer retry.
     unavailableError: 'Một món trong giỏ không còn khả dụng — thử xoá rồi thêm lại nhé.',

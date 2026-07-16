@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { PriceTag, QuantityStepper } from '@lumin/ui';
+import { Checkbox, PriceTag, QuantityStepper, cn } from '@lumin/ui';
 import { MAX_QUANTITY, type CartItem } from '@/lib/cart';
 
 /** Pricing status for the line total: mirrors the cart page's quote state so a line shows the priced
@@ -18,6 +18,8 @@ type CartLineProps = {
   priceStatus: LinePriceStatus;
   /** The stepper reports the next quantity; 0 (decrement at 1) means remove — the page maps it. */
   onQuantityChange: (qty: number) => void;
+  /** Hi-fi 05 "chọn món": toggles this line in/out of the quote + checkout. */
+  onSelectedChange: (on: boolean) => void;
 };
 
 /**
@@ -26,7 +28,13 @@ type CartLineProps = {
  * at 0 so decrementing the last unit removes the line ("GIẢM =1 → XOÁ"); at quantity 1 the − button's
  * accessible label becomes "remove {name}" so assistive tech announces the real effect.
  */
-export function CartLine({ item, lineTotal, priceStatus, onQuantityChange }: CartLineProps) {
+export function CartLine({
+  item,
+  lineTotal,
+  priceStatus,
+  onQuantityChange,
+  onSelectedChange,
+}: CartLineProps) {
   const t = useTranslations('cart');
 
   // Summary line: per-part colours · flat colour · choice picks · toggle add-ons · engraving — only the
@@ -42,6 +50,13 @@ export function CartLine({ item, lineTotal, priceStatus, onQuantityChange }: Car
 
   return (
     <li className="flex items-center gap-3 border-b border-border-subtle py-4 last:border-b-0">
+      {/* Chọn món (hi-fi 05). aria-label names the line; a deselected line stays editable but dims and
+          leaves the quote/checkout. */}
+      <Checkbox
+        checked={item.selected}
+        onChange={(event) => onSelectedChange(event.target.checked)}
+        aria-label={t('selectItemLabel', { name: item.name })}
+      />
       <Link
         href={`/san-pham/${item.slug}`}
         // The thumbnail wraps only the (decorative, alt="") image, so the link needs its OWN accessible
@@ -58,7 +73,7 @@ export function CartLine({ item, lineTotal, priceStatus, onQuantityChange }: Car
         )}
       </Link>
 
-      <div className="min-w-0 flex-1">
+      <div className={cn('min-w-0 flex-1', !item.selected && 'opacity-50')}>
         <Link
           href={`/san-pham/${item.slug}`}
           className="font-display font-semibold text-text-strong hover:underline"
@@ -81,7 +96,9 @@ export function CartLine({ item, lineTotal, priceStatus, onQuantityChange }: Car
             incrementLabel={t('incrementLabel')}
           />
 
-          {priceStatus === 'ok' && lineTotal !== null ? (
+          {!item.selected ? (
+            <span className="text-sm text-text-muted">—</span>
+          ) : priceStatus === 'ok' && lineTotal !== null ? (
             <PriceTag amount={lineTotal} className="text-base" />
           ) : priceStatus === 'error' ? (
             <span className="text-sm text-text-muted">—</span>

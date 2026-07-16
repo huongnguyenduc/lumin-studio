@@ -154,6 +154,7 @@ function cartItem(partial: Partial<CartItem> = {}): CartItem {
     optionChoiceLabels: [],
     engrave: null,
     quantity: 1,
+    selected: true,
     ...partial,
   };
 }

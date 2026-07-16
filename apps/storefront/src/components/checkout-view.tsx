@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Checkbox, Input, PriceTag, cn } from '@lumin/ui';
-import { cartCount, cartQuoteItems, cartSignature } from '@/lib/cart';
+import { cartCount, cartQuoteItems, cartSignature, selectedItems } from '@/lib/cart';
 import { useCart } from '@/lib/cart-store';
 import { quoteCart } from '@/lib/quote';
 import {
@@ -78,7 +78,11 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
   const t = useTranslations('checkout');
   const tStates = useTranslations('states');
   const router = useRouter();
-  const { items, clear } = useCart();
+  const { items: cartItems, clearSelected } = useCart();
+  // Hi-fi 05 "chọn món": checkout covers ONLY the selected cart lines — everything below (quote,
+  // engraving acks, order input, counts, the empty state) works on this filtered view. All lines
+  // deselected reads as an empty checkout; the deselected lines stay in the cart afterwards.
+  const items = useMemo(() => selectedItems(cartItems), [cartItems]);
 
   // localStorage is unreadable during SSR/first paint → gate on mount so we show a skeleton instead of
   // flashing the empty state before the persisted cart loads.
@@ -277,7 +281,8 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
     const result = await placeOrder(buildWebOrderInput(validated, items, proof.finalUrl));
     if (result.ok) {
       // Leave the latch set — the done view replaces this screen, so no further submit is possible.
-      clear();
+      // Only the ORDERED (selected) lines leave the cart; deselected ones stay for next time.
+      clearSelected();
       setPlaced(result.result);
       return;
     }
