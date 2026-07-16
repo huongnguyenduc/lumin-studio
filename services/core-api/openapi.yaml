@@ -3504,14 +3504,12 @@ components:
 
     ColorInput:
       type: object
-      description: Create/replace body for a product colour (P3-j). priceDelta is int-VND (default 0).
-      required: [name, hex, available]
+      description: >
+        Create/replace body for a product colour (P3-j; ADR-039 amendment f-1). The colour's display
+        name + hex are SOURCED from the linked filament (copy-on-write) — the client no longer sends
+        them. priceDelta is int-VND (default 0).
+      required: [available, filamentMaterialId]
       properties:
-        name:
-          type: string
-        hex:
-          type: string
-          description: Swatch colour as a hex string (e.g. #C9A24B).
         available:
           type: boolean
         priceDelta:
@@ -3528,10 +3526,10 @@ components:
         filamentMaterialId:
           type: string
           format: uuid
-          nullable: true
           description: >
-            Link this colour to a shop filament (ADR-039) so deduct-on-print knows which spool it draws;
-            omit/null = unlinked. An unknown id → 400 filamentMaterialId.
+            The shop filament (ADR-039) this colour prints in — REQUIRED. Its name + hex become the
+            colour's swatch (copy-on-write, resolved server-side). An unknown id, or a filament with no
+            hex ("no colour chip"), → 400 filamentMaterialId.
 
     OptionInput:
       type: object

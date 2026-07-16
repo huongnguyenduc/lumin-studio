@@ -43,6 +43,7 @@ func TestConfiguratorCRUDEndToEnd(t *testing.T) {
 		return p.ID
 	}
 	pid := mkProduct("den-cfg")
+	mat := seedFilament(t, ctx, pool, "Cam", 100, 39_000) // f-1: a colour's name/hex come from its filament
 
 	// --- part ---
 	partResp, err := srv.CreateProductPart(owner, api.CreateProductPartRequestObject{Id: pid, Body: &api.PartInput{Name: "Chao đèn"}})
@@ -52,7 +53,7 @@ func TestConfiguratorCRUDEndToEnd(t *testing.T) {
 	part := api.Part(partResp.(api.CreateProductPart201JSONResponse))
 
 	// --- a colour that belongs to the part ---
-	partColorResp, err := srv.CreateProductColor(owner, api.CreateProductColorRequestObject{Id: pid, Body: &api.ColorInput{Name: "Cam", Hex: "#FF6B4A", Available: true, PartId: &part.Id}})
+	partColorResp, err := srv.CreateProductColor(owner, api.CreateProductColorRequestObject{Id: pid, Body: &api.ColorInput{Available: true, PartId: &part.Id, FilamentMaterialId: mat}})
 	if err != nil {
 		t.Fatalf("create part colour: %v", err)
 	}
@@ -62,7 +63,7 @@ func TestConfiguratorCRUDEndToEnd(t *testing.T) {
 	}
 
 	// --- a flat colour (no part) ---
-	flatResp, err := srv.CreateProductColor(owner, api.CreateProductColorRequestObject{Id: pid, Body: &api.ColorInput{Name: "Trắng", Hex: "#fff", Available: true}})
+	flatResp, err := srv.CreateProductColor(owner, api.CreateProductColorRequestObject{Id: pid, Body: &api.ColorInput{Available: true, FilamentMaterialId: mat}})
 	if err != nil {
 		t.Fatalf("create flat colour: %v", err)
 	}
@@ -112,7 +113,7 @@ func TestConfiguratorCRUDEndToEnd(t *testing.T) {
 	otherPart := api.Part(otherPartResp.(api.CreateProductPart201JSONResponse))
 
 	// a colour on pid claiming OTHER product's part → 400 field partId (colour ∈ its claimed part).
-	if resp, err := srv.CreateProductColor(owner, api.CreateProductColorRequestObject{Id: pid, Body: &api.ColorInput{Name: "x", Hex: "#000", Available: true, PartId: &otherPart.Id}}); err != nil {
+	if resp, err := srv.CreateProductColor(owner, api.CreateProductColorRequestObject{Id: pid, Body: &api.ColorInput{Available: true, PartId: &otherPart.Id, FilamentMaterialId: mat}}); err != nil {
 		t.Fatalf("foreign-part colour: unexpected err %v", err)
 	} else if _, ok := resp.(api.CreateProductColor400JSONResponse); !ok {
 		t.Fatalf("foreign-part colour resp = %T, want 400", resp)

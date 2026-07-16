@@ -274,9 +274,16 @@ func (s *Server) CreateProductColor(ctx context.Context, request api.CreateProdu
 	if request.Body == nil {
 		return api.CreateProductColor400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
 	}
-	name, hex, priceDelta, fields := cleanColorInput(*request.Body)
+	priceDelta, fields := cleanColorInput(*request.Body)
 	if len(fields) > 0 {
 		return api.CreateProductColor400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
+	}
+	name, hex, filFields, err := resolveColorFilament(ctx, db.NewFilament(s.pool), request.Body.FilamentMaterialId)
+	if err != nil {
+		return nil, err
+	}
+	if len(filFields) > 0 {
+		return api.CreateProductColor400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(filFields))}, nil
 	}
 	repo := db.NewCatalog(s.pool)
 	partID, partFields, err := resolveColorPart(ctx, repo, request.Id, request.Body.PartId)
@@ -294,7 +301,7 @@ func (s *Server) CreateProductColor(ctx context.Context, request api.CreateProdu
 		Available:          request.Body.Available,
 		PriceDelta:         priceDelta,
 		PartID:             partID,
-		FilamentMaterialID: pgUUIDPtr(request.Body.FilamentMaterialId), // ADR-039: null = unlinked
+		FilamentMaterialID: pgUUID(request.Body.FilamentMaterialId), // ADR-039 f-1: required, the swatch source
 	})
 	if pgCode(err) == pgForeignKeyViolation {
 		if pgConstraint(err) == fkColorFilamentMaterial {
@@ -318,9 +325,16 @@ func (s *Server) UpdateProductColor(ctx context.Context, request api.UpdateProdu
 	if request.Body == nil {
 		return api.UpdateProductColor400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
 	}
-	name, hex, priceDelta, fields := cleanColorInput(*request.Body)
+	priceDelta, fields := cleanColorInput(*request.Body)
 	if len(fields) > 0 {
 		return api.UpdateProductColor400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
+	}
+	name, hex, filFields, err := resolveColorFilament(ctx, db.NewFilament(s.pool), request.Body.FilamentMaterialId)
+	if err != nil {
+		return nil, err
+	}
+	if len(filFields) > 0 {
+		return api.UpdateProductColor400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(filFields))}, nil
 	}
 	repo := db.NewCatalog(s.pool)
 	partID, partFields, err := resolveColorPart(ctx, repo, request.Id, request.Body.PartId)
@@ -338,7 +352,7 @@ func (s *Server) UpdateProductColor(ctx context.Context, request api.UpdateProdu
 		Available:          request.Body.Available,
 		PriceDelta:         priceDelta,
 		PartID:             partID,
-		FilamentMaterialID: pgUUIDPtr(request.Body.FilamentMaterialId), // ADR-039: null = unlinked
+		FilamentMaterialID: pgUUID(request.Body.FilamentMaterialId), // ADR-039 f-1: required, the swatch source
 	})
 	if pgCode(err) == pgForeignKeyViolation && pgConstraint(err) == fkColorFilamentMaterial {
 		// A filamentMaterialId matching no filament → a field error (an update trips no product FK).
@@ -531,18 +545,12 @@ func cleanProductInput(in api.ProductInput) (cleanedProduct, map[string]string, 
 	return c, nil, nil
 }
 
-// cleanColorInput trims + validates a colour create/replace body. hex must be a #hex string (CSS-injection
-// guard); priceDelta defaults to 0 and must be ≥ 0.
-func cleanColorInput(in api.ColorInput) (name, hex string, priceDelta int64, fields map[string]string) {
-	name = strings.TrimSpace(in.Name)
-	hex = strings.TrimSpace(in.Hex)
+// cleanColorInput validates a colour create/replace body. The colour's name + hex now come from the
+// linked filament (resolveColorFilament, ADR-039 f-1) — not typed here — so this only checks priceDelta
+// (defaults 0, must be ≥ 0). The hex CSS-injection guard lives where the hex is entered now: the filament
+// editor (admin_filament.go).
+func cleanColorInput(in api.ColorInput) (priceDelta int64, fields map[string]string) {
 	fields = map[string]string{}
-	if name == "" || utf8.RuneCountInString(name) > maxColorNameChars {
-		fields["name"] = msgKey(codeValidation)
-	}
-	if !hexRe.MatchString(hex) {
-		fields["hex"] = msgKey(codeValidation)
-	}
 	if in.PriceDelta != nil {
 		priceDelta = *in.PriceDelta
 	}
@@ -550,9 +558,31 @@ func cleanColorInput(in api.ColorInput) (name, hex string, priceDelta int64, fie
 		fields["priceDelta"] = msgKey(codeValidation)
 	}
 	if len(fields) > 0 {
-		return "", "", 0, fields
+		return 0, fields
 	}
-	return name, hex, priceDelta, nil
+	return priceDelta, nil
+}
+
+// resolveColorFilament looks up a colour's linked filament and returns its name + hex as the colour's
+// swatch (copy-on-write; ADR-039 f-1 makes the filament the single source of a colour's name/hex instead
+// of a separately-typed field). A missing filament, or one with no hex ("no colour chip", 000018), → a
+// filamentMaterialId field error so the caller returns 400. A real DB error surfaces as err (→ 500).
+func resolveColorFilament(ctx context.Context, fil *db.Filament, id uuid.UUID) (name, hex string, fields map[string]string, err error) {
+	m, err := fil.GetMaterial(ctx, id)
+	if errors.Is(err, db.ErrNotFound) {
+		return "", "", map[string]string{"filamentMaterialId": msgKey(codeValidation)}, nil
+	}
+	if err != nil {
+		return "", "", nil, err
+	}
+	if m.Hex == nil {
+		return "", "", map[string]string{"filamentMaterialId": msgKey(codeValidation)}, nil
+	}
+	h := strings.TrimSpace(*m.Hex)
+	if h == "" {
+		return "", "", map[string]string{"filamentMaterialId": msgKey(codeValidation)}, nil
+	}
+	return m.Name, h, nil, nil
 }
 
 // cleanOptionInput trims + validates an option create/replace body. type must be a valid OptionType;

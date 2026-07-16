@@ -27,7 +27,7 @@ func TestAdminProductWritesAreOwnerOnly(t *testing.T) {
 	id, childID := uuid.New(), uuid.New()
 	prod := api.ProductInput{Slug: "x", Name: "x", CategoryId: uuid.New(), BasePrice: 1,
 		Dimensions: api.Dimensions{W: 1, D: 1, H: 1}, Material: "PLA", Status: api.ProductStatus("draft")}
-	color := api.ColorInput{Name: "x", Hex: "#fff", Available: true}
+	color := api.ColorInput{Available: true, FilamentMaterialId: uuid.New()}
 	opt := api.OptionInput{Label: "x", Type: api.OptionType("choice")}
 	part := api.PartInput{Name: "x"}
 	choice := api.OptionChoiceInput{Label: "x"}
@@ -226,33 +226,22 @@ func TestCleanModelView(t *testing.T) {
 	}
 }
 
-// cleanColorInput must reject a non-#hex swatch — the hex is rendered into an inline style, so an
-// unvalidated value is a CSS-injection vector, not just a cosmetic slip.
+// cleanColorInput now only validates priceDelta — a colour's name + hex come from its linked filament
+// (resolveColorFilament, f-1), and the hex CSS-injection guard moved to where the hex is entered now: the
+// filament editor (cleanFilamentMaterialInput, TestCleanFilamentMaterialInput). priceDelta defaults to 0, ≥ 0.
 func TestCleanColorInput(t *testing.T) {
 	pd := int64(20_000)
-	name, hex, priceDelta, fields := cleanColorInput(api.ColorInput{Name: " Kem sữa ", Hex: " #C9A24B ", Available: true, PriceDelta: &pd})
-	if len(fields) != 0 || name != "Kem sữa" || hex != "#C9A24B" || priceDelta != 20_000 {
-		t.Fatalf("valid color: name=%q hex=%q pd=%d fields=%v", name, hex, priceDelta, fields)
+	priceDelta, fields := cleanColorInput(api.ColorInput{Available: true, PriceDelta: &pd})
+	if len(fields) != 0 || priceDelta != 20_000 {
+		t.Fatalf("valid color: pd=%d fields=%v", priceDelta, fields)
 	}
-	bad := map[string]struct {
-		in    api.ColorInput
-		field string
-	}{
-		"empty name":        {api.ColorInput{Name: " ", Hex: "#fff"}, "name"},
-		"no-hash hex":       {api.ColorInput{Name: "x", Hex: "C9A24B"}, "hex"},
-		"wrong-length hex":  {api.ColorInput{Name: "x", Hex: "#CCCC"}, "hex"},
-		"css-injection hex": {api.ColorInput{Name: "x", Hex: "#fff;background:url(x)"}, "hex"},
-	}
-	for name, tc := range bad {
-		t.Run(name, func(t *testing.T) {
-			if _, _, _, f := cleanColorInput(tc.in); f[tc.field] == "" {
-				t.Fatalf("%s: expected %q field error, got %v", name, tc.field, f)
-			}
-		})
+	// nil priceDelta defaults to 0, no error.
+	if p, f := cleanColorInput(api.ColorInput{Available: true}); p != 0 || len(f) != 0 {
+		t.Fatalf("nil priceDelta: pd=%d fields=%v", p, f)
 	}
 	// negative priceDelta is a field error.
 	neg := int64(-1)
-	if _, _, _, f := cleanColorInput(api.ColorInput{Name: "x", Hex: "#fff", PriceDelta: &neg}); f["priceDelta"] == "" {
+	if _, f := cleanColorInput(api.ColorInput{Available: true, PriceDelta: &neg}); f["priceDelta"] == "" {
 		t.Fatalf("negative priceDelta should be a field error, got %v", f)
 	}
 }
