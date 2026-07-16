@@ -19,6 +19,10 @@ pub struct ResultBody {
     pub model3d_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sprite_sheet_url: Option<String>,
+    /// f-2: the object names a model_ingest found (core-api's AssetJobResultInput.objectNames). Omitted when
+    /// empty (a sprite_render, a nameless STL, or an older-shape ready), matching the optional openapi field.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub object_names: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
 }
@@ -83,12 +87,30 @@ mod tests {
             status: "ready",
             model3d_url: Some("https://s3/lumin-assets/x.glb".into()),
             sprite_sheet_url: None,
+            object_names: vec![],
             last_error: None,
         };
         let j = serde_json::to_string(&b).unwrap();
         assert_eq!(
             j,
             r#"{"status":"ready","model3dUrl":"https://s3/lumin-assets/x.glb"}"#
+        );
+    }
+
+    // f-2: a model_ingest ready that carries object names serializes the objectNames key (the shape core-api's
+    // AssetJobResultInput.objectNames reads); order is preserved. An empty list would be omitted (skip-if-empty).
+    #[test]
+    fn ready_body_serializes_object_names_when_present() {
+        let b = ResultBody {
+            status: "ready",
+            model3d_url: Some("https://s3/lumin-assets/x.glb".into()),
+            sprite_sheet_url: None,
+            object_names: vec!["shade".into(), "base".into()],
+            last_error: None,
+        };
+        assert_eq!(
+            serde_json::to_string(&b).unwrap(),
+            r#"{"status":"ready","model3dUrl":"https://s3/lumin-assets/x.glb","objectNames":["shade","base"]}"#
         );
     }
 
@@ -99,6 +121,7 @@ mod tests {
             status: "ready",
             model3d_url: None,
             sprite_sheet_url: Some("https://s3/lumin-assets/sprite.webp".into()),
+            object_names: vec![],
             last_error: None,
         };
         assert_eq!(
@@ -113,6 +136,7 @@ mod tests {
             status: "failed",
             model3d_url: None,
             sprite_sheet_url: None,
+            object_names: vec![],
             last_error: Some("bad model".into()),
         };
         assert_eq!(

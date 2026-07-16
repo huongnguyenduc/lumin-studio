@@ -33,6 +33,7 @@ export function ProductColorDialog({
   target,
   parts,
   filaments,
+  modelObjectNames,
   partCount,
   onClose,
 }: {
@@ -40,12 +41,19 @@ export function ProductColorDialog({
   target: DialogTarget;
   parts: Part[];
   filaments: FilamentMaterial[];
+  modelObjectNames: string[];
   partCount: number;
   onClose: () => void;
 }) {
   if (target.kind === 'part') {
     return (
-      <PartForm productId={productId} part={target.part} partCount={partCount} onClose={onClose} />
+      <PartForm
+        productId={productId}
+        part={target.part}
+        partCount={partCount}
+        modelObjectNames={modelObjectNames}
+        onClose={onClose}
+      />
     );
   }
   return (
@@ -181,22 +189,37 @@ function PartForm({
   productId,
   part,
   partCount,
+  modelObjectNames,
   onClose,
 }: {
   productId: string;
   part?: Part;
   partCount: number;
+  modelObjectNames: string[];
   onClose: () => void;
 }) {
   const t = useTranslations('products.edit.colors');
   const { pending, error, run } = useSubWrite(onClose);
   const [name, setName] = useState(part?.name ?? '');
   const [estQty, setEstQty] = useState(part?.estFilamentQty ? String(part.estFilamentQty) : '');
+  // f-2: which named object in the 3D model this part maps to. '' = unmapped (renders in its default
+  // filament, never grey). The owner picks from modelObjectNames — the list model_ingest found.
+  const [objectName, setObjectName] = useState(part?.modelObjectName ?? '');
 
   const est = estQty.trim() === '' ? 0 : parseIntField(estQty);
   const canSubmit = !pending && name.trim() !== '' && est !== null && est >= 0;
   // Keep an edited part's order; a new one appends to the end (spares the owner an order field).
   const displayOrder = part?.displayOrder ?? partCount;
+
+  const objectOptions = [
+    { value: '', label: t('objectNone') },
+    ...modelObjectNames.map((n) => ({ value: n, label: n })),
+  ];
+  // A previously-mapped name the current model no longer lists (renamed / re-ingested / a switched source):
+  // keep it selectable + flag it stale, so saving the part doesn't silently drop the owner's mapping.
+  const objectStale = objectName !== '' && !modelObjectNames.includes(objectName);
+  if (objectStale)
+    objectOptions.push({ value: objectName, label: t('objectStale', { name: objectName }) });
 
   return (
     <DialogShell
@@ -207,7 +230,12 @@ function PartForm({
       canSubmit={canSubmit}
       onSubmit={() =>
         run(() => {
-          const input = { name: name.trim(), displayOrder, estFilamentQty: est ?? 0 };
+          const input = {
+            name: name.trim(),
+            displayOrder,
+            estFilamentQty: est ?? 0,
+            modelObjectName: objectName,
+          };
           return part ? updatePart(productId, part.id, input) : createPart(productId, input);
         })
       }
@@ -230,6 +258,21 @@ function PartForm({
         hint={t('estQtyHint')}
         autoComplete="off"
       />
+      {modelObjectNames.length > 0 || objectName !== '' ? (
+        <div className="flex flex-col gap-1">
+          <Select
+            label={t('objectLabel')}
+            value={objectName}
+            onChange={setObjectName}
+            options={objectOptions}
+          />
+          <p className="text-xs text-text-muted">
+            {objectStale ? t('objectStaleHint') : t('objectHint')}
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm text-text-muted">{t('objectEmptyHint')}</p>
+      )}
     </DialogShell>
   );
 }

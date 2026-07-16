@@ -21,6 +21,11 @@ pub struct Manifest {
     pub glb_path: String,
     pub triangles: u64,
     pub watertight: bool,
+    /// The object/material names in the SOURCE model (f-2). The recentered export fuses to one mesh, so
+    /// these are read separately (ingest.py `scene.geometry.keys()`) and never affect dims/glb. Empty for a
+    /// single-mesh source (an STL). `#[serde(default)]` keeps an older ingest.py that omits the field parseable.
+    #[serde(default)]
+    pub object_names: Vec<String>,
 }
 
 /// run_ingest invokes `python ingest.py <input> <out_dir>` and parses the manifest. Error classification
@@ -85,6 +90,26 @@ mod tests {
         assert_eq!(m.triangles, 12);
         assert!(m.watertight);
         assert!(m.glb_path.ends_with(".glb"));
+    }
+
+    #[test]
+    fn parses_object_names_and_defaults_empty() {
+        // f-2: objectNames flows through when present…
+        let m = parse_manifest(
+            r#"{"dimsMm":[1.0,2.0,3.0],"glbPath":"/o/m.glb","triangles":4,"watertight":false,"objectNames":["Chao đèn","Đế"]}"#
+                .as_bytes(),
+        )
+        .expect("parse with names");
+        assert_eq!(
+            m.object_names,
+            vec!["Chao đèn".to_string(), "Đế".to_string()]
+        );
+        // …and an older ingest.py that omits it still parses (serde default → empty), never a Transient fail.
+        let m0 = parse_manifest(
+            br#"{"dimsMm":[1.0,2.0,3.0],"glbPath":"/o/m.glb","triangles":4,"watertight":false}"#,
+        )
+        .expect("parse without names");
+        assert!(m0.object_names.is_empty());
     }
 
     #[test]

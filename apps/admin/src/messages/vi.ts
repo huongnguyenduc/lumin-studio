@@ -249,6 +249,14 @@ export const vi = {
         filamentLabel: 'Màu (chọn từ filament kho)',
         filamentPlaceholder: '— Chọn filament —',
         filamentNoHex: 'Filament này chưa có mã màu. Thêm mã màu ở mục Vật tư trước.',
+        objectBadge: '3D: {name}',
+        objectLabel: 'Đối tượng trong model 3D',
+        objectNone: '— Chưa gắn —',
+        objectHint: 'Gắn để bộ phận này tô đúng màu filament của nó khi hiển thị 3D.',
+        objectStale: '{name} (không còn trong model)',
+        objectStaleHint: 'Tên này không còn trong model hiện tại — bạn chọn lại hoặc để trống nhé.',
+        objectEmptyHint:
+          'Chưa nhận diện được đối tượng nào trong model — kết xuất model 3D rồi quay lại gắn nhé.',
         error: {
           forbidden: 'Bạn không có quyền cho thao tác này.',
           validation: 'Vài trường chưa hợp lệ — bạn kiểm tra lại giúp mình nhé.',

@@ -1565,6 +1565,8 @@ export interface components {
              * @description 360° sprite-sheet URL (ADR-049) — the card-hover turntable and the model-viewer's no-WebGL fallback. Omitted until a `sprite_render` job has produced one. Grid is the fixed shared const (24 frames, 6 cols).
              */
             spriteSheetUrl?: string;
+            /** @description The object/material names model_ingest found inside the source 3D model (f-2) — the admin editor's option set for mapping each part to a model object (Part.modelObjectName). Written only by the render callback; empty until a `model_ingest` job has run. Editor-only; harmless mesh names. */
+            modelObjectNames?: string[];
             /** @description Shop photos; images[0] is the card cover (sprite-first, ADR-007). May be empty. */
             images: string[];
             colors: components["schemas"]["Color"][];
@@ -1628,6 +1630,8 @@ export interface components {
              * @description Internal print standard (ADR-039): estimated filament per unit for THIS part (ADR-037 two-tone), in the part colour's material unit (gram|ml). Drives deduct-on-print; 0 = no estimate (skipped).
              */
             estFilamentQty?: number;
+            /** @description The object/material name (inside the source 3D model) this part maps to (f-2), chosen by the owner from Product.modelObjectNames. '' / omitted = unmapped → the part falls back to its default filament colour (never grey). Drives per-part recolour in the sprite (f-5) and the live viewer (f-3). */
+            modelObjectName?: string;
         };
         /** @description One enumerated choice of a `choice` option (ADR-037) — e.g. size "M". priceDelta is int-VND (may be 0); the customer picks exactly one choice per choice-option. */
         OptionChoice: {
@@ -2018,6 +2022,8 @@ export interface components {
              * @description Estimated filament per unit for this part (ADR-039), in the part colour's material unit. Optional, defaults to 0 (no estimate → the deduct-on-print draw skips this part).
              */
             estFilamentQty?: number;
+            /** @description Object/material name inside the 3D model this part maps to (f-2). Optional; '' / omitted = unmapped (the part uses its default filament colour). The owner picks it from the model's object-name list. */
+            modelObjectName?: string;
         };
         /** @description Create/replace body for an option choice (ADR-037). priceDelta is int-VND (default 0). */
         OptionChoiceInput: {
@@ -2105,6 +2111,8 @@ export interface components {
              * @description The uploaded 360° sprite-sheet URL (ADR-049). Required on a `ready` `sprite_render`; must be a `.webp` under this store's assets origin (host-pinned). Ignored for `model_ingest` (which reports `model3dUrl`).
              */
             spriteSheetUrl?: string;
+            /** @description The object/material names model_ingest found in the source model (f-2), stored on the product as the editor's part-mapping option set. Optional; sent only by a `ready` `model_ingest`, ignored for `sprite_render`. Names are trimmed + capped server-side. */
+            objectNames?: string[];
             /** @description Failure reason, set with `failed`. Cleared when the job reaches `ready`. */
             lastError?: string;
         };

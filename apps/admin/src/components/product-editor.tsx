@@ -281,6 +281,7 @@ export function ProductEditor({
             parts={product.parts}
             colors={product.colors}
             filaments={filaments}
+            modelObjectNames={product.modelObjectNames ?? []}
           />
         </Card>
       )}

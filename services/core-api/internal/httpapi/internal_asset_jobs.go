@@ -50,6 +50,9 @@ func (s *Server) ReportAssetJobResult(ctx context.Context, req api.ReportAssetJo
 	if len(fields) > 0 {
 		return api.ReportAssetJobResult400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
 	}
+	// f-2: the object-name list a model_ingest found in the source model (best-effort metadata — sanitized,
+	// never rejected). Written only on a ready model_ingest below; harmless to compute for other kinds.
+	objectNames := sanitizeModelObjectNames(req.Body.ObjectNames)
 
 	var row sqlc.AssetJob
 	err = withTx(ctx, s.pool, func(tx pgx.Tx) error {
@@ -94,6 +97,12 @@ func (s *Server) ReportAssetJobResult(ctx context.Context, req api.ReportAssetJo
 		// no-WebGL fallback). Each pipeline writes only its own column.
 		if status == sqlc.AssetJobStatusReady && job.JobType == sqlc.AssetJobTypeModelIngest {
 			if e := db.NewCatalog(tx).SetProductModel3dURL(ctx, job.ProductID, model3dURL); e != nil {
+				return e
+			}
+			// f-2: record the model's object-name list alongside the glb — same single-writer, same ready tx.
+			// Empty (older worker / a nameless STL) is fine: it sets '{}' (no mapping options). Runs once (a
+			// redelivered ready is a sticky no-op above), so it can't clobber a later hand-set list.
+			if e := db.NewCatalog(tx).SetProductModelObjectNames(ctx, job.ProductID, objectNames); e != nil {
 				return e
 			}
 		}
@@ -180,4 +189,34 @@ func (s *Server) cleanOutputURL(raw *string, wantExt, fieldName string, fields m
 		fields[fieldName] = "must be a " + wantExt + " URL under this store's assets origin"
 	}
 	return out, nil
+}
+
+// maxModelObjectNames caps how many object names one model_ingest callback records on a product (f-2) — a
+// bound on the editor's mapping dropdown + the column. A real lamp has a handful of parts; 500 is slack.
+const maxModelObjectNames = 500
+
+// sanitizeModelObjectNames trims + drops-empty + caps the worker-reported object-name list (f-2) before it
+// lands in products.model_object_names. Best-effort metadata (never a 400): the worker is service-authed, so
+// an over-long name is truncated (rune-safe, like lastError) and an oversized list is clamped rather than
+// rejected — a rejected callback would leave the job un-marked and stuck. Order is preserved (the worker
+// sorts; the editor shows them as-is). nil / all-empty → a non-nil empty slice (sets '{}').
+func sanitizeModelObjectNames(in *[]string) []string {
+	out := []string{}
+	if in == nil {
+		return out
+	}
+	for _, n := range *in {
+		n = strings.TrimSpace(n)
+		if n == "" {
+			continue
+		}
+		if utf8.RuneCountInString(n) > maxPartNameChars {
+			n = string([]rune(n)[:maxPartNameChars])
+		}
+		out = append(out, n)
+		if len(out) >= maxModelObjectNames {
+			break
+		}
+	}
+	return out
 }

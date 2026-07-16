@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -144,6 +145,69 @@ func TestConfiguratorCRUDEndToEnd(t *testing.T) {
 	}
 	if len(det2.Options[0].Choices) != 0 {
 		t.Fatalf("after delete: option.choices = %d, want 0", len(det2.Options[0].Choices))
+	}
+}
+
+// TestPartModelObjectMapping proves f-2's part↔object handle round-trips through the real DB: create/update
+// stores parts.model_object_name and the DTO surfaces it; omitting the field clears it (replace semantics);
+// an unmapped part omits it on the wire; an over-long name is a 400 (not a doomed insert); and — crucially —
+// an ARBITRARY name matching no ingested object is ACCEPTED, not rejected. The mapping is a free handle: an
+// unmatched name renders as the part's default filament downstream (plan D-C), so setting a name before
+// ingest or keeping one across a re-ingest must stay valid (no membership check at the boundary).
+func TestPartModelObjectMapping(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+	owner := ownerCtx()
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
+	repo := db.NewCatalog(pool)
+
+	cat, err := repo.CreateCategory(ctx, sqlc.InsertCategoryParams{ID: uuid.New(), Slug: "cat-obj", Name: "DM"})
+	if err != nil {
+		t.Fatalf("seed category: %v", err)
+	}
+	prod, err := repo.CreateProduct(ctx, sqlc.InsertProductParams{
+		ID: uuid.New(), Slug: "den-obj", Name: "den-obj", Description: "", CategoryID: cat.ID, BasePrice: 1,
+		Dimensions: []byte(`{"w":1,"d":1,"h":1}`), Material: "PLA", Images: []byte(`[]`), Status: sqlc.ProductStatusDraft,
+	})
+	if err != nil {
+		t.Fatalf("seed product: %v", err)
+	}
+	pid := prod.ID
+
+	// create WITH a mapping → round-trips onto the DTO.
+	obj := "Chao đèn"
+	createResp, err := srv.CreateProductPart(owner, api.CreateProductPartRequestObject{Id: pid, Body: &api.PartInput{Name: "Chao", ModelObjectName: &obj}})
+	if err != nil {
+		t.Fatalf("create mapped part: %v", err)
+	}
+	part := api.Part(createResp.(api.CreateProductPart201JSONResponse))
+	if part.ModelObjectName == nil || *part.ModelObjectName != obj {
+		t.Fatalf("created modelObjectName = %v, want %q", part.ModelObjectName, obj)
+	}
+
+	// update to a DIFFERENT arbitrary name that matches no ingested object → ACCEPTED (drift is not an error).
+	obj2 := "Đối tượng lạ 123"
+	updResp, err := srv.UpdateProductPart(owner, api.UpdateProductPartRequestObject{Id: pid, PartId: part.Id, Body: &api.PartInput{Name: "Chao", ModelObjectName: &obj2}})
+	if err != nil {
+		t.Fatalf("update mapped part: %v", err)
+	}
+	if got := api.Part(updResp.(api.UpdateProductPart200JSONResponse)); got.ModelObjectName == nil || *got.ModelObjectName != obj2 {
+		t.Fatalf("updated modelObjectName = %v, want %q", got.ModelObjectName, obj2)
+	}
+
+	// omitting the field on update clears the mapping (replace semantics) → an unmapped part omits it on the wire.
+	if r, err := srv.UpdateProductPart(owner, api.UpdateProductPartRequestObject{Id: pid, PartId: part.Id, Body: &api.PartInput{Name: "Chao"}}); err != nil {
+		t.Fatalf("update clear: %v", err)
+	} else if got := api.Part(r.(api.UpdateProductPart200JSONResponse)); got.ModelObjectName != nil {
+		t.Fatalf("cleared modelObjectName = %v, want nil (omitted)", got.ModelObjectName)
+	}
+
+	// an over-long name → 400 field modelObjectName (a capped handle, never a doomed insert).
+	long := strings.Repeat("x", maxPartNameChars+1)
+	if r, err := srv.CreateProductPart(owner, api.CreateProductPartRequestObject{Id: pid, Body: &api.PartInput{Name: "X", ModelObjectName: &long}}); err != nil {
+		t.Fatalf("over-long name: unexpected err %v", err)
+	} else if _, ok := r.(api.CreateProductPart400JSONResponse); !ok {
+		t.Fatalf("over-long name resp = %T, want 400", r)
 	}
 }
 

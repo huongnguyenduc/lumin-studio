@@ -111,27 +111,28 @@ func productDTO(p sqlc.Product, colors []sqlc.Color, options []sqlc.Option, part
 		return api.Product{}, fmt.Errorf("product %s: decode model3d_view jsonb: %w", p.Slug, err)
 	}
 	return api.Product{
-		Id:             p.ID,
-		Slug:           p.Slug,
-		Name:           p.Name,
-		Description:    p.Description,
-		CategoryId:     p.CategoryID,
-		BasePrice:      p.BasePrice, // raw int-VND, never formatted server-side (always-must #2)
-		Dimensions:     dims,
-		Material:       p.Material,
-		Model3dUrl:     p.Model3dUrl,
-		Model3dView:    view,                           // ADR-038: owner-saved default camera pose; nil = auto-frame
-		SpriteSheetUrl: spriteURLPtr(p.SpriteSheetUrl), // ADR-049: 360° sprite sheet; nil until rendered
-		Images:         images,
-		Colors:         colorsDTO(colors),
-		Options:        optionsDTO(options, choices),
-		Parts:          partsDTO(parts),
-		Status:         api.ProductStatus(p.Status),
-		RatingAvg:      p.RatingAvg,
-		ReviewCount:    int(p.ReviewCount),
-		CreatedAt:      p.CreatedAt.Time,
-		EstFilamentQty: int64Ptr(p.EstFilamentQty),          // ADR-039: flat-product standard (admin editor; 0 omitted)
-		EstPrintHours:  estPrintHoursPtr(p.EstPrintMinutes), // ADR-039 pt 3: machine-time standard, minutes→hours (0 omitted)
+		Id:               p.ID,
+		Slug:             p.Slug,
+		Name:             p.Name,
+		Description:      p.Description,
+		CategoryId:       p.CategoryID,
+		BasePrice:        p.BasePrice, // raw int-VND, never formatted server-side (always-must #2)
+		Dimensions:       dims,
+		Material:         p.Material,
+		Model3dUrl:       p.Model3dUrl,
+		Model3dView:      view,                               // ADR-038: owner-saved default camera pose; nil = auto-frame
+		SpriteSheetUrl:   spriteURLPtr(p.SpriteSheetUrl),     // ADR-049: 360° sprite sheet; nil until rendered
+		ModelObjectNames: objectNamesPtr(p.ModelObjectNames), // f-2: object list for the editor's part mapping; nil until ingested
+		Images:           images,
+		Colors:           colorsDTO(colors),
+		Options:          optionsDTO(options, choices),
+		Parts:            partsDTO(parts),
+		Status:           api.ProductStatus(p.Status),
+		RatingAvg:        p.RatingAvg,
+		ReviewCount:      int(p.ReviewCount),
+		CreatedAt:        p.CreatedAt.Time,
+		EstFilamentQty:   int64Ptr(p.EstFilamentQty),          // ADR-039: flat-product standard (admin editor; 0 omitted)
+		EstPrintHours:    estPrintHoursPtr(p.EstPrintMinutes), // ADR-039 pt 3: machine-time standard, minutes→hours (0 omitted)
 	}, nil
 }
 
@@ -208,10 +209,11 @@ func optionsDTO(rows []sqlc.Option, choices []sqlc.OptionChoice) []api.Option {
 // partDTO maps one part row to the wire shape (ADR-037; ADR-039 est_filament_qty).
 func partDTO(p sqlc.Part) api.Part {
 	return api.Part{
-		Id:             p.ID,
-		Name:           p.Name,
-		DisplayOrder:   int(p.DisplayOrder),
-		EstFilamentQty: int64Ptr(p.EstFilamentQty), // ADR-039: per-part standard (0 omitted)
+		Id:              p.ID,
+		Name:            p.Name,
+		DisplayOrder:    int(p.DisplayOrder),
+		EstFilamentQty:  int64Ptr(p.EstFilamentQty),       // ADR-039: per-part standard (0 omitted)
+		ModelObjectName: objectNamePtr(p.ModelObjectName), // f-2: mapped model object; nil when unmapped
 	}
 }
 
@@ -254,6 +256,24 @@ func maxCharsPtr(v *int32) *int {
 // OMITTED until a sprite_render job has written one — presence signals "this product has a 360° sprite".
 func spriteURLPtr(s string) *string {
 	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// objectNamePtr maps an empty parts.model_object_name to nil, so the optional wire field (f-2) is OMITTED
+// when a part is unmapped — presence signals "this part maps to a named object in the model".
+func objectNamePtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// objectNamesPtr maps an empty products.model_object_names to nil, so the optional wire field (f-2) is
+// OMITTED until a model_ingest job has recorded the model's object list (the editor's part-mapping options).
+func objectNamesPtr(s []string) *[]string {
+	if len(s) == 0 {
 		return nil
 	}
 	return &s

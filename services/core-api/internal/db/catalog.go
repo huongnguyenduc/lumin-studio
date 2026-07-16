@@ -288,6 +288,21 @@ func (c *Catalog) SetProductSpriteSheetURL(ctx context.Context, id uuid.UUID, ur
 	return nil
 }
 
+// SetProductModelObjectNames writes the model's object-name list onto a product (f-2) — the model_ingest
+// analogue of SetProductModel3dURL, and the ONE write of a column UpdateProduct never touches. Called only
+// from the render callback when a model_ingest job reaches `ready`; the names are trimmed + capped at the
+// HTTP boundary. :execrows, so an unknown id (0 rows) returns ErrNotFound.
+func (c *Catalog) SetProductModelObjectNames(ctx context.Context, id uuid.UUID, names []string) error {
+	rows, err := c.q.SetProductModelObjectNames(ctx, sqlc.SetProductModelObjectNamesParams{ID: id, ModelObjectNames: names})
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // CreateColor inserts a color and returns the persisted row.
 func (c *Catalog) CreateColor(ctx context.Context, arg sqlc.InsertColorParams) (sqlc.Color, error) {
 	return c.q.InsertColor(ctx, arg)

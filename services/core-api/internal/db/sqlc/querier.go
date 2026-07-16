@@ -538,6 +538,11 @@ type Querier interface {
 	// URL is host-pinned to the assets origin at the HTTP boundary before it reaches here. :execrows so a
 	// vanished product surfaces (0 rows) — though asset_jobs.product_id is RESTRICT, so it should always hit 1.
 	SetProductModel3dUrl(ctx context.Context, arg SetProductModel3dUrlParams) (int64, error)
+	// SetProductModelObjectNames is the asset pipeline's write of the object-name LIST a `model_ingest` found
+	// in the source model (f-2) — the editor dropdown's option set for mapping parts to model objects. Called
+	// only from the render callback when a `model_ingest` job reaches `ready`, alongside SetProductModel3dUrl.
+	// UpdateProduct never touches this column. :execrows so a vanished product surfaces (0 rows).
+	SetProductModelObjectNames(ctx context.Context, arg SetProductModelObjectNamesParams) (int64, error)
 	// SetProductSpriteSheetUrl is the asset pipeline's write of the 360° sprite-sheet URL (ADR-049) — the
 	// sprite_render analogue of SetProductModel3dUrl. Called only from the render callback when a
 	// `sprite_render` job reaches `ready`, so the storefront's card hover + no-WebGL fallback have a sheet to
