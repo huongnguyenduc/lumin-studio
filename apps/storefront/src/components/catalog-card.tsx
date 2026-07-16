@@ -4,6 +4,9 @@ import { PriceTag, Rating } from '@lumin/ui';
 import type { ProductCardView } from '@/lib/product-view';
 import { CardCover } from './card-cover';
 
+/** Hi-fi 02 draws at most four dots, the rest collapse into a mono "+N". */
+const MAX_DOTS = 4;
+
 /**
  * Catalog-grid tile (/danh-muc + home "Mới về"). Matches the hi-fi tile exactly: bare image tile on
  * the page surface (NO white card chrome), then a name↔price row (price = mono coral via PriceTag)
@@ -50,14 +53,37 @@ export function CatalogCard({ product }: { product: ProductCardView }) {
         <PriceTag amount={product.basePrice} className="shrink-0 text-xs" />
       </div>
 
-      {product.rating != null ? (
-        <Rating
-          value={product.rating}
-          count={product.reviewCount}
-          label={t('ratingLabel', { value: product.rating })}
-          size="sm"
-          className="mt-1"
-        />
+      {/* Hi-fi 02: hàng dots màu (≤4 dot + "+N" mono) bên trái, ★rating bên phải. Dots trang trí —
+          tên/màu chọn ở trang chi tiết — nên aria-hidden; "+N" là số màu còn lại chưa vẽ. */}
+      {product.colorSwatches.length > 0 || product.rating != null ? (
+        <div className="mt-1.5 flex items-center justify-between gap-2">
+          {product.colorSwatches.length > 0 ? (
+            <span aria-hidden="true" className="flex items-center gap-1.5">
+              {product.colorSwatches.slice(0, MAX_DOTS).map((hex, i) => (
+                <span
+                  key={`${hex}-${i}`}
+                  className="h-[15px] w-[15px] rounded-full border border-border-strong"
+                  style={{ backgroundColor: hex }}
+                />
+              ))}
+              {product.colorSwatches.length > MAX_DOTS ? (
+                <span className="font-mono text-[10px] text-text-muted">
+                  +{product.colorSwatches.length - MAX_DOTS}
+                </span>
+              ) : null}
+            </span>
+          ) : (
+            <span />
+          )}
+          {product.rating != null ? (
+            <Rating
+              value={product.rating}
+              count={product.reviewCount}
+              label={t('ratingLabel', { value: product.rating })}
+              size="sm"
+            />
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

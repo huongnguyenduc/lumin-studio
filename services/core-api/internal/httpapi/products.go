@@ -348,7 +348,8 @@ func (s *Server) GetProducts(ctx context.Context, request api.GetProductsRequest
 		offset = (page - 1) * pageSize
 	}
 
-	rows, total, err := db.NewCatalog(s.pool).ListActiveProductCards(ctx, db.ProductCardFilter{
+	catalog := db.NewCatalog(s.pool)
+	rows, total, err := catalog.ListActiveProductCards(ctx, db.ProductCardFilter{
 		CategorySlug: normalizeFilter(request.Params.Category),
 		Search:       search,
 		Sort:         sort,
@@ -359,7 +360,18 @@ func (s *Server) GetProducts(ctx context.Context, request api.GetProductsRequest
 		return nil, err // db error → mapError (handleResponseError) → 500, no leak
 	}
 
-	cards, err := productCardsDTO(rows)
+	// One batched read for the page's colour dots (ProductCard.colorSwatches, hi-fi 02) — the list
+	// itself stays free of per-product reads (no N+1).
+	ids := make([]uuid.UUID, len(rows))
+	for i, r := range rows {
+		ids[i] = r.ID
+	}
+	swatches, err := catalog.ColorSwatchesByProducts(ctx, ids)
+	if err != nil {
+		return nil, err // db error → 500, no leak
+	}
+
+	cards, err := productCardsDTO(rows, swatches)
 	if err != nil {
 		// Corrupt images JSONB is a server data fault (can't happen: NOT NULL DEFAULT '[]', written only
 		// via validated paths) → logged, 500. Hard-fail like the detail read rather than hide corruption.
@@ -459,7 +471,10 @@ func normalizeFilter(s *string) *string {
 // absent so the JSON renders `[]`, never `null` (spec §03 zero-state); money stays raw int-VND. A corrupt
 // images JSONB hard-fails the whole page (consistent with the detail read) rather than silently dropping
 // a cover — corruption should surface, and it cannot happen on the validated write paths.
-func productCardsDTO(rows []sqlc.ListActiveProductsRow) ([]api.ProductCard, error) {
+func productCardsDTO(
+	rows []sqlc.ListActiveProductsRow,
+	swatches map[uuid.UUID][]string,
+) ([]api.ProductCard, error) {
 	out := make([]api.ProductCard, len(rows))
 	for i, r := range rows {
 		images := []string{}
@@ -476,11 +491,21 @@ func productCardsDTO(rows []sqlc.ListActiveProductsRow) ([]api.ProductCard, erro
 			CategoryId:     r.CategoryID,
 			Images:         images,
 			SpriteSheetUrl: spriteURLPtr(r.SpriteSheetUrl), // ADR-049: card-hover 360° sprite; nil until rendered
+			ColorSwatches:  swatchesPtr(swatches[r.ID]),    // hi-fi 02 colour dots; nil (omitted) when colourless
 			RatingAvg:      r.RatingAvg,
 			ReviewCount:    int(r.ReviewCount),
 		}
 	}
 	return out, nil
+}
+
+// swatchesPtr collapses an empty hex list to nil so `colorSwatches` is OMITTED (not `[]`) for a
+// colourless product — the wire stays byte-identical to pre-swatch payloads there (additive field).
+func swatchesPtr(hexes []string) *[]string {
+	if len(hexes) == 0 {
+		return nil
+	}
+	return &hexes
 }
 
 // weakETag computes a WEAK validator over the marshaled list. Weak (W/) is correct: it asserts semantic

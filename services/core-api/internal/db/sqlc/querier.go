@@ -386,6 +386,10 @@ type Querier interface {
 	// for the editor's Product-detail assembly (the handler groups them by option_id into Option.choices[]).
 	// Ordered by option then display_order for a deterministic nesting.
 	ListChoicesByProduct(ctx context.Context, productID uuid.UUID) ([]OptionChoice, error)
+	// One batched read for the catalog page's colour dots (ProductCard.colorSwatches): every colour hex of
+	// the page's products, product-grouped, name-ordered (the SAME order ListColorsByProduct gives the
+	// detail read, so card dots and detail swatches never disagree on order).
+	ListColorSwatchesByProducts(ctx context.Context, productIds []uuid.UUID) ([]ListColorSwatchesByProductsRow, error)
 	ListColorsByProduct(ctx context.Context, productID uuid.UUID) ([]Color, error)
 	ListFilamentBatchesByMaterial(ctx context.Context, materialID uuid.UUID) ([]FilamentBatch, error)
 	// ListFilamentMaterials returns the palette with DERIVED stock + weighted-average cost/unit. The weighted

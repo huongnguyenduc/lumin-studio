@@ -100,6 +100,25 @@ func (c *Catalog) ListActiveProductCards(ctx context.Context, f ProductCardFilte
 	return rows, total, nil
 }
 
+// ColorSwatchesByProducts returns {productID → hex list, name-ordered} for the given page of product
+// ids in ONE query (the card list stays N+1-free; hi-fi 02 colour dots). A product with no colours is
+// simply absent from the map. Order inside each list mirrors ListColorsByProduct (ORDER BY name), so
+// the card dots and the detail swatches always agree.
+func (c *Catalog) ColorSwatchesByProducts(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID][]string, error) {
+	if len(ids) == 0 {
+		return map[uuid.UUID][]string{}, nil
+	}
+	rows, err := c.q.ListColorSwatchesByProducts(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID][]string, len(ids))
+	for _, r := range rows {
+		out[r.ProductID] = append(out[r.ProductID], r.Hex)
+	}
+	return out, nil
+}
+
 // ReviewFilter narrows the public product-review list (PR-P1-l). ProductID scopes to one product;
 // Limit/Offset are the already-bounded page window (the handler caps pageSize and the offset). There is
 // no visibility knob here on purpose — the published-only filter lives in the SQL, never a caller-supplied

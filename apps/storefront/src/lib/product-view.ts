@@ -22,6 +22,9 @@ export type ProductCardView = {
    *  non-null). */
   rating: number | null;
   reviewCount: number;
+  /** Hex swatches, catalog (name) order — the tile's colour dots (hi-fi 02). `[]` when the product has
+   *  no colours (the wire omits the field entirely for those). */
+  colorSwatches: string[];
 };
 
 /** Project an API `ProductCard` onto the view the grid renders. Pure — unit-tested in
@@ -40,6 +43,8 @@ export function toProductCardView(card: components['schemas']['ProductCard']): P
     spriteSheetUrl: card.spriteSheetUrl || undefined,
     rating: card.ratingAvg ?? null,
     reviewCount: card.reviewCount,
+    // Omitted on the wire (colourless product) ⇒ [] here, so the card just skips the dots row.
+    colorSwatches: card.colorSwatches ?? [],
   };
 }
 
