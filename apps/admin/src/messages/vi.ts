@@ -257,6 +257,11 @@ export const vi = {
         objectStaleHint: 'Tên này không còn trong model hiện tại — bạn chọn lại hoặc để trống nhé.',
         objectEmptyHint:
           'Chưa nhận diện được đối tượng nào trong model — kết xuất model 3D rồi quay lại gắn nhé.',
+        objectPickHint: 'Hoặc bấm thẳng vào bộ phận trên mô hình 3D bên dưới để gán nhanh.',
+        objectPickSelected: 'Đã gán bộ phận “{name}”.',
+        objectPickAlt: 'Mô hình 3D — bấm vào một bộ phận để gán tên đối tượng.',
+        objectPickLoading: 'Đang tải mô hình 3D…',
+        objectPickError: 'Không tải được mô hình 3D — bạn dùng danh sách phía trên nhé.',
         error: {
           forbidden: 'Bạn không có quyền cho thao tác này.',
           validation: 'Vài trường chưa hợp lệ — bạn kiểm tra lại giúp mình nhé.',

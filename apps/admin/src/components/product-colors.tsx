@@ -31,12 +31,14 @@ export function ProductColors({
   colors,
   filaments,
   modelObjectNames,
+  model3dStructuredUrl,
 }: {
   productId: string;
   parts: Part[];
   colors: Color[];
   filaments: FilamentMaterial[];
   modelObjectNames: string[];
+  model3dStructuredUrl?: string;
 }) {
   const t = useTranslations('products.edit.colors');
   const router = useRouter();
@@ -166,6 +168,7 @@ export function ProductColors({
           parts={parts}
           filaments={filaments}
           modelObjectNames={modelObjectNames}
+          model3dStructuredUrl={model3dStructuredUrl}
           partCount={parts.length}
           onClose={() => setTarget(null)}
         />

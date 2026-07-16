@@ -44,3 +44,26 @@ export function model3dViewToAttrs(v: Model3dView): { orbit: string; target: str
     target: `${v.targetX}m ${v.targetY}m ${v.targetZ}m`,
   };
 }
+
+/**
+ * Decide what a click on the 3D part-picker (f-2 click-on-model) maps to: the object name to assign, or null
+ * to ignore. Pure so it's testable without a WebGL/DOM viewer — the component feeds it the real pointer
+ * positions, the viewer's bounding rect, and `el.materialFromPoint` bound as `materialAt`.
+ *
+ * Ignores a DRAG (an orbit, not a pick — pointer moved > `slop` px between down and up) and an empty/absent
+ * material name (a gap in the model, or a fused glb whose one material is unnamed). The material name IS the
+ * object name because model_ingest names each object's material after it (f-3), so `getMaterialByName` /
+ * `materialFromPoint` both key on it.
+ */
+export function pickedObjectName(
+  down: { x: number; y: number } | null,
+  up: { x: number; y: number },
+  rect: { left: number; top: number },
+  materialAt: (localX: number, localY: number) => { name: string } | null,
+  slop = 6,
+): string | null {
+  if (!down) return null;
+  if (Math.hypot(up.x - down.x, up.y - down.y) > slop) return null; // a drag/orbit, not a pick
+  const name = materialAt(up.x - rect.left, up.y - rect.top)?.name.trim();
+  return name ? name : null;
+}
