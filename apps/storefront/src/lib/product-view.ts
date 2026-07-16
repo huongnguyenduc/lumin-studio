@@ -93,6 +93,9 @@ export type OptionChoiceView = {
 export type PartView = {
   id: string;
   name: string;
+  /** The object/material name inside the 3D model this part maps to (f-2/ADR-051), or undefined when
+   *  unmapped. The live viewer recolors that named material to the picked colour's hex (f-3). */
+  modelObjectName?: string;
 };
 
 /** A customization option on the detail page (spec §02). Two kinds, mirroring the catalog `option_type`:
@@ -134,6 +137,10 @@ export type ProductDetailView = {
    *  Empty-string collapses to undefined (same guard as imageSrc) so the "Xem 3D" button never mounts
    *  model-viewer with an empty src. */
   model3dUrl?: string;
+  /** `.glb` URL of the STRUCTURED derivative (f-4/ADR-052) — named objects/materials preserved, so the live
+   *  viewer can recolor each part by object name (f-3). Undefined until a model_ingest produced one; the viewer
+   *  loads it in preference to model3dUrl (falls back to the fused glb, where per-part recolor is a no-op). */
+  model3dStructuredUrl?: string;
   /** 360° sprite-sheet URL (ADR-049) — the model-viewer's no-WebGL fallback. Undefined until a
    *  `sprite_render` job has produced one; the viewer then just hides on a WebGL-less browser (as before). */
   spriteSheetUrl?: string;
@@ -167,6 +174,8 @@ export function toProductDetailView(product: components['schemas']['Product']): 
     material: product.material,
     // Empty string ⇒ no model → undefined (mirrors imageSrc), so the viewer button never mounts on an empty src.
     model3dUrl: product.model3dUrl || undefined,
+    // Structured glb (f-4): empty/absent ⇒ undefined; the viewer prefers it when present (per-part recolor).
+    model3dStructuredUrl: product.model3dStructuredUrl || undefined,
     // Empty-string / absent ⇒ no sprite yet → undefined (the viewer then has no no-WebGL fallback).
     spriteSheetUrl: product.spriteSheetUrl || undefined,
     dimensions: { w: product.dimensions.w, d: product.dimensions.d, h: product.dimensions.h },
@@ -199,8 +208,13 @@ export function toProductDetailView(product: components['schemas']['Product']): 
         priceDelta: ch.priceDelta,
       })),
     })),
-    // Same SSG/ISR guard as choices; a flat product has `parts: []`.
-    parts: (product.parts ?? []).map((p) => ({ id: p.id, name: p.name })),
+    // Same SSG/ISR guard as choices; a flat product has `parts: []`. modelObjectName (f-2) drives the live
+    // viewer recolor; empty-string/absent collapses to undefined (unmapped part → keeps its default colour).
+    parts: (product.parts ?? []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      modelObjectName: p.modelObjectName || undefined,
+    })),
     rating: product.ratingAvg ?? null,
     reviewCount: product.reviewCount,
   };
@@ -339,6 +353,29 @@ export function canAddToCartWithOptions(
  *  never grouped under a part. Used both to render a part's swatch set and to validate a per-part pick. */
 export function colorsForPart(colors: ReadonlyArray<ColorView>, partId: string): ColorView[] {
   return colors.filter((c) => c.partId === partId);
+}
+
+/**
+ * The `{ objectName → hex }` recolor map the live 3D viewer applies (f-3, ADR-052 structured glb): for each
+ * part that maps to a model object (modelObjectName) AND has a colour picked, the selected colour's hex. A
+ * part with no modelObjectName, or with no selection yet, is skipped — that mesh keeps its baked colour (an
+ * unmapped part never turns grey). Keyed by object name because model-viewer addresses materials by name
+ * (getMaterialByName). Pure → unit-tested. Returns `{}` before the customer has picked anything.
+ */
+export function partColorsForViewer(
+  parts: ReadonlyArray<Pick<PartView, 'id' | 'modelObjectName'>>,
+  colors: ReadonlyArray<Pick<ColorView, 'id' | 'hex'>>,
+  partColorByPart: Readonly<Record<string, string>>,
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const part of parts) {
+    if (!part.modelObjectName) continue;
+    const colorId = partColorByPart[part.id];
+    if (colorId === undefined) continue;
+    const color = colors.find((c) => c.id === colorId);
+    if (color) map[part.modelObjectName] = color.hex;
+  }
+  return map;
 }
 
 /**

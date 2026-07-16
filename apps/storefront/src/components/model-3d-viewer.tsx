@@ -4,17 +4,35 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { SpriteTurntable } from './sprite-turntable';
 
-// Minimal typing for Google's <model-viewer> custom element — we use only these attributes. (React 18
-// does not map className→class for custom elements, so sizing goes through inline `style`, not a class.)
+/** The sliver of model-viewer's scene-graph API f-3 uses: recolor a named material at runtime. `model` is
+ *  present only after the element's `load` event; `getMaterialByName` returns null for an unknown name (the
+ *  fused glb / an unmapped object). setBaseColorFactor takes a hex string OR an RGBA array (model-viewer ≥ 3). */
+interface ModelViewerElement extends HTMLElement {
+  model?: {
+    getMaterialByName(name: string): {
+      pbrMetallicRoughness: {
+        setBaseColorFactor(value: string | [number, number, number, number]): void;
+      };
+    } | null;
+  };
+}
+
+// Minimal typing for Google's <model-viewer> custom element — we use only these attributes. The element type
+// is ModelViewerElement so a typed `ref` lines up. (React 18 does not map className→class for custom elements,
+// so sizing goes through inline `style`, not a class.)
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace JSX {
     interface IntrinsicElements {
-      'model-viewer': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
+      'model-viewer': React.DetailedHTMLProps<
+        React.HTMLAttributes<ModelViewerElement>,
+        ModelViewerElement
+      > & {
         src?: string;
         alt?: string;
         'camera-controls'?: boolean;
         'interaction-prompt'?: string;
+        onError?: () => void;
       };
     }
   }
@@ -38,20 +56,24 @@ function hasWebGL(): boolean {
  * interaction-prompt ⇒ no autonomous motion, so prefers-reduced-motion is honoured by construction (the
  * a11y rule's viewer-3D clause). When the browser lacks WebGL, the 360° sprite sheet (ADR-049) is the
  * fallback if the product has one — a self-turning turntable, stilled under reduced-motion — else the
- * button is hidden and the static gallery is the fallback. `src` is the product's `.glb` URL, already gated
- * non-empty by the parent; `spriteSheetUrl` is optional (absent until a sprite_render job runs).
+ * button is hidden and the static gallery is the fallback. `src` is the product's `.glb` URL (the parent
+ * prefers the STRUCTURED glb so per-part recolor works, else the fused glb), already gated non-empty by the
+ * parent; `spriteSheetUrl` is optional; `partColors` maps object name → hex for the live per-part recolor (f-3).
  */
 export function Model3dViewer({
   src,
   productName,
   spriteSheetUrl,
+  partColors,
 }: {
   src: string;
   productName: string;
   spriteSheetUrl?: string;
+  partColors?: Record<string, string>;
 }) {
   const t = useTranslations('productDetail');
   const containerRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<ModelViewerElement | null>(null);
   const [webglOk, setWebglOk] = useState(false);
   const [shown, setShown] = useState(false);
   const [ready, setReady] = useState(false);
@@ -66,10 +88,9 @@ export function Model3dViewer({
   // Load the web component only once the customer asks for it, and move focus into the revealed region
   // so a keyboard / screen-reader user isn't dropped to <body> when the "Xem 3D" button unmounts.
   // ponytail: model-viewer's DEFAULT Draco/KTX2 decoders load from gstatic.com — a *compressed* .glb
-  // would fetch WASM from Google at runtime (post-click), against the self-host/PDPL posture. No asset is
-  // compressed today (there are no .glb at all yet). Upgrade path when real assets land: self-host the
-  // decoders (CachingGLTFLoader.setDRACODecoderLocation), OR require the render-worker to emit
-  // UNCOMPRESSED .glb, which loads entirely from `src` with zero third-party fetch.
+  // would fetch WASM from Google at runtime (post-click), against the self-host/PDPL posture. The ingest
+  // glb (fused AND structured) is UNCOMPRESSED, so it loads entirely from `src` with zero third-party fetch.
+  // Upgrade path if a later LOD pass compresses: self-host the decoders (setDRACODecoderLocation).
   useEffect(() => {
     if (!shown) return;
     containerRef.current?.focus();
@@ -81,6 +102,26 @@ export function Model3dViewer({
       alive = false;
     };
   }, [shown]);
+
+  // f-3 (ADR-052): recolor each mapped part's material to the customer's picked colour. model-viewer exposes
+  // the loaded scene only after its `load` event, so apply on load AND whenever the selection (partColors)
+  // changes — by then the model is already loaded. getMaterialByName returns null for the fused glb / an
+  // unmapped or renamed object → that part is skipped (no crash, keeps its baked colour). Setting a base
+  // colour adds NO motion, so prefers-reduced-motion is unaffected (the a11y viewer-3D clause).
+  useEffect(() => {
+    const el = viewerRef.current;
+    if (!ready || !el || !partColors) return;
+    const apply = () => {
+      const model = el.model;
+      if (!model) return;
+      for (const [objectName, hex] of Object.entries(partColors)) {
+        model.getMaterialByName(objectName)?.pbrMetallicRoughness.setBaseColorFactor(hex);
+      }
+    };
+    if (el.model) apply(); // already loaded (e.g. a selection change after the first load)
+    el.addEventListener('load', apply);
+    return () => el.removeEventListener('load', apply);
+  }, [ready, partColors]);
 
   // No WebGL → the 360° sprite sheet is the fallback (ADR-007/ADR-049): a self-turning turntable so a
   // WebGL-less browser still gets a rotating preview (stilled under reduced-motion). No sprite yet → hide,
@@ -128,6 +169,7 @@ export function Model3dViewer({
         // import) → wire onError to the same failed state so view3dError is reachable for asset failure,
         // not only for the chunk-load failure the dynamic import catches.
         <model-viewer
+          ref={viewerRef}
           src={src}
           alt={t('view3dAlt', { name: productName })}
           camera-controls={true}

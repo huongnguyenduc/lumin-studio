@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -13,6 +13,7 @@ import {
   canAddConfiguredToCart,
   canAddToCart,
   colorsForPart,
+  partColorsForViewer,
   formatDimensions,
   isColorSelectable,
   type ColorView,
@@ -129,6 +130,13 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
   const [choiceByOption, setChoiceByOption] = useState<Record<string, string>>({});
   const [engraveTexts, setEngraveTexts] = useState<Record<string, string>>({});
   const [selectedChoiceIds, setSelectedChoiceIds] = useState<string[]>([]);
+
+  // f-3 (ADR-052): the {objectName → hex} map the live 3D viewer applies. Memoised so the viewer's recolor
+  // effect only re-runs when the per-part selection changes, not on every unrelated re-render (e.g. activeImage).
+  const viewerPartColors = useMemo(
+    () => partColorsForViewer(product.parts, product.colors, partColorByPart),
+    [product.parts, product.colors, partColorByPart],
+  );
 
   const router = useRouter();
   const { add } = useCart();
@@ -249,9 +257,10 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
               loads model-viewer on click and hides itself when WebGL is unavailable. */}
           {product.model3dUrl ? (
             <Model3dViewer
-              src={product.model3dUrl}
+              src={product.model3dStructuredUrl || product.model3dUrl}
               productName={product.name}
               spriteSheetUrl={product.spriteSheetUrl}
+              partColors={viewerPartColors}
             />
           ) : null}
         </div>
