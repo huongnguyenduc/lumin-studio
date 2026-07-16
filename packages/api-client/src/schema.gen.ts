@@ -1975,11 +1975,8 @@ export interface components {
             images?: string[];
             status: components["schemas"]["ProductStatus"];
         };
-        /** @description Create/replace body for a product colour (P3-j). priceDelta is int-VND (default 0). */
+        /** @description Create/replace body for a product colour (P3-j; ADR-039 amendment f-1). The colour's display name + hex are SOURCED from the linked filament (copy-on-write) — the client no longer sends them. priceDelta is int-VND (default 0). */
         ColorInput: {
-            name: string;
-            /** @description Swatch colour as a hex string (e.g. */
-            hex: string;
             available: boolean;
             /**
              * Format: int64
@@ -1993,9 +1990,9 @@ export interface components {
             partId?: string | null;
             /**
              * Format: uuid
-             * @description Link this colour to a shop filament (ADR-039) so deduct-on-print knows which spool it draws; omit/null = unlinked. An unknown id → 400 filamentMaterialId.
+             * @description The shop filament (ADR-039) this colour prints in — REQUIRED. Its name + hex become the colour's swatch (copy-on-write, resolved server-side). An unknown id, or a filament with no hex ("no colour chip"), → 400 filamentMaterialId.
              */
-            filamentMaterialId?: string | null;
+            filamentMaterialId: string;
         };
         /** @description Create/replace body for a customization option (P3-j). priceDelta is int-VND (default 0). */
         OptionInput: {

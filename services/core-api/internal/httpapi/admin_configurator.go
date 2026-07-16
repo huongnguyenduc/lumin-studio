@@ -224,13 +224,11 @@ func cleanPartInput(in api.PartInput) (name string, displayOrder int32, estFilam
 	return name, displayOrder, estFilamentQty, nil
 }
 
-// pgUUIDPtr maps an optional wire uuid (a nullable FK like colors.filament_material_id, ADR-039) to a
-// pgtype.UUID: nil → SQL NULL, set → the value.
-func pgUUIDPtr(id *uuid.UUID) pgtype.UUID {
-	if id == nil {
-		return pgtype.UUID{Valid: false}
-	}
-	return pgtype.UUID{Bytes: *id, Valid: true}
+// pgUUID wraps a REQUIRED wire uuid as a valid pgtype.UUID — for a FK written from a required input field
+// (colors.filament_material_id under ADR-039 f-1: the column stays nullable for legacy flat colours, but a
+// new/edited colour always names the filament that is its swatch source).
+func pgUUID(id uuid.UUID) pgtype.UUID {
+	return pgtype.UUID{Bytes: id, Valid: true}
 }
 
 // cleanOptionChoiceInput trims + validates an option-choice create/replace body. priceDelta defaults to 0

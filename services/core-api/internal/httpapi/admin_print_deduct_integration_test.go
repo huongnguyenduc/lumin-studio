@@ -113,7 +113,8 @@ func setProductEst(t *testing.T, ctx context.Context, pool *pgxpool.Pool, prod u
 func seedFilament(t *testing.T, ctx context.Context, pool *pgxpool.Pool, name string, qty, totalCost int64) uuid.UUID {
 	t.Helper()
 	fil := db.NewFilament(pool)
-	m, err := fil.InsertMaterial(ctx, sqlc.InsertFilamentMaterialParams{ID: uuid.New(), Name: name, Material: "PLA", Unit: "gram", LowStockThreshold: 0})
+	hex := "#888888" // f-1: a colour sources its swatch from its filament, so a seeded filament needs a hex.
+	m, err := fil.InsertMaterial(ctx, sqlc.InsertFilamentMaterialParams{ID: uuid.New(), Name: name, Material: "PLA", Unit: "gram", Hex: &hex, LowStockThreshold: 0})
 	if err != nil {
 		t.Fatalf("seed filament %s: %v", name, err)
 	}

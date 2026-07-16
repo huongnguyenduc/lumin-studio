@@ -541,16 +541,12 @@ type Color struct {
 	PriceDelta int64 `json:"priceDelta"`
 }
 
-// ColorInput Create/replace body for a product colour (P3-j). priceDelta is int-VND (default 0).
+// ColorInput Create/replace body for a product colour (P3-j; ADR-039 amendment f-1). The colour's display name + hex are SOURCED from the linked filament (copy-on-write) — the client no longer sends them. priceDelta is int-VND (default 0).
 type ColorInput struct {
 	Available bool `json:"available"`
 
-	// FilamentMaterialId Link this colour to a shop filament (ADR-039) so deduct-on-print knows which spool it draws; omit/null = unlinked. An unknown id → 400 filamentMaterialId.
-	FilamentMaterialId *openapi_types.UUID `json:"filamentMaterialId"`
-
-	// Hex Swatch colour as a hex string (e.g.
-	Hex  string `json:"hex"`
-	Name string `json:"name"`
+	// FilamentMaterialId The shop filament (ADR-039) this colour prints in — REQUIRED. Its name + hex become the colour's swatch (copy-on-write, resolved server-side). An unknown id, or a filament with no hex ("no colour chip"), → 400 filamentMaterialId.
+	FilamentMaterialId openapi_types.UUID `json:"filamentMaterialId"`
 
 	// PartId Assign this colour to a part (ADR-037); omit/null = flat product-level colour. The part must belong to the same product (else 400 partId).
 	PartId *openapi_types.UUID `json:"partId"`

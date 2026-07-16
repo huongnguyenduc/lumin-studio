@@ -161,7 +161,8 @@ func TestAdminProductCRUDEndToEnd(t *testing.T) {
 	}
 
 	// --- nested color + option ---
-	colResp, err := srv.CreateProductColor(owner, api.CreateProductColorRequestObject{Id: pid, Body: &api.ColorInput{Name: "Kem", Hex: "#C9A24B", Available: true}})
+	mat := seedFilament(t, ctx, pool, "Kem", 100, 39_000) // f-1: a colour's name/hex come from its filament
+	colResp, err := srv.CreateProductColor(owner, api.CreateProductColorRequestObject{Id: pid, Body: &api.ColorInput{Available: true, FilamentMaterialId: mat}})
 	if err != nil {
 		t.Fatalf("create color: %v", err)
 	}
@@ -274,14 +275,15 @@ func TestProductColorOptionScopedByProduct(t *testing.T) {
 	prodA, prodB := mk("prod-a"), mk("prod-b")
 
 	// A colour that belongs to product A.
-	colResp, err := srv.CreateProductColor(owner, api.CreateProductColorRequestObject{Id: prodA, Body: &api.ColorInput{Name: "Kem", Hex: "#fff", Available: true}})
+	mat := seedFilament(t, ctx, pool, "Kem", 100, 39_000) // f-1: a colour's name/hex come from its filament
+	colResp, err := srv.CreateProductColor(owner, api.CreateProductColorRequestObject{Id: prodA, Body: &api.ColorInput{Available: true, FilamentMaterialId: mat}})
 	if err != nil {
 		t.Fatalf("create color on A: %v", err)
 	}
 	colA := api.Color(colResp.(api.CreateProductColor201JSONResponse))
 
 	// Editing colour-A through product B's path → 404 (scoped by product_id, so no row matches).
-	if _, err := srv.UpdateProductColor(owner, api.UpdateProductColorRequestObject{Id: prodB, ColorId: colA.Id, Body: &api.ColorInput{Name: "Hack", Hex: "#000", Available: false}}); !errors.Is(err, db.ErrNotFound) {
+	if _, err := srv.UpdateProductColor(owner, api.UpdateProductColorRequestObject{Id: prodB, ColorId: colA.Id, Body: &api.ColorInput{Available: false, FilamentMaterialId: mat}}); !errors.Is(err, db.ErrNotFound) {
 		t.Fatalf("cross-product color update: err = %v, want ErrNotFound (404)", err)
 	}
 	if _, err := srv.DeleteProductColor(owner, api.DeleteProductColorRequestObject{Id: prodB, ColorId: colA.Id}); !errors.Is(err, db.ErrNotFound) {
@@ -289,7 +291,71 @@ func TestProductColorOptionScopedByProduct(t *testing.T) {
 	}
 
 	// Creating a colour under a non-existent product → 404 (FK violation mapped, not 500).
-	if _, err := srv.CreateProductColor(owner, api.CreateProductColorRequestObject{Id: uuid.New(), Body: &api.ColorInput{Name: "x", Hex: "#fff", Available: true}}); !errors.Is(err, db.ErrNotFound) {
+	if _, err := srv.CreateProductColor(owner, api.CreateProductColorRequestObject{Id: uuid.New(), Body: &api.ColorInput{Available: true, FilamentMaterialId: mat}}); !errors.Is(err, db.ErrNotFound) {
 		t.Fatalf("color on unknown product: err = %v, want ErrNotFound (404)", err)
+	}
+}
+
+// f-1 (ADR-039 amendment): a colour's name + hex are SOURCED from its filament (copy-on-write), not typed.
+// Creating a colour stamps the filament's name+hex onto the row; a later filament rename does NOT cascade —
+// which is precisely what keeps a sold order's frozen part_colors snapshot immutable. A missing or hex-less
+// filament is rejected (400), so a colour can never ship with an empty swatch.
+func TestColorSwatchSourcedFromFilament(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+	owner := ownerCtx()
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
+	repo := db.NewCatalog(pool)
+
+	cat, _ := repo.CreateCategory(ctx, sqlc.InsertCategoryParams{ID: uuid.New(), Slug: "cat-f1", Name: "DM"})
+	prod, err := repo.CreateProduct(ctx, sqlc.InsertProductParams{
+		ID: uuid.New(), Slug: "den-f1", Name: "Đèn", Description: "", CategoryID: cat.ID, BasePrice: 1,
+		Dimensions: []byte(`{"w":1,"d":1,"h":1}`), Material: "PLA", Images: []byte(`[]`), Status: sqlc.ProductStatusDraft,
+	})
+	if err != nil {
+		t.Fatalf("seed product: %v", err)
+	}
+	mat := seedFilament(t, ctx, pool, "Cam Lumin", 100, 39_000) // seedFilament stamps hex #888888
+
+	// create → the colour takes the filament's name + hex.
+	resp, err := srv.CreateProductColor(owner, api.CreateProductColorRequestObject{Id: prod.ID, Body: &api.ColorInput{Available: true, FilamentMaterialId: mat}})
+	if err != nil {
+		t.Fatalf("create colour: %v", err)
+	}
+	col := api.Color(resp.(api.CreateProductColor201JSONResponse))
+	if col.Name != "Cam Lumin" || col.Hex != "#888888" {
+		t.Fatalf("colour swatch = %q/%q, want the filament's Cam Lumin/#888888", col.Name, col.Hex)
+	}
+
+	// renaming/re-hexing the filament does NOT cascade to an existing colour (copy-on-write) — the mechanism
+	// that keeps a sold order's frozen snapshot immutable.
+	if _, err := pool.Exec(ctx, `UPDATE filament_materials SET name = 'Đỏ', hex = '#FF0000' WHERE id = $1`, mat); err != nil {
+		t.Fatalf("rename filament: %v", err)
+	}
+	detResp, err := srv.GetAdminProduct(owner, api.GetAdminProductRequestObject{Id: prod.ID})
+	if err != nil {
+		t.Fatalf("get detail: %v", err)
+	}
+	det := api.Product(detResp.(api.GetAdminProduct200JSONResponse))
+	if len(det.Colors) != 1 || det.Colors[0].Name != "Cam Lumin" || det.Colors[0].Hex != "#888888" {
+		t.Fatalf("after filament rename, colour = %+v, want the frozen Cam Lumin/#888888", det.Colors)
+	}
+
+	// a filamentMaterialId matching no filament → 400 field filamentMaterialId (not 500/404).
+	if r, err := srv.CreateProductColor(owner, api.CreateProductColorRequestObject{Id: prod.ID, Body: &api.ColorInput{Available: true, FilamentMaterialId: uuid.New()}}); err != nil {
+		t.Fatalf("unknown filament: unexpected err %v", err)
+	} else if _, ok := r.(api.CreateProductColor400JSONResponse); !ok {
+		t.Fatalf("unknown filament resp = %T, want 400", r)
+	}
+
+	// a filament with NO hex ("no colour chip", 000018) cannot be a colour's swatch source → 400.
+	hexless := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO filament_materials (id, name, material, unit) VALUES ($1,'Không mã','PLA','gram')`, hexless); err != nil {
+		t.Fatalf("seed hexless filament: %v", err)
+	}
+	if r, err := srv.CreateProductColor(owner, api.CreateProductColorRequestObject{Id: prod.ID, Body: &api.ColorInput{Available: true, FilamentMaterialId: hexless}}); err != nil {
+		t.Fatalf("hexless filament: unexpected err %v", err)
+	} else if _, ok := r.(api.CreateProductColor400JSONResponse); !ok {
+		t.Fatalf("hexless filament resp = %T, want 400", r)
 	}
 }

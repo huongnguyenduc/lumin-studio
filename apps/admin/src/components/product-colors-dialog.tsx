@@ -19,15 +19,13 @@ type Color = components['schemas']['Color'];
 type Part = components['schemas']['Part'];
 type FilamentMaterial = components['schemas']['FilamentMaterial'];
 
-const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
-
 /** What the dialog is adding/editing. Absent part/color = a create. */
 export type DialogTarget = { kind: 'part'; part?: Part } | { kind: 'color'; color?: Color };
 
 // Add/edit dialog for a product's parts & colours (P3-l l-3, ADR-037). Native <dialog> (showModal) so
 // Esc/backdrop close + focus-trap come free; the parent keys each open, so every open starts clean. The
-// client gate only blocks an obviously-incomplete submit — the server re-validates (hex regex, money
-// bounds, unknown filament/part id). On success router.refresh() re-reads the product so the row shows.
+// client gate only blocks an obviously-incomplete submit — the server re-validates (money bounds, unknown
+// filament/part id, a filament with no hex). On success router.refresh() re-reads the product so the row shows.
 // ponytail: DialogShell/useSubWrite/Select mirror materials-dialog's; extract to a shared form-kit when a
 // 4th consumer appears (repo already tolerates the duplicated Select in product-editor/materials-dialog).
 export function ProductColorDialog({
@@ -253,16 +251,19 @@ function ColorForm({
 }) {
   const t = useTranslations('products.edit.colors');
   const { pending, error, run } = useSubWrite(onClose);
-  const [name, setName] = useState(color?.name ?? '');
-  const [hex, setHex] = useState(color?.hex ?? '');
   const [available, setAvailable] = useState(color?.available ?? true);
   const [price, setPrice] = useState(color?.priceDelta ? String(color.priceDelta) : '');
   const [partId, setPartId] = useState(color?.partId ?? '');
   const [filamentId, setFilamentId] = useState(color?.filamentMaterialId ?? '');
 
-  const hexOk = HEX_RE.test(hex.trim());
+  // f-1 (ADR-039): a colour's name + hex come from its filament (copy-on-write) — the shop picks a filament,
+  // it never types a name/hex. Only a filament that HAS a hex can be a swatch source (the server enforces
+  // this too); a filament with no colour chip disables submit with a hint.
+  const selectedFilament = filaments.find((f) => f.id === filamentId);
+  const filamentHex = selectedFilament?.hex ?? null;
   const priceVnd = price.trim() === '' ? 0 : parseIntField(price);
-  const canSubmit = !pending && name.trim() !== '' && hexOk && priceVnd !== null && priceVnd >= 0;
+  const canSubmit =
+    !pending && filamentId !== '' && !!filamentHex && priceVnd !== null && priceVnd >= 0;
 
   return (
     <DialogShell
@@ -274,45 +275,41 @@ function ColorForm({
       onSubmit={() =>
         run(() => {
           const input = {
-            name: name.trim(),
-            hex: hex.trim(),
             available,
             priceDelta: priceVnd ?? 0,
             partId: partId || null,
-            filamentMaterialId: filamentId || null,
+            filamentMaterialId: filamentId,
           };
           return color ? updateColor(productId, color.id, input) : createColor(productId, input);
         })
       }
     >
-      <Input
-        label={t('nameLabel')}
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder={t('colorNamePlaceholder')}
-        autoComplete="off"
-      />
       <div className="flex items-end gap-3">
         <span
           aria-hidden="true"
           className={cn(
             'mb-1 h-11 w-11 shrink-0 rounded-md border',
-            hexOk ? 'border-border-strong' : 'border-dashed border-border-strong',
+            filamentHex ? 'border-border-strong' : 'border-dashed border-border-strong',
           )}
-          style={hexOk ? { backgroundColor: hex.trim() } : undefined}
+          style={filamentHex ? { backgroundColor: filamentHex } : undefined}
         />
         <div className="flex-1">
-          <Input
-            label={t('hexLabel')}
-            value={hex}
-            onChange={(e) => setHex(e.target.value)}
-            placeholder="#C9A24B"
-            hint={t('hexHint')}
-            error={hex.trim() !== '' && !hexOk ? t('hexErr') : undefined}
-            autoComplete="off"
+          <Select
+            label={t('filamentLabel')}
+            value={filamentId}
+            onChange={setFilamentId}
+            options={[
+              { value: '', label: t('filamentPlaceholder') },
+              ...filaments.map((f) => ({ value: f.id, label: f.name })),
+            ]}
           />
         </div>
       </div>
+      {filamentId !== '' && !filamentHex && (
+        <p role="alert" className="text-sm text-danger">
+          {t('filamentNoHex')}
+        </p>
+      )}
       <Input
         label={t('priceLabel')}
         type="number"
@@ -335,15 +332,6 @@ function ColorForm({
           ]}
         />
       )}
-      <Select
-        label={t('filamentLabel')}
-        value={filamentId}
-        onChange={setFilamentId}
-        options={[
-          { value: '', label: t('filamentNone') },
-          ...filaments.map((f) => ({ value: f.id, label: f.name })),
-        ]}
-      />
       <div className="flex items-center justify-between gap-3">
         <span className="font-display text-sm font-medium text-text-strong">
           {t('availableLabel')}
