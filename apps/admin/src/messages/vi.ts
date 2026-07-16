@@ -24,6 +24,11 @@ export const vi = {
     customers: 'Khách hàng',
     petTag: 'Pet Tag',
     settings: 'Cài đặt',
+    // Sub-nav dưới "Cài đặt" (hi-fi 13) — chỉ các trang con CÓ THẬT (extension settings chưa có route).
+    settingsPayShip: 'Thanh toán & ship',
+    settingsTemplates: 'Mẫu trả lời',
+    settingsStaff: 'Nhân viên',
+    settingsChannels: 'Kênh chat',
     logout: 'Đăng xuất',
   },
   auth: {
@@ -573,6 +578,8 @@ export const vi = {
   },
   settings: {
     title: 'Cài đặt',
+    // Hi-fi 13: trang gốc /cai-dat là trang con "Thanh toán & ship" (breadcrumb "Cài đặt ›").
+    payShipTitle: 'Thanh toán & ship',
     subtitle: 'Thanh toán, phí ship và chính sách của cửa hàng.',
     saving: 'Đang lưu…',
     saved: 'Đã lưu 🧡',

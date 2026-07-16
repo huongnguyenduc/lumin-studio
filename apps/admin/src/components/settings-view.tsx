@@ -34,7 +34,13 @@ export function SettingsView({ settings }: { settings: Settings }) {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="font-display text-2xl font-semibold text-text-strong">{t('title')}</h1>
+        {/* Hi-fi 13: breadcrumb mono "Cài đặt ›" + tiêu đề trang con. */}
+        <p className="font-mono text-xs text-text-muted">
+          {t('title')} <span aria-hidden="true">›</span>
+        </p>
+        <h1 className="font-display text-2xl font-semibold text-text-strong">
+          {t('payShipTitle')}
+        </h1>
         <p className="mt-1 text-sm text-text-muted">{t('subtitle')}</p>
       </div>
 

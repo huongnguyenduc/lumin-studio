@@ -43,6 +43,13 @@ export function Sidebar() {
     { href: '/cai-dat', label: t('settings'), Icon: SettingsIcon },
   ];
 
+  const settingsChildren = [
+    { href: '/cai-dat', label: t('settingsPayShip') },
+    { href: '/cai-dat/mau-tra-loi', label: t('settingsTemplates') },
+    { href: '/cai-dat/nhan-vien', label: t('settingsStaff') },
+    { href: '/cai-dat/kenh', label: t('settingsChannels') },
+  ];
+
   return (
     <aside className="border-b border-border-subtle bg-surface-card lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:w-64 lg:border-b-0 lg:border-r">
       <div className="mx-auto flex w-full max-w-[1200px] items-center gap-3 px-4 py-3 lg:max-w-none lg:px-5 lg:py-6">
@@ -80,6 +87,36 @@ export function Sidebar() {
                   <Icon className="h-5 w-5 shrink-0" />
                   <span className="whitespace-nowrap">{label}</span>
                 </Link>
+                {/* Hi-fi 13: khi đang Ở TRONG "Cài đặt", sổ sub-nav mono các trang con (desktop rail
+                    only — thanh ngang mobile đã chật). Chỉ liệt kê route CÓ THẬT; trang con đang mở
+                    được đánh dấu aria-current. */}
+                {href === '/cai-dat' && active ? (
+                  <ul className="hidden lg:mt-0.5 lg:flex lg:flex-col lg:gap-0.5 lg:pl-11">
+                    {settingsChildren.map((child) => {
+                      const childActive =
+                        child.href === '/cai-dat'
+                          ? pathname === '/cai-dat'
+                          : pathname.startsWith(child.href);
+                      return (
+                        <li key={child.href}>
+                          <Link
+                            href={child.href}
+                            aria-current={childActive ? 'page' : undefined}
+                            className={cn(
+                              'flex min-h-[36px] items-center gap-1.5 rounded-md px-2 py-1.5 font-mono text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2',
+                              childActive
+                                ? 'font-bold text-primary'
+                                : 'text-text-muted hover:bg-surface-sunken hover:text-text-strong',
+                            )}
+                          >
+                            <span aria-hidden="true">›</span>
+                            {child.label}
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : null}
               </li>
             );
           })}
