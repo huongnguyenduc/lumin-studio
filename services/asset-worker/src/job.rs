@@ -1,5 +1,7 @@
 //! The AssetJob the worker consumes off the `ASSET_JOBS` WorkQueue.
 
+use std::collections::HashMap;
+
 use serde::Deserialize;
 
 /// The two asset-job kinds the producer enqueues (core-api `asset_job_type`, db/jobs.go).
@@ -15,9 +17,9 @@ pub enum JobType {
 /// stay `String`: the worker only echoes `asset_job_id` back in the callback path and never
 /// manipulates them, so a uuid dep would be dead weight (ponytail).
 // allow(dead_code): every field is the deserialized WIRE CONTRACT (serde populates all of them and the
-// parse tests assert on them), but only `asset_job_id` is read back by THIS slice's spine (log +
-// callback path). product_id/job_type/source_model_url/source_version are the input the real per-kind
-// processor reads (dispatch by job_type, fetch source_model_url) — it lands in the next slice.
+// parse tests assert on them). asset_job_id is echoed on the callback path; job_type/source_model_url/
+// source_version drive dispatch + fetch in the processors; part_colors is read by sprite_render. product_id
+// is carried for completeness/logging and may be unread — the allow keeps that from warning.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,6 +29,11 @@ pub struct AssetJob {
     pub job_type: JobType,
     pub source_model_url: String,
     pub source_version: String,
+    /// f-5 (amends ADR-049): the {objectName → "#RRGGBB"} snapshot a sprite_render job paints each named
+    /// part with. `default` so a model_ingest payload (no `partColors` key) and any pre-f-5 producer parse
+    /// to an empty map — the wire contract only grows for a sprite that has per-part colours.
+    #[serde(default)]
+    pub part_colors: HashMap<String, String>,
 }
 
 impl AssetJob {
@@ -69,5 +76,28 @@ mod tests {
         let bad_type = r#"{"assetJobId":"a","productId":"b","jobType":"poster","sourceModelUrl":"u","sourceVersion":"v"}"#;
         assert!(AssetJob::parse(bad_type.as_bytes()).is_err());
         assert!(AssetJob::parse(b"not json").is_err());
+    }
+
+    #[test]
+    fn parses_sprite_render_with_part_colors() {
+        // The f-5 shape: a sprite_render payload carries the frozen {objectName → hex} map (Vietnamese
+        // object names, camelCase `partColors`). Pins it against db/jobs.go `assetJobCreatedPayload`.
+        // r##…##: the hex colours contain `"#`, which would close a plain r#"…"# early.
+        let body = r##"{"assetJobId":"a","productId":"b","jobType":"sprite_render","sourceModelUrl":"u","sourceVersion":"v","partColors":{"Chao đèn":"#E8B923","Đế":"#3A3A3A"}}"##;
+        let j = AssetJob::parse(body.as_bytes()).expect("parse sprite payload with partColors");
+        assert_eq!(j.job_type, JobType::SpriteRender);
+        assert_eq!(j.part_colors.len(), 2);
+        assert_eq!(
+            j.part_colors.get("Chao đèn").map(String::as_str),
+            Some("#E8B923")
+        );
+    }
+
+    #[test]
+    fn part_colors_defaults_empty_when_absent() {
+        // A model_ingest payload has NO partColors key (Go `omitempty`) → serde default → empty map. This is
+        // what keeps the wire contract backward-compatible; the older CREATED const must still parse.
+        let j = AssetJob::parse(CREATED.as_bytes()).unwrap();
+        assert!(j.part_colors.is_empty());
     }
 }

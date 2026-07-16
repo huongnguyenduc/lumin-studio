@@ -114,6 +114,7 @@ mod tests {
             job_type: JobType::ModelIngest,
             source_model_url: "https://s3/lumin-assets/src.glb".into(),
             source_version: "v1".into(),
+            part_colors: Default::default(),
         }
     }
 

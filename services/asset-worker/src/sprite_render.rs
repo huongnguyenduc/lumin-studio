@@ -46,6 +46,12 @@ impl Processor for SpriteRenderProcessor {
             .map_err(|e| ProcessError::Transient(format!("fetch source {key}: {e}")))?;
         let ext = extension_of(&key).unwrap_or("glb").to_string();
 
+        // f-5: freeze the per-part {objectName → hex} snapshot into a JSON string the render step hands to
+        // Blender via env (render.rs). A String-keyed map can't fail to serialize; "{}" is the belt-and-braces
+        // fallback → an uncoloured render, never a hard error.
+        let part_colors_json =
+            serde_json::to_string(&job.part_colors).unwrap_or_else(|_| "{}".to_string());
+
         // Write source → run Blender turntable + tile → read the WebP on a BLOCKING thread, so the async
         // runtime (and the JetStream InProgress heartbeat on it) is not stalled during a long GPU render.
         let (python, script, job_id) = (
@@ -60,7 +66,7 @@ impl Processor for SpriteRenderProcessor {
             let input = dir.join(format!("input.{ext}"));
             std::fs::write(&input, &src)
                 .map_err(|e| ProcessError::Transient(format!("write source: {e}")))?;
-            let manifest = run_render(&python, &script, &input, &dir)?; // already-classified ProcessError
+            let manifest = run_render(&python, &script, &input, &dir, &part_colors_json)?; // already-classified ProcessError
             let sprite = std::fs::read(&manifest.sprite_path)
                 .map_err(|e| ProcessError::Transient(format!("read sprite: {e}")))?;
             tracing::info!(job = %job_id, frames = manifest.frames, cols = manifest.cols, "sprite rendered");
@@ -105,6 +111,7 @@ mod tests {
             job_type: JobType::SpriteRender,
             source_model_url: "https://s3/lumin-assets/x.glb".into(),
             source_version: "cafebabe".into(),
+            part_colors: Default::default(),
         };
         let err = p.process(&job).await.unwrap_err();
         assert!(matches!(err, ProcessError::Transient(_)), "got {err:?}");

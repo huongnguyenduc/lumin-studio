@@ -46,6 +46,9 @@ def render(input_path: str, out_dir: str) -> dict:
     # 1) GPU render: N frames around the model → frames_dir/frame_0001.png … (Blender subprocess).
     bl_script = Path(__file__).with_name("_bl_render.py")
     blender = os.environ.get("BLENDER_BIN", "blender")  # on PATH in the baked image
+    # f-5: LUMIN_PART_COLORS (the frozen {objectName → hex} map, set on THIS process by render.rs) is passed
+    # to _bl_render.py via the INHERITED env below — if you ever add env= to this call, forward it too, or the
+    # per-part sprite colours silently vanish.
     proc = subprocess.run(
         [
             blender, "-b", "--factory-startup", "-noaudio",

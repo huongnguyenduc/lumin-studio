@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -33,6 +34,11 @@ var errModelUploadNotConfigured = errors.New("httpapi: model uploads not configu
 // downloading it, so this is a shape guard (not a bytes-match), capping length and rejecting junk before
 // it reaches the outbox payload and DB.
 var sourceVersionRe = regexp.MustCompile(`^[0-9a-fA-F]{8,128}$`)
+
+// hexColorRe matches a #RRGGBB colour — the shape colors.hex carries (copied from a filament at write, f-1).
+// The sprite_render payload's per-part colours are re-validated against it at the render trust boundary
+// (D-E): a value that isn't a clean hex rejects the enqueue instead of reaching Blender as a poison colour.
+var hexColorRe = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
 // CreateProductModelUpload handles POST /admin/products/{id}/model-upload (owner-only, P3-j-b). It
 // returns a short-lived presigned POST form for one source model (.glb/.stl/.3mf) plus the host-pinned
@@ -104,6 +110,30 @@ func (s *Server) CreateProductAssetJob(ctx context.Context, req api.CreateProduc
 		return api.CreateProductAssetJob400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
 	}
 
+	// f-5: a sprite_render job FREEZES each named part's default filament colour into the payload (D-E), so the
+	// render paints each part in its colour. Built from the product's CURRENT parts+colours at enqueue — the
+	// owner re-renders after mapping/recolouring to refresh the sprite. model_ingest carries no colours. Reads
+	// before the tx; an unknown product yields empty slices here and still 404s on the insert's FK check below.
+	var partColors map[string]string
+	if jobType == sqlc.AssetJobTypeSpriteRender {
+		cat := db.NewCatalog(s.pool)
+		parts, e := cat.PartsByProduct(ctx, req.Id)
+		if e != nil {
+			return nil, e
+		}
+		colors, e := cat.ColorsByProduct(ctx, req.Id)
+		if e != nil {
+			return nil, e
+		}
+		pc, e := spritePartColors(parts, colors)
+		if e != nil {
+			// A malformed hex crossing into the render payload → reject the enqueue rather than ship a grey
+			// part (D-E). A backstop: colours already carry a validated #RRGGBB from the filament (f-1).
+			return api.CreateProductAssetJob400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
+		}
+		partColors = pc
+	}
+
 	var row sqlc.AssetJob
 	err := withTx(ctx, s.pool, func(tx pgx.Tx) error {
 		created, e := db.CreateAssetJobTx(ctx, tx, db.CreateAssetJobInput{
@@ -112,6 +142,7 @@ func (s *Server) CreateProductAssetJob(ctx context.Context, req api.CreateProduc
 			JobType:        jobType,
 			SourceModelURL: src,
 			SourceVersion:  ver,
+			PartColors:     partColors,
 		})
 		row = created
 		return e
@@ -157,6 +188,34 @@ func (s *Server) cleanAssetJobInput(in api.AssetJobInput) (sqlc.AssetJobType, st
 	}
 
 	return jobType, src, ver, fields
+}
+
+// spritePartColors builds the {objectName → hex} snapshot a sprite_render job paints its parts with (f-5,
+// oracle D-C/D-E). For each part mapped to a model object, the DEFAULT colour is the first AVAILABLE colour
+// of that part in catalog order — ColorsByProduct returns colours by name (colours have no display_order),
+// the same order the editor/storefront list them, so "first available" is a stable, predictable default.
+// The hex is re-validated (#RRGGBB) here at the render trust boundary; a malformed one fails the WHOLE
+// enqueue (a poison job, never a grey part — D-E). A part with no object name or no available colour is
+// omitted: it renders in the model's own baked material, never grey.
+func spritePartColors(parts []sqlc.Part, colors []sqlc.Color) (map[string]string, error) {
+	m := map[string]string{}
+	for _, p := range parts {
+		obj := strings.TrimSpace(p.ModelObjectName)
+		if obj == "" {
+			continue
+		}
+		for _, c := range colors {
+			if !c.Available || !c.PartID.Valid || uuid.UUID(c.PartID.Bytes) != p.ID {
+				continue
+			}
+			if !hexColorRe.MatchString(c.Hex) {
+				return nil, fmt.Errorf("part %s default colour hex %q is not #RRGGBB", p.ID, c.Hex)
+			}
+			m[obj] = c.Hex
+			break // first available in catalog order = the default (D-C)
+		}
+	}
+	return m, nil
 }
 
 // assetJobDTO maps a stored asset_jobs row to the wire shape. attempts/lastError/completedAt reflect the

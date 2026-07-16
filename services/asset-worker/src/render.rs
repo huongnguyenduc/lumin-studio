@@ -35,11 +35,18 @@ pub fn run_render(
     script: &Path,
     input: &Path,
     out_dir: &Path,
+    part_colors_json: &str,
 ) -> Result<RenderManifest, ProcessError> {
     let output = Command::new(python)
         .arg(script)
         .arg(input)
         .arg(out_dir)
+        // f-5: the frozen {objectName → "#RRGGBB"} map (JSON) reaches the Blender step via the INHERITED
+        // env — render.py never touches it; Blender's subprocess inherits it and _bl_render.py reads
+        // LUMIN_PART_COLORS. Env (not a CLI arg) keeps render.py's <input> <out_dir> contract stable and
+        // dodges shell-quoting Vietnamese object names. Empty map ("{}") → the render paints nothing (the
+        // pre-f-5 behaviour), so uncoloured sprites and box tuning-runs are unaffected.
+        .env("LUMIN_PART_COLORS", part_colors_json)
         .output()
         .map_err(|e| ProcessError::Transient(format!("spawn {python}: {e}")))?;
 
@@ -96,6 +103,7 @@ mod tests {
             Path::new("render.py"),
             Path::new("in.glb"),
             Path::new("/tmp/out"),
+            "{}",
         )
         .unwrap_err();
         assert!(matches!(err, ProcessError::Transient(_)), "got {err:?}");
@@ -110,6 +118,7 @@ mod tests {
             Path::new("/nonexistent-render-script-xyz"),
             Path::new("in.glb"),
             Path::new("/tmp/out"),
+            "{}",
         )
         .unwrap_err();
         assert!(matches!(err, ProcessError::Permanent(_)), "got {err:?}");
