@@ -12,12 +12,19 @@ only be validated on the WSL2 + GTX 1060 box (`blender -b --debug-cycles` must s
 correct-by-construction first cut; the marked knobs are meant to be tuned on the box.
 """
 
+import json
 import math
+import os
 import sys
 from pathlib import Path
 
 import bpy
 from mathutils import Vector
+
+# f-5: the sibling pure-colour helper (sRGB→linear). Blender's `-P` runs this file without its own directory
+# on sys.path, so add it before importing _color.
+sys.path.insert(0, str(Path(__file__).parent))
+from _color import hex_to_linear_rgb  # noqa: E402  (must follow the sys.path tweak)
 
 # --- argv after `--` ---
 argv = sys.argv[sys.argv.index("--") + 1:]
@@ -58,6 +65,32 @@ except RuntimeError as e:
 meshes = [o for o in bpy.context.scene.objects if o.type == "MESH"]
 if not meshes:
     die("no mesh in imported model")
+
+# --- f-5: paint each named part in its frozen filament colour (LUMIN_PART_COLORS, set on this process by
+# render.rs and inherited through render.py). Match Blender object name == the model_object_name the owner
+# mapped (both derive from the source glb's node names). An unmapped part / absent-or-blank colour / duff hex
+# leaves the object's baked material untouched — never grey. Base Color is LINEAR (hex_to_linear_rgb converts
+# from the sRGB hex). A MALFORMED env JSON is a poison payload → let it raise → the job fails visibly (D-E:
+# never ship a wrong-looking sprite); core-api only ever sets well-formed JSON. ---
+part_colors = json.loads(os.environ.get("LUMIN_PART_COLORS", "{}") or "{}")
+for o in meshes:
+    # ingest.py keys the mapping off trimesh scene.geometry (the glb MESH names), so Blender's mesh-datablock
+    # name (o.data.name) is the closest match; o.name (the glb NODE name) is the common-case fallback where a
+    # node and its mesh share a name. A miss on both → the part keeps its baked material (never grey).
+    hexv = part_colors.get(o.data.name) or part_colors.get(o.name)
+    if not hexv:
+        continue
+    try:
+        r, g, b = hex_to_linear_rgb(hexv)
+    except ValueError:
+        continue  # core-api validated the hex at enqueue (D-E) — skip a bad one rather than crash the render
+    mat = bpy.data.materials.new(f"lumin_part_{o.name}")
+    mat.use_nodes = True
+    bsdf = mat.node_tree.nodes.get("Principled BSDF")
+    if bsdf is not None:
+        bsdf.inputs["Base Color"].default_value = (r, g, b, 1.0)
+    o.data.materials.clear()
+    o.data.materials.append(mat)
 
 # --- decimate to a VRAM-safe triangle budget (ADR-007) ---
 total_tris = sum(len(o.data.polygons) for o in meshes)

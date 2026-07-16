@@ -163,12 +163,19 @@ const eventAssetJobCreated = "asset_job.created"
 // (url + content-hash version) and the job kind, so the worker can fetch and reconstruct the asset
 // from the source object without a DB lookup (ADR-006 reconstructability) — int/strings only, never
 // a blob. The relay (slice 3) forwards this verbatim to NATS.
+//
+// PartColors (f-5, amends ADR-049) is the DENORMALIZED {objectName → "#RRGGBB"} snapshot the
+// sprite_render worker paints each named part with — frozen at enqueue so a redelivered/old job renders
+// the SAME colours it was created with, never a fresh read of live catalog (idempotency; oracle D-E). It
+// is `omitempty`, so a model_ingest job (and a sprite with no mapped part-colours) emits the exact same
+// bytes as before — the wire contract only grows for a sprite that actually has per-part colours.
 type assetJobCreatedPayload struct {
 	AssetJobID     uuid.UUID         `json:"assetJobId"`
 	ProductID      uuid.UUID         `json:"productId"`
 	JobType        sqlc.AssetJobType `json:"jobType"`
 	SourceModelURL string            `json:"sourceModelUrl"`
 	SourceVersion  string            `json:"sourceVersion"`
+	PartColors     map[string]string `json:"partColors,omitempty"`
 }
 
 // CreateAssetJobInput is the server-authoritative input to enqueue a render/ingest job. SourceModelURL
@@ -180,6 +187,10 @@ type CreateAssetJobInput struct {
 	JobType        sqlc.AssetJobType
 	SourceModelURL string
 	SourceVersion  string
+	// PartColors is the {objectName → "#RRGGBB"} snapshot for a sprite_render job (f-5); nil/empty for
+	// model_ingest and for a sprite whose parts have no colours yet. The caller (the HTTP handler) builds
+	// and hex-validates it from the product's current parts+colours before the tx.
+	PartColors map[string]string
 }
 
 // CreateAssetJobTx inserts an asset_jobs row (status 'queued') AND enqueues an `asset_job.created`
@@ -214,6 +225,7 @@ func CreateAssetJobTx(ctx context.Context, tx pgx.Tx, in CreateAssetJobInput) (s
 		JobType:        row.JobType,
 		SourceModelURL: row.SourceModelUrl,
 		SourceVersion:  row.SourceVersion,
+		PartColors:     in.PartColors, // omitempty → absent for model_ingest / an uncoloured sprite
 	})
 	if err != nil {
 		return sqlc.AssetJob{}, fmt.Errorf("asset job: marshal created payload: %w", err)
