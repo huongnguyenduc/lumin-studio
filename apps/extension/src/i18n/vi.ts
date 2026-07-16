@@ -4,6 +4,8 @@
 // no refactor. Keys are dot-namespaced by screen.
 export const vi = {
   'app.name': 'Lumin Studio',
+  // Chip mono cạnh brand trên header shell (hi-fi: "Lumin◖ extension").
+  'app.badge': 'extension',
   'app.tagline': 'Bảng trợ lý bán hàng',
   'app.loading': 'Đang tải…',
 
@@ -12,7 +14,7 @@ export const vi = {
   'login.email.label': 'Email cửa hàng',
   'login.email.placeholder': 'shop@luminstudio.vn',
   'login.password.label': 'Mật khẩu',
-  'login.submit': 'Đăng nhập',
+  'login.submit': 'Đăng nhập & kết nối',
   'login.submitting': 'Đang đăng nhập…',
   'login.error.invalid': 'Email hoặc mật khẩu chưa đúng. Bạn thử lại nhé.',
   'login.error.network': 'Chưa kết nối được máy chủ. Kiểm tra mạng rồi thử lại giúp nhé.',

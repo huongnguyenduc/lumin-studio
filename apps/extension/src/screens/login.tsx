@@ -31,12 +31,16 @@ export function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void })
 
   return (
     <div className="flex min-h-full flex-col justify-center bg-surface-page p-5">
-      <Card className="flex flex-col gap-4">
-        <div className="flex flex-col gap-0.5">
-          <span className="font-display text-lg font-bold text-text-strong">{t('app.name')}</span>
+      {/* Hi-fi 0 (Đăng nhập): brand to, căn giữa trên card viền cocoa. */}
+      <Card className="flex flex-col gap-4 border-2 border-border-strong shadow-pop-sm">
+        <div className="flex flex-col items-center gap-0.5 text-center">
+          <span className="font-display text-2xl font-extrabold tracking-tight text-text-strong">
+            {t('app.name')}
+            <span className="text-primary">.</span>
+          </span>
           <span className="font-mono text-xs text-text-subtle">{t('app.tagline')}</span>
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1 text-center">
           <h1 className="font-display text-xl font-bold text-text-strong">{t('login.title')}</h1>
           <p className="text-sm text-text-muted">{t('login.subtitle')}</p>
         </div>
@@ -59,7 +63,12 @@ export function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void })
             onChange={(event) => setPassword(event.target.value)}
             error={error ? t(ERROR_KEY[error]) : undefined}
           />
-          <Button type="submit" disabled={submitting}>
+          {/* Hi-fi: CTA chunky viền cocoa + pop shadow (nền giữ bg-primary AA thay flame-500 fail AA). */}
+          <Button
+            type="submit"
+            disabled={submitting}
+            className="border-2 border-border-strong shadow-pop-sm"
+          >
             {submitting ? t('login.submitting') : t('login.submit')}
           </Button>
         </form>

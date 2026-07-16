@@ -34,7 +34,13 @@ export function Shell({ user, onLogout }: { user: SessionUser; onLogout: () => v
   return (
     <div className="flex h-full flex-col bg-surface-page">
       <header className="flex items-center justify-between gap-2 bg-surface-brand px-4 py-3 text-on-dark">
-        <span className="font-display text-base font-bold">{t('app.name')}</span>
+        <span className="flex items-center gap-2 font-display text-base font-bold">
+          {t('app.name')}
+          {/* Hi-fi: chip mono "extension" cạnh brand (như "admin" ở sidebar admin). */}
+          <span className="rounded-pill border border-on-dark/40 px-2 py-0.5 font-mono text-[10px] font-normal lowercase">
+            {t('app.badge')}
+          </span>
+        </span>
         <span className="flex items-center gap-1.5 font-mono text-xs">
           <span className="h-2 w-2 rounded-full bg-accent-teal" aria-hidden="true" />
           {t('shell.connected')}
