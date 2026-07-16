@@ -75,30 +75,30 @@ export function LoginForm({ next }: { next?: string }) {
         <p className="mt-1 text-center text-sm text-text-muted">{t('intro')}</p>
 
         <form onSubmit={submit} noValidate className="mt-6 flex flex-col gap-4">
-        <Input
-          label={t('emailLabel')}
-          placeholder={t('emailPlaceholder')}
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          type="email"
-          inputMode="email"
-          autoComplete="email"
-        />
-        <Input
-          label={t('passwordLabel')}
-          placeholder={t('passwordPlaceholder')}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          type="password"
-          autoComplete="current-password"
-        />
-        {/* Uniform, form-level error (either field, or a rejected credential) — a standalone role=alert,
+          <Input
+            label={t('emailLabel')}
+            placeholder={t('emailPlaceholder')}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+          />
+          <Input
+            label={t('passwordLabel')}
+            placeholder={t('passwordPlaceholder')}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            type="password"
+            autoComplete="current-password"
+          />
+          {/* Uniform, form-level error (either field, or a rejected credential) — a standalone role=alert,
             never bound to one Input (WCAG 3.3.1: don't mark one field invalid on a uniform 401). */}
-        {error ? (
-          <p role="alert" className="text-sm text-danger">
-            {t(`errors.${error}`)}
-          </p>
-        ) : null}
+          {error ? (
+            <p role="alert" className="text-sm text-danger">
+              {t(`errors.${error}`)}
+            </p>
+          ) : null}
           <Button
             type="submit"
             variant="pop"
