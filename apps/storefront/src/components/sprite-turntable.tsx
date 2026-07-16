@@ -65,6 +65,9 @@ export function SpriteTurntable({
     <div
       role="img"
       aria-label={alt}
+      // While idle the sprite sits invisible (opacity-0) on top of the real photo, which has its own
+      // alt — hide it from AT then so a screen reader hears ONE image per tile, not two.
+      aria-hidden={!active}
       className={className}
       style={{
         backgroundImage: `url("${src}")`,
