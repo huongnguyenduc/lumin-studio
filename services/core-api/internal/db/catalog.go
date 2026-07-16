@@ -273,6 +273,21 @@ func (c *Catalog) SetProductModel3dURL(ctx context.Context, id uuid.UUID, url st
 	return nil
 }
 
+// SetProductModel3dStructuredURL writes the structured glb URL onto a product (f-4) — the model_ingest analogue
+// of SetProductModel3dURL for the named-objects derivative the live viewer recolors by. Written only from the
+// render callback on a ready model_ingest (OPTIONAL — a nameless source yields none). :execrows, so an unknown
+// id (0 rows) returns ErrNotFound.
+func (c *Catalog) SetProductModel3dStructuredURL(ctx context.Context, id uuid.UUID, url string) error {
+	rows, err := c.q.SetProductModel3dStructuredUrl(ctx, sqlc.SetProductModel3dStructuredUrlParams{ID: id, Model3dStructuredUrl: url})
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // SetProductSpriteSheetURL writes the 360° sprite-sheet URL onto a product (ADR-049) — the sprite_render
 // analogue of SetProductModel3dURL, and the ONE write of a column UpdateProduct never touches. Called only
 // from the render callback when a sprite_render job reaches `ready`; the URL is host-pinned (.webp) at the

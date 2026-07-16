@@ -10,6 +10,10 @@ use crate::objectstore::AssetStore;
 use crate::processor::{Outcome, ProcessError, Processor};
 use crate::sprite_render::SpriteRenderProcessor;
 
+/// What the blocking ingest step hands back: (fused glb bytes, optional structured glb bytes [f-4], object
+/// names [f-2]). A named type so the `spawn_blocking` closure signature stays clippy-simple.
+type IngestOutput = (Vec<u8>, Option<Vec<u8>>, Vec<String>);
+
 /// Processes `model_ingest` jobs. `store` is None when the assets bucket creds are unwired — then every
 /// job is Transient (redeliver, wait for creds) rather than failed, mirroring core-api's fail-closed
 /// upload stores. `script` is the baked `ingest.py` path; `python` the interpreter that has trimesh.
@@ -49,8 +53,8 @@ impl Processor for ModelIngestProcessor {
             self.script.clone(),
             job.asset_job_id.clone(),
         );
-        let (glb, object_names) = tokio::task::spawn_blocking(
-            move || -> Result<(Vec<u8>, Vec<String>), ProcessError> {
+        let (glb, structured_glb, object_names) = tokio::task::spawn_blocking(
+            move || -> Result<IngestOutput, ProcessError> {
                 let dir = std::env::temp_dir().join(format!("lumin-ingest-{job_id}"));
                 std::fs::create_dir_all(&dir)
                     .map_err(|e| ProcessError::Transient(format!("tmpdir: {e}")))?;
@@ -60,9 +64,16 @@ impl Processor for ModelIngestProcessor {
                 let manifest = run_ingest(&python, &script, &input, &dir)?; // already-classified ProcessError
                 let glb = std::fs::read(&manifest.glb_path)
                     .map_err(|e| ProcessError::Transient(format!("read glb: {e}")))?;
-                tracing::info!(job = %job_id, dims_mm = ?manifest.dims_mm, triangles = manifest.triangles, objects = manifest.object_names.len(), "model ingested");
+                // f-4: read the structured glb too (if the script emitted one — absent for a nameless source).
+                let structured = match &manifest.structured_glb_path {
+                    Some(p) => Some(std::fs::read(p).map_err(|e| {
+                        ProcessError::Transient(format!("read structured glb: {e}"))
+                    })?),
+                    None => None,
+                };
+                tracing::info!(job = %job_id, dims_mm = ?manifest.dims_mm, triangles = manifest.triangles, objects = manifest.object_names.len(), structured = structured.is_some(), "model ingested");
                 let _ = std::fs::remove_dir_all(&dir); // best-effort
-                Ok((glb, manifest.object_names))
+                Ok((glb, structured, manifest.object_names))
             },
         )
         .await
@@ -76,9 +87,22 @@ impl Processor for ModelIngestProcessor {
             .await
             .map_err(|e| ProcessError::Transient(format!("upload glb {out_key}: {e}")))?;
 
+        // f-4: upload the STRUCTURED glb (if any) to a second content-addressed key — same idempotency.
+        let structured_url = match structured_glb {
+            Some(bytes) => {
+                let key = format!("derivatives/{}/model_structured.glb", job.source_version);
+                store.put_glb(&key, bytes).await.map_err(|e| {
+                    ProcessError::Transient(format!("upload structured glb {key}: {e}"))
+                })?;
+                Some(store.output_url(&key))
+            }
+            None => None,
+        };
+
         Ok(Outcome {
             model3d_url: Some(store.output_url(&out_key)),
-            object_names, // f-2: the source model's object list (empty for a nameless STL) → the product
+            model3d_structured_url: structured_url, // f-4: named-objects glb (None for a nameless source)
+            object_names, // f-2: the source model's object list (empty for a nameless STL)
             ..Default::default()
         })
     }

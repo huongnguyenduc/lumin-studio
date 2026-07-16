@@ -111,28 +111,29 @@ func productDTO(p sqlc.Product, colors []sqlc.Color, options []sqlc.Option, part
 		return api.Product{}, fmt.Errorf("product %s: decode model3d_view jsonb: %w", p.Slug, err)
 	}
 	return api.Product{
-		Id:               p.ID,
-		Slug:             p.Slug,
-		Name:             p.Name,
-		Description:      p.Description,
-		CategoryId:       p.CategoryID,
-		BasePrice:        p.BasePrice, // raw int-VND, never formatted server-side (always-must #2)
-		Dimensions:       dims,
-		Material:         p.Material,
-		Model3dUrl:       p.Model3dUrl,
-		Model3dView:      view,                               // ADR-038: owner-saved default camera pose; nil = auto-frame
-		SpriteSheetUrl:   spriteURLPtr(p.SpriteSheetUrl),     // ADR-049: 360° sprite sheet; nil until rendered
-		ModelObjectNames: objectNamesPtr(p.ModelObjectNames), // f-2: object list for the editor's part mapping; nil until ingested
-		Images:           images,
-		Colors:           colorsDTO(colors),
-		Options:          optionsDTO(options, choices),
-		Parts:            partsDTO(parts),
-		Status:           api.ProductStatus(p.Status),
-		RatingAvg:        p.RatingAvg,
-		ReviewCount:      int(p.ReviewCount),
-		CreatedAt:        p.CreatedAt.Time,
-		EstFilamentQty:   int64Ptr(p.EstFilamentQty),          // ADR-039: flat-product standard (admin editor; 0 omitted)
-		EstPrintHours:    estPrintHoursPtr(p.EstPrintMinutes), // ADR-039 pt 3: machine-time standard, minutes→hours (0 omitted)
+		Id:                   p.ID,
+		Slug:                 p.Slug,
+		Name:                 p.Name,
+		Description:          p.Description,
+		CategoryId:           p.CategoryID,
+		BasePrice:            p.BasePrice, // raw int-VND, never formatted server-side (always-must #2)
+		Dimensions:           dims,
+		Material:             p.Material,
+		Model3dUrl:           p.Model3dUrl,
+		Model3dStructuredUrl: structuredURLPtr(p.Model3dStructuredUrl), // f-4: named-objects glb for the live viewer's per-part recolor; nil until ingested
+		Model3dView:          view,                                     // ADR-038: owner-saved default camera pose; nil = auto-frame
+		SpriteSheetUrl:       spriteURLPtr(p.SpriteSheetUrl),           // ADR-049: 360° sprite sheet; nil until rendered
+		ModelObjectNames:     objectNamesPtr(p.ModelObjectNames),       // f-2: object list for the editor's part mapping; nil until ingested
+		Images:               images,
+		Colors:               colorsDTO(colors),
+		Options:              optionsDTO(options, choices),
+		Parts:                partsDTO(parts),
+		Status:               api.ProductStatus(p.Status),
+		RatingAvg:            p.RatingAvg,
+		ReviewCount:          int(p.ReviewCount),
+		CreatedAt:            p.CreatedAt.Time,
+		EstFilamentQty:       int64Ptr(p.EstFilamentQty),          // ADR-039: flat-product standard (admin editor; 0 omitted)
+		EstPrintHours:        estPrintHoursPtr(p.EstPrintMinutes), // ADR-039 pt 3: machine-time standard, minutes→hours (0 omitted)
 	}, nil
 }
 
@@ -264,6 +265,16 @@ func spriteURLPtr(s string) *string {
 // objectNamePtr maps an empty parts.model_object_name to nil, so the optional wire field (f-2) is OMITTED
 // when a part is unmapped — presence signals "this part maps to a named object in the model".
 func objectNamePtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// structuredURLPtr maps an empty model3d_structured_url to nil, so the optional wire field (f-4) is OMITTED
+// until a model_ingest has produced a structured glb — presence tells the live viewer to load it (and recolor
+// per part by object name) instead of falling back to the fused model3d_url.
+func structuredURLPtr(s string) *string {
 	if s == "" {
 		return nil
 	}

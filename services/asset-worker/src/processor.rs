@@ -15,6 +15,10 @@ use crate::job::AssetJob;
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Outcome {
     pub model3d_url: Option<String>,
+    /// f-4: the STRUCTURED glb URL (named objects/materials preserved) a `model_ingest` uploaded alongside
+    /// model3d_url — the live viewer recolors per part by object name. None for a `sprite_render` and for a
+    /// nameless single-mesh source (the viewer then falls back to model3d_url).
+    pub model3d_structured_url: Option<String>,
     pub sprite_sheet_url: Option<String>,
     /// The object/material names a `model_ingest` found in the source model (f-2) — recorded on the product
     /// as the editor's part-mapping option set. Empty for a `sprite_render` (and a nameless single-mesh source).

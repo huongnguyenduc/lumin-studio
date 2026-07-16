@@ -208,7 +208,7 @@ func (q *Queries) GetPartByProduct(ctx context.Context, arg GetPartByProductPara
 }
 
 const getProductByID = `-- name: GetProductByID :one
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names FROM products WHERE id = $1
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names, model3d_structured_url FROM products WHERE id = $1
 `
 
 // GetProductByID is the by-id read the checkout handler (PR-3g) needs to derive a
@@ -239,12 +239,13 @@ func (q *Queries) GetProductByID(ctx context.Context, id uuid.UUID) (Product, er
 		&i.ProductType,
 		&i.SpriteSheetUrl,
 		&i.ModelObjectNames,
+		&i.Model3dStructuredUrl,
 	)
 	return i, err
 }
 
 const getProductBySlug = `-- name: GetProductBySlug :one
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names FROM products WHERE slug = $1
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names, model3d_structured_url FROM products WHERE slug = $1
 `
 
 func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (Product, error) {
@@ -271,6 +272,7 @@ func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (Product, e
 		&i.ProductType,
 		&i.SpriteSheetUrl,
 		&i.ModelObjectNames,
+		&i.Model3dStructuredUrl,
 	)
 	return i, err
 }
@@ -474,7 +476,7 @@ const insertProduct = `-- name: InsertProduct :one
 INSERT INTO products (
   id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, est_filament_qty, est_print_minutes
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names
+RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names, model3d_structured_url
 `
 
 type InsertProductParams struct {
@@ -531,6 +533,7 @@ func (q *Queries) InsertProduct(ctx context.Context, arg InsertProductParams) (P
 		&i.ProductType,
 		&i.SpriteSheetUrl,
 		&i.ModelObjectNames,
+		&i.Model3dStructuredUrl,
 	)
 	return i, err
 }
@@ -676,7 +679,7 @@ func (q *Queries) ListActiveProducts(ctx context.Context, arg ListActiveProducts
 }
 
 const listAdminProducts = `-- name: ListAdminProducts :many
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names FROM products
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names, model3d_structured_url FROM products
 WHERE ($1::product_status IS NULL OR status = $1::product_status)
 ORDER BY created_at DESC, id DESC
 `
@@ -718,6 +721,7 @@ func (q *Queries) ListAdminProducts(ctx context.Context, status NullProductStatu
 			&i.ProductType,
 			&i.SpriteSheetUrl,
 			&i.ModelObjectNames,
+			&i.Model3dStructuredUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -1035,7 +1039,7 @@ func (q *Queries) ListPartsByProduct(ctx context.Context, productID uuid.UUID) (
 }
 
 const listProductsByStatus = `-- name: ListProductsByStatus :many
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names FROM products WHERE status = $1 ORDER BY created_at DESC
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names, model3d_structured_url FROM products WHERE status = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListProductsByStatus(ctx context.Context, status ProductStatus) ([]Product, error) {
@@ -1068,6 +1072,7 @@ func (q *Queries) ListProductsByStatus(ctx context.Context, status ProductStatus
 			&i.ProductType,
 			&i.SpriteSheetUrl,
 			&i.ModelObjectNames,
+			&i.Model3dStructuredUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -1152,6 +1157,27 @@ WHERE c.id = v.id
 func (q *Queries) ReorderCategories(ctx context.Context, ids []uuid.UUID) error {
 	_, err := q.db.Exec(ctx, reorderCategories, ids)
 	return err
+}
+
+const setProductModel3dStructuredUrl = `-- name: SetProductModel3dStructuredUrl :execrows
+UPDATE products SET model3d_structured_url = $2 WHERE id = $1
+`
+
+type SetProductModel3dStructuredUrlParams struct {
+	ID                   uuid.UUID `json:"id"`
+	Model3dStructuredUrl string    `json:"model3dStructuredUrl"`
+}
+
+// SetProductModel3dStructuredUrl is the asset pipeline's write of the STRUCTURED glb URL (f-4) — named
+// objects/materials preserved, for the live viewer's per-part recolour. Written only from the render callback
+// on a ready model_ingest, alongside SetProductModel3dUrl (OPTIONAL — a nameless source yields none, so the
+// viewer falls back to model3d_url). UpdateProduct never touches it. :execrows so a vanished product surfaces.
+func (q *Queries) SetProductModel3dStructuredUrl(ctx context.Context, arg SetProductModel3dStructuredUrlParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setProductModel3dStructuredUrl, arg.ID, arg.Model3dStructuredUrl)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setProductModel3dUrl = `-- name: SetProductModel3dUrl :execrows
@@ -1433,7 +1459,7 @@ UPDATE products
 SET slug = $2, name = $3, description = $4, category_id = $5, base_price = $6,
     dimensions = $7, material = $8, images = $9, status = $10, est_filament_qty = $11, est_print_minutes = $12
 WHERE id = $1
-RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names
+RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names, model3d_structured_url
 `
 
 type UpdateProductParams struct {
@@ -1492,6 +1518,7 @@ func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (P
 		&i.ProductType,
 		&i.SpriteSheetUrl,
 		&i.ModelObjectNames,
+		&i.Model3dStructuredUrl,
 	)
 	return i, err
 }

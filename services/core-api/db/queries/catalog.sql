@@ -136,6 +136,13 @@ UPDATE products SET model3d_view = $2 WHERE id = $1;
 -- name: SetProductModel3dUrl :execrows
 UPDATE products SET model3d_url = $2 WHERE id = $1;
 
+-- SetProductModel3dStructuredUrl is the asset pipeline's write of the STRUCTURED glb URL (f-4) — named
+-- objects/materials preserved, for the live viewer's per-part recolour. Written only from the render callback
+-- on a ready model_ingest, alongside SetProductModel3dUrl (OPTIONAL — a nameless source yields none, so the
+-- viewer falls back to model3d_url). UpdateProduct never touches it. :execrows so a vanished product surfaces.
+-- name: SetProductModel3dStructuredUrl :execrows
+UPDATE products SET model3d_structured_url = $2 WHERE id = $1;
+
 -- SetProductSpriteSheetUrl is the asset pipeline's write of the 360° sprite-sheet URL (ADR-049) — the
 -- sprite_render analogue of SetProductModel3dUrl. Called only from the render callback when a
 -- `sprite_render` job reaches `ready`, so the storefront's card hover + no-WebGL fallback have a sheet to
