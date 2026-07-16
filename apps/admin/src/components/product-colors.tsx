@@ -20,17 +20,23 @@ type FilamentMaterial = components['schemas']['FilamentMaterial'];
  * per part); a colour may link to a shop filament (ADR-039) for deduct-on-print. Rows render straight from
  * the product props; every add/edit/delete persists per-row and router.refresh()es, so the list always
  * reflects the server. Owner-gated at the BE — the FE shows the actions optimistically (P3-e ROLE precedent).
+ *
+ * f-2: a part can map to a named object in the 3D model (parts.modelObjectName) so a later slice recolors it
+ * in its filament colour. The owner picks from modelObjectNames — the object list model_ingest found (empty
+ * until a model has been ingested / a single-mesh STL has none); the mapped name shows on the part row.
  */
 export function ProductColors({
   productId,
   parts,
   colors,
   filaments,
+  modelObjectNames,
 }: {
   productId: string;
   parts: Part[];
   colors: Color[];
   filaments: FilamentMaterial[];
+  modelObjectNames: string[];
 }) {
   const t = useTranslations('products.edit.colors');
   const router = useRouter();
@@ -84,6 +90,11 @@ export function ProductColors({
                   {p.estFilamentQty ? (
                     <span className="ml-2 font-mono text-xs text-text-muted">
                       {t('estBadge', { qty: p.estFilamentQty })}
+                    </span>
+                  ) : null}
+                  {p.modelObjectName ? (
+                    <span className="ml-2 font-mono text-xs text-accent-teal">
+                      {t('objectBadge', { name: p.modelObjectName })}
                     </span>
                   ) : null}
                 </span>
@@ -154,6 +165,7 @@ export function ProductColors({
           target={target}
           parts={parts}
           filaments={filaments}
+          modelObjectNames={modelObjectNames}
           partCount={parts.length}
           onClose={() => setTarget(null)}
         />

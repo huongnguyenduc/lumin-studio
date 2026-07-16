@@ -390,6 +390,9 @@ type AssetJobResultInput struct {
 	// Model3dUrl The uploaded derivative LOD glb URL. Required on a `ready` `model_ingest`; must be a `.glb` under this store's assets origin (host-pinned). Ignored for `sprite_render` (which reports `spriteSheetUrl`).
 	Model3dUrl *string `json:"model3dUrl,omitempty"`
 
+	// ObjectNames The object/material names model_ingest found in the source model (f-2), stored on the product as the editor's part-mapping option set. Optional; sent only by a `ready` `model_ingest`, ignored for `sprite_render`. Names are trimmed + capped server-side.
+	ObjectNames *[]string `json:"objectNames,omitempty"`
+
 	// SpriteSheetUrl The uploaded 360° sprite-sheet URL (ADR-049). Required on a `ready` `sprite_render`; must be a `.webp` under this store's assets origin (host-pinned). Ignored for `model_ingest` (which reports `model3dUrl`).
 	SpriteSheetUrl *string `json:"spriteSheetUrl,omitempty"`
 
@@ -1110,6 +1113,9 @@ type Part struct {
 	EstFilamentQty *int64             `json:"estFilamentQty,omitempty"`
 	Id             openapi_types.UUID `json:"id"`
 
+	// ModelObjectName The object/material name (inside the source 3D model) this part maps to (f-2), chosen by the owner from Product.modelObjectNames. '' / omitted = unmapped → the part falls back to its default filament colour (never grey). Drives per-part recolour in the sprite (f-5) and the live viewer (f-3).
+	ModelObjectName *string `json:"modelObjectName,omitempty"`
+
 	// Name Display name, e.g. "Chao đèn".
 	Name string `json:"name"`
 }
@@ -1127,7 +1133,10 @@ type PartInput struct {
 
 	// EstFilamentQty Estimated filament per unit for this part (ADR-039), in the part colour's material unit. Optional, defaults to 0 (no estimate → the deduct-on-print draw skips this part).
 	EstFilamentQty *int64 `json:"estFilamentQty,omitempty"`
-	Name           string `json:"name"`
+
+	// ModelObjectName Object/material name inside the 3D model this part maps to (f-2). Optional; '' / omitted = unmapped (the part uses its default filament colour). The owner picks it from the model's object-name list.
+	ModelObjectName *string `json:"modelObjectName,omitempty"`
+	Name            string  `json:"name"`
 }
 
 // PaymentProofUpload A short-lived, browser-ready S3/Garage POST form. Submit every `fields` entry and the file part to `uploadUrl`; after a successful direct upload, send `finalUrl` as `paymentProofUrl` in POST /orders. `finalUrl` is host-pinned by the server and never derived from browser input.
@@ -1517,8 +1526,11 @@ type Product struct {
 
 	// Model3dView Owner-saved default camera pose for the storefront 3D viewer (ADR-038). Maps 1:1 to a <model-viewer> camera-orbit (orbitTheta deg · orbitPhi deg · orbitRadius %) plus camera-target (targetX/Y/Z metres). Absent on a Product = no saved pose, so the viewer auto-frames. Display metadata, not money — plain floats (not int-VND). The worker recenters geometry, so target is usually ~origin; it is kept so an off-centre framing needs no later migration.
 	Model3dView *Model3dView `json:"model3dView,omitempty"`
-	Name        string       `json:"name"`
-	Options     []Option     `json:"options"`
+
+	// ModelObjectNames The object/material names model_ingest found inside the source 3D model (f-2) — the admin editor's option set for mapping each part to a model object (Part.modelObjectName). Written only by the render callback; empty until a `model_ingest` job has run. Editor-only; harmless mesh names.
+	ModelObjectNames *[]string `json:"modelObjectNames,omitempty"`
+	Name             string    `json:"name"`
+	Options          []Option  `json:"options"`
 
 	// Parts Named parts (ADR-037), each grouping a subset of colors[] via Color.partId. Empty = a single-piece product (flat colours). The customer picks one colour per part.
 	Parts []Part `json:"parts"`

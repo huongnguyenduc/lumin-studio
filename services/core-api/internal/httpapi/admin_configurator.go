@@ -57,16 +57,17 @@ func (s *Server) CreateProductPart(ctx context.Context, request api.CreateProduc
 	if request.Body == nil {
 		return api.CreateProductPart400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
 	}
-	name, order, est, fields := cleanPartInput(*request.Body)
+	name, order, est, objName, fields := cleanPartInput(*request.Body)
 	if len(fields) > 0 {
 		return api.CreateProductPart400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
 	}
 	part, err := db.NewCatalog(s.pool).CreatePart(ctx, sqlc.InsertPartParams{
-		ID:             uuid.New(),
-		ProductID:      request.Id,
-		Name:           name,
-		DisplayOrder:   order,
-		EstFilamentQty: est, // ADR-039 per-part deduct-on-print standard
+		ID:              uuid.New(),
+		ProductID:       request.Id,
+		Name:            name,
+		DisplayOrder:    order,
+		EstFilamentQty:  est,     // ADR-039 per-part deduct-on-print standard
+		ModelObjectName: objName, // f-2: mapped model object ('' = unmapped)
 	})
 	if pgCode(err) == pgForeignKeyViolation {
 		return nil, db.ErrNotFound // unknown product → 404
@@ -86,16 +87,17 @@ func (s *Server) UpdateProductPart(ctx context.Context, request api.UpdateProduc
 	if request.Body == nil {
 		return api.UpdateProductPart400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
 	}
-	name, order, est, fields := cleanPartInput(*request.Body)
+	name, order, est, objName, fields := cleanPartInput(*request.Body)
 	if len(fields) > 0 {
 		return api.UpdateProductPart400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
 	}
 	part, err := db.NewCatalog(s.pool).UpdatePart(ctx, sqlc.UpdatePartParams{
-		ID:             request.PartId,
-		ProductID:      request.Id,
-		Name:           name,
-		DisplayOrder:   order,
-		EstFilamentQty: est, // ADR-039 per-part deduct-on-print standard
+		ID:              request.PartId,
+		ProductID:       request.Id,
+		Name:            name,
+		DisplayOrder:    order,
+		EstFilamentQty:  est,     // ADR-039 per-part deduct-on-print standard
+		ModelObjectName: objName, // f-2: mapped model object ('' = unmapped)
 	})
 	if err != nil {
 		return nil, err // db.ErrNotFound → 404
@@ -203,7 +205,7 @@ func (s *Server) DeleteOptionChoice(ctx context.Context, request api.DeleteOptio
 
 // cleanPartInput trims + validates a part create/replace body. displayOrder defaults to 0; estFilamentQty
 // (ADR-039 per-part deduct-on-print standard) defaults to 0 (no estimate) and must be ≥ 0.
-func cleanPartInput(in api.PartInput) (name string, displayOrder int32, estFilamentQty int64, fields map[string]string) {
+func cleanPartInput(in api.PartInput) (name string, displayOrder int32, estFilamentQty int64, modelObjectName string, fields map[string]string) {
 	name = strings.TrimSpace(in.Name)
 	fields = map[string]string{}
 	if name == "" || utf8.RuneCountInString(name) > maxPartNameChars {
@@ -218,10 +220,19 @@ func cleanPartInput(in api.PartInput) (name string, displayOrder int32, estFilam
 	if estFilamentQty < 0 {
 		fields["estFilamentQty"] = msgKey(codeValidation)
 	}
-	if len(fields) > 0 {
-		return "", 0, 0, fields
+	// f-2: the model object this part maps to (owner picks from the product's model_object_names). '' =
+	// unmapped. NOT a membership check — an unmatched name renders as the part's default filament, never grey
+	// (plan D-C), so setting a name before ingest / keeping one across a re-ingest stays valid — just a cap.
+	if in.ModelObjectName != nil {
+		modelObjectName = strings.TrimSpace(*in.ModelObjectName)
 	}
-	return name, displayOrder, estFilamentQty, nil
+	if utf8.RuneCountInString(modelObjectName) > maxPartNameChars {
+		fields["modelObjectName"] = msgKey(codeValidation)
+	}
+	if len(fields) > 0 {
+		return "", 0, 0, "", fields
+	}
+	return name, displayOrder, estFilamentQty, modelObjectName, nil
 }
 
 // pgUUID wraps a REQUIRED wire uuid as a valid pgtype.UUID — for a FK written from a required input field

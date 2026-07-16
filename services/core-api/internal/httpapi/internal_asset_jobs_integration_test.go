@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 
@@ -45,22 +46,32 @@ func TestReportAssetJobResultEndToEnd(t *testing.T) {
 
 	// --- ready model_ingest → 200 ready, completed_at stamped, product.model3d_url written (D3) ---
 	jobID := enqueueJob(t, srv, owner, prod.ID, up.FinalUrl)
-	got := reportResult(t, srv, jobID, api.AssetJobResultInput{Status: api.AssetJobResultInputStatusReady, Model3dUrl: &outputURL})
+	// f-2: a ready model_ingest also records the model's object-name list — sanitized (trimmed, empties dropped).
+	objNames := []string{"Chao đèn", "  Đế  ", ""}
+	wantNames := []string{"Chao đèn", "Đế"}
+	got := reportResult(t, srv, jobID, api.AssetJobResultInput{Status: api.AssetJobResultInputStatusReady, Model3dUrl: &outputURL, ObjectNames: &objNames})
 	if got.Status != "ready" || got.CompletedAt == nil {
 		t.Fatalf("ready job = %+v, want status=ready + completedAt set", got)
 	}
 	if p, _ := db.NewCatalog(pool).ProductByID(ctx, prod.ID); p.Model3dUrl != outputURL {
 		t.Fatalf("product model3d_url = %q, want the reported glb %q (D3)", p.Model3dUrl, outputURL)
 	}
+	if p, _ := db.NewCatalog(pool).ProductByID(ctx, prod.ID); !slices.Equal(p.ModelObjectNames, wantNames) {
+		t.Fatalf("product model_object_names = %v, want the sanitized %v (f-2)", p.ModelObjectNames, wantNames)
+	}
 
-	// --- idempotent: a redelivered ready (with a DIFFERENT url) is a no-op — ready is sticky ---
+	// --- idempotent: a redelivered ready (with a DIFFERENT url + names) is a no-op — ready is sticky ---
 	second := presignModel(t, srv, owner, prod.ID).FinalUrl
-	again := reportResult(t, srv, jobID, api.AssetJobResultInput{Status: api.AssetJobResultInputStatusReady, Model3dUrl: &second})
+	clobber := []string{"WRONG"}
+	again := reportResult(t, srv, jobID, api.AssetJobResultInput{Status: api.AssetJobResultInputStatusReady, Model3dUrl: &second, ObjectNames: &clobber})
 	if again.Status != "ready" {
 		t.Fatalf("redelivered ready = %+v, want unchanged ready", again)
 	}
 	if p, _ := db.NewCatalog(pool).ProductByID(ctx, prod.ID); p.Model3dUrl != outputURL {
 		t.Fatalf("sticky-ready violated: model3d_url = %q, want the FIRST glb %q", p.Model3dUrl, outputURL)
+	}
+	if p, _ := db.NewCatalog(pool).ProductByID(ctx, prod.ID); !slices.Equal(p.ModelObjectNames, wantNames) {
+		t.Fatalf("sticky-ready violated: model_object_names = %v, want the FIRST list %v (redelivery must not clobber)", p.ModelObjectNames, wantNames)
 	}
 
 	// --- failed → last_error set, completed_at stamped, product untouched ---

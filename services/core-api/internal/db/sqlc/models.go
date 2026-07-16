@@ -850,11 +850,12 @@ type Outbox struct {
 }
 
 type Part struct {
-	ID             uuid.UUID `json:"id"`
-	ProductID      uuid.UUID `json:"productId"`
-	Name           string    `json:"name"`
-	DisplayOrder   int32     `json:"displayOrder"`
-	EstFilamentQty int64     `json:"estFilamentQty"`
+	ID              uuid.UUID `json:"id"`
+	ProductID       uuid.UUID `json:"productId"`
+	Name            string    `json:"name"`
+	DisplayOrder    int32     `json:"displayOrder"`
+	EstFilamentQty  int64     `json:"estFilamentQty"`
+	ModelObjectName string    `json:"modelObjectName"`
 }
 
 type PetProfile struct {
@@ -907,25 +908,26 @@ type PrintJob struct {
 }
 
 type Product struct {
-	ID              uuid.UUID          `json:"id"`
-	Slug            string             `json:"slug"`
-	Name            string             `json:"name"`
-	Description     string             `json:"description"`
-	CategoryID      uuid.UUID          `json:"categoryId"`
-	BasePrice       int64              `json:"basePrice"`
-	Dimensions      []byte             `json:"dimensions"`
-	Material        string             `json:"material"`
-	Model3dUrl      string             `json:"model3dUrl"`
-	Images          []byte             `json:"images"`
-	Status          ProductStatus      `json:"status"`
-	RatingAvg       *float32           `json:"ratingAvg"`
-	ReviewCount     int32              `json:"reviewCount"`
-	CreatedAt       pgtype.Timestamptz `json:"createdAt"`
-	Model3dView     []byte             `json:"model3dView"`
-	EstFilamentQty  int64              `json:"estFilamentQty"`
-	EstPrintMinutes int32              `json:"estPrintMinutes"`
-	ProductType     ProductType        `json:"productType"`
-	SpriteSheetUrl  string             `json:"spriteSheetUrl"`
+	ID               uuid.UUID          `json:"id"`
+	Slug             string             `json:"slug"`
+	Name             string             `json:"name"`
+	Description      string             `json:"description"`
+	CategoryID       uuid.UUID          `json:"categoryId"`
+	BasePrice        int64              `json:"basePrice"`
+	Dimensions       []byte             `json:"dimensions"`
+	Material         string             `json:"material"`
+	Model3dUrl       string             `json:"model3dUrl"`
+	Images           []byte             `json:"images"`
+	Status           ProductStatus      `json:"status"`
+	RatingAvg        *float32           `json:"ratingAvg"`
+	ReviewCount      int32              `json:"reviewCount"`
+	CreatedAt        pgtype.Timestamptz `json:"createdAt"`
+	Model3dView      []byte             `json:"model3dView"`
+	EstFilamentQty   int64              `json:"estFilamentQty"`
+	EstPrintMinutes  int32              `json:"estPrintMinutes"`
+	ProductType      ProductType        `json:"productType"`
+	SpriteSheetUrl   string             `json:"spriteSheetUrl"`
+	ModelObjectNames []string           `json:"modelObjectNames"`
 }
 
 type ReplyTemplate struct {

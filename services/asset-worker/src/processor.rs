@@ -16,6 +16,9 @@ use crate::job::AssetJob;
 pub struct Outcome {
     pub model3d_url: Option<String>,
     pub sprite_sheet_url: Option<String>,
+    /// The object/material names a `model_ingest` found in the source model (f-2) — recorded on the product
+    /// as the editor's part-mapping option set. Empty for a `sprite_render` (and a nameless single-mesh source).
+    pub object_names: Vec<String>,
 }
 
 /// Why processing failed — classified for the WorkQueue lifecycle (pipeline::decide).

@@ -182,7 +182,7 @@ func (q *Queries) GetOptionByProduct(ctx context.Context, arg GetOptionByProduct
 }
 
 const getPartByProduct = `-- name: GetPartByProduct :one
-SELECT id, product_id, name, display_order, est_filament_qty FROM parts WHERE id = $1 AND product_id = $2
+SELECT id, product_id, name, display_order, est_filament_qty, model_object_name FROM parts WHERE id = $1 AND product_id = $2
 `
 
 type GetPartByProductParams struct {
@@ -202,12 +202,13 @@ func (q *Queries) GetPartByProduct(ctx context.Context, arg GetPartByProductPara
 		&i.Name,
 		&i.DisplayOrder,
 		&i.EstFilamentQty,
+		&i.ModelObjectName,
 	)
 	return i, err
 }
 
 const getProductByID = `-- name: GetProductByID :one
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url FROM products WHERE id = $1
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names FROM products WHERE id = $1
 `
 
 // GetProductByID is the by-id read the checkout handler (PR-3g) needs to derive a
@@ -237,12 +238,13 @@ func (q *Queries) GetProductByID(ctx context.Context, id uuid.UUID) (Product, er
 		&i.EstPrintMinutes,
 		&i.ProductType,
 		&i.SpriteSheetUrl,
+		&i.ModelObjectNames,
 	)
 	return i, err
 }
 
 const getProductBySlug = `-- name: GetProductBySlug :one
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url FROM products WHERE slug = $1
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names FROM products WHERE slug = $1
 `
 
 func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (Product, error) {
@@ -268,6 +270,7 @@ func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (Product, e
 		&i.EstPrintMinutes,
 		&i.ProductType,
 		&i.SpriteSheetUrl,
+		&i.ModelObjectNames,
 	)
 	return i, err
 }
@@ -431,17 +434,18 @@ func (q *Queries) InsertOptionChoice(ctx context.Context, arg InsertOptionChoice
 
 const insertPart = `-- name: InsertPart :one
 
-INSERT INTO parts (id, product_id, name, display_order, est_filament_qty)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, product_id, name, display_order, est_filament_qty
+INSERT INTO parts (id, product_id, name, display_order, est_filament_qty, model_object_name)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, product_id, name, display_order, est_filament_qty, model_object_name
 `
 
 type InsertPartParams struct {
-	ID             uuid.UUID `json:"id"`
-	ProductID      uuid.UUID `json:"productId"`
-	Name           string    `json:"name"`
-	DisplayOrder   int32     `json:"displayOrder"`
-	EstFilamentQty int64     `json:"estFilamentQty"`
+	ID              uuid.UUID `json:"id"`
+	ProductID       uuid.UUID `json:"productId"`
+	Name            string    `json:"name"`
+	DisplayOrder    int32     `json:"displayOrder"`
+	EstFilamentQty  int64     `json:"estFilamentQty"`
+	ModelObjectName string    `json:"modelObjectName"`
 }
 
 // === ADR-037 configurator: parts (named part groups, each with its own colour set) ===
@@ -452,6 +456,7 @@ func (q *Queries) InsertPart(ctx context.Context, arg InsertPartParams) (Part, e
 		arg.Name,
 		arg.DisplayOrder,
 		arg.EstFilamentQty,
+		arg.ModelObjectName,
 	)
 	var i Part
 	err := row.Scan(
@@ -460,6 +465,7 @@ func (q *Queries) InsertPart(ctx context.Context, arg InsertPartParams) (Part, e
 		&i.Name,
 		&i.DisplayOrder,
 		&i.EstFilamentQty,
+		&i.ModelObjectName,
 	)
 	return i, err
 }
@@ -468,7 +474,7 @@ const insertProduct = `-- name: InsertProduct :one
 INSERT INTO products (
   id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, est_filament_qty, est_print_minutes
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url
+RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names
 `
 
 type InsertProductParams struct {
@@ -524,6 +530,7 @@ func (q *Queries) InsertProduct(ctx context.Context, arg InsertProductParams) (P
 		&i.EstPrintMinutes,
 		&i.ProductType,
 		&i.SpriteSheetUrl,
+		&i.ModelObjectNames,
 	)
 	return i, err
 }
@@ -669,7 +676,7 @@ func (q *Queries) ListActiveProducts(ctx context.Context, arg ListActiveProducts
 }
 
 const listAdminProducts = `-- name: ListAdminProducts :many
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url FROM products
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names FROM products
 WHERE ($1::product_status IS NULL OR status = $1::product_status)
 ORDER BY created_at DESC, id DESC
 `
@@ -710,6 +717,7 @@ func (q *Queries) ListAdminProducts(ctx context.Context, status NullProductStatu
 			&i.EstPrintMinutes,
 			&i.ProductType,
 			&i.SpriteSheetUrl,
+			&i.ModelObjectNames,
 		); err != nil {
 			return nil, err
 		}
@@ -996,7 +1004,7 @@ func (q *Queries) ListOptionsByProduct(ctx context.Context, productID uuid.UUID)
 }
 
 const listPartsByProduct = `-- name: ListPartsByProduct :many
-SELECT id, product_id, name, display_order, est_filament_qty FROM parts WHERE product_id = $1 ORDER BY display_order, id
+SELECT id, product_id, name, display_order, est_filament_qty, model_object_name FROM parts WHERE product_id = $1 ORDER BY display_order, id
 `
 
 func (q *Queries) ListPartsByProduct(ctx context.Context, productID uuid.UUID) ([]Part, error) {
@@ -1014,6 +1022,7 @@ func (q *Queries) ListPartsByProduct(ctx context.Context, productID uuid.UUID) (
 			&i.Name,
 			&i.DisplayOrder,
 			&i.EstFilamentQty,
+			&i.ModelObjectName,
 		); err != nil {
 			return nil, err
 		}
@@ -1026,7 +1035,7 @@ func (q *Queries) ListPartsByProduct(ctx context.Context, productID uuid.UUID) (
 }
 
 const listProductsByStatus = `-- name: ListProductsByStatus :many
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url FROM products WHERE status = $1 ORDER BY created_at DESC
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names FROM products WHERE status = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListProductsByStatus(ctx context.Context, status ProductStatus) ([]Product, error) {
@@ -1058,6 +1067,7 @@ func (q *Queries) ListProductsByStatus(ctx context.Context, status ProductStatus
 			&i.EstPrintMinutes,
 			&i.ProductType,
 			&i.SpriteSheetUrl,
+			&i.ModelObjectNames,
 		); err != nil {
 			return nil, err
 		}
@@ -1160,6 +1170,27 @@ type SetProductModel3dUrlParams struct {
 // vanished product surfaces (0 rows) — though asset_jobs.product_id is RESTRICT, so it should always hit 1.
 func (q *Queries) SetProductModel3dUrl(ctx context.Context, arg SetProductModel3dUrlParams) (int64, error) {
 	result, err := q.db.Exec(ctx, setProductModel3dUrl, arg.ID, arg.Model3dUrl)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setProductModelObjectNames = `-- name: SetProductModelObjectNames :execrows
+UPDATE products SET model_object_names = $2 WHERE id = $1
+`
+
+type SetProductModelObjectNamesParams struct {
+	ID               uuid.UUID `json:"id"`
+	ModelObjectNames []string  `json:"modelObjectNames"`
+}
+
+// SetProductModelObjectNames is the asset pipeline's write of the object-name LIST a `model_ingest` found
+// in the source model (f-2) — the editor dropdown's option set for mapping parts to model objects. Called
+// only from the render callback when a `model_ingest` job reaches `ready`, alongside SetProductModel3dUrl.
+// UpdateProduct never touches this column. :execrows so a vanished product surfaces (0 rows).
+func (q *Queries) SetProductModelObjectNames(ctx context.Context, arg SetProductModelObjectNamesParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setProductModelObjectNames, arg.ID, arg.ModelObjectNames)
 	if err != nil {
 		return 0, err
 	}
@@ -1359,17 +1390,18 @@ func (q *Queries) UpdateOptionChoice(ctx context.Context, arg UpdateOptionChoice
 }
 
 const updatePart = `-- name: UpdatePart :one
-UPDATE parts SET name = $3, display_order = $4, est_filament_qty = $5
+UPDATE parts SET name = $3, display_order = $4, est_filament_qty = $5, model_object_name = $6
 WHERE id = $1 AND product_id = $2
-RETURNING id, product_id, name, display_order, est_filament_qty
+RETURNING id, product_id, name, display_order, est_filament_qty, model_object_name
 `
 
 type UpdatePartParams struct {
-	ID             uuid.UUID `json:"id"`
-	ProductID      uuid.UUID `json:"productId"`
-	Name           string    `json:"name"`
-	DisplayOrder   int32     `json:"displayOrder"`
-	EstFilamentQty int64     `json:"estFilamentQty"`
+	ID              uuid.UUID `json:"id"`
+	ProductID       uuid.UUID `json:"productId"`
+	Name            string    `json:"name"`
+	DisplayOrder    int32     `json:"displayOrder"`
+	EstFilamentQty  int64     `json:"estFilamentQty"`
+	ModelObjectName string    `json:"modelObjectName"`
 }
 
 // UpdatePart / DeletePart are scoped by BOTH id AND product_id (a partId under another product → no row →
@@ -1382,6 +1414,7 @@ func (q *Queries) UpdatePart(ctx context.Context, arg UpdatePartParams) (Part, e
 		arg.Name,
 		arg.DisplayOrder,
 		arg.EstFilamentQty,
+		arg.ModelObjectName,
 	)
 	var i Part
 	err := row.Scan(
@@ -1390,6 +1423,7 @@ func (q *Queries) UpdatePart(ctx context.Context, arg UpdatePartParams) (Part, e
 		&i.Name,
 		&i.DisplayOrder,
 		&i.EstFilamentQty,
+		&i.ModelObjectName,
 	)
 	return i, err
 }
@@ -1399,7 +1433,7 @@ UPDATE products
 SET slug = $2, name = $3, description = $4, category_id = $5, base_price = $6,
     dimensions = $7, material = $8, images = $9, status = $10, est_filament_qty = $11, est_print_minutes = $12
 WHERE id = $1
-RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url
+RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names
 `
 
 type UpdateProductParams struct {
@@ -1457,6 +1491,7 @@ func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (P
 		&i.EstPrintMinutes,
 		&i.ProductType,
 		&i.SpriteSheetUrl,
+		&i.ModelObjectNames,
 	)
 	return i, err
 }

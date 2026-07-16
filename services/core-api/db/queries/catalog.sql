@@ -144,6 +144,13 @@ UPDATE products SET model3d_url = $2 WHERE id = $1;
 -- name: SetProductSpriteSheetUrl :execrows
 UPDATE products SET sprite_sheet_url = $2 WHERE id = $1;
 
+-- SetProductModelObjectNames is the asset pipeline's write of the object-name LIST a `model_ingest` found
+-- in the source model (f-2) — the editor dropdown's option set for mapping parts to model objects. Called
+-- only from the render callback when a `model_ingest` job reaches `ready`, alongside SetProductModel3dUrl.
+-- UpdateProduct never touches this column. :execrows so a vanished product surfaces (0 rows).
+-- name: SetProductModelObjectNames :execrows
+UPDATE products SET model_object_names = $2 WHERE id = $1;
+
 -- DeleteProduct is a HARD delete, allowed only for never-ordered/never-rendered products (drafts, mistakes):
 -- order_items and asset_jobs reference products ON DELETE RESTRICT (migrations 000005/000006), so deleting a
 -- product with history raises a foreign_key_violation the handler maps to 409 "hãy lưu trữ thay vì xoá" — the
@@ -316,8 +323,8 @@ RETURNING id;
 -- === ADR-037 configurator: parts (named part groups, each with its own colour set) ===
 
 -- name: InsertPart :one
-INSERT INTO parts (id, product_id, name, display_order, est_filament_qty)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO parts (id, product_id, name, display_order, est_filament_qty, model_object_name)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: ListPartsByProduct :many
@@ -333,7 +340,7 @@ SELECT * FROM parts WHERE id = $1 AND product_id = $2;
 -- 404), the same cross-product guard as UpdateColor/UpdateOption. Deleting a part CASCADEs its colours
 -- (000015); a colour pinned by an order_item (FK NO ACTION) blocks the delete → 23503 → 409 (archive).
 -- name: UpdatePart :one
-UPDATE parts SET name = $3, display_order = $4, est_filament_qty = $5
+UPDATE parts SET name = $3, display_order = $4, est_filament_qty = $5, model_object_name = $6
 WHERE id = $1 AND product_id = $2
 RETURNING *;
 

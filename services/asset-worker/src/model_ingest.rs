@@ -49,20 +49,22 @@ impl Processor for ModelIngestProcessor {
             self.script.clone(),
             job.asset_job_id.clone(),
         );
-        let glb = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, ProcessError> {
-            let dir = std::env::temp_dir().join(format!("lumin-ingest-{job_id}"));
-            std::fs::create_dir_all(&dir)
-                .map_err(|e| ProcessError::Transient(format!("tmpdir: {e}")))?;
-            let input = dir.join(format!("input.{ext}"));
-            std::fs::write(&input, &src)
-                .map_err(|e| ProcessError::Transient(format!("write source: {e}")))?;
-            let manifest = run_ingest(&python, &script, &input, &dir)?; // already-classified ProcessError
-            let glb = std::fs::read(&manifest.glb_path)
-                .map_err(|e| ProcessError::Transient(format!("read glb: {e}")))?;
-            tracing::info!(job = %job_id, dims_mm = ?manifest.dims_mm, triangles = manifest.triangles, "model ingested");
-            let _ = std::fs::remove_dir_all(&dir); // best-effort
-            Ok(glb)
-        })
+        let (glb, object_names) = tokio::task::spawn_blocking(
+            move || -> Result<(Vec<u8>, Vec<String>), ProcessError> {
+                let dir = std::env::temp_dir().join(format!("lumin-ingest-{job_id}"));
+                std::fs::create_dir_all(&dir)
+                    .map_err(|e| ProcessError::Transient(format!("tmpdir: {e}")))?;
+                let input = dir.join(format!("input.{ext}"));
+                std::fs::write(&input, &src)
+                    .map_err(|e| ProcessError::Transient(format!("write source: {e}")))?;
+                let manifest = run_ingest(&python, &script, &input, &dir)?; // already-classified ProcessError
+                let glb = std::fs::read(&manifest.glb_path)
+                    .map_err(|e| ProcessError::Transient(format!("read glb: {e}")))?;
+                tracing::info!(job = %job_id, dims_mm = ?manifest.dims_mm, triangles = manifest.triangles, objects = manifest.object_names.len(), "model ingested");
+                let _ = std::fs::remove_dir_all(&dir); // best-effort
+                Ok((glb, manifest.object_names))
+            },
+        )
         .await
         .map_err(|e| ProcessError::Transient(format!("ingest task join: {e}")))??;
 
@@ -76,6 +78,7 @@ impl Processor for ModelIngestProcessor {
 
         Ok(Outcome {
             model3d_url: Some(store.output_url(&out_key)),
+            object_names, // f-2: the source model's object list (empty for a nameless STL) → the product
             ..Default::default()
         })
     }
