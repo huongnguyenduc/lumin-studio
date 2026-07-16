@@ -133,7 +133,7 @@ export function OrdersTable({ rows }: { rows: AdminOrderRow[] }) {
                   </td>
                   <td className="px-4 py-3 text-text-body">{r.customer}</td>
                   <td className="px-4 py-3 text-text-body">{r.productLabel}</td>
-                  <td className="px-4 py-3 text-right font-mono text-text-strong">
+                  <td className="px-4 py-3 text-right font-mono font-bold text-primary">
                     {formatVnd(r.total)}
                   </td>
                   <td className="px-4 py-3 text-text-muted">{tChannel(r.channel)}</td>
@@ -178,7 +178,7 @@ export function OrdersTable({ rows }: { rows: AdminOrderRow[] }) {
                     {r.productLabel} · {tChannel(r.channel)}
                   </p>
                 </div>
-                <span className="shrink-0 font-mono font-semibold text-text-strong">
+                <span className="shrink-0 font-mono font-bold text-primary">
                   {formatVnd(r.total)}
                 </span>
               </div>

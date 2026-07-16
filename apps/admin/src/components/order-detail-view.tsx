@@ -151,7 +151,8 @@ export function OrderDetailView({ order }: { order: Order }) {
             <Row label={t('shippingFee')} value={formatVnd(order.shippingFee)} />
             <div className="mt-1 flex items-center justify-between border-t border-border-subtle pt-2">
               <span className="font-semibold text-text-strong">{t('total')}</span>
-              <span className="font-mono font-semibold text-text-strong">
+              {/* Hi-fi 3: the order total is the one coral money figure on the card. */}
+              <span className="font-mono text-lg font-bold text-primary">
                 {formatVnd(order.total)}
               </span>
             </div>
