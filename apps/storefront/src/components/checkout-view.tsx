@@ -355,8 +355,11 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
     errors[field] ? t(`errors.${errors[field]}`) : undefined;
 
   const summary = (
-    <div className="rounded-lg border-2 border-border-strong bg-surface-card p-4">
-      <p className="text-sm text-text-muted">
+    <div className="rounded-md border-2 border-border-strong bg-surface-sunken p-4 shadow-pop-sm">
+      <h2 className="font-display text-base font-bold text-text-strong">
+        {t('orderSummaryHeading')}
+      </h2>
+      <p className="mt-1 font-mono text-xs text-text-muted">
         {t('summaryItemCount', { count: cartCount(items) })}
       </p>
       <div className="mt-2 flex items-center justify-between gap-3">
@@ -554,10 +557,17 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
   }
 
   return (
-    <Shell heading={t('heading')}>
-      <form onSubmit={onSubmitInfo} noValidate className="mt-6 flex flex-col gap-5">
-        {summary}
+    <Shell heading={t('heading')} wide>
+      {/* Hi-fi C1 desktop: form on the left, the "Đơn hàng" summary card sticky on the right; on
+          mobile the summary stays first (the hi-fi top strip). One <form>, two grid areas. */}
+      <form
+        onSubmit={onSubmitInfo}
+        noValidate
+        className="mt-6 gap-8 lg:grid lg:grid-cols-[1fr_340px] lg:items-start"
+      >
+        <aside className="lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1">{summary}</aside>
 
+        <div className="mt-5 flex min-w-0 flex-col gap-5 lg:col-start-1 lg:row-start-1 lg:mt-0">
         <fieldset className="flex min-w-0 flex-col gap-4 border-0 p-0">
           <legend className="mb-1 font-display text-base font-bold text-text-strong">
             {t('contactHeading')}
@@ -734,17 +744,32 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
           disabled={continueDisabled}
           aria-busy={quotePending}
         >
-          {t('continueCta')}
+          {t('continueCta')} <span aria-hidden="true">→</span>
         </Button>
+        </div>
       </form>
     </Shell>
   );
 }
 
-/** Shared page shell: centred container + the checkout heading. */
-function Shell({ heading, children }: { heading: string; children: ReactNode }) {
+/** Shared page shell: centred container + the checkout heading. `wide` is the hi-fi C1 desktop
+ *  two-column layout (form + sticky "Đơn hàng" card); the narrow default fits every other state. */
+function Shell({
+  heading,
+  wide = false,
+  children,
+}: {
+  heading: string;
+  wide?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <section className="mx-auto w-full max-w-[520px] px-4 py-6 md:px-6 md:py-10">
+    <section
+      className={cn(
+        'mx-auto w-full px-4 py-6 md:px-6 md:py-10',
+        wide ? 'max-w-[1100px]' : 'max-w-[520px]',
+      )}
+    >
       <h1 className="font-display text-2xl font-bold text-text-strong md:text-3xl">{heading}</h1>
       {children}
     </section>

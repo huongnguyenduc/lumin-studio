@@ -202,6 +202,7 @@ export const vi = {
     noneSelected: 'Chọn ít nhất một món để đặt hàng nhé.',
     // Summary card (hi-fi "Tóm tắt").
     summaryHeading: 'Tóm tắt',
+    // (checkout dùng key riêng orderSummaryHeading trong section checkout.)
     subtotalLabel: 'Tạm tính',
     shippingNote: 'Phí ship tính theo khu vực ở bước sau.',
     // Primary CTA into the checkout flow (/thanh-toan). The cart creates no order — it just navigates;
@@ -227,6 +228,7 @@ export const vi = {
     emptyBody: 'Thêm một món vào giỏ rồi quay lại đặt hàng nhé.',
     emptyCta: 'Khám phá bộ sưu tập',
     // Order summary (top of C1 + header of C2). Vietnamese has one plural form.
+    orderSummaryHeading: 'Đơn hàng',
     summaryItemCount: '{count} món',
     subtotalLabel: 'Tạm tính',
     shippingLabel: 'Phí ship',
