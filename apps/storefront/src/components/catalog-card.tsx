@@ -24,7 +24,13 @@ export function CatalogCard({ product }: { product: ProductCardView }) {
   const t = useTranslations('product');
 
   return (
-    <div className="group relative flex flex-col transition-transform duration-150 ease-out hover:-translate-x-px hover:-translate-y-px motion-reduce:transform-none">
+    <div
+      // data-card-root: the stretched link's ::after overlay covers this whole tile, so pointer events
+      // over the image hit the <a>, never the cover div — CardCover listens for hover HERE (its closest
+      // [data-card-root]) instead of on itself.
+      data-card-root=""
+      className="group relative flex flex-col transition-transform duration-150 ease-out hover:-translate-x-px hover:-translate-y-px motion-reduce:transform-none"
+    >
       <div className="relative">
         <CardCover
           imageSrc={product.imageSrc}
