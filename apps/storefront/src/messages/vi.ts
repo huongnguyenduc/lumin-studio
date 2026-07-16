@@ -29,6 +29,11 @@ export const vi = {
     primaryCta: 'Khám phá bộ sưu tập',
     secondaryCta: 'Cách chúng mình làm',
     note: 'Giao trong 3–5 ngày · in lại miễn phí nếu lỗi do shop',
+    // Featured-product hero carousel (hi-fi 01). {price} is PRE-FORMATTED via @lumin/core formatVnd.
+    carouselLabel: 'Sản phẩm nổi bật',
+    featuredBadge: '✦ Nổi bật',
+    slideMeta: '{price} · tùy chỉnh màu & khắc tên',
+    dotLabel: 'Xem {name}',
   },
   featured: {
     heading: 'Mới về',
@@ -43,6 +48,8 @@ export const vi = {
     ratingLabel: '{value} trên 5 sao',
     // aria-label for the card-hover 360° sprite turntable (ADR-049).
     sprite360Alt: 'Ảnh xoay 360° của {name}',
+    // Decorative mono pill on tiles that have a sprite (hi-fi "↔360" badge; aria-hidden at the call site).
+    badge360: '↔ 360°',
   },
   catalog: {
     // <title> for /danh-muc (kept out of the index — see the route's generateMetadata).

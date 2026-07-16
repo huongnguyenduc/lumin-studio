@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Hero } from '@/components/hero';
+import { HeroCarousel } from '@/components/hero-carousel';
 import { FeaturedProducts } from '@/components/featured-products';
 import { Trust } from '@/components/trust';
 import { fetchNewArrivals } from '@/lib/catalog';
@@ -25,7 +26,9 @@ export default async function HomePage() {
 
   return (
     <>
-      <Hero />
+      {/* Hi-fi home hero = featured-product carousel; the marketing hero stays as the empty-catalog
+          fallback (the carousel needs at least one product to feature). */}
+      {products.length > 0 ? <HeroCarousel products={products.slice(0, 3)} /> : <Hero />}
       <FeaturedProducts products={products} />
       <Trust />
     </>

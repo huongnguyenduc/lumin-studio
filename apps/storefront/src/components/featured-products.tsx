@@ -1,36 +1,30 @@
-'use client';
-
-import { useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { ProductCard } from '@lumin/ui';
 import { CtaLink } from './cta-link';
+import { CatalogCard } from './catalog-card';
 import type { ProductCardView } from '@/lib/product-view';
 
 /**
- * "Mới về" merchandising grid. Data is fetched server-side (page.tsx → lib/catalog) and passed in;
- * this stays a client component only for local fav toggling (real cart/wishlist is a later Phase-1
- * PR). Renders an empty state when the catalog is bare (conventions §State: empty · loading · error;
- * loading + error are the route-level loading.tsx / error.tsx). It imports the VIEW TYPE only, so the
- * server-only catalog client never enters the client bundle.
+ * "Mới về" merchandising grid. Data is fetched server-side (page.tsx → lib/catalog) and passed in.
+ * Hi-fi desktop home: heading + a mono-coral "Xem tất cả →" on ONE row, then a 5-column row of the
+ * SAME bare tiles the catalog grid uses (CatalogCard) — no white card chrome, no fav/add controls.
+ * Server component (the only client JS is CatalogCard's hover-360 island). Renders an empty state
+ * when the catalog is bare (conventions §State: empty · loading · error; loading + error are the
+ * route-level loading.tsx / error.tsx). It imports the VIEW TYPE only, so the server-only catalog
+ * client never enters the client bundle.
  */
 export function FeaturedProducts({ products }: { products: ProductCardView[] }) {
   const t = useTranslations('featured');
-  const tp = useTranslations('product');
-  const [faved, setFaved] = useState<Record<string, boolean>>({});
 
   return (
     <section className="mx-auto w-full max-w-[1200px] px-4 py-8 md:px-6">
-      <div className="mb-5 flex items-end justify-between gap-4">
-        <div>
-          <h2 className="text-2xl md:text-3xl">{t('heading')}</h2>
-          <p className="mt-1 text-sm text-text-muted">{t('subheading')}</p>
-        </div>
+      <div className="mb-4 flex items-baseline justify-between gap-4">
+        <h2 className="text-2xl md:text-3xl">{t('heading')}</h2>
         <Link
           href="/danh-muc"
-          className="shrink-0 font-display text-sm font-semibold text-text-link hover:underline"
+          className="shrink-0 rounded-sm font-mono text-xs font-bold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
         >
-          {t('viewAll')}
+          {t('viewAll')} <span aria-hidden="true">→</span>
         </Link>
       </div>
 
@@ -44,27 +38,9 @@ export function FeaturedProducts({ products }: { products: ProductCardView[] }) 
           </CtaLink>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
           {products.map((product) => (
-            <ProductCard
-              key={product.id}
-              href={`/san-pham/${product.slug}`}
-              title={product.name}
-              price={product.basePrice}
-              imageSrc={product.imageSrc}
-              imageAlt={product.name}
-              rating={product.rating ?? undefined}
-              reviewCount={product.reviewCount}
-              ratingLabel={
-                product.rating != null ? tp('ratingLabel', { value: product.rating }) : undefined
-              }
-              faved={Boolean(faved[product.id])}
-              onToggleFav={() =>
-                setFaved((state) => ({ ...state, [product.id]: !state[product.id] }))
-              }
-              favLabel={tp('favLabel', { name: product.name })}
-              addLabel={tp('add')}
-            />
+            <CatalogCard key={product.id} product={product} />
           ))}
         </div>
       )}
