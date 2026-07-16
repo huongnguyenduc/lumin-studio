@@ -7,6 +7,7 @@ import { Badge, Button } from '@lumin/ui';
 import type { components } from '@lumin/api-client';
 import { uploadModelFile, type ModelUploadError } from '@/lib/upload-model';
 import { createAssetJob, getAssetJobs, type AssetJobCode } from '@/lib/asset-actions';
+import { latestJobsByType } from '@/lib/product-model';
 
 type AssetJob = components['schemas']['AssetJob'];
 type JobStatus = AssetJob['status'];
@@ -14,8 +15,8 @@ type JobStatus = AssetJob['status'];
 // Badge hue per job status (queued=waiting, processing=in-flight, ready=done, failed=error).
 const JOB_TONE = { queued: 'neutral', processing: 'sky', ready: 'teal', failed: 'danger' } as const;
 const isPending = (s: JobStatus) => s === 'queued' || s === 'processing';
-// Auto-poll cap: the slice-3 render worker isn't wired yet, so jobs sit `queued`. Poll ~80s, then stop and
-// offer a manual refresh so an open editor tab doesn't spin forever. ponytail: raise once the worker runs.
+// Auto-poll cap: a render (sprite_render on the GPU) can take a while, so poll ~80s, then stop and offer a
+// manual refresh so an open editor tab doesn't spin forever. ponytail: raise if real renders outlast it.
 const POLL_CAP = 20;
 const POLL_MS = 4000;
 
@@ -51,8 +52,11 @@ export function ProductModel({ productId, model3dUrl }: { productId: string; mod
     };
   }, [productId]);
 
-  // Poll while any job is pending, capped. On settle, refresh the RSC to pull the new model3dUrl / images.
-  const anyPending = jobs.some((j) => isPending(j.status));
+  // Show only the latest job per type: re-uploading fires fresh jobs and old attempts (incl. resolved
+  // failures) are never pruned server-side, so render/poll off the collapsed view, not the raw pile.
+  const latestJobs = latestJobsByType(jobs);
+  // Poll while any current job is pending, capped. On settle, refresh the RSC to pull the new model3dUrl.
+  const anyPending = latestJobs.some((j) => isPending(j.status));
   useEffect(() => {
     if (!anyPending || polls >= POLL_CAP) return;
     const id = setTimeout(async () => {
@@ -141,11 +145,11 @@ export function ProductModel({ productId, model3dUrl }: { productId: string; mod
 
       {loadingJobs ? (
         <p className="text-sm text-text-muted">{t('loadingJobs')}</p>
-      ) : jobs.length === 0 ? (
+      ) : latestJobs.length === 0 ? (
         <p className="text-sm text-text-muted">{t('noJobs')}</p>
       ) : (
         <ul className="flex flex-col gap-2">
-          {jobs.map((j) => (
+          {latestJobs.map((j) => (
             <li
               key={j.id}
               className="flex flex-wrap items-center gap-2 rounded-lg border border-border-default px-3 py-2 text-sm"
