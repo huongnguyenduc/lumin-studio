@@ -49,7 +49,9 @@ func TestReportAssetJobResultEndToEnd(t *testing.T) {
 	// f-2: a ready model_ingest also records the model's object-name list — sanitized (trimmed, empties dropped).
 	objNames := []string{"Chao đèn", "  Đế  ", ""}
 	wantNames := []string{"Chao đèn", "Đế"}
-	got := reportResult(t, srv, jobID, api.AssetJobResultInput{Status: api.AssetJobResultInputStatusReady, Model3dUrl: &outputURL, ObjectNames: &objNames})
+	// f-4: …and the structured glb URL (host-pinned .glb, a distinct key from the fused model3d_url).
+	structuredURL := presignModel(t, srv, owner, prod.ID).FinalUrl
+	got := reportResult(t, srv, jobID, api.AssetJobResultInput{Status: api.AssetJobResultInputStatusReady, Model3dUrl: &outputURL, Model3dStructuredUrl: &structuredURL, ObjectNames: &objNames})
 	if got.Status != "ready" || got.CompletedAt == nil {
 		t.Fatalf("ready job = %+v, want status=ready + completedAt set", got)
 	}
@@ -58,6 +60,9 @@ func TestReportAssetJobResultEndToEnd(t *testing.T) {
 	}
 	if p, _ := db.NewCatalog(pool).ProductByID(ctx, prod.ID); !slices.Equal(p.ModelObjectNames, wantNames) {
 		t.Fatalf("product model_object_names = %v, want the sanitized %v (f-2)", p.ModelObjectNames, wantNames)
+	}
+	if p, _ := db.NewCatalog(pool).ProductByID(ctx, prod.ID); p.Model3dStructuredUrl != structuredURL {
+		t.Fatalf("product model3d_structured_url = %q, want the reported structured glb %q (f-4)", p.Model3dStructuredUrl, structuredURL)
 	}
 
 	// --- idempotent: a redelivered ready (with a DIFFERENT url + names) is a no-op — ready is sticky ---
@@ -72,6 +77,37 @@ func TestReportAssetJobResultEndToEnd(t *testing.T) {
 	}
 	if p, _ := db.NewCatalog(pool).ProductByID(ctx, prod.ID); !slices.Equal(p.ModelObjectNames, wantNames) {
 		t.Fatalf("sticky-ready violated: model_object_names = %v, want the FIRST list %v (redelivery must not clobber)", p.ModelObjectNames, wantNames)
+	}
+
+	// --- f-4: the structured glb is OPTIONAL — a ready model_ingest WITHOUT it succeeds, column stays '' ---
+	optProd, err := db.NewCatalog(pool).CreateProduct(ctx, sqlc.InsertProductParams{
+		ID: uuid.New(), Slug: "den-opt", Name: "Đèn", Description: "", CategoryID: cat.ID, BasePrice: 1,
+		Dimensions: []byte(`{"w":1,"d":1,"h":1}`), Material: "PLA", Images: []byte(`[]`), Status: sqlc.ProductStatusDraft,
+	})
+	if err != nil {
+		t.Fatalf("seed opt product: %v", err)
+	}
+	optOut := presignModel(t, srv, owner, optProd.ID).FinalUrl
+	optJob := enqueueJob(t, srv, owner, optProd.ID, optOut)
+	if o := reportResult(t, srv, optJob, api.AssetJobResultInput{Status: api.AssetJobResultInputStatusReady, Model3dUrl: &optOut}); o.Status != "ready" {
+		t.Fatalf("ready model_ingest without a structured glb = %+v, want ready (structured is optional)", o)
+	}
+	if p, _ := db.NewCatalog(pool).ProductByID(ctx, optProd.ID); p.Model3dStructuredUrl != "" {
+		t.Fatalf("optional structured absent: model3d_structured_url = %q, want '' (nameless source)", p.Model3dStructuredUrl)
+	}
+
+	// --- f-4: a foreign (not host-pinned) structured URL → 400, job NOT advanced (it becomes a client src) ---
+	foreignStruct := "https://evil.test/steal.glb"
+	fsJob := enqueueJob(t, srv, owner, prod.ID, presignModel(t, srv, owner, prod.ID).FinalUrl)
+	fsResp, err := srv.ReportAssetJobResult(ctx, api.ReportAssetJobResultRequestObject{Id: fsJob, Body: &api.AssetJobResultInput{Status: api.AssetJobResultInputStatusReady, Model3dUrl: &outputURL, Model3dStructuredUrl: &foreignStruct}})
+	if err != nil {
+		t.Fatalf("foreign-structured call err: %v", err)
+	}
+	if _, ok := fsResp.(api.ReportAssetJobResult400JSONResponse); !ok {
+		t.Fatalf("foreign structured URL resp = %T, want 400 (host-pin)", fsResp)
+	}
+	if j, _ := db.NewJobs(pool).AssetJobByID(ctx, fsJob); j.Status != sqlc.AssetJobStatusQueued {
+		t.Fatalf("foreign-structured job advanced to %q, want still queued (rolled back)", j.Status)
 	}
 
 	// --- failed → last_error set, completed_at stamped, product untouched ---

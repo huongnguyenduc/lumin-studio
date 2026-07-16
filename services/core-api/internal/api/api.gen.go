@@ -387,6 +387,9 @@ type AssetJobResultInput struct {
 	// LastError Failure reason, set with `failed`. Cleared when the job reaches `ready`.
 	LastError *string `json:"lastError,omitempty"`
 
+	// Model3dStructuredUrl The uploaded STRUCTURED glb URL (f-4) — named objects/materials preserved. OPTIONAL even on a ready model_ingest (a single-mesh STL or an export quirk yields none → the viewer falls back to model3dUrl); when present must be a `.glb` under this store's assets origin (host-pinned). Ignored for sprite_render.
+	Model3dStructuredUrl *string `json:"model3dStructuredUrl,omitempty"`
+
 	// Model3dUrl The uploaded derivative LOD glb URL. Required on a `ready` `model_ingest`; must be a `.glb` under this store's assets origin (host-pinned). Ignored for `sprite_render` (which reports `spriteSheetUrl`).
 	Model3dUrl *string `json:"model3dUrl,omitempty"`
 
@@ -1520,6 +1523,9 @@ type Product struct {
 
 	// Material Print material (spec §02; open-ended TEXT+CHECK, ADR-028 — not a wire enum).
 	Material string `json:"material"`
+
+	// Model3dStructuredUrl .glb URL of the STRUCTURED derivative (f-4) — named objects/materials preserved (unlike the fused model3dUrl), same recenter as model3dUrl. The live viewer loads this when present to recolor each part by object name (f-3), else falls back to model3dUrl. Empty until a model_ingest has produced one.
+	Model3dStructuredUrl *string `json:"model3dStructuredUrl,omitempty"`
 
 	// Model3dUrl .glb URL for the on-demand model viewer; empty string when none.
 	Model3dUrl string `json:"model3dUrl"`

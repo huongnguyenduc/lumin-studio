@@ -43,7 +43,7 @@ func (s *Server) ReportAssetJobResult(ctx context.Context, req api.ReportAssetJo
 	if req.Body == nil {
 		return api.ReportAssetJobResult400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
 	}
-	status, model3dURL, spriteSheetURL, lastErr, fields, err := s.cleanAssetJobResult(*req.Body)
+	status, model3dURL, model3dStructuredURL, spriteSheetURL, lastErr, fields, err := s.cleanAssetJobResult(*req.Body)
 	if err != nil {
 		return nil, err // an output URL present but no upload store to host-pin against → 500 (worker can't fix)
 	}
@@ -105,6 +105,14 @@ func (s *Server) ReportAssetJobResult(ctx context.Context, req api.ReportAssetJo
 			if e := db.NewCatalog(tx).SetProductModelObjectNames(ctx, job.ProductID, objectNames); e != nil {
 				return e
 			}
+			// f-4: the STRUCTURED glb is OPTIONAL — write it only when the worker produced one (a nameless STL /
+			// an export quirk yields none, and the viewer then falls back to model3d_url). Guard on non-empty so
+			// a source with no named objects can't blank a structured glb a prior ingest wrote.
+			if model3dStructuredURL != "" {
+				if e := db.NewCatalog(tx).SetProductModel3dStructuredURL(ctx, job.ProductID, model3dStructuredURL); e != nil {
+					return e
+				}
+			}
 		}
 		if status == sqlc.AssetJobStatusReady && job.JobType == sqlc.AssetJobTypeSpriteRender {
 			if e := db.NewCatalog(tx).SetProductSpriteSheetURL(ctx, job.ProductID, spriteSheetURL); e != nil {
@@ -127,11 +135,11 @@ func (s *Server) ReportAssetJobResult(ctx context.Context, req api.ReportAssetJo
 
 // cleanAssetJobResult validates the callback body at the HTTP boundary and returns the values to persist
 // plus a per-field error map (empty ⇒ valid). status maps the worker-lifecycle enum to the stored enum.
-// model3dUrl (model_ingest) and spriteSheetUrl (sprite_render), when present, MUST be host-pinned URLs of
-// the right extension under this store's assets origin — each becomes a client-side src (<model-viewer> /
-// <img>), so a foreign URL is stored content injection. The non-nil error is reserved for the un-fixable
-// case (an output URL arrived but no upload store is wired to host-pin it → 500).
-func (s *Server) cleanAssetJobResult(in api.AssetJobResultInput) (sqlc.AssetJobStatus, string, string, *string, map[string]string, error) {
+// model3dUrl + model3dStructuredUrl (model_ingest) and spriteSheetUrl (sprite_render), when present, MUST be
+// host-pinned URLs of the right extension under this store's assets origin — each becomes a client-side src
+// (<model-viewer> / <img>), so a foreign URL is stored content injection. The non-nil error is reserved for the
+// un-fixable case (an output URL arrived but no upload store is wired to host-pin it → 500).
+func (s *Server) cleanAssetJobResult(in api.AssetJobResultInput) (sqlc.AssetJobStatus, string, string, string, *string, map[string]string, error) {
 	fields := map[string]string{}
 
 	var status sqlc.AssetJobStatus
@@ -148,11 +156,17 @@ func (s *Server) cleanAssetJobResult(in api.AssetJobResultInput) (sqlc.AssetJobS
 
 	model3dURL, err := s.cleanOutputURL(in.Model3dUrl, ".glb", "model3dUrl", fields)
 	if err != nil {
-		return status, "", "", nil, fields, err
+		return status, "", "", "", nil, fields, err
+	}
+	// f-4: the structured glb (named objects) — same host-pin as model3dUrl (.glb, assets origin), OPTIONAL
+	// even on a ready model_ingest (a nameless source / an export quirk produces none → viewer falls back).
+	model3dStructuredURL, err := s.cleanOutputURL(in.Model3dStructuredUrl, ".glb", "model3dStructuredUrl", fields)
+	if err != nil {
+		return status, "", "", "", nil, fields, err
 	}
 	spriteSheetURL, err := s.cleanOutputURL(in.SpriteSheetUrl, ".webp", "spriteSheetUrl", fields)
 	if err != nil {
-		return status, "", "", nil, fields, err
+		return status, "", "", "", nil, fields, err
 	}
 
 	var lastErr *string
@@ -166,7 +180,7 @@ func (s *Server) cleanAssetJobResult(in api.AssetJobResultInput) (sqlc.AssetJobS
 		}
 	}
 
-	return status, model3dURL, spriteSheetURL, lastErr, fields, nil
+	return status, model3dURL, model3dStructuredURL, spriteSheetURL, lastErr, fields, nil
 }
 
 // cleanOutputURL validates one optional worker-output URL (model3dUrl / spriteSheetUrl). Absent or empty →

@@ -1559,6 +1559,8 @@ export interface components {
             estPrintHours?: number;
             /** @description .glb URL for the on-demand model viewer; empty string when none. */
             model3dUrl: string;
+            /** @description .glb URL of the STRUCTURED derivative (f-4) — named objects/materials preserved (unlike the fused model3dUrl), same recenter as model3dUrl. The live viewer loads this when present to recolor each part by object name (f-3), else falls back to model3dUrl. Empty until a model_ingest has produced one. */
+            model3dStructuredUrl?: string;
             model3dView?: components["schemas"]["Model3dView"];
             /**
              * Format: uri
@@ -2106,6 +2108,11 @@ export interface components {
              * @description The uploaded derivative LOD glb URL. Required on a `ready` `model_ingest`; must be a `.glb` under this store's assets origin (host-pinned). Ignored for `sprite_render` (which reports `spriteSheetUrl`).
              */
             model3dUrl?: string;
+            /**
+             * Format: uri
+             * @description The uploaded STRUCTURED glb URL (f-4) — named objects/materials preserved. OPTIONAL even on a ready model_ingest (a single-mesh STL or an export quirk yields none → the viewer falls back to model3dUrl); when present must be a `.glb` under this store's assets origin (host-pinned). Ignored for sprite_render.
+             */
+            model3dStructuredUrl?: string;
             /**
              * Format: uri
              * @description The uploaded 360° sprite-sheet URL (ADR-049). Required on a `ready` `sprite_render`; must be a `.webp` under this store's assets origin (host-pinned). Ignored for `model_ingest` (which reports `model3dUrl`).

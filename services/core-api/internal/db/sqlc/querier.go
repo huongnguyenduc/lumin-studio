@@ -532,6 +532,11 @@ type Querier interface {
 	// SetOrderItemCostSnapshot writes the frozen COGS blob (the rollup marshals it in Go). Best-effort,
 	// post-commit — a failure leaves cost_snapshot NULL ("chưa chốt", backfillable), never blocking the board.
 	SetOrderItemCostSnapshot(ctx context.Context, arg SetOrderItemCostSnapshotParams) error
+	// SetProductModel3dStructuredUrl is the asset pipeline's write of the STRUCTURED glb URL (f-4) — named
+	// objects/materials preserved, for the live viewer's per-part recolour. Written only from the render callback
+	// on a ready model_ingest, alongside SetProductModel3dUrl (OPTIONAL — a nameless source yields none, so the
+	// viewer falls back to model3d_url). UpdateProduct never touches it. :execrows so a vanished product surfaces.
+	SetProductModel3dStructuredUrl(ctx context.Context, arg SetProductModel3dStructuredUrlParams) (int64, error)
 	// SetProductModel3dUrl is the asset pipeline's write of the LOD glb URL (the column UpdateProduct
 	// deliberately never touches). Called only from the worker render callback (ReportAssetJobResult) when a
 	// `model_ingest` job reaches `ready`, so the storefront's on-demand 3D viewer has a model to load. The

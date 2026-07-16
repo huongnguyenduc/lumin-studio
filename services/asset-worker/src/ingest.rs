@@ -26,6 +26,11 @@ pub struct Manifest {
     /// single-mesh source (an STL). `#[serde(default)]` keeps an older ingest.py that omits the field parseable.
     #[serde(default)]
     pub object_names: Vec<String>,
+    /// f-4: path to the STRUCTURED glb (named objects/materials preserved, same recenter as `glb_path`) the
+    /// caller uploads as a second derivative. Absent for a single-mesh source / an export quirk — the manifest
+    /// omits it and the viewer falls back to the fused glb. `#[serde(default)]` → None when the field is absent.
+    #[serde(default)]
+    pub structured_glb_path: Option<String>,
 }
 
 /// run_ingest invokes `python ingest.py <input> <out_dir>` and parses the manifest. Error classification
@@ -93,23 +98,28 @@ mod tests {
     }
 
     #[test]
-    fn parses_object_names_and_defaults_empty() {
-        // f-2: objectNames flows through when present…
+    fn parses_optional_object_names_and_structured_path() {
+        // f-2 objectNames + f-4 structuredGlbPath flow through when present…
         let m = parse_manifest(
-            r#"{"dimsMm":[1.0,2.0,3.0],"glbPath":"/o/m.glb","triangles":4,"watertight":false,"objectNames":["Chao đèn","Đế"]}"#
+            r#"{"dimsMm":[1.0,2.0,3.0],"glbPath":"/o/m.glb","triangles":4,"watertight":false,"objectNames":["Chao đèn","Đế"],"structuredGlbPath":"/o/model_structured.glb"}"#
                 .as_bytes(),
         )
-        .expect("parse with names");
+        .expect("parse with names + structured");
         assert_eq!(
             m.object_names,
             vec!["Chao đèn".to_string(), "Đế".to_string()]
         );
-        // …and an older ingest.py that omits it still parses (serde default → empty), never a Transient fail.
+        assert_eq!(
+            m.structured_glb_path.as_deref(),
+            Some("/o/model_structured.glb")
+        );
+        // …and an older ingest.py that omits BOTH still parses (serde default → empty/None), never a fail.
         let m0 = parse_manifest(
             br#"{"dimsMm":[1.0,2.0,3.0],"glbPath":"/o/m.glb","triangles":4,"watertight":false}"#,
         )
-        .expect("parse without names");
+        .expect("parse without optionals");
         assert!(m0.object_names.is_empty());
+        assert!(m0.structured_glb_path.is_none());
     }
 
     #[test]

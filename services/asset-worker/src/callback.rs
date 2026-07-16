@@ -17,6 +17,10 @@ pub struct ResultBody {
     pub status: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model3d_url: Option<String>,
+    /// f-4: the structured glb URL (named objects) — core-api's AssetJobResultInput.model3dStructuredUrl.
+    /// Omitted when None (a sprite_render / a nameless source), matching the optional openapi field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model3d_structured_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sprite_sheet_url: Option<String>,
     /// f-2: the object names a model_ingest found (core-api's AssetJobResultInput.objectNames). Omitted when
@@ -86,6 +90,7 @@ mod tests {
         let b = ResultBody {
             status: "ready",
             model3d_url: Some("https://s3/lumin-assets/x.glb".into()),
+            model3d_structured_url: None,
             sprite_sheet_url: None,
             object_names: vec![],
             last_error: None,
@@ -104,6 +109,7 @@ mod tests {
         let b = ResultBody {
             status: "ready",
             model3d_url: Some("https://s3/lumin-assets/x.glb".into()),
+            model3d_structured_url: None,
             sprite_sheet_url: None,
             object_names: vec!["shade".into(), "base".into()],
             last_error: None,
@@ -114,12 +120,33 @@ mod tests {
         );
     }
 
+    // f-4: a model_ingest ready carries model3dStructuredUrl alongside model3dUrl (both .glb, distinct keys) —
+    // the shape core-api reads to write products.model3d_structured_url. Omitted when None (skip-if-none).
+    #[test]
+    fn ready_body_serializes_structured_url() {
+        let b = ResultBody {
+            status: "ready",
+            model3d_url: Some("https://s3/lumin-assets/derivatives/v/model.glb".into()),
+            model3d_structured_url: Some(
+                "https://s3/lumin-assets/derivatives/v/model_structured.glb".into(),
+            ),
+            sprite_sheet_url: None,
+            object_names: vec![],
+            last_error: None,
+        };
+        assert_eq!(
+            serde_json::to_string(&b).unwrap(),
+            r#"{"status":"ready","model3dUrl":"https://s3/lumin-assets/derivatives/v/model.glb","model3dStructuredUrl":"https://s3/lumin-assets/derivatives/v/model_structured.glb"}"#
+        );
+    }
+
     // A sprite_render ready reports spriteSheetUrl (not model3dUrl) — the camelCase key core-api reads.
     #[test]
     fn ready_body_serializes_with_sprite_url_only() {
         let b = ResultBody {
             status: "ready",
             model3d_url: None,
+            model3d_structured_url: None,
             sprite_sheet_url: Some("https://s3/lumin-assets/sprite.webp".into()),
             object_names: vec![],
             last_error: None,
@@ -135,6 +162,7 @@ mod tests {
         let b = ResultBody {
             status: "failed",
             model3d_url: None,
+            model3d_structured_url: None,
             sprite_sheet_url: None,
             object_names: vec![],
             last_error: Some("bad model".into()),

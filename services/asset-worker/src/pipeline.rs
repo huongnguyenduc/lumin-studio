@@ -38,6 +38,7 @@ pub fn decide(result: Result<Outcome, ProcessError>, delivered: u64, max_deliver
                 status: "ready",
                 // exactly one of these is Some, per job kind (ADR-049); core-api writes whichever it is.
                 model3d_url: outcome.model3d_url,
+                model3d_structured_url: outcome.model3d_structured_url, // f-4: named-objects glb (None for sprite/STL)
                 sprite_sheet_url: outcome.sprite_sheet_url,
                 object_names: outcome.object_names, // f-2: model_ingest's object list (empty for sprite/STL)
                 last_error: None,
@@ -48,6 +49,7 @@ pub fn decide(result: Result<Outcome, ProcessError>, delivered: u64, max_deliver
             body: Some(ResultBody {
                 status: "failed",
                 model3d_url: None,
+                model3d_structured_url: None,
                 sprite_sheet_url: None,
                 object_names: Vec::new(),
                 last_error: Some(msg),
@@ -60,6 +62,7 @@ pub fn decide(result: Result<Outcome, ProcessError>, delivered: u64, max_deliver
                     body: Some(ResultBody {
                         status: "failed",
                         model3d_url: None,
+                        model3d_structured_url: None,
                         sprite_sheet_url: None,
                         object_names: Vec::new(),
                         last_error: Some(format!("giving up after {delivered} attempts: {msg}")),
