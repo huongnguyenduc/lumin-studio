@@ -124,7 +124,9 @@ func TestProductCardsDTO(t *testing.T) {
 		{ID: uuid.New(), Slug: "moc-robo", Name: "Móc Robo", BasePrice: 65_000, CategoryID: cat,
 			Images: nil, RatingAvg: nil, ReviewCount: 0}, // no reviews yet, no images
 	}
-	cards, err := productCardsDTO(rows)
+	// Card[0] has two colours (hi-fi 02 dots, name-ordered by the batched read); card[1] has none →
+	// the field must be OMITTED (nil), keeping a colourless card's wire identical to pre-swatch.
+	cards, err := productCardsDTO(rows, map[uuid.UUID][]string{id: {"#FF6B4A", "#492F10"}})
 	if err != nil {
 		t.Fatalf("productCardsDTO: %v", err)
 	}
@@ -153,6 +155,16 @@ func TestProductCardsDTO(t *testing.T) {
 	if !jsonHasEmptyImages(t, b) {
 		t.Errorf("card[1] marshaled = %s, want images:[] not null", b)
 	}
+	// colorSwatches: present + ordered on the coloured card, OMITTED (not []) on the colourless one.
+	if c0.ColorSwatches == nil || len(*c0.ColorSwatches) != 2 || (*c0.ColorSwatches)[0] != "#FF6B4A" {
+		t.Errorf("card[0].ColorSwatches = %v, want the two hexes in map order", c0.ColorSwatches)
+	}
+	if c1.ColorSwatches != nil {
+		t.Errorf("card[1].ColorSwatches = %v, want nil (omitted for a colourless product)", c1.ColorSwatches)
+	}
+	if strings.Contains(string(b), "colorSwatches") {
+		t.Errorf("card[1] marshaled = %s, want colorSwatches omitted entirely", b)
+	}
 }
 
 func jsonHasEmptyImages(t *testing.T, b []byte) bool {
@@ -170,7 +182,7 @@ func TestProductCardsDTOCorruptImagesHardFails(t *testing.T) {
 	rows := []sqlc.ListActiveProductsRow{
 		{ID: uuid.New(), Slug: "hong", Name: "Hỏng", Images: []byte(`{not json`)},
 	}
-	if _, err := productCardsDTO(rows); err == nil {
+	if _, err := productCardsDTO(rows, nil); err == nil {
 		t.Fatal("corrupt images jsonb must return an error, got nil")
 	}
 }

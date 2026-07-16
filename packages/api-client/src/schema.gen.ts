@@ -1672,6 +1672,8 @@ export interface components {
              * @description 360° sprite-sheet URL for the card hover (ADR-049). Omitted until a `sprite_render` job has produced one. Grid is the fixed shared const (24 frames, 6 cols).
              */
             spriteSheetUrl?: string;
+            /** @description Hex swatches of the product's colours, catalog order (= name order, the same order the detail read lists them) — the grid card's colour dots (hi-fi 02). One batched read per page (no N+1). Optional + additive: an older client simply ignores it; omitted (not `[]`) so pre-swatch clients' payloads only grow when a product has colours. */
+            colorSwatches?: string[];
             /**
              * Format: float
              * @description Denormalized average rating; null until the first review.

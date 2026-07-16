@@ -385,3 +385,9 @@ RETURNING *;
 
 -- name: DeleteOptionChoice :one
 DELETE FROM option_choices WHERE id = $1 AND option_id = $2 RETURNING id;
+
+-- One batched read for the catalog page's colour dots (ProductCard.colorSwatches): every colour hex of
+-- the page's products, product-grouped, name-ordered (the SAME order ListColorsByProduct gives the
+-- detail read, so card dots and detail swatches never disagree on order).
+-- name: ListColorSwatchesByProducts :many
+SELECT product_id, hex FROM colors WHERE product_id = ANY(@product_ids::uuid[]) ORDER BY product_id, name;

@@ -942,6 +942,38 @@ func (q *Queries) ListChoicesByProduct(ctx context.Context, productID uuid.UUID)
 	return items, nil
 }
 
+const listColorSwatchesByProducts = `-- name: ListColorSwatchesByProducts :many
+SELECT product_id, hex FROM colors WHERE product_id = ANY($1::uuid[]) ORDER BY product_id, name
+`
+
+type ListColorSwatchesByProductsRow struct {
+	ProductID uuid.UUID `json:"productId"`
+	Hex       string    `json:"hex"`
+}
+
+// One batched read for the catalog page's colour dots (ProductCard.colorSwatches): every colour hex of
+// the page's products, product-grouped, name-ordered (the SAME order ListColorsByProduct gives the
+// detail read, so card dots and detail swatches never disagree on order).
+func (q *Queries) ListColorSwatchesByProducts(ctx context.Context, productIds []uuid.UUID) ([]ListColorSwatchesByProductsRow, error) {
+	rows, err := q.db.Query(ctx, listColorSwatchesByProducts, productIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListColorSwatchesByProductsRow
+	for rows.Next() {
+		var i ListColorSwatchesByProductsRow
+		if err := rows.Scan(&i.ProductID, &i.Hex); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listColorsByProduct = `-- name: ListColorsByProduct :many
 SELECT id, product_id, name, hex, available, price_delta, part_id, filament_material_id FROM colors WHERE product_id = $1 ORDER BY name
 `

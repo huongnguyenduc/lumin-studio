@@ -77,6 +77,19 @@ func seedListCatalog(t *testing.T, ctx context.Context, pool *pgxpool.Pool) list
 			t.Fatalf("set meta for %s: %v", s.slug, err)
 		}
 	}
+	// Colours for the swatches assertion: den-a1 gets two (name order: "Cam" < "Trắng" → Cam's hex
+	// first on the wire); every other product stays colourless (colorSwatches must be OMITTED there).
+	var denA1 uuid.UUID
+	if err := pool.QueryRow(ctx, `SELECT id FROM products WHERE slug='den-a1'`).Scan(&denA1); err != nil {
+		t.Fatalf("find den-a1: %v", err)
+	}
+	for _, c := range []struct{ name, hex string }{{"Trắng", "#FFFBEF"}, {"Cam", "#FF6B4A"}} {
+		if _, err := cat.CreateColor(ctx, sqlc.InsertColorParams{
+			ID: uuid.New(), ProductID: denA1, Name: c.name, Hex: c.hex, Available: true,
+		}); err != nil {
+			t.Fatalf("seed color %s: %v", c.name, err)
+		}
+	}
 	return listSeed{catDen: den, catMoc: moc}
 }
 
@@ -153,6 +166,24 @@ func TestGetProductsEndToEnd(t *testing.T) {
 		// Card projection carries no description body (kept off the wire — no N+1 / lighter card).
 		if raw := rec.Body.String(); strings.Contains(raw, "mô tả dài") {
 			t.Error("card projection leaked the description body")
+		}
+	})
+
+	// colorSwatches (hi-fi 02 dots): the coloured product carries its hexes in NAME order from the
+	// batched read; a colourless product OMITS the field entirely (nil — wire unchanged there).
+	t.Run("colorSwatches: name-ordered on coloured card, omitted on colourless", func(t *testing.T) {
+		_, list := getProducts(t, router, "?pageSize=10")
+		bySlug := map[string]api.ProductCard{}
+		for _, c := range list.Items {
+			bySlug[c.Slug] = c
+		}
+		a1 := bySlug["den-a1"]
+		if a1.ColorSwatches == nil || len(*a1.ColorSwatches) != 2 ||
+			(*a1.ColorSwatches)[0] != "#FF6B4A" || (*a1.ColorSwatches)[1] != "#FFFBEF" {
+			t.Errorf("den-a1 colorSwatches = %v, want [#FF6B4A #FFFBEF] (name order Cam < Trắng)", a1.ColorSwatches)
+		}
+		if b1 := bySlug["moc-b1"]; b1.ColorSwatches != nil {
+			t.Errorf("moc-b1 colorSwatches = %v, want nil (omitted for a colourless product)", b1.ColorSwatches)
 		}
 	})
 

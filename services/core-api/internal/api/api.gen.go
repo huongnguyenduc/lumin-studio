@@ -1562,7 +1562,10 @@ type ProductCard struct {
 	// BasePrice Starting price in int-VND (>= 0).
 	BasePrice  int64              `json:"basePrice"`
 	CategoryId openapi_types.UUID `json:"categoryId"`
-	Id         openapi_types.UUID `json:"id"`
+
+	// ColorSwatches Hex swatches of the product's colours, catalog order (= name order, the same order the detail read lists them) — the grid card's colour dots (hi-fi 02). One batched read per page (no N+1). Optional + additive: an older client simply ignores it; omitted (not `[]`) so pre-swatch clients' payloads only grow when a product has colours.
+	ColorSwatches *[]string          `json:"colorSwatches,omitempty"`
+	Id            openapi_types.UUID `json:"id"`
 
 	// Images Shop photos; images[0] is the card cover (ADR-007). May be empty.
 	Images []string `json:"images"`
