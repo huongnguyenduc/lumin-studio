@@ -369,6 +369,11 @@ export const vi = {
     errorTitle: 'Có gì đó chưa ổn',
     errorBody: 'Mất kết nối một chút — thử lại giúp mình nhé.',
     retry: 'Thử lại',
+    // Root 404 (hi-fi 11): the page moved or the link broke; recover to home.
+    notFoundCode: '404',
+    notFoundTitle: 'Không thấy trang',
+    notFoundBody: 'Trang có thể đã đổi link hoặc bị gỡ.',
+    notFoundCta: 'Về trang chủ',
   },
   // Guest order lookup /tra-cuu-don (P1-o). The tracker: a code + phone form → a status timeline with
   // auto-poll. Status LABELS come from @lumin/core (core.orderStatus.*, shared with the account P1-s);
