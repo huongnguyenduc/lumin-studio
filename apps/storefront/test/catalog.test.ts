@@ -29,7 +29,16 @@ describe('toProductCardView', () => {
       imageSrc: 'https://cdn.example/mochi-1.webp',
       rating: 4.8,
       reviewCount: 128,
+      colorSwatches: [],
     });
+  });
+
+  it('surfaces colorSwatches in wire order, and an omitted field as [] (hi-fi 02 dots)', () => {
+    expect(
+      toProductCardView(apiCard({ colorSwatches: ['#FF6B4A', '#492F10'] })).colorSwatches,
+    ).toEqual(['#FF6B4A', '#492F10']);
+    // Wire omits the field for a colourless product → the view normalises to [] (dots row hidden).
+    expect(toProductCardView(apiCard({ colorSwatches: undefined })).colorSwatches).toEqual([]);
   });
 
   it('uses images[0] as the cover (ADR-007) and ignores the rest', () => {
