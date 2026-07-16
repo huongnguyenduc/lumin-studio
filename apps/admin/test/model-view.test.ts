@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { orbitToModel3dView, model3dViewToAttrs } from '../src/lib/model-view';
+import { orbitToModel3dView, model3dViewToAttrs, pickedObjectName } from '../src/lib/model-view';
 
 const HALF_PI = Math.PI / 2;
 const QUARTER_PI = Math.PI / 4;
@@ -57,5 +57,46 @@ describe('model3dViewToAttrs', () => {
     });
     expect(attrs.orbit).toBe('45deg 90deg 105%');
     expect(attrs.target).toBe('0m 0m 0m');
+  });
+});
+
+describe('pickedObjectName (f-2 click-on-model)', () => {
+  const rect = { left: 100, top: 50 };
+  const hit = (name: string) => () => ({ name });
+
+  it('returns the material name for a click (no pointer movement)', () => {
+    const at = hit('Chao đèn');
+    expect(pickedObjectName({ x: 130, y: 90 }, { x: 130, y: 90 }, rect, at)).toBe('Chao đèn');
+  });
+
+  it('passes viewer-local coordinates (up minus rect) to the hit-test', () => {
+    let seen: [number, number] | null = null;
+    pickedObjectName({ x: 130, y: 90 }, { x: 130, y: 90 }, rect, (x, y) => {
+      seen = [x, y];
+      return { name: 'Đế' };
+    });
+    expect(seen).toEqual([30, 40]); // 130-100, 90-50
+  });
+
+  it('ignores a drag (an orbit, moved past the slop) — returns null', () => {
+    const at = hit('Chao đèn');
+    expect(pickedObjectName({ x: 130, y: 90 }, { x: 150, y: 90 }, rect, at)).toBeNull(); // 20px > 6
+  });
+
+  it('allows a tiny jitter within the slop', () => {
+    const at = hit('Đế');
+    expect(pickedObjectName({ x: 130, y: 90 }, { x: 134, y: 92 }, rect, at)).toBe('Đế'); // ~4.5px < 6
+  });
+
+  it('returns null when the click misses geometry (no material)', () => {
+    expect(pickedObjectName({ x: 130, y: 90 }, { x: 130, y: 90 }, rect, () => null)).toBeNull();
+  });
+
+  it('returns null for an empty / whitespace material name (fused or unnamed)', () => {
+    expect(pickedObjectName({ x: 1, y: 1 }, { x: 1, y: 1 }, rect, hit('   '))).toBeNull();
+  });
+
+  it('returns null when no pointerdown was captured', () => {
+    expect(pickedObjectName(null, { x: 130, y: 90 }, rect, hit('Chao đèn'))).toBeNull();
   });
 });

@@ -5,16 +5,19 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button } from '@lumin/ui';
 import type { components } from '@lumin/api-client';
-import { orbitToModel3dView, model3dViewToAttrs } from '@/lib/model-view';
+import { orbitToModel3dView, model3dViewToAttrs, pickedObjectName } from '@/lib/model-view';
 import { saveModelView } from '@/lib/product-actions';
 
 type Model3dView = components['schemas']['Model3dView'];
 
-/** The imperative slice of <model-viewer> we read: current camera + whether the model has loaded. */
+/** The imperative slice of <model-viewer> we read: current camera, load state, and click hit-test. */
 interface ModelViewerElement extends HTMLElement {
   loaded: boolean;
   getCameraOrbit(): { theta: number; phi: number; radius: number };
   getCameraTarget(): { x: number; y: number; z: number };
+  // f-2 click-on-model: the material under a pixel. f-3 names each object's material after the object, so
+  // material.name is the object name to map. (Model$1.Material has more fields; we read only .name.)
+  materialFromPoint(pixelX: number, pixelY: number): { name: string } | null;
 }
 
 // Minimal typing for Google's <model-viewer> custom element — we use only these attributes/events. The
@@ -195,6 +198,98 @@ export function ProductModelView({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Click-to-map a part to a named 3D object (f-2 click-on-model follow-up) — the pointer alternative to the
+ * PartForm dropdown, for owners who'd rather click the thing they see than know its internal name. Loads the
+ * STRUCTURED glb (f-4: named objects, each object's material named after it — f-3) so a click hit-tests to a
+ * material name = object name; a click (not a drag/orbit — `pickedObjectName` guards that) calls onPick(name)
+ * and the parent writes it to the SAME `objectName` the dropdown sets. Rendered only when a structured glb
+ * exists and WebGL is available — otherwise the dropdown alone stands (and it is the keyboard-accessible
+ * path). No auto-rotate / no interaction-prompt → prefers-reduced-motion honoured by construction.
+ */
+export function PartObjectPicker({
+  src,
+  selected,
+  onPick,
+}: {
+  src: string;
+  selected: string;
+  onPick: (objectName: string) => void;
+}) {
+  const t = useTranslations('products.edit.colors');
+  const viewerRef = useRef<ModelViewerElement | null>(null);
+  const downRef = useRef<{ x: number; y: number } | null>(null);
+  const [webglOk, setWebglOk] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setWebglOk(hasWebGL());
+  }, []);
+
+  // Same ~1MB on-demand import as the align viewer, only with WebGL to show it.
+  useEffect(() => {
+    if (!webglOk) return;
+    let alive = true;
+    import('@google/model-viewer')
+      .then(() => alive && setReady(true))
+      .catch(() => alive && setFailed(true));
+    return () => {
+      alive = false;
+    };
+  }, [webglOk]);
+
+  function onClick(e: React.MouseEvent<ModelViewerElement>) {
+    const el = viewerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const name = pickedObjectName(downRef.current, { x: e.clientX, y: e.clientY }, rect, (x, y) =>
+      el.materialFromPoint(x, y),
+    );
+    if (name) onPick(name);
+  }
+
+  if (!webglOk) return null; // no WebGL → the dropdown alone maps the object
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="aspect-square overflow-hidden rounded-md bg-surface-sunken">
+        {failed ? (
+          <p
+            role="alert"
+            className="flex h-full w-full items-center justify-center px-4 text-center text-sm text-text-muted"
+          >
+            {t('objectPickError')}
+          </p>
+        ) : ready ? (
+          <model-viewer
+            ref={viewerRef}
+            src={src}
+            alt={t('objectPickAlt')}
+            camera-controls={true}
+            interaction-prompt="none"
+            onPointerDown={(e) => {
+              downRef.current = { x: e.clientX, y: e.clientY };
+            }}
+            onClick={onClick}
+            style={{ width: '100%', height: '100%', cursor: 'crosshair' }}
+          />
+        ) : (
+          <p
+            role="status"
+            className="flex h-full w-full items-center justify-center text-sm text-text-muted"
+          >
+            {t('objectPickLoading')}
+          </p>
+        )}
+      </div>
+      <p className="text-xs text-text-muted">
+        {selected ? t('objectPickSelected', { name: selected }) : t('objectPickHint')}
+      </p>
     </div>
   );
 }

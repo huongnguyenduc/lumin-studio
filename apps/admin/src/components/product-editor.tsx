@@ -282,6 +282,7 @@ export function ProductEditor({
             colors={product.colors}
             filaments={filaments}
             modelObjectNames={product.modelObjectNames ?? []}
+            model3dStructuredUrl={product.model3dStructuredUrl}
           />
         </Card>
       )}

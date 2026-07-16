@@ -14,6 +14,7 @@ import {
   updatePart,
   type SubWriteResult,
 } from '@/lib/product-actions';
+import { PartObjectPicker } from './product-model-view';
 
 type Color = components['schemas']['Color'];
 type Part = components['schemas']['Part'];
@@ -34,6 +35,7 @@ export function ProductColorDialog({
   parts,
   filaments,
   modelObjectNames,
+  model3dStructuredUrl,
   partCount,
   onClose,
 }: {
@@ -42,6 +44,7 @@ export function ProductColorDialog({
   parts: Part[];
   filaments: FilamentMaterial[];
   modelObjectNames: string[];
+  model3dStructuredUrl?: string;
   partCount: number;
   onClose: () => void;
 }) {
@@ -52,6 +55,7 @@ export function ProductColorDialog({
         part={target.part}
         partCount={partCount}
         modelObjectNames={modelObjectNames}
+        model3dStructuredUrl={model3dStructuredUrl}
         onClose={onClose}
       />
     );
@@ -190,12 +194,14 @@ function PartForm({
   part,
   partCount,
   modelObjectNames,
+  model3dStructuredUrl,
   onClose,
 }: {
   productId: string;
   part?: Part;
   partCount: number;
   modelObjectNames: string[];
+  model3dStructuredUrl?: string;
   onClose: () => void;
 }) {
   const t = useTranslations('products.edit.colors');
@@ -203,7 +209,8 @@ function PartForm({
   const [name, setName] = useState(part?.name ?? '');
   const [estQty, setEstQty] = useState(part?.estFilamentQty ? String(part.estFilamentQty) : '');
   // f-2: which named object in the 3D model this part maps to. '' = unmapped (renders in its default
-  // filament, never grey). The owner picks from modelObjectNames — the list model_ingest found.
+  // filament, never grey). The owner sets it two ways — a dropdown (the ingested name list) or clicking the
+  // mesh in the 3D preview below (PartObjectPicker); both write this same objectName.
   const [objectName, setObjectName] = useState(part?.modelObjectName ?? '');
 
   const est = estQty.trim() === '' ? 0 : parseIntField(estQty);
@@ -258,17 +265,26 @@ function PartForm({
         hint={t('estQtyHint')}
         autoComplete="off"
       />
-      {modelObjectNames.length > 0 || objectName !== '' ? (
-        <div className="flex flex-col gap-1">
-          <Select
-            label={t('objectLabel')}
-            value={objectName}
-            onChange={setObjectName}
-            options={objectOptions}
-          />
-          <p className="text-xs text-text-muted">
-            {objectStale ? t('objectStaleHint') : t('objectHint')}
-          </p>
+      {modelObjectNames.length > 0 || objectName !== '' || model3dStructuredUrl ? (
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <Select
+              label={t('objectLabel')}
+              value={objectName}
+              onChange={setObjectName}
+              options={objectOptions}
+            />
+            <p className="text-xs text-text-muted">
+              {objectStale ? t('objectStaleHint') : t('objectHint')}
+            </p>
+          </div>
+          {model3dStructuredUrl && (
+            <PartObjectPicker
+              src={model3dStructuredUrl}
+              selected={objectName}
+              onPick={setObjectName}
+            />
+          )}
         </div>
       ) : (
         <p className="text-sm text-text-muted">{t('objectEmptyHint')}</p>
