@@ -1,14 +1,9 @@
-'use client';
-
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
-import { Button, cn } from '@lumin/ui';
-import { ChevronDownIcon, SearchIcon } from './icons';
+import { cn } from '@lumin/ui';
+import { ChevronDownIcon } from './icons';
 import {
   buildCatalogHref,
-  MAX_Q_LENGTH,
   SORT_OPTIONS,
   type CatalogParams,
   type SortOption,
@@ -26,7 +21,7 @@ function ChipLink({
 }: {
   href: string;
   active: boolean;
-  children: ReactNode;
+  children: React.ReactNode;
 }) {
   return (
     <Link
@@ -47,11 +42,59 @@ function ChipLink({
 }
 
 /**
- * Catalog-browse controls (/danh-muc): category chips + search box + sort. The URL is the single source
- * of truth — every control navigates through buildCatalogHref (chips + clear are `<Link>`s; search submit
- * + sort change use the router), so filter/search/sort/page all persist on reload and round-trip through
- * parseCatalogParams (plan §3 P1-g). A client component only for the search input + sort control; the
- * grid, pagination and empty states stay server-rendered.
+ * Sort as a native <details> disclosure of <Link>s (NOT a <select> that navigates on change):
+ * activating a link is an explicit user action (no WCAG 3.2.2 change-on-input), it is keyboard-safe,
+ * works before hydration / with JS off, and matches the hi-fi "Sắp xếp: X ▾" pill + menu. Server
+ * component — no hooks; the URL is the single source of truth (buildCatalogHref).
+ */
+export function CatalogSort({ params }: { params: CatalogParams }) {
+  const t = useTranslations('catalog');
+  const sortLabels: Record<SortOption, string> = {
+    newest: t('sortNewest'),
+    price_asc: t('sortPriceAsc'),
+    price_desc: t('sortPriceDesc'),
+    rating: t('sortRating'),
+  };
+
+  return (
+    <details className="group relative shrink-0">
+      <summary className="inline-flex min-h-[44px] cursor-pointer list-none items-center gap-2 rounded-pill border-2 border-border-strong bg-surface-card px-4 font-display text-sm font-semibold text-text-strong marker:content-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden">
+        <span className="text-text-muted">{t('sortLabel')}:</span>
+        {sortLabels[params.sort]}
+        <ChevronDownIcon className="h-4 w-4 transition-transform group-open:rotate-180" />
+      </summary>
+      <ul className="absolute right-0 z-20 mt-1 min-w-[200px] rounded-lg border-2 border-border-strong bg-surface-card p-1 shadow-pop">
+        {SORT_OPTIONS.map((option) => {
+          const active = params.sort === option;
+          return (
+            <li key={option}>
+              <Link
+                href={buildCatalogHref(BASE, params, { sort: option })}
+                aria-current={active ? 'true' : undefined}
+                className={cn(
+                  'flex min-h-[44px] items-center rounded-md px-3 text-sm',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2',
+                  // Selection is conveyed by aria-current + the bold/primary treatment (no ✓ glyph).
+                  active
+                    ? 'font-bold text-primary'
+                    : 'font-semibold text-text-strong hover:bg-surface-sunken',
+                )}
+              >
+                {sortLabels[option]}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </details>
+  );
+}
+
+/**
+ * Mobile catalog controls (/danh-muc): the category chip row (the desktop rail is CatalogSidebar) and,
+ * when a search is active, the "đang tìm" tag with its clear link. The dedicated in-page search form is
+ * gone — the hi-fi puts search in the site header (one search surface), and the header's GET form
+ * round-trips through the same URL params. Everything here is a `<Link>` → server component.
  */
 export function CatalogToolbar({
   categories,
@@ -61,99 +104,24 @@ export function CatalogToolbar({
   params: CatalogParams;
 }) {
   const t = useTranslations('catalog');
-  const router = useRouter();
-  const [query, setQuery] = useState(params.q ?? '');
-
-  // Re-sync the input when the URL's `q` changes by navigation the input didn't drive (back/forward, a
-  // chip that clears the search, the empty-state "clear" CTA). It never clobbers typing: `params.q` only
-  // changes on a committed navigation, not per keystroke.
-  useEffect(() => {
-    setQuery(params.q ?? '');
-  }, [params.q]);
-
-  const sortLabels: Record<SortOption, string> = {
-    newest: t('sortNewest'),
-    price_asc: t('sortPriceAsc'),
-    price_desc: t('sortPriceDesc'),
-    rating: t('sortRating'),
-  };
-
-  function onSearchSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const trimmed = query.trim();
-    router.push(buildCatalogHref(BASE, params, { q: trimmed === '' ? undefined : trimmed }));
-  }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <form role="search" onSubmit={onSearchSubmit} className="flex flex-1 items-center gap-2">
-          <div className="flex h-11 flex-1 items-center gap-2 rounded-pill border-2 border-border-strong bg-surface-card px-4 focus-within:border-primary">
-            <SearchIcon className="h-4 w-4 shrink-0 text-text-muted" aria-hidden="true" />
-            <label htmlFor="catalog-q" className="sr-only">
-              {t('searchLabel')}
-            </label>
-            <input
-              id="catalog-q"
-              name="q"
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t('searchPlaceholder')}
-              maxLength={MAX_Q_LENGTH}
-              className="h-full w-full bg-transparent font-mono text-sm text-text-body outline-none placeholder:text-text-subtle"
-            />
-          </div>
-          <Button type="submit" variant="outline">
-            {t('searchSubmit')}
-          </Button>
-          {params.q ? (
-            <Link
-              href={buildCatalogHref(BASE, params, { q: undefined })}
-              className="inline-flex min-h-[44px] shrink-0 items-center px-2 text-sm font-semibold text-text-muted hover:text-text-strong"
-            >
-              {t('searchClear')}
-            </Link>
-          ) : null}
-        </form>
+    <div className="flex flex-col gap-3">
+      {params.q ? (
+        <p className="flex items-center gap-2 text-sm text-text-muted">
+          <span className="inline-flex items-center gap-1 rounded-pill border border-border-strong bg-surface-card px-3 py-1 font-mono text-xs font-bold text-text-strong">
+            {t('searchActive', { query: params.q })}
+          </span>
+          <Link
+            href={buildCatalogHref(BASE, params, { q: undefined })}
+            className="inline-flex min-h-[44px] items-center px-1 text-sm font-semibold text-text-muted underline hover:text-text-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
+          >
+            {t('searchClear')}
+          </Link>
+        </p>
+      ) : null}
 
-        {/* Sort as a native <details> disclosure of <Link>s (NOT a <select> that navigates on change):
-            activating a link is an explicit user action (no WCAG 3.2.2 change-on-input), it is keyboard-
-            safe (no per-arrow navigation), works before hydration / with JS off, and matches the design's
-            dropdown — consistent with the chip/pagination Link-first pattern. */}
-        <details className="group relative shrink-0">
-          <summary className="inline-flex min-h-[44px] cursor-pointer list-none items-center gap-2 rounded-pill border-2 border-border-strong bg-surface-card px-4 font-display text-sm font-semibold text-text-strong marker:content-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden">
-            <span className="text-text-muted">{t('sortLabel')}:</span>
-            {sortLabels[params.sort]}
-            <ChevronDownIcon className="h-4 w-4 transition-transform group-open:rotate-180" />
-          </summary>
-          <ul className="absolute right-0 z-20 mt-1 min-w-[200px] rounded-lg border-2 border-border-strong bg-surface-card p-1 shadow-pop">
-            {SORT_OPTIONS.map((option) => {
-              const active = params.sort === option;
-              return (
-                <li key={option}>
-                  <Link
-                    href={buildCatalogHref(BASE, params, { sort: option })}
-                    aria-current={active ? 'true' : undefined}
-                    className={cn(
-                      'flex min-h-[44px] items-center rounded-md px-3 text-sm',
-                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2',
-                      // Selection is conveyed by aria-current + the bold/primary treatment (no ✓ glyph).
-                      active
-                        ? 'font-bold text-primary'
-                        : 'font-semibold text-text-strong hover:bg-surface-sunken',
-                    )}
-                  >
-                    {sortLabels[option]}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </details>
-      </div>
-
-      <nav aria-label={t('categoriesLabel')}>
+      <nav aria-label={t('categoriesLabel')} className="lg:hidden">
         <ul className="flex flex-wrap gap-2">
           <li>
             <ChipLink

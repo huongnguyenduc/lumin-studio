@@ -64,6 +64,11 @@ export const vi = {
     // Category filter chips.
     categoriesLabel: 'Lọc theo danh mục',
     allCategories: 'Tất cả',
+    // Desktop filter rail (hi-fi desktop category sidebar).
+    filtersHeading: 'Bộ lọc',
+    categoryGroup: 'Danh mục',
+    // Active-search tag above the grid. {query} is the shopper's own term.
+    searchActive: 'Đang tìm: {query}',
     // Search box (accent-insensitive FTS, ADR-016).
     searchLabel: 'Tìm sản phẩm',
     searchPlaceholder: 'Tìm mô hình, gadget, quà tặng…',

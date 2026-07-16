@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { formatVnNumber } from '@lumin/core';
-import { CatalogToolbar } from '@/components/catalog-toolbar';
+import { CatalogSort, CatalogToolbar } from '@/components/catalog-toolbar';
+import { CatalogSidebar } from '@/components/catalog-sidebar';
 import { CatalogResults } from '@/components/catalog-results';
 import { CatalogPagination } from '@/components/catalog-pagination';
 import { fetchCatalog, fetchCategories } from '@/lib/catalog';
@@ -51,22 +52,33 @@ export default async function CatalogPage({ searchParams }: PageProps) {
   const heading = activeCategory ? activeCategory.name : t('heading');
 
   return (
-    <div className="mx-auto w-full max-w-[1200px] px-4 py-8 md:px-6">
-      <div className="mb-6 flex items-end justify-between gap-4">
-        <h1 className="text-2xl md:text-3xl">{heading}</h1>
-        <p className="shrink-0 font-mono text-sm text-text-muted">
-          {/* count is pre-formatted via @lumin/core (grouped) — never a raw number baked in copy. */}
-          {t('resultCount', { count: formatVnNumber(catalog.total) })}
-        </p>
+    <div className="mx-auto flex w-full max-w-[1200px] gap-8 px-4 py-8 md:px-6">
+      {/* Hi-fi desktop category: a 262px "Bộ lọc" rail on the left; on mobile the rail collapses and
+          the chip row inside CatalogToolbar takes over (same URL round-trip either way). */}
+      <aside className="hidden w-[262px] shrink-0 lg:block">
+        <CatalogSidebar categories={categories} params={params} />
+      </aside>
+
+      <div className="min-w-0 flex-1">
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <h1 className="flex items-baseline gap-3 text-2xl md:text-3xl">
+            {heading}
+            <span className="font-mono text-sm font-normal text-text-muted">
+              {/* count is pre-formatted via @lumin/core (grouped) — never a raw number baked in copy. */}
+              {t('resultCount', { count: formatVnNumber(catalog.total) })}
+            </span>
+          </h1>
+          <CatalogSort params={params} />
+        </div>
+
+        <CatalogToolbar categories={categories} params={params} />
+
+        <div className="mt-5">
+          <CatalogResults products={catalog.items} params={params} />
+        </div>
+
+        <CatalogPagination params={params} pages={pageCount} />
       </div>
-
-      <CatalogToolbar categories={categories} params={params} />
-
-      <div className="mt-6">
-        <CatalogResults products={catalog.items} params={params} />
-      </div>
-
-      <CatalogPagination params={params} pages={pageCount} />
     </div>
   );
 }
