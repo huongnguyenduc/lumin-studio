@@ -19,6 +19,7 @@ type LoginError = 'invalidCredentials' | 'validation' | 'networkError' | 'formEr
  */
 export function LoginForm({ next }: { next?: string }) {
   const t = useTranslations('account.login');
+  const tNav = useTranslations('nav');
   const router = useRouter();
   // Post-login return target (P3-t t-3: the pet-tag welcome links here with ?next=/t/{shortId}). Guarded
   // against open redirects; defaults to the account hub. Forwarded to the register link so a brand-new
@@ -58,13 +59,22 @@ export function LoginForm({ next }: { next?: string }) {
   };
 
   return (
-    <section className="mx-auto w-full max-w-[420px] px-4 py-6 md:px-6 md:py-10">
-      <h1 className="font-display text-2xl font-bold text-text-strong md:text-3xl">
-        {t('heading')}
-      </h1>
-      <p className="mt-1 text-sm text-text-muted">{t('intro')}</p>
+    <section className="mx-auto w-full max-w-[440px] px-4 py-8 md:px-6 md:py-12">
+      {/* Hi-fi 07: the auth screen is a centred card — logo on top, warm heading, then the form. */}
+      <div className="rounded-lg border-2 border-border-strong bg-surface-card p-6 shadow-pop md:p-8">
+        <p
+          aria-hidden="true"
+          className="text-center font-display text-3xl font-extrabold tracking-tight text-text-strong"
+        >
+          {tNav('brand')}
+          <span className="text-primary">.</span>
+        </p>
+        <h1 className="mt-3 text-center font-display text-xl font-bold text-text-strong md:text-2xl">
+          {t('heading')}
+        </h1>
+        <p className="mt-1 text-center text-sm text-text-muted">{t('intro')}</p>
 
-      <form onSubmit={submit} noValidate className="mt-6 flex flex-col gap-4">
+        <form onSubmit={submit} noValidate className="mt-6 flex flex-col gap-4">
         <Input
           label={t('emailLabel')}
           placeholder={t('emailPlaceholder')}
@@ -89,33 +99,34 @@ export function LoginForm({ next }: { next?: string }) {
             {t(`errors.${error}`)}
           </p>
         ) : null}
-        <Button
-          type="submit"
-          variant="pop"
-          className="w-full"
-          disabled={pending}
-          aria-busy={pending}
-        >
-          {t('submit')}
-        </Button>
-      </form>
+          <Button
+            type="submit"
+            variant="pop"
+            className="w-full"
+            disabled={pending}
+            aria-busy={pending}
+          >
+            {t('submit')}
+          </Button>
+        </form>
 
-      <div className="mt-6 flex flex-col gap-2 text-sm text-text-muted">
-        <p>
-          {t('noAccount')}{' '}
+        <div className="mt-6 flex flex-col items-center gap-2 text-center text-sm text-text-muted">
+          <p>
+            {t('noAccount')}{' '}
+            <Link
+              href={registerHref}
+              className="font-medium text-text-strong underline underline-offset-2 hover:text-accent-flame"
+            >
+              {t('registerLink')}
+            </Link>
+          </p>
           <Link
-            href={registerHref}
+            href="/tra-cuu-don"
             className="font-medium text-text-strong underline underline-offset-2 hover:text-accent-flame"
           >
-            {t('registerLink')}
+            {t('guestLookup')}
           </Link>
-        </p>
-        <Link
-          href="/tra-cuu-don"
-          className="font-medium text-text-strong underline underline-offset-2 hover:text-accent-flame"
-        >
-          {t('guestLookup')}
-        </Link>
+        </div>
       </div>
     </section>
   );
