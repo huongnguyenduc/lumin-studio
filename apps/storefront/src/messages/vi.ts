@@ -145,6 +145,9 @@ export const vi = {
   productReviews: {
     // Section heading (<h2> under the product <h1>).
     heading: 'Đánh giá khách',
+    // Hi-fi D5: cột media của shop bên trái (ảnh chuẩn màu tách khỏi ảnh khách).
+    mediaHeading: 'Ảnh & video từ Lumin Studio',
+    mediaAlt: 'Ảnh {index} của {name} do shop chụp',
     // Summary line under the heading. {count} is a PRE-FORMATTED number string (formatVnNumber,
     // @lumin/core) — never a raw grouped number baked here (conventions §Tiền; messages.test forbids it).
     summaryCount: '{count} đánh giá',

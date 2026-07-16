@@ -20,6 +20,11 @@ export type ProductReviewsProps = {
    *  endpoint returns no aggregate, so the summary star average comes from the product (the same source
    *  as the rating shown at the top of the detail page — one screen, one number). */
   productRating: number | null;
+  /** Shop-taken gallery (product.images) — the hi-fi D5 "Ảnh & video từ Lumin Studio" column (shop
+   *  media ≠ customer PII). Empty → the column hides and reviews take the full width. */
+  images?: string[];
+  /** Product name for the media alts. */
+  productName?: string;
 };
 
 /**
@@ -44,6 +49,8 @@ export function ProductReviews({
   page,
   pageSize,
   productRating,
+  images = [],
+  productName = '',
 }: ProductReviewsProps) {
   const t = useTranslations('productReviews');
   const pageCount = totalPages(total, pageSize);
@@ -62,144 +69,177 @@ export function ProductReviews({
       aria-labelledby="reviews-heading"
       className="mx-auto w-full max-w-[1200px] scroll-mt-24 px-4 pb-12 md:px-6"
     >
-      <h2
-        id="reviews-heading"
-        className="font-display text-xl font-bold text-text-strong md:text-2xl"
+      {/* Hi-fi D5: hai cột "Ảnh & video từ Lumin Studio" | "Đánh giá khách" trên desktop (media của
+          SHOP — không phải PII khách; danh tính reviewer vẫn bị bỏ có chủ đích, xem ghi chú trên). */}
+      <div
+        className={
+          images.length > 0 ? 'gap-8 lg:grid lg:grid-cols-[1fr_1.2fr] lg:items-start' : undefined
+        }
       >
-        {t('heading')}
-      </h2>
+        {images.length > 0 ? (
+          <div className="mb-8 lg:mb-0">
+            <h2 className="font-display text-xl font-bold text-text-strong md:text-2xl">
+              {t('mediaHeading')}
+            </h2>
+            <ul className="mt-4 grid grid-cols-3 gap-2">
+              {images.map((src, i) => (
+                <li key={src}>
+                  <img
+                    src={src}
+                    alt={t('mediaAlt', { name: productName, index: i + 1 })}
+                    loading="lazy"
+                    className="aspect-square w-full rounded-md border border-border-default bg-surface-sunken object-cover"
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
-      {total === 0 ? (
-        <div className="mt-4 rounded-lg border border-border-default bg-surface-sunken px-4 py-8 text-center">
-          <p className="text-text-body">{t('empty')}</p>
-          <p className="mt-1 text-sm text-text-muted">{t('emptyHint')}</p>
-        </div>
-      ) : (
-        <>
-          {/* Summary — big average + stars + count. The average comes from the product denorm (the
+        <div>
+          <h2
+            id="reviews-heading"
+            className="font-display text-xl font-bold text-text-strong md:text-2xl"
+          >
+            {t('heading')}
+          </h2>
+
+          {total === 0 ? (
+            <div className="mt-4 rounded-lg border border-border-default bg-surface-sunken px-4 py-8 text-center">
+              <p className="text-text-body">{t('empty')}</p>
+              <p className="mt-1 text-sm text-text-muted">{t('emptyHint')}</p>
+            </div>
+          ) : (
+            <>
+              {/* Summary — big average + stars + count. The average comes from the product denorm (the
               reviews endpoint carries no aggregate); guarded so a count-without-average denorm lag still
               renders the count line rather than an empty "0". */}
-          <div className="mt-4 flex items-center gap-4 rounded-lg border border-border-default bg-surface-sunken px-4 py-3">
-            {productRating != null ? (
-              <span className="font-display text-3xl font-bold leading-none tabular-nums text-text-strong">
-                {formatVnRating(productRating)}
-              </span>
-            ) : null}
-            <div className="flex flex-col gap-1">
-              {productRating != null ? (
-                // The label uses formatVnRating (like the visible number above), so the screen-reader
-                // announcement matches the on-screen average to one decimal — never the raw multi-decimal
-                // float (e.g. "4,7 trên 5 sao", not "4,667"). Mirrors the summaryCount pre-format below.
-                <Rating
-                  value={productRating}
-                  size="sm"
-                  label={t('ratingLabel', { value: formatVnRating(productRating) })}
-                />
-              ) : null}
-              <span className="text-sm text-text-muted">
-                {t('summaryCount', { count: formatVnNumber(total) })}
-              </span>
-            </div>
-          </div>
-
-          {/* Review list. No headings inside a card (heading order stays h1 → h2), so each review is a
-              plain list item: rating + date, then optional body, photos, and shop reply. */}
-          <ul className="mt-4 flex flex-col gap-3">
-            {reviews.map((review) => (
-              <li
-                key={review.id}
-                className="rounded-lg border border-border-default bg-surface-card p-4"
-              >
-                <div className="flex items-center gap-3">
-                  <Rating
-                    value={review.rating}
-                    size="sm"
-                    label={t('ratingLabel', { value: review.rating })}
-                  />
-                  <time dateTime={review.createdAt} className="font-mono text-xs text-text-muted">
-                    {formatVnDate(review.createdAt)}
-                  </time>
+              <div className="mt-4 flex items-center gap-4 rounded-lg border border-border-default bg-surface-sunken px-4 py-3">
+                {productRating != null ? (
+                  <span className="font-display text-3xl font-bold leading-none tabular-nums text-text-strong">
+                    {formatVnRating(productRating)}
+                  </span>
+                ) : null}
+                <div className="flex flex-col gap-1">
+                  {productRating != null ? (
+                    // The label uses formatVnRating (like the visible number above), so the screen-reader
+                    // announcement matches the on-screen average to one decimal — never the raw multi-decimal
+                    // float (e.g. "4,7 trên 5 sao", not "4,667"). Mirrors the summaryCount pre-format below.
+                    <Rating
+                      value={productRating}
+                      size="sm"
+                      label={t('ratingLabel', { value: formatVnRating(productRating) })}
+                    />
+                  ) : null}
+                  <span className="text-sm text-text-muted">
+                    {t('summaryCount', { count: formatVnNumber(total) })}
+                  </span>
                 </div>
+              </div>
 
-                {review.body ? (
-                  <p className="mt-2 whitespace-pre-line text-text-body">{review.body}</p>
-                ) : null}
+              {/* Review list. No headings inside a card (heading order stays h1 → h2), so each review is a
+              plain list item: rating + date, then optional body, photos, and shop reply. */}
+              <ul className="mt-4 flex flex-col gap-3">
+                {reviews.map((review) => (
+                  <li
+                    key={review.id}
+                    className="rounded-lg border border-border-default bg-surface-card p-4"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Rating
+                        value={review.rating}
+                        size="sm"
+                        label={t('ratingLabel', { value: review.rating })}
+                      />
+                      <time
+                        dateTime={review.createdAt}
+                        className="font-mono text-xs text-text-muted"
+                      >
+                        {formatVnDate(review.createdAt)}
+                      </time>
+                    </div>
 
-                {review.images.length > 0 ? (
-                  <ul className="mt-3 flex flex-wrap gap-2">
-                    {review.images.map((src, i) => (
-                      <li key={src}>
-                        {/* Arbitrary shop-photo hosts → a plain <img> (no next/image remotePatterns to
+                    {review.body ? (
+                      <p className="mt-2 whitespace-pre-line text-text-body">{review.body}</p>
+                    ) : null}
+
+                    {review.images.length > 0 ? (
+                      <ul className="mt-3 flex flex-wrap gap-2">
+                        {review.images.map((src, i) => (
+                          <li key={src}>
+                            {/* Arbitrary shop-photo hosts → a plain <img> (no next/image remotePatterns to
                             maintain), matching the product gallery. */}
-                        <img
-                          src={src}
-                          alt={t('photoAlt', { index: i + 1 })}
-                          loading="lazy"
-                          className="h-20 w-20 rounded-md border border-border-default object-cover"
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
+                            <img
+                              src={src}
+                              alt={t('photoAlt', { index: i + 1 })}
+                              loading="lazy"
+                              className="h-20 w-20 rounded-md border border-border-default object-cover"
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
 
-                {review.reply ? (
-                  <div className="mt-3 rounded-md border-l-2 border-accent-teal bg-surface-sunken px-3 py-2">
-                    <p className="text-sm font-semibold text-accent-teal">{t('replyLabel')}</p>
-                    <p className="mt-1 whitespace-pre-line text-sm text-text-body">
-                      {review.reply.body}
-                    </p>
-                    <time
-                      dateTime={review.reply.at}
-                      className="mt-1 block font-mono text-xs text-text-muted"
-                    >
-                      {formatVnDate(review.reply.at)}
-                    </time>
-                  </div>
-                ) : null}
-              </li>
-            ))}
-          </ul>
+                    {review.reply ? (
+                      <div className="mt-3 rounded-md border-l-2 border-accent-teal bg-surface-sunken px-3 py-2">
+                        <p className="text-sm font-semibold text-accent-teal">{t('replyLabel')}</p>
+                        <p className="mt-1 whitespace-pre-line text-sm text-text-body">
+                          {review.reply.body}
+                        </p>
+                        <time
+                          dateTime={review.reply.at}
+                          className="mt-1 block font-mono text-xs text-text-muted"
+                        >
+                          {formatVnDate(review.reply.at)}
+                        </time>
+                      </div>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
 
-          {/* Pager — prev/next (newest reviews are page 1, so "Cũ hơn" pages back in time). Disabled ends
+              {/* Pager — prev/next (newest reviews are page 1, so "Cũ hơn" pages back in time). Disabled ends
               render as muted, non-interactive spans so focus never lands on a dead control. */}
-          {pageCount > 1 ? (
-            <nav
-              aria-label={t('pagerLabel')}
-              className="mt-6 flex items-center justify-center gap-4 text-sm"
-            >
-              {page > 1 ? (
-                <Link
-                  href={reviewsHref(page - 1)}
-                  className="rounded-md px-3 py-2 font-medium text-text-strong underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
+              {pageCount > 1 ? (
+                <nav
+                  aria-label={t('pagerLabel')}
+                  className="mt-6 flex items-center justify-center gap-4 text-sm"
                 >
-                  {t('pagerNewer')}
-                </Link>
-              ) : (
-                <span aria-disabled="true" className="px-3 py-2 text-text-muted opacity-50">
-                  {t('pagerNewer')}
-                </span>
-              )}
+                  {page > 1 ? (
+                    <Link
+                      href={reviewsHref(page - 1)}
+                      className="rounded-md px-3 py-2 font-medium text-text-strong underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
+                    >
+                      {t('pagerNewer')}
+                    </Link>
+                  ) : (
+                    <span aria-disabled="true" className="px-3 py-2 text-text-muted opacity-50">
+                      {t('pagerNewer')}
+                    </span>
+                  )}
 
-              <span aria-current="page" className="font-mono text-text-muted tabular-nums">
-                {t('pagerPosition', { page, total: pageCount })}
-              </span>
+                  <span aria-current="page" className="font-mono text-text-muted tabular-nums">
+                    {t('pagerPosition', { page, total: pageCount })}
+                  </span>
 
-              {page < pageCount ? (
-                <Link
-                  href={reviewsHref(page + 1)}
-                  className="rounded-md px-3 py-2 font-medium text-text-strong underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
-                >
-                  {t('pagerOlder')}
-                </Link>
-              ) : (
-                <span aria-disabled="true" className="px-3 py-2 text-text-muted opacity-50">
-                  {t('pagerOlder')}
-                </span>
-              )}
-            </nav>
-          ) : null}
-        </>
-      )}
+                  {page < pageCount ? (
+                    <Link
+                      href={reviewsHref(page + 1)}
+                      className="rounded-md px-3 py-2 font-medium text-text-strong underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
+                    >
+                      {t('pagerOlder')}
+                    </Link>
+                  ) : (
+                    <span aria-disabled="true" className="px-3 py-2 text-text-muted opacity-50">
+                      {t('pagerOlder')}
+                    </span>
+                  )}
+                </nav>
+              ) : null}
+            </>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
