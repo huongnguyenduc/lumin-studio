@@ -78,7 +78,7 @@ export function HeroCarousel({ products }: { products: ProductCardView[] }) {
           </span>
         </Link>
 
-        <span className="pointer-events-none absolute left-4 top-4 rounded-pill bg-accent-flame px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-wide text-on-primary">
+        <span className="pointer-events-none absolute left-4 top-4 rounded-pill bg-primary px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-wide text-on-primary">
           {t('featuredBadge')}
         </span>
 

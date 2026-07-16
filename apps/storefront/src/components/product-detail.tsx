@@ -259,7 +259,7 @@ export function ProductDetail({
             )}
             {/* Hi-fi: coral "Realtime 3D" pill on the media tile when the on-demand viewer exists. */}
             {product.model3dUrl ? (
-              <span className="pointer-events-none absolute right-3 top-3 rounded-pill bg-accent-flame px-3 py-1 font-mono text-[10px] font-bold text-on-primary">
+              <span className="pointer-events-none absolute right-3 top-3 rounded-pill bg-primary px-3 py-1 font-mono text-[10px] font-bold text-on-primary">
                 {t('realtime3dBadge')}
               </span>
             ) : null}
