@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { PriceTag } from '../src/PriceTag';
 
-// HOUSE-STYLE REFERENCE: assert SEMANTIC token classes (font-display, line-through, text-text-muted)
+// HOUSE-STYLE REFERENCE: assert SEMANTIC token classes (font-mono, line-through, text-text-muted)
 // and the @lumin/core-formatted output — not computed pixels. The default VND formatting MUST come
 // from core's formatVnd (no Intl in @lumin/ui), so we assert its exact `390.000₫` output.
 describe('PriceTag', () => {
@@ -10,7 +10,7 @@ describe('PriceTag', () => {
     render(<PriceTag amount={390000} data-testid="price" />);
     const tag = screen.getByTestId('price');
     expect(tag).toHaveTextContent('390.000₫');
-    expect(tag).toHaveClass('font-display', 'font-bold', 'text-text-strong');
+    expect(tag).toHaveClass('font-mono', 'font-bold', 'text-primary');
   });
 
   it('renders compareAt struck through when it is greater than amount', () => {
@@ -47,7 +47,7 @@ describe('PriceTag', () => {
   it('lets a caller className override / extend through cn() last', () => {
     render(<PriceTag amount={1000} className="text-danger" data-testid="price" />);
     const tag = screen.getByTestId('price');
-    expect(tag).toHaveClass('text-danger', 'font-display');
+    expect(tag).toHaveClass('text-danger', 'font-mono');
   });
 
   it('forwards its ref to the underlying span element', () => {

@@ -29,6 +29,11 @@ export const vi = {
     primaryCta: 'Khám phá bộ sưu tập',
     secondaryCta: 'Cách chúng mình làm',
     note: 'Giao trong 3–5 ngày · in lại miễn phí nếu lỗi do shop',
+    // Featured-product hero carousel (hi-fi 01). {price} is PRE-FORMATTED via @lumin/core formatVnd.
+    carouselLabel: 'Sản phẩm nổi bật',
+    featuredBadge: '✦ Nổi bật',
+    slideMeta: '{price} · tùy chỉnh màu & khắc tên',
+    dotLabel: 'Xem {name}',
   },
   featured: {
     heading: 'Mới về',
@@ -43,6 +48,8 @@ export const vi = {
     ratingLabel: '{value} trên 5 sao',
     // aria-label for the card-hover 360° sprite turntable (ADR-049).
     sprite360Alt: 'Ảnh xoay 360° của {name}',
+    // Decorative mono pill on tiles that have a sprite (hi-fi "↔360" badge; aria-hidden at the call site).
+    badge360: '↔ 360°',
   },
   catalog: {
     // <title> for /danh-muc (kept out of the index — see the route's generateMetadata).
@@ -57,6 +64,11 @@ export const vi = {
     // Category filter chips.
     categoriesLabel: 'Lọc theo danh mục',
     allCategories: 'Tất cả',
+    // Desktop filter rail (hi-fi desktop category sidebar).
+    filtersHeading: 'Bộ lọc',
+    categoryGroup: 'Danh mục',
+    // Active-search tag above the grid. {query} is the shopper's own term.
+    searchActive: 'Đang tìm: {query}',
     // Search box (accent-insensitive FTS, ADR-016).
     searchLabel: 'Tìm sản phẩm',
     searchPlaceholder: 'Tìm mô hình, gadget, quà tặng…',
@@ -97,7 +109,14 @@ export const vi = {
     specsHeading: 'Thông số',
     specDimensions: 'Kích thước',
     specMaterial: 'Chất liệu',
-    madeToOrder: 'In theo đơn · giao trong 3–5 ngày',
+    // Hi-fi spec-chip row: the teal lead-time tile (replaces the old inline madeToOrder line).
+    leadTimeLabel: 'In trong',
+    leadTimeValue: '3–5 ngày',
+    // Hi-fi coral pill on the media tile when the on-demand 3D viewer is available.
+    realtime3dBadge: 'Realtime 3D',
+    // Quantity stepper beside the CTA (−/+ aria-labels; the visible value is aria-live in @lumin/ui).
+    qtyDecrement: 'Giảm số lượng',
+    qtyIncrement: 'Tăng số lượng',
     // Colour picker.
     colorsLabel: 'Màu in',
     selectColorLabel: 'Chọn màu {name}',
@@ -145,6 +164,9 @@ export const vi = {
   productReviews: {
     // Section heading (<h2> under the product <h1>).
     heading: 'Đánh giá khách',
+    // Hi-fi D5: cột media của shop bên trái (ảnh chuẩn màu tách khỏi ảnh khách).
+    mediaHeading: 'Ảnh & video từ Lumin Studio',
+    mediaAlt: 'Ảnh {index} của {name} do shop chụp',
     // Summary line under the heading. {count} is a PRE-FORMATTED number string (formatVnNumber,
     // @lumin/core) — never a raw grouped number baked here (conventions §Tiền; messages.test forbids it).
     summaryCount: '{count} đánh giá',
@@ -177,12 +199,18 @@ export const vi = {
     decrementLabel: 'Giảm số lượng',
     incrementLabel: 'Tăng số lượng',
     removeLabel: 'Xoá {name} khỏi giỏ',
-    // Summary card.
+    // Hi-fi 05 "chọn món / chọn tất cả": per-line checkbox + the header toggle.
+    selectAll: 'Chọn tất cả',
+    selectItemLabel: 'Chọn {name} để đặt',
+    noneSelected: 'Chọn ít nhất một món để đặt hàng nhé.',
+    // Summary card (hi-fi "Tóm tắt").
+    summaryHeading: 'Tóm tắt',
+    // (checkout dùng key riêng orderSummaryHeading trong section checkout.)
     subtotalLabel: 'Tạm tính',
     shippingNote: 'Phí ship tính theo khu vực ở bước sau.',
     // Primary CTA into the checkout flow (/thanh-toan). The cart creates no order — it just navigates;
     // address + payment + order creation all begin on /thanh-toan.
-    checkoutCta: 'Tiến hành đặt hàng',
+    checkoutCta: 'Đặt hàng',
     // States. `unavailableError` = a line's product/colour/option is no longer valid (server 422);
     // `pricingError` = a transient failure computing the subtotal. Both offer retry.
     unavailableError: 'Một món trong giỏ không còn khả dụng — thử xoá rồi thêm lại nhé.',
@@ -203,6 +231,7 @@ export const vi = {
     emptyBody: 'Thêm một món vào giỏ rồi quay lại đặt hàng nhé.',
     emptyCta: 'Khám phá bộ sưu tập',
     // Order summary (top of C1 + header of C2). Vietnamese has one plural form.
+    orderSummaryHeading: 'Đơn hàng',
     summaryItemCount: '{count} món',
     subtotalLabel: 'Tạm tính',
     shippingLabel: 'Phí ship',
@@ -343,6 +372,11 @@ export const vi = {
     errorTitle: 'Có gì đó chưa ổn',
     errorBody: 'Mất kết nối một chút — thử lại giúp mình nhé.',
     retry: 'Thử lại',
+    // Root 404 (hi-fi 11): the page moved or the link broke; recover to home.
+    notFoundCode: '404',
+    notFoundTitle: 'Không thấy trang',
+    notFoundBody: 'Trang có thể đã đổi link hoặc bị gỡ.',
+    notFoundCta: 'Về trang chủ',
   },
   // Guest order lookup /tra-cuu-don (P1-o). The tracker: a code + phone form → a status timeline with
   // auto-poll. Status LABELS come from @lumin/core (core.orderStatus.*, shared with the account P1-s);

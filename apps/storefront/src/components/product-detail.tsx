@@ -4,8 +4,9 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Button, PriceTag, Rating, cn } from '@lumin/ui';
-import { buildCartItem } from '@/lib/cart';
+import { formatVnd } from '@lumin/core';
+import { Button, PriceTag, QuantityStepper, Rating, cn } from '@lumin/ui';
+import { buildCartItem, MAX_QUANTITY } from '@/lib/cart';
 import { useCart } from '@/lib/cart-store';
 import {
   allChoicesSelected,
@@ -115,13 +116,23 @@ function ColorSwatches({
  * /price/quote in the cart). It imports the VIEW TYPE + pure helpers, never lib/catalog, so the
  * server-only client stays out of the bundle.
  */
-export function ProductDetail({ product }: { product: ProductDetailView }) {
+export function ProductDetail({
+  product,
+  category,
+}: {
+  product: ProductDetailView;
+  /** Resolved category (for the hi-fi breadcrumb "Trang chủ / {danh mục} / {tên}"); null when the
+   *  categories fetch didn't include the product's category (breadcrumb then skips the middle crumb). */
+  category?: { name: string; slug: string } | null;
+}) {
   const t = useTranslations('productDetail');
   const tp = useTranslations('product');
   const tNav = useTranslations('nav');
   const tErr = useTranslations('core.errors');
 
   const [activeImage, setActiveImage] = useState(0);
+  // Line quantity for the add (hi-fi: −/+ stepper beside the CTA); merged into the cart line's qty.
+  const [quantity, setQuantity] = useState(1);
   // Flat colour (single-piece product). A parts product leaves this null and uses partColorByPart.
   const [selectedColorId, setSelectedColorId] = useState<string | null>(null);
   // ADR-037: one colour per named part ({partId → colorId}); one choice per enumerated choice-option
@@ -190,27 +201,44 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
   // a programmatic click.
   const handleAddToCart = () => {
     if (!canAdd) return;
-    add(
-      buildCartItem(product, {
+    add({
+      ...buildCartItem(product, {
         colorId: hasParts ? null : selectedColorId,
         choiceIds: selectedChoiceIds,
         engraveTexts,
         partColorByPart,
         choiceByOption,
       }),
-    );
+      // The stepper's qty rides the snapshot; the store clamps it into 1..MAX_QUANTITY on merge.
+      quantity,
+    });
     router.push('/gio-hang');
   };
 
   return (
     <article className="mx-auto w-full max-w-[1200px] px-4 py-6 md:px-6 md:py-10">
-      <nav aria-label={t('breadcrumbLabel')} className="mb-4 text-sm text-text-muted">
+      {/* Hi-fi breadcrumb: mono, with the category as the middle crumb linking back into the filtered
+          catalog. */}
+      <nav aria-label={t('breadcrumbLabel')} className="mb-4 font-mono text-xs text-text-muted">
         <Link href="/" className="hover:underline">
           {tNav('home')}
         </Link>
         <span aria-hidden="true" className="px-2">
           /
         </span>
+        {category ? (
+          <>
+            <Link
+              href={`/danh-muc?category=${encodeURIComponent(category.slug)}`}
+              className="hover:underline"
+            >
+              {category.name}
+            </Link>
+            <span aria-hidden="true" className="px-2">
+              /
+            </span>
+          </>
+        ) : null}
         <span aria-current="page" className="text-text-strong">
           {product.name}
         </span>
@@ -221,7 +249,7 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
             The viewer's no-WebGL fallback is the 360° sprite sheet (ADR-049) when the product has one; the
             card-hover turntable lives on the grid card (CatalogCard), not here. */}
         <div className="md:w-[460px] md:shrink-0">
-          <div className="aspect-square overflow-hidden rounded-lg bg-surface-sunken">
+          <div className="relative aspect-square overflow-hidden rounded-lg bg-surface-sunken">
             {cover ? (
               // Arbitrary shop-photo hosts → a plain <img> (no next/image remotePatterns to maintain),
               // matching @lumin/ui ProductCard. Alt = product name (jsx-a11y).
@@ -229,6 +257,12 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
             ) : (
               <div className="lumin-dotgrid h-full w-full" aria-hidden="true" />
             )}
+            {/* Hi-fi: coral "Realtime 3D" pill on the media tile when the on-demand viewer exists. */}
+            {product.model3dUrl ? (
+              <span className="pointer-events-none absolute right-3 top-3 rounded-pill bg-primary px-3 py-1 font-mono text-[10px] font-bold text-on-primary">
+                {t('realtime3dBadge')}
+              </span>
+            ) : null}
           </div>
 
           {product.images.length > 1 ? (
@@ -286,7 +320,6 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
           </div>
 
           {anyPriceDelta ? <p className="text-sm text-text-muted">{t('priceNote')}</p> : null}
-          <p className="text-sm text-text-muted">{t('madeToOrder')}</p>
 
           {/* Colour picker (ADR-037). A parts product renders one swatch group per named part (the
               customer picks one colour per part → partColors); a single-piece product renders the flat
@@ -457,19 +490,41 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
             </div>
           ) : null}
 
-          {/* Add-to-cart: locked until the whole selection is valid (colour/parts + enumerated choices +
-              every engraving in-limit). On click it snapshots the selection into the cart and navigates to
-              /gio-hang. The hint names the first unmet axis (engrave errors surface on the field itself). */}
-          <div>
-            <Button
-              variant="pop"
-              size="lg"
-              disabled={!canAdd}
-              onClick={handleAddToCart}
-              className="w-full md:w-auto"
-            >
-              {tp('add')}
-            </Button>
+          {/* Add-to-cart: qty stepper + the pop CTA (hi-fi: "Thêm vào giỏ · 290.000₫"). Locked until the
+              whole selection is valid (colour/parts + enumerated choices + every engraving in-limit). On
+              click it snapshots the selection into the cart and navigates to /gio-hang. The hint names the
+              first unmet axis (engrave errors surface on the field itself). Sticky above the mobile tab
+              bar (storefront rule: add-to-cart dính đáy trên mobile). The CTA shows the UNIT base price
+              only while qty = 1 — the client never multiplies money (conventions §Tiền); the real total
+              lands with the cart's server quote. */}
+          <div className="sticky bottom-[76px] z-30 -mx-4 bg-surface-page/95 px-4 py-3 backdrop-blur-sm md:static md:z-auto md:m-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
+            <div className="flex items-center gap-3">
+              <QuantityStepper
+                value={quantity}
+                onChange={setQuantity}
+                min={1}
+                max={MAX_QUANTITY}
+                decrementLabel={t('qtyDecrement')}
+                incrementLabel={t('qtyIncrement')}
+              />
+              <Button
+                variant="pop"
+                size="lg"
+                disabled={!canAdd}
+                onClick={handleAddToCart}
+                className="flex-1 md:flex-none"
+              >
+                {quantity === 1 ? (
+                  <>
+                    {tp('add')}
+                    <span aria-hidden="true"> · </span>
+                    <span className="font-mono">{formatVnd(product.basePrice)}</span>
+                  </>
+                ) : (
+                  tp('add')
+                )}
+              </Button>
+            </div>
             {!canAdd && !colorOk && (hasColors || hasParts) ? (
               <p className="mt-2 text-sm text-text-muted">{t('pickColorHint')}</p>
             ) : !canAdd && colorOk && !choicesOk ? (
@@ -477,23 +532,38 @@ export function ProductDetail({ product }: { product: ProductDetailView }) {
             ) : null}
           </div>
 
+          {/* Hi-fi spec chips: VẬT LIỆU / SIZE / IN TRONG as small bordered tiles (replaces the old
+              two-row "Thông số" dl — same data, the hi-fi presentation). */}
+          <section aria-label={t('specsHeading')}>
+            <ul className="flex flex-wrap gap-2">
+              <li className="rounded-sm border border-border-default bg-surface-card px-3 py-2">
+                <p className="font-mono text-[10px] uppercase tracking-wide text-text-muted">
+                  {t('specMaterial')}
+                </p>
+                <p className="text-sm font-semibold text-text-strong">{product.material}</p>
+              </li>
+              <li className="rounded-sm border border-border-default bg-surface-card px-3 py-2">
+                <p className="font-mono text-[10px] uppercase tracking-wide text-text-muted">
+                  {t('specDimensions')}
+                </p>
+                <p className="font-mono text-sm font-semibold text-text-strong">
+                  {formatDimensions(product.dimensions)}
+                </p>
+              </li>
+              <li className="rounded-sm border border-accent-teal bg-accent-teal-soft px-3 py-2">
+                <p className="font-mono text-[10px] uppercase tracking-wide text-text-muted">
+                  {t('leadTimeLabel')}
+                </p>
+                <p className="text-sm font-semibold text-text-strong">{t('leadTimeValue')}</p>
+              </li>
+            </ul>
+          </section>
+
           <section>
             <h2 className="mb-1 font-display text-lg font-semibold text-text-strong">
               {t('descriptionHeading')}
             </h2>
             <p className="whitespace-pre-line text-text-body">{product.description}</p>
-          </section>
-
-          <section>
-            <h2 className="mb-1 font-display text-lg font-semibold text-text-strong">
-              {t('specsHeading')}
-            </h2>
-            <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
-              <dt className="text-text-muted">{t('specDimensions')}</dt>
-              <dd className="font-mono text-text-strong">{formatDimensions(product.dimensions)}</dd>
-              <dt className="text-text-muted">{t('specMaterial')}</dt>
-              <dd className="text-text-strong">{product.material}</dd>
-            </dl>
           </section>
         </div>
       </div>

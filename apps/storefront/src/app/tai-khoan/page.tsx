@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
-import { Button } from '@lumin/ui';
+import { Avatar, Button } from '@lumin/ui';
 import { fetchCustomerOrders, getCustomerProfile } from '@/lib/customer-session';
 import { logoutCustomer } from '@/lib/customer-auth';
 import { OrderHistoryList } from '@/components/order-history-list';
@@ -44,14 +44,22 @@ export default async function AccountPage() {
 
   return (
     <section className="mx-auto w-full max-w-[640px] px-4 py-6 md:px-6 md:py-10">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-text-strong md:text-3xl">
-            {profile ? t('greeting', { name: profile.name }) : t('heading')}
-          </h1>
-          {profile ? (
-            <p className="mt-1 font-mono text-sm text-text-muted">{profile.email}</p>
-          ) : null}
+      <h1 className="font-display text-2xl font-bold text-text-strong md:text-3xl">
+        {t('heading')}
+      </h1>
+
+      {/* Hi-fi 12: thẻ hồ sơ — avatar chữ cái đầu (nền coral) + tên + email mono; logout bên phải. */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-md border border-border-default bg-surface-card p-4">
+        <div className="flex min-w-0 items-center gap-3">
+          {profile ? <Avatar name={profile.name} size="md" /> : null}
+          <div className="min-w-0">
+            <p className="truncate font-display text-base font-bold text-text-strong">
+              {profile ? profile.name : t('heading')}
+            </p>
+            {profile ? (
+              <p className="truncate font-mono text-xs text-text-muted">{profile.email}</p>
+            ) : null}
+          </div>
         </div>
         {/* Logout is a plain form → Server Action (clears the session + redirects home). Zero client JS. */}
         <form action={logoutCustomer}>

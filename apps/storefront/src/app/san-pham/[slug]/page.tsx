@@ -3,7 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { ProductDetail } from '@/components/product-detail';
 import { ProductReviews } from '@/components/product-reviews';
-import { fetchProductBySlug, fetchProductReviews } from '@/lib/catalog';
+import { fetchCategories, fetchProductBySlug, fetchProductReviews } from '@/lib/catalog';
 import { totalPages } from '@/lib/catalog-params';
 import { parseReviewsPage } from '@/lib/product-view';
 import {
@@ -69,7 +69,13 @@ export default async function ProductDetailPage({ params, searchParams }: PagePr
   }
 
   const reviewsPage = parseReviewsPage((await searchParams).reviewsPage);
-  const reviews = await fetchProductReviews(slug, reviewsPage);
+  // Reviews + categories in parallel (both cached): categories resolve the product's category name for
+  // the hi-fi breadcrumb; an unknown id (stale cache) just skips the middle crumb.
+  const [reviews, categories] = await Promise.all([
+    fetchProductReviews(slug, reviewsPage),
+    fetchCategories(),
+  ]);
+  const category = categories.find((c) => c.id === product.categoryId) ?? null;
 
   // Out-of-range page on a non-empty product (e.g. ?reviewsPage=9 of a 2-page product) → redirect to the
   // last page rather than showing a false-empty section with a dead pager (the adjudicated P1-g fix). The
@@ -90,7 +96,7 @@ export default async function ProductDetailPage({ params, searchParams }: PagePr
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd }} />
-      <ProductDetail product={product} />
+      <ProductDetail product={product} category={category} />
       <ProductReviews
         slug={product.slug}
         reviews={reviews.items}
@@ -98,6 +104,8 @@ export default async function ProductDetailPage({ params, searchParams }: PagePr
         page={reviews.page}
         pageSize={reviews.pageSize}
         productRating={product.rating}
+        images={product.images}
+        productName={product.name}
       />
     </>
   );

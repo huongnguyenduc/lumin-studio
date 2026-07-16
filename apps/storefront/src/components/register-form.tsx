@@ -89,75 +89,78 @@ export function RegisterForm({ next }: { next?: string }) {
       : null;
 
   return (
-    <section className="mx-auto w-full max-w-[420px] px-4 py-6 md:px-6 md:py-10">
-      <h1 className="font-display text-2xl font-bold text-text-strong md:text-3xl">
-        {t('heading')}
-      </h1>
-      <p className="mt-1 text-sm text-text-muted">{t('intro')}</p>
+    <section className="mx-auto w-full max-w-[440px] px-4 py-8 md:px-6 md:py-12">
+      {/* Hi-fi 07: centred auth card (same shell as LoginForm). */}
+      <div className="rounded-lg border-2 border-border-strong bg-surface-card p-6 shadow-pop md:p-8">
+        <h1 className="text-center font-display text-xl font-bold text-text-strong md:text-2xl">
+          {t('heading')}
+        </h1>
+        <p className="mt-1 text-center text-sm text-text-muted">{t('intro')}</p>
 
-      <form onSubmit={submit} noValidate className="mt-6 flex flex-col gap-4">
-        <Input
-          label={t('nameLabel')}
-          placeholder={t('namePlaceholder')}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          autoComplete="name"
-          error={nameError}
-        />
-        <Input
-          label={t('emailLabel')}
-          placeholder={t('emailPlaceholder')}
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          type="email"
-          inputMode="email"
-          autoComplete="email"
-          error={emailError}
-        />
-        <Input
-          label={t('phoneLabel')}
-          placeholder={t('phonePlaceholder')}
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          type="tel"
-          inputMode="tel"
-          autoComplete="tel"
-        />
-        <Input
-          label={t('passwordLabel')}
-          placeholder={t('passwordPlaceholder')}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          type="password"
-          autoComplete="new-password"
-          hint={t('passwordHint')}
-          error={passwordError}
-        />
-        {formLevel ? (
-          <p role="alert" className="text-sm text-danger">
-            {formLevel}
-          </p>
-        ) : null}
-        <Button
-          type="submit"
-          variant="pop"
-          className="w-full"
-          disabled={pending}
-          aria-busy={pending}
-        >
-          {t('submit')}
-        </Button>
-      </form>
+        <form onSubmit={submit} noValidate className="mt-6 flex flex-col gap-4">
+          <Input
+            label={t('nameLabel')}
+            placeholder={t('namePlaceholder')}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoComplete="name"
+            error={nameError}
+          />
+          <Input
+            label={t('emailLabel')}
+            placeholder={t('emailPlaceholder')}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            error={emailError}
+          />
+          <Input
+            label={t('phoneLabel')}
+            placeholder={t('phonePlaceholder')}
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
+          />
+          <Input
+            label={t('passwordLabel')}
+            placeholder={t('passwordPlaceholder')}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            type="password"
+            autoComplete="new-password"
+            hint={t('passwordHint')}
+            error={passwordError}
+          />
+          {formLevel ? (
+            <p role="alert" className="text-sm text-danger">
+              {formLevel}
+            </p>
+          ) : null}
+          <Button
+            type="submit"
+            variant="pop"
+            className="w-full"
+            disabled={pending}
+            aria-busy={pending}
+          >
+            {t('submit')}
+          </Button>
+        </form>
 
-      <p className="mt-6 text-sm text-text-muted">
-        {t('haveAccount')}{' '}
-        <Link
-          href={loginHref}
-          className="font-medium text-text-strong underline underline-offset-2 hover:text-accent-flame"
-        >
-          {t('loginLink')}
-        </Link>
-      </p>
+        <p className="mt-6 text-center text-sm text-text-muted">
+          {t('haveAccount')}{' '}
+          <Link
+            href={loginHref}
+            className="font-medium text-text-strong underline underline-offset-2 hover:text-accent-flame"
+          >
+            {t('loginLink')}
+          </Link>
+        </p>
+      </div>
     </section>
   );
 }

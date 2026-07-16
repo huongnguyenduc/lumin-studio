@@ -6,7 +6,9 @@ import {
   cartCount,
   removeItem,
   sanitizeCart,
+  setAllSelected,
   setItemQuantity,
+  setItemSelected,
   type CartItem,
 } from './cart';
 
@@ -89,6 +91,13 @@ export type UseCart = {
   add: (item: CartItem) => void;
   setQuantity: (key: string, qty: number) => void;
   remove: (key: string) => void;
+  /** Hi-fi 05 "chọn món": toggle one line in/out of the quote + checkout. */
+  setSelected: (key: string, on: boolean) => void;
+  /** Hi-fi 05 "chọn tất cả": select/deselect every line at once. */
+  selectAll: (on: boolean) => void;
+  /** Drop the SELECTED lines only (the ones a just-placed order covered — hi-fi 05 chọn món); the
+   *  deselected lines stay in the cart for next time. */
+  clearSelected: () => void;
   /** Empty the cart. Called after a successful order (P2-f) so a placed order's items don't linger to be
    *  re-checked-out; writes [] through the same path as the mutators (persists + notifies subscribers). */
   clear: () => void;
@@ -107,6 +116,9 @@ export function useCart(): UseCart {
     add: (item) => write(addItem(read(), item)),
     setQuantity: (key, qty) => write(setItemQuantity(read(), key, qty)),
     remove: (key) => write(removeItem(read(), key)),
+    setSelected: (key, on) => write(setItemSelected(read(), key, on)),
+    selectAll: (on) => write(setAllSelected(read(), on)),
+    clearSelected: () => write(read().filter((i) => !i.selected)),
     clear: () => write(EMPTY),
   };
 }

@@ -73,6 +73,7 @@ describe('toProductDetailView', () => {
       id: '11111111-1111-1111-1111-111111111111',
       slug: 'den-ngu-mochi',
       name: 'Đèn ngủ Mochi',
+      categoryId: '22222222-2222-2222-2222-222222222222',
       description: 'Đèn ngủ in 3D, ánh sáng ấm.',
       basePrice: 290000,
       material: 'rPLA',

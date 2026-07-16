@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Checkbox, Input, PriceTag, cn } from '@lumin/ui';
-import { cartCount, cartQuoteItems, cartSignature } from '@/lib/cart';
+import { cartCount, cartQuoteItems, cartSignature, selectedItems } from '@/lib/cart';
 import { useCart } from '@/lib/cart-store';
 import { quoteCart } from '@/lib/quote';
 import {
@@ -78,7 +78,11 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
   const t = useTranslations('checkout');
   const tStates = useTranslations('states');
   const router = useRouter();
-  const { items, clear } = useCart();
+  const { items: cartItems, clearSelected } = useCart();
+  // Hi-fi 05 "chọn món": checkout covers ONLY the selected cart lines — everything below (quote,
+  // engraving acks, order input, counts, the empty state) works on this filtered view. All lines
+  // deselected reads as an empty checkout; the deselected lines stay in the cart afterwards.
+  const items = useMemo(() => selectedItems(cartItems), [cartItems]);
 
   // localStorage is unreadable during SSR/first paint → gate on mount so we show a skeleton instead of
   // flashing the empty state before the persisted cart loads.
@@ -277,7 +281,8 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
     const result = await placeOrder(buildWebOrderInput(validated, items, proof.finalUrl));
     if (result.ok) {
       // Leave the latch set — the done view replaces this screen, so no further submit is possible.
-      clear();
+      // Only the ORDERED (selected) lines leave the cart; deselected ones stay for next time.
+      clearSelected();
       setPlaced(result.result);
       return;
     }
@@ -350,8 +355,11 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
     errors[field] ? t(`errors.${errors[field]}`) : undefined;
 
   const summary = (
-    <div className="rounded-lg border-2 border-border-strong bg-surface-card p-4">
-      <p className="text-sm text-text-muted">
+    <div className="rounded-md border-2 border-border-strong bg-surface-sunken p-4 shadow-pop-sm">
+      <h2 className="font-display text-base font-bold text-text-strong">
+        {t('orderSummaryHeading')}
+      </h2>
+      <p className="mt-1 font-mono text-xs text-text-muted">
         {t('summaryItemCount', { count: cartCount(items) })}
       </p>
       <div className="mt-2 flex items-center justify-between gap-3">
@@ -549,197 +557,222 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
   }
 
   return (
-    <Shell heading={t('heading')}>
-      <form onSubmit={onSubmitInfo} noValidate className="mt-6 flex flex-col gap-5">
-        {summary}
+    <Shell heading={t('heading')} wide>
+      {/* Hi-fi C1 desktop: form on the left, the "Đơn hàng" summary card sticky on the right; on
+          mobile the summary stays first (the hi-fi top strip). One <form>, two grid areas. */}
+      <form
+        onSubmit={onSubmitInfo}
+        noValidate
+        className="mt-6 gap-8 lg:grid lg:grid-cols-[1fr_340px] lg:items-start"
+      >
+        <aside className="lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1">{summary}</aside>
 
-        <fieldset className="flex min-w-0 flex-col gap-4 border-0 p-0">
-          <legend className="mb-1 font-display text-base font-bold text-text-strong">
-            {t('contactHeading')}
-          </legend>
-          <Input
-            label={`${t('emailLabel')} ${t('optional')}`}
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            placeholder={t('emailPlaceholder')}
-            value={form.email}
-            onChange={(e) => setField('email', e.target.value)}
-            error={fieldError('email')}
-          />
-          <Input
-            label={t('nameLabel')}
-            autoComplete="name"
-            placeholder={t('namePlaceholder')}
-            value={form.name}
-            onChange={(e) => setField('name', e.target.value)}
-            error={fieldError('name')}
-          />
-          <Input
-            label={t('phoneLabel')}
-            type="tel"
-            inputMode="tel"
-            autoComplete="tel"
-            placeholder={t('phonePlaceholder')}
-            value={form.phone}
-            onChange={(e) => setField('phone', e.target.value)}
-            error={fieldError('phone')}
-          />
-        </fieldset>
+        <div className="mt-5 flex min-w-0 flex-col gap-5 lg:col-start-1 lg:row-start-1 lg:mt-0">
+          <fieldset className="flex min-w-0 flex-col gap-4 border-0 p-0">
+            <legend className="mb-1 font-display text-base font-bold text-text-strong">
+              {t('contactHeading')}
+            </legend>
+            <Input
+              label={`${t('emailLabel')} ${t('optional')}`}
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              placeholder={t('emailPlaceholder')}
+              value={form.email}
+              onChange={(e) => setField('email', e.target.value)}
+              error={fieldError('email')}
+            />
+            <Input
+              label={t('nameLabel')}
+              autoComplete="name"
+              placeholder={t('namePlaceholder')}
+              value={form.name}
+              onChange={(e) => setField('name', e.target.value)}
+              error={fieldError('name')}
+            />
+            <Input
+              label={t('phoneLabel')}
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              placeholder={t('phonePlaceholder')}
+              value={form.phone}
+              onChange={(e) => setField('phone', e.target.value)}
+              error={fieldError('phone')}
+            />
+          </fieldset>
 
-        <fieldset className="flex min-w-0 flex-col gap-4 border-0 p-0">
-          <legend className="mb-1 font-display text-base font-bold text-text-strong">
-            {t('addressHeading')}
-          </legend>
-          <div className="flex flex-col gap-1.5">
-            <label
-              htmlFor={provinceFieldId}
-              className="font-display text-sm font-medium text-text-strong"
-            >
-              {t('provinceLabel')}
-            </label>
-            <select
-              id={provinceFieldId}
-              value={form.province}
-              onChange={(e) => setField('province', e.target.value)}
-              aria-invalid={errors.province ? true : undefined}
-              aria-describedby={errors.province ? `${provinceFieldId}-desc` : undefined}
-              className={cn(
-                'h-11 rounded-md border bg-surface-card px-3 font-body text-text-strong',
-                'focus:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky',
-                errors.province ? 'border-danger' : 'border-border-default',
-              )}
-            >
-              <option value="">{t('provincePlaceholder')}</option>
-              {shippableProvinces.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-            {errors.province ? (
-              <p id={`${provinceFieldId}-desc`} role="alert" className="text-sm text-danger">
-                {t(`errors.${errors.province}`)}
-              </p>
-            ) : null}
-          </div>
-          <Input
-            label={t('wardLabel')}
-            autoComplete="address-level2"
-            placeholder={t('wardPlaceholder')}
-            value={form.ward}
-            onChange={(e) => setField('ward', e.target.value)}
-            error={fieldError('ward')}
-          />
-          <Input
-            label={t('streetLabel')}
-            autoComplete="address-line1"
-            placeholder={t('streetPlaceholder')}
-            value={form.street}
-            onChange={(e) => setField('street', e.target.value)}
-            error={fieldError('street')}
-          />
-          <Input
-            label={`${t('noteLabel')} ${t('optional')}`}
-            placeholder={t('notePlaceholder')}
-            value={form.note}
-            onChange={(e) => setField('note', e.target.value)}
-          />
-        </fieldset>
+          <fieldset className="flex min-w-0 flex-col gap-4 border-0 p-0">
+            <legend className="mb-1 font-display text-base font-bold text-text-strong">
+              {t('addressHeading')}
+            </legend>
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor={provinceFieldId}
+                className="font-display text-sm font-medium text-text-strong"
+              >
+                {t('provinceLabel')}
+              </label>
+              <select
+                id={provinceFieldId}
+                value={form.province}
+                onChange={(e) => setField('province', e.target.value)}
+                aria-invalid={errors.province ? true : undefined}
+                aria-describedby={errors.province ? `${provinceFieldId}-desc` : undefined}
+                className={cn(
+                  'h-11 rounded-md border bg-surface-card px-3 font-body text-text-strong',
+                  'focus:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky',
+                  errors.province ? 'border-danger' : 'border-border-default',
+                )}
+              >
+                <option value="">{t('provincePlaceholder')}</option>
+                {shippableProvinces.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+              {errors.province ? (
+                <p id={`${provinceFieldId}-desc`} role="alert" className="text-sm text-danger">
+                  {t(`errors.${errors.province}`)}
+                </p>
+              ) : null}
+            </div>
+            <Input
+              label={t('wardLabel')}
+              autoComplete="address-level2"
+              placeholder={t('wardPlaceholder')}
+              value={form.ward}
+              onChange={(e) => setField('ward', e.target.value)}
+              error={fieldError('ward')}
+            />
+            <Input
+              label={t('streetLabel')}
+              autoComplete="address-line1"
+              placeholder={t('streetPlaceholder')}
+              value={form.street}
+              onChange={(e) => setField('street', e.target.value)}
+              error={fieldError('street')}
+            />
+            <Input
+              label={`${t('noteLabel')} ${t('optional')}`}
+              placeholder={t('notePlaceholder')}
+              value={form.note}
+              onChange={(e) => setField('note', e.target.value)}
+            />
+          </fieldset>
 
-        {/* Đổi-trả disclosure — shown for EVERY cart before purchase (compliance §3). */}
-        <section
-          aria-labelledby={refundHeadingId}
-          className="rounded-lg border border-border-subtle bg-surface-sunken p-4"
-        >
-          <h2 id={refundHeadingId} className="font-display text-sm font-bold text-text-strong">
-            {t('refundHeading')}
-          </h2>
-          <p className="mt-1 text-sm leading-relaxed text-text-body">
-            {refundPolicy.trim() || t('refundFallback')}
-          </p>
-          <Link
-            href="/chinh-sach#doi-tra"
-            className="mt-2 inline-block text-sm font-semibold text-primary underline"
+          {/* Đổi-trả disclosure — shown for EVERY cart before purchase (compliance §3). */}
+          <section
+            aria-labelledby={refundHeadingId}
+            className="rounded-lg border border-border-subtle bg-surface-sunken p-4"
           >
-            {t('refundLink')}
-          </Link>
-        </section>
+            <h2 id={refundHeadingId} className="font-display text-sm font-bold text-text-strong">
+              {t('refundHeading')}
+            </h2>
+            <p className="mt-1 text-sm leading-relaxed text-text-body">
+              {refundPolicy.trim() || t('refundFallback')}
+            </p>
+            <Link
+              href="/chinh-sach#doi-tra"
+              className="mt-2 inline-block text-sm font-semibold text-primary underline"
+            >
+              {t('refundLink')}
+            </Link>
+          </section>
 
-        {/* Engrave add-on (ADR-012) — ONLY when the cart is personalized. Stacks ON TOP of the đổi-trả
+          {/* Engrave add-on (ADR-012) — ONLY when the cart is personalized. Stacks ON TOP of the đổi-trả
             disclosure above (does not replace it): echoes the engraved text for a last check, states the
             prepay rule, and gates "continue" on the two required acks (personalizationAck + the
             engrave-echo confirmation) mirrored server-side at checkout.go:241. */}
-        {hasPersonalization ? (
-          <section
-            aria-labelledby={engraveHeadingId}
-            className="rounded-lg border-2 border-border-strong bg-surface-card p-4"
-          >
-            <h2 id={engraveHeadingId} className="font-display text-sm font-bold text-text-strong">
-              {t('engraveHeading')}
-            </h2>
-            <p className="mt-1 text-sm text-text-body">{t('engraveEchoIntro')}</p>
-            <ul className="mt-1.5 flex flex-col gap-1">
-              {engravedLines.map((l) => (
-                <li key={l.key} className="text-sm font-medium text-text-strong">
-                  {t('engraveEchoLine', { name: l.name, text: l.text })}
-                </li>
-              ))}
-            </ul>
-            <p className="mt-3 text-sm text-text-muted">{t('prepayNote')}</p>
-            <div className="mt-3 flex flex-col gap-1">
-              <Checkbox
-                checked={personalizationAck}
-                onChange={(e) => setPersonalizationAck(e.target.checked)}
-                label={t('ackNoReturn')}
-              />
-              <Checkbox
-                checked={engraveEchoConfirmed}
-                onChange={(e) => setEngraveEchoConfirmed(e.target.checked)}
-                label={t('ackEcho')}
-              />
-            </div>
-          </section>
-        ) : null}
+          {hasPersonalization ? (
+            <section
+              aria-labelledby={engraveHeadingId}
+              className="rounded-lg border-2 border-border-strong bg-surface-card p-4"
+            >
+              <h2 id={engraveHeadingId} className="font-display text-sm font-bold text-text-strong">
+                {t('engraveHeading')}
+              </h2>
+              <p className="mt-1 text-sm text-text-body">{t('engraveEchoIntro')}</p>
+              <ul className="mt-1.5 flex flex-col gap-1">
+                {engravedLines.map((l) => (
+                  <li key={l.key} className="text-sm font-medium text-text-strong">
+                    {t('engraveEchoLine', { name: l.name, text: l.text })}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-sm text-text-muted">{t('prepayNote')}</p>
+              <div className="mt-3 flex flex-col gap-1">
+                <Checkbox
+                  checked={personalizationAck}
+                  onChange={(e) => setPersonalizationAck(e.target.checked)}
+                  label={t('ackNoReturn')}
+                />
+                <Checkbox
+                  checked={engraveEchoConfirmed}
+                  onChange={(e) => setEngraveEchoConfirmed(e.target.checked)}
+                  label={t('ackEcho')}
+                />
+              </div>
+            </section>
+          ) : null}
 
-        {/* PDPL privacy notice — informational, unbundled, no marketing tick (compliance §2). */}
-        <p className="text-sm text-text-muted">
-          {t('privacyNotice')}{' '}
-          <Link href="/chinh-sach#quyen-rieng-tu" className="font-semibold text-primary underline">
-            {t('privacyLink')}
-          </Link>
-        </p>
-
-        {formError ? (
-          <p role="alert" className="text-sm font-semibold text-danger">
-            {t('errors.formError')}
+          {/* PDPL privacy notice — informational, unbundled, no marketing tick (compliance §2). */}
+          <p className="text-sm text-text-muted">
+            {t('privacyNotice')}{' '}
+            <Link
+              href="/chinh-sach#quyen-rieng-tu"
+              className="font-semibold text-primary underline"
+            >
+              {t('privacyLink')}
+            </Link>
           </p>
-        ) : null}
 
-        {/* Nudge (not a 400): the button is disabled until both engrave acks are ticked (ADR-012). */}
-        {hasPersonalization && !acksMet ? (
-          <p className="text-sm text-text-muted">{t('ackHint')}</p>
-        ) : null}
+          {formError ? (
+            <p role="alert" className="text-sm font-semibold text-danger">
+              {t('errors.formError')}
+            </p>
+          ) : null}
 
-        <Button
-          type="submit"
-          variant="pop"
-          size="lg"
-          className="w-full"
-          disabled={continueDisabled}
-          aria-busy={quotePending}
-        >
-          {t('continueCta')}
-        </Button>
+          {/* Nudge (not a 400): the button is disabled until both engrave acks are ticked (ADR-012). */}
+          {hasPersonalization && !acksMet ? (
+            <p className="text-sm text-text-muted">{t('ackHint')}</p>
+          ) : null}
+
+          <Button
+            type="submit"
+            variant="pop"
+            size="lg"
+            className="w-full"
+            disabled={continueDisabled}
+            aria-busy={quotePending}
+          >
+            {t('continueCta')} <span aria-hidden="true">→</span>
+          </Button>
+        </div>
       </form>
     </Shell>
   );
 }
 
-/** Shared page shell: centred container + the checkout heading. */
-function Shell({ heading, children }: { heading: string; children: ReactNode }) {
+/** Shared page shell: centred container + the checkout heading. `wide` is the hi-fi C1 desktop
+ *  two-column layout (form + sticky "Đơn hàng" card); the narrow default fits every other state. */
+function Shell({
+  heading,
+  wide = false,
+  children,
+}: {
+  heading: string;
+  wide?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <section className="mx-auto w-full max-w-[520px] px-4 py-6 md:px-6 md:py-10">
+    <section
+      className={cn(
+        'mx-auto w-full px-4 py-6 md:px-6 md:py-10',
+        wide ? 'max-w-[1100px]' : 'max-w-[520px]',
+      )}
+    >
       <h1 className="font-display text-2xl font-bold text-text-strong md:text-3xl">{heading}</h1>
       {children}
     </section>
