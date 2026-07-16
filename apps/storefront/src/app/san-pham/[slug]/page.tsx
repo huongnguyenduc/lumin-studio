@@ -104,6 +104,8 @@ export default async function ProductDetailPage({ params, searchParams }: PagePr
         page={reviews.page}
         pageSize={reviews.pageSize}
         productRating={product.rating}
+        images={product.images}
+        productName={product.name}
       />
     </>
   );
