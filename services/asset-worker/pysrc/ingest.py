@@ -37,6 +37,14 @@ def structured_artifact(input_path: str, translation, out_dir: str):
         if not geometry:
             return [], None
         names = list(geometry.keys())
+        # f-3: name each object's material after the object, so the storefront live viewer can address it via
+        # model-viewer `getMaterialByName(objectName)` (model-viewer recolors by MATERIAL — mesh→material is
+        # not public API). A geometry with no material (e.g. vertex-colour visuals) is skipped → that part
+        # simply won't recolour (graceful), never a crash.
+        for name, geom in geometry.items():
+            material = getattr(getattr(geom, "visual", None), "material", None)
+            if material is not None:
+                material.name = name
         scene.apply_translation(translation)  # the SAME vector as the fused export → the two stay aligned
         structured_path = Path(out_dir) / "model_structured.glb"
         structured_path.write_bytes(trimesh.exchange.gltf.export_glb(scene))

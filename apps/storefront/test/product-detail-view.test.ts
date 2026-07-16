@@ -6,6 +6,7 @@ import {
   canAddToCart,
   canAddToCartWithOptions,
   colorsForPart,
+  partColorsForViewer,
   engraveLength,
   formatDimensions,
   isColorSelectable,
@@ -184,6 +185,30 @@ describe('toProductDetailView', () => {
     ).toBe('https://cdn.example/mochi.glb');
     // Empty string ⇒ no model ⇒ undefined, so the viewer button never mounts model-viewer on an empty src.
     expect(toProductDetailView(apiProduct({ model3dUrl: '' })).model3dUrl).toBeUndefined();
+  });
+
+  it('surfaces a non-empty model3dStructuredUrl and collapses an empty one to undefined (f-4)', () => {
+    expect(
+      toProductDetailView(
+        apiProduct({ model3dStructuredUrl: 'https://cdn.example/mochi_structured.glb' }),
+      ).model3dStructuredUrl,
+    ).toBe('https://cdn.example/mochi_structured.glb');
+    expect(
+      toProductDetailView(apiProduct({ model3dStructuredUrl: '' })).model3dStructuredUrl,
+    ).toBeUndefined();
+  });
+
+  it('surfaces a part’s modelObjectName and collapses an empty one to undefined (f-2/f-3)', () => {
+    const view = toProductDetailView(
+      apiProduct({
+        parts: [
+          { id: 'p-shade', name: 'Chao đèn', displayOrder: 0, modelObjectName: 'Chao đèn' },
+          { id: 'p-base', name: 'Đế', displayOrder: 1, modelObjectName: '' },
+        ],
+      }),
+    );
+    expect(view.parts[0].modelObjectName).toBe('Chao đèn');
+    expect(view.parts[1].modelObjectName).toBeUndefined();
   });
 
   it('drops empty-string image URLs so a broken src never reaches <img>', () => {
@@ -503,5 +528,40 @@ describe('canAddConfiguredToCart (the full ADR-037 gate)', () => {
         engraveEntries: [{ text: 'too long', maxChars: 3 }],
       }),
     ).toBe(false);
+  });
+});
+
+describe('partColorsForViewer (f-3 live-viewer recolor map, ADR-052)', () => {
+  const parts = [
+    { id: 'p-shade', modelObjectName: 'Chao đèn' },
+    { id: 'p-base', modelObjectName: 'Đế' },
+    { id: 'p-nomap', modelObjectName: undefined }, // an unmapped part — never recolours
+  ];
+  const colors = [
+    { id: 'c-red', hex: '#C93A1A' },
+    { id: 'c-blue', hex: '#1A4FC9' },
+  ];
+
+  it('maps each mapped+picked part to its colour hex, keyed by object name', () => {
+    expect(partColorsForViewer(parts, colors, { 'p-shade': 'c-red', 'p-base': 'c-blue' })).toEqual({
+      'Chao đèn': '#C93A1A',
+      Đế: '#1A4FC9',
+    });
+  });
+
+  it('returns {} before anything is picked', () => {
+    expect(partColorsForViewer(parts, colors, {})).toEqual({});
+  });
+
+  it('skips a part with no modelObjectName (an unmapped part keeps its baked colour, never grey)', () => {
+    expect(partColorsForViewer(parts, colors, { 'p-nomap': 'c-red', 'p-shade': 'c-blue' })).toEqual(
+      {
+        'Chao đèn': '#1A4FC9',
+      },
+    );
+  });
+
+  it('skips a selection whose colour id is unknown (defensive — no crash, no entry)', () => {
+    expect(partColorsForViewer(parts, colors, { 'p-shade': 'c-gone' })).toEqual({});
   });
 });
