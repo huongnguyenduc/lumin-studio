@@ -46,6 +46,8 @@ export const vi = {
     add: 'Thêm vào giỏ',
     favLabel: 'Lưu {name} vào yêu thích',
     ratingLabel: '{value} trên 5 sao',
+    // Compact tile rating (hi-fi 02 "★ 4.8"). {value} is PRE-FORMATTED by formatVnRating (@lumin/core).
+    ratingCompact: '★ {value}',
     // aria-label for the card-hover 360° sprite turntable (ADR-049).
     sprite360Alt: 'Ảnh xoay 360° của {name}',
     // Decorative mono pill on tiles that have a sprite (hi-fi "↔360" badge; aria-hidden at the call site).
@@ -105,7 +107,6 @@ export const vi = {
     breadcrumbLabel: 'Đường dẫn',
     // Section headings + spec labels. Values (dimensions, material) come from product data, formatted
     // in the component — never baked into copy here.
-    descriptionHeading: 'Mô tả',
     specsHeading: 'Thông số',
     specDimensions: 'Kích thước',
     specMaterial: 'Chất liệu',
@@ -121,6 +122,12 @@ export const vi = {
     colorsLabel: 'Màu in',
     selectColorLabel: 'Chọn màu {name}',
     colorUnavailableLabel: '{name} — tạm hết',
+    // Mono note beside the swatches once a colour is picked (hi-fi desktop detail "Cam Mochi · +5 màu").
+    // {count} is the number of OTHER colours in the group.
+    colorSelectedNote: '{name}{count, plural, =0 {} other { · +# màu}}',
+    // Compact rating on the price row (hi-fi "★ 4.9 · 32 đánh giá"). Both args are PRE-FORMATTED by
+    // @lumin/core (formatVnRating / formatVnNumber) — never raw grouped numbers baked here.
+    ratingSummary: '★ {value} · {count} đánh giá',
     // Shown under the disabled CTA to explain the lock (spec §03: khoá tới khi chọn màu). The colour hint
     // covers both a flat product and a parts product (mỗi bộ phận một màu); the choice hint (ADR-037)
     // covers an enumerated option (size…) not yet picked.
@@ -135,6 +142,10 @@ export const vi = {
     // On-demand 3D viewer (P1-i). The button only appears when the product has a .glb and the browser
     // supports WebGL; model-viewer loads on click, not before.
     view3dLabel: 'Xem mẫu 3D',
+    // Visible text of the dashed "360°" media tile that opens the viewer (view3dLabel stays the
+    // accessible name) and the mono drag-hint overlaid on the running viewer — both hi-fi desktop detail.
+    view3dTile: '360°',
+    viewer3dCaption: 'kéo xoay · cuộn zoom',
     view3dLoading: 'Đang tải mẫu 3D…',
     view3dError: 'Chưa tải được mẫu 3D — bạn xem ảnh phía trên nhé.',
     view3dAlt: 'Mẫu 3D của {name}',

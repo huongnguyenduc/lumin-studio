@@ -4,8 +4,8 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { formatVnd } from '@lumin/core';
-import { Button, PriceTag, QuantityStepper, Rating, cn } from '@lumin/ui';
+import { formatVnd, formatVnNumber, formatVnRating } from '@lumin/core';
+import { Button, PriceTag, QuantityStepper, cn } from '@lumin/ui';
 import { buildCartItem, MAX_QUANTITY } from '@/lib/cart';
 import { useCart } from '@/lib/cart-store';
 import {
@@ -28,7 +28,9 @@ import { Model3dViewer } from './model-3d-viewer';
  * each named part's own colour set — a parts product renders one of these per part. Out-of-stock swatches
  * (available:false) render disabled + struck-through and can never be selected, so the add-to-cart gate
  * never unlocks on one. `labelFor` is built by the parent (where next-intl's `t` is precisely typed), so
- * this component stays translator-agnostic. Pure presentation — the parent owns the selection state.
+ * this component stays translator-agnostic. `selectedNote` is the hi-fi mono caption beside the dots
+ * ("Cam Mochi · +5 màu") — pre-built by the parent for the same reason. Pure presentation — the parent
+ * owns the selection state.
  */
 function ColorSwatches({
   heading,
@@ -38,6 +40,7 @@ function ColorSwatches({
   onSelect,
   labelFor,
   outOfStockNote,
+  selectedNote,
 }: {
   heading: string;
   headingId: string;
@@ -46,6 +49,7 @@ function ColorSwatches({
   onSelect: (id: string) => void;
   labelFor: (color: ColorView) => string;
   outOfStockNote: string;
+  selectedNote: string | null;
 }) {
   const anyUnavailable = colors.some((c) => !c.available);
   return (
@@ -53,44 +57,53 @@ function ColorSwatches({
       <h2 id={headingId} className="mb-2 font-display text-sm font-semibold text-text-strong">
         {heading}
       </h2>
-      <ul className="flex flex-wrap gap-3">
-        {colors.map((c) => {
-          const selectable = isColorSelectable(c);
-          const selected = c.id === selectedId;
-          return (
-            <li key={c.id}>
-              <button
-                type="button"
-                disabled={!selectable}
-                aria-pressed={selectable ? selected : undefined}
-                aria-label={labelFor(c)}
-                onClick={() => onSelect(c.id)}
-                className={cn(
-                  'relative h-11 w-11 rounded-full border-2 transition-transform duration-150 ease-out',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2',
-                  'motion-reduce:transition-none',
-                  selected
-                    ? 'border-border-strong ring-2 ring-border-strong ring-offset-2'
-                    : 'border-border-default',
-                  selectable
-                    ? 'hover:-translate-y-px motion-reduce:transform-none'
-                    : 'cursor-not-allowed opacity-40',
-                )}
-                style={{ backgroundColor: c.hex }}
-              >
-                {!selectable ? (
-                  // Diagonal strike (CSS, no glyph) marks the out-of-stock swatch; the disabled state +
-                  // aria-label carry the meaning for AT.
-                  <span
-                    aria-hidden="true"
-                    className="absolute left-1/2 top-1/2 h-0.5 w-[130%] -translate-x-1/2 -translate-y-1/2 -rotate-45 rounded-full bg-border-strong"
-                  />
-                ) : null}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      <div className="flex flex-wrap items-center gap-3">
+        <ul className="flex flex-wrap gap-3">
+          {colors.map((c) => {
+            const selectable = isColorSelectable(c);
+            const selected = c.id === selectedId;
+            return (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  disabled={!selectable}
+                  aria-pressed={selectable ? selected : undefined}
+                  aria-label={labelFor(c)}
+                  onClick={() => onSelect(c.id)}
+                  className={cn(
+                    'relative h-11 w-11 rounded-full border-2 transition-transform duration-150 ease-out',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2',
+                    'motion-reduce:transition-none',
+                    selected
+                      ? 'border-border-strong ring-2 ring-border-strong ring-offset-2'
+                      : 'border-border-default',
+                    selectable
+                      ? 'hover:-translate-y-px motion-reduce:transform-none'
+                      : 'cursor-not-allowed opacity-40',
+                  )}
+                  style={{ backgroundColor: c.hex }}
+                >
+                  {!selectable ? (
+                    // Diagonal strike (CSS, no glyph) marks the out-of-stock swatch; the disabled state +
+                    // aria-label carry the meaning for AT.
+                    <span
+                      aria-hidden="true"
+                      className="absolute left-1/2 top-1/2 h-0.5 w-[130%] -translate-x-1/2 -translate-y-1/2 -rotate-45 rounded-full bg-border-strong"
+                    />
+                  ) : null}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        {/* Hi-fi: mono caption naming the picked colour, inline with the dots. aria-hidden — the
+            selected swatch already announces itself via aria-pressed + aria-label. */}
+        {selectedNote ? (
+          <span aria-hidden="true" className="font-mono text-xs text-text-muted">
+            {selectedNote}
+          </span>
+        ) : null}
+      </div>
       {/* Spec §05-mandated copy (SF-04). Out-of-stock swatches are disabled → un-selectable, so this is a
           standing note explaining the dimmed swatches rather than a per-selection error. */}
       {anyUnavailable ? (
@@ -106,10 +119,15 @@ function ColorSwatches({
  * Product detail (/san-pham/{slug}). Data is fetched server-side (page.tsx → lib/catalog) and passed in;
  * this is a client component for the local selection state only. Scope (P1-h + ADR-037): media + name +
  * price + rating + description + specs + a configurator — either a flat colour picker OR one picker per
- * named part (partColors), plus enumerated choice-options (optionChoices, e.g. size S/M/L), engraving
- * fields, and boolean toggle add-ons. The "Thêm vào giỏ" CTA is LOCKED until the whole selection is valid
- * (every part coloured, every enumerated option picked, every engraving within its limit) — mirroring the
- * server's pricing 422s so the client never lets a shopper add something POST /price/quote would reject.
+ * named part (partColors), plus enumerated choice-options (optionChoices, e.g. size S/M/L — hi-fi PILLS),
+ * engraving fields, and boolean toggle add-ons. The "Thêm vào giỏ" CTA is LOCKED until the whole selection
+ * is valid (every part coloured, every enumerated option picked, every engraving within its limit) —
+ * mirroring the server's pricing 422s so the client never lets a shopper add something POST /price/quote
+ * would reject.
+ *
+ * Layout follows the hi-fi detail screens: breadcrumb (desktop) / mono category eyebrow (mobile), name,
+ * price row with the compact "★ 4,9 · 32 đánh giá", the short description directly under it, then the
+ * configurator, stepper + pop CTA, and the spec chips.
  *
  * Money: displays basePrice via PriceTag/@lumin/core only — never sums basePrice + colour/option/choice
  * deltas on the client (conventions §Tiền: tổng tính ở server; the live per-selection total is POST
@@ -191,6 +209,15 @@ export function ProductDetail({
       ? t('selectColorLabel', { name: c.name })
       : t('colorUnavailableLabel', { name: c.name });
 
+  // The hi-fi "Cam Mochi · +5 màu" caption for one swatch group: the picked colour's name plus how many
+  // other colours the group offers. Null until a colour is picked (the group renders no caption).
+  const selectedNoteFor = (colors: ColorView[], selectedId: string | null) => {
+    const selected = selectedId ? colors.find((c) => c.id === selectedId) : undefined;
+    return selected
+      ? t('colorSelectedNote', { name: selected.name, count: colors.length - 1 })
+      : null;
+  };
+
   const toggleChoice = (id: string) =>
     setSelectedChoiceIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
 
@@ -218,8 +245,12 @@ export function ProductDetail({
   return (
     <article className="mx-auto w-full max-w-[1200px] px-4 py-6 md:px-6 md:py-10">
       {/* Hi-fi breadcrumb: mono, with the category as the middle crumb linking back into the filtered
-          catalog. */}
-      <nav aria-label={t('breadcrumbLabel')} className="mb-4 font-mono text-xs text-text-muted">
+          catalog. Desktop-only — the hi-fi mobile detail has no breadcrumb; the mono category eyebrow
+          above the name (below) carries the context there. */}
+      <nav
+        aria-label={t('breadcrumbLabel')}
+        className="mb-4 hidden font-mono text-xs text-text-muted md:block"
+      >
         <Link href="/" className="hover:underline">
           {tNav('home')}
         </Link>
@@ -249,7 +280,7 @@ export function ProductDetail({
             The viewer's no-WebGL fallback is the 360° sprite sheet (ADR-049) when the product has one; the
             card-hover turntable lives on the grid card (CatalogCard), not here. */}
         <div className="md:w-[460px] md:shrink-0">
-          <div className="relative aspect-square overflow-hidden rounded-lg bg-surface-sunken">
+          <div className="relative aspect-square overflow-hidden rounded-lg border-2 border-border-strong bg-surface-sunken">
             {cover ? (
               // Arbitrary shop-photo hosts → a plain <img> (no next/image remotePatterns to maintain),
               // matching @lumin/ui ProductCard. Alt = product name (jsx-a11y).
@@ -275,9 +306,9 @@ export function ProductDetail({
                     aria-current={i === activeImage}
                     onClick={() => setActiveImage(i)}
                     className={cn(
-                      'h-16 w-16 overflow-hidden rounded-md border-2',
+                      'h-[72px] w-[72px] overflow-hidden rounded-sm border-2',
                       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2',
-                      i === activeImage ? 'border-border-strong' : 'border-border-default',
+                      i === activeImage ? 'border-border-strong' : 'border-border-subtle',
                     )}
                   >
                     <img src={src} alt="" className="h-full w-full object-cover" />
@@ -288,7 +319,8 @@ export function ProductDetail({
           ) : null}
 
           {/* On-demand 3D viewer (P1-i). Only rendered when the product has a .glb; the component itself
-              loads model-viewer on click and hides itself when WebGL is unavailable. */}
+              loads model-viewer on click (its trigger is the hi-fi dashed "360°" tile) and hides itself
+              when WebGL is unavailable. */}
           {product.model3dUrl ? (
             <Model3dViewer
               src={product.model3dStructuredUrl || product.model3dUrl}
@@ -301,19 +333,33 @@ export function ProductDetail({
 
         {/* Info column */}
         <div className="flex flex-1 flex-col gap-5">
-          <h1 className="font-display text-2xl font-bold leading-tight text-text-strong md:text-3xl">
-            {product.name}
-          </h1>
+          <div>
+            {/* Hi-fi mobile eyebrow: mono category above the name (the breadcrumb is desktop-only). */}
+            {category ? (
+              <p className="mb-1 font-mono text-[11px] uppercase tracking-wider text-text-muted md:hidden">
+                {category.name}
+              </p>
+            ) : null}
+            <h1 className="font-display text-2xl font-bold leading-tight text-text-strong md:text-3xl">
+              {product.name}
+            </h1>
+          </div>
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <PriceTag amount={product.basePrice} className="text-2xl" />
+            <PriceTag amount={product.basePrice} className="text-lg" />
             {product.rating != null ? (
-              <Rating
-                value={product.rating}
-                count={product.reviewCount}
-                label={tp('ratingLabel', { value: product.rating })}
-                size="sm"
-              />
+              // Hi-fi price row: compact "★ 4,9 · 32 đánh giá" (the 5-star blocks live in the reviews
+              // section below). Both numbers format through @lumin/core only.
+              <span
+                role="img"
+                aria-label={tp('ratingLabel', { value: formatVnRating(product.rating) })}
+                className="text-xs font-bold text-text-muted"
+              >
+                {t('ratingSummary', {
+                  value: formatVnRating(product.rating),
+                  count: formatVnNumber(product.reviewCount),
+                })}
+              </span>
             ) : (
               <span className="text-sm text-text-muted">{t('noReviews')}</span>
             )}
@@ -321,22 +367,31 @@ export function ProductDetail({
 
           {anyPriceDelta ? <p className="text-sm text-text-muted">{t('priceNote')}</p> : null}
 
+          {/* Hi-fi: the short description sits directly under the price row (not below the fold). */}
+          <p className="max-w-[440px] whitespace-pre-line text-sm leading-relaxed text-text-muted">
+            {product.description}
+          </p>
+
           {/* Colour picker (ADR-037). A parts product renders one swatch group per named part (the
               customer picks one colour per part → partColors); a single-piece product renders the flat
               picker. Out-of-stock swatches are disabled → the CTA can never unlock on one. */}
           {hasParts ? (
-            product.parts.map((part) => (
-              <ColorSwatches
-                key={part.id}
-                heading={part.name}
-                headingId={`detail-part-${part.id}-heading`}
-                colors={colorsForPart(product.colors, part.id)}
-                selectedId={partColorByPart[part.id] ?? null}
-                onSelect={(id) => setPartColorByPart((prev) => ({ ...prev, [part.id]: id }))}
-                labelFor={colorLabel}
-                outOfStockNote={tErr('colorOutOfStock')}
-              />
-            ))
+            product.parts.map((part) => {
+              const partColors = colorsForPart(product.colors, part.id);
+              return (
+                <ColorSwatches
+                  key={part.id}
+                  heading={part.name}
+                  headingId={`detail-part-${part.id}-heading`}
+                  colors={partColors}
+                  selectedId={partColorByPart[part.id] ?? null}
+                  onSelect={(id) => setPartColorByPart((prev) => ({ ...prev, [part.id]: id }))}
+                  labelFor={colorLabel}
+                  outOfStockNote={tErr('colorOutOfStock')}
+                  selectedNote={selectedNoteFor(partColors, partColorByPart[part.id] ?? null)}
+                />
+              );
+            })
           ) : hasColors ? (
             <ColorSwatches
               heading={t('colorsLabel')}
@@ -346,13 +401,15 @@ export function ProductDetail({
               onSelect={setSelectedColorId}
               labelFor={colorLabel}
               outOfStockNote={tErr('colorOutOfStock')}
+              selectedNote={selectedNoteFor(product.colors, selectedColorId)}
             />
           ) : null}
 
           {/* Enumerated choice-options (ADR-037), e.g. size S/M/L — a native radio group per option (one
-              pick required). Native radios give arrow-key selection + one-per-group semantics for free;
-              the visual swatch is a struck-in custom control over the sr-only input (same pattern as the
-              toggle checkbox below). Priced server-side by the picked choice's delta (option base ignored). */}
+              pick required), rendered as the hi-fi PILL row (selected = cocoa fill, cream text). Native
+              radios give arrow-key selection + one-per-group semantics for free; the pill is a styled
+              custom control over the sr-only input. Priced server-side by the picked choice's delta
+              (option base ignored) — a surcharge shows inside the pill via formatVnd (@lumin/core). */}
           {enumOptions.map((o) => {
             const groupName = `detail-choice-${o.id}`;
             return (
@@ -363,13 +420,13 @@ export function ProductDetail({
                 {o.description ? (
                   <p className="mb-2 text-sm text-text-muted">{o.description}</p>
                 ) : null}
-                <ul className="flex flex-col gap-1">
+                <ul className="flex flex-wrap gap-2.5">
                   {o.choices.map((ch) => {
                     const checked = choiceByOption[o.id] === ch.id;
                     const descId = `${groupName}-${ch.id}-desc`;
                     return (
                       <li key={ch.id}>
-                        <label className="flex min-h-11 cursor-pointer items-center gap-3">
+                        <label className="cursor-pointer">
                           <input
                             type="radio"
                             name={groupName}
@@ -381,27 +438,23 @@ export function ProductDetail({
                             className="peer sr-only"
                           />
                           <span
-                            aria-hidden="true"
                             className={cn(
-                              'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-border-strong bg-surface-card',
-                              'transition-[border-color] duration-150 ease-out motion-reduce:transition-none',
-                              'peer-checked:border-primary peer-checked:[&>span]:opacity-100',
+                              'inline-flex min-h-11 items-center gap-1.5 rounded-sm border-2 border-border-default bg-surface-card px-5 py-2 text-[15px] font-semibold text-text-strong',
+                              'transition-colors duration-150 ease-out motion-reduce:transition-none',
+                              'peer-checked:border-border-strong peer-checked:bg-surface-brand peer-checked:text-on-dark',
                               'peer-focus-visible:ring-2 peer-focus-visible:ring-accent-sky peer-focus-visible:ring-offset-2',
                             )}
                           >
-                            <span className="h-2.5 w-2.5 rounded-full bg-primary opacity-0 transition-opacity duration-150 ease-out motion-reduce:transition-none" />
+                            {ch.label}
+                            {ch.priceDelta > 0 ? (
+                              <span className="font-mono text-[11px] font-normal">
+                                +{formatVnd(ch.priceDelta)}
+                              </span>
+                            ) : null}
                           </span>
-                          <span className="flex-1 text-text-body">{ch.label}</span>
-                          {ch.priceDelta > 0 ? (
-                            <span className="text-sm text-text-muted">
-                              +<PriceTag amount={ch.priceDelta} className="text-sm font-medium" />
-                            </span>
-                          ) : (
-                            <span className="text-sm text-accent-teal">{t('optionFree')}</span>
-                          )}
                         </label>
                         {ch.description ? (
-                          <p id={descId} className="ml-8 text-sm text-text-muted">
+                          <p id={descId} className="mt-1 max-w-[220px] text-sm text-text-muted">
                             {ch.description}
                           </p>
                         ) : null}
@@ -557,13 +610,6 @@ export function ProductDetail({
                 <p className="text-sm font-semibold text-text-strong">{t('leadTimeValue')}</p>
               </li>
             </ul>
-          </section>
-
-          <section>
-            <h2 className="mb-1 font-display text-lg font-semibold text-text-strong">
-              {t('descriptionHeading')}
-            </h2>
-            <p className="whitespace-pre-line text-text-body">{product.description}</p>
           </section>
         </div>
       </div>

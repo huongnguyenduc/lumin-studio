@@ -128,7 +128,7 @@ export function Model3dViewer({
   // so the parent's static gallery is the fallback (as before).
   if (!webglOk) {
     return spriteSheetUrl ? (
-      <div className="mt-3 aspect-square overflow-hidden rounded-lg bg-surface-sunken">
+      <div className="mt-3 aspect-square overflow-hidden rounded-lg border-2 border-border-strong bg-surface-sunken">
         <SpriteTurntable
           src={spriteSheetUrl}
           alt={t('sprite360Alt', { name: productName })}
@@ -140,13 +140,16 @@ export function Model3dViewer({
   }
 
   if (!shown) {
+    // Hi-fi desktop detail: the viewer affordance is a dashed "360°" square matching the gallery
+    // thumbnails (72px, mono), not a text button. view3dLabel stays the accessible name.
     return (
       <button
         type="button"
         onClick={() => setShown(true)}
-        className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-md border-2 border-border-default px-4 text-sm font-medium text-text-strong hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
+        aria-label={t('view3dLabel')}
+        className="mt-2 grid h-[72px] w-[72px] place-items-center rounded-sm border-2 border-dashed border-border-default font-mono text-[11px] font-bold text-text-muted hover:border-border-strong hover:text-text-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
       >
-        {t('view3dLabel')}
+        {t('view3dTile')}
       </button>
     );
   }
@@ -155,7 +158,7 @@ export function Model3dViewer({
     <div
       ref={containerRef}
       tabIndex={-1}
-      className="mt-3 aspect-square overflow-hidden rounded-lg bg-surface-sunken focus:outline-none"
+      className="relative mt-3 aspect-square overflow-hidden rounded-lg border-2 border-border-strong bg-surface-sunken focus:outline-none"
     >
       {failed ? (
         <p
@@ -168,15 +171,25 @@ export function Model3dViewer({
         // model-viewer swallows a bad / 404 / corrupt .glb into an `error` event (it does NOT reject the
         // import) → wire onError to the same failed state so view3dError is reachable for asset failure,
         // not only for the chunk-load failure the dynamic import catches.
-        <model-viewer
-          ref={viewerRef}
-          src={src}
-          alt={t('view3dAlt', { name: productName })}
-          camera-controls={true}
-          interaction-prompt="none"
-          onError={() => setFailed(true)}
-          style={{ width: '100%', height: '100%' }}
-        />
+        <>
+          <model-viewer
+            ref={viewerRef}
+            src={src}
+            alt={t('view3dAlt', { name: productName })}
+            camera-controls={true}
+            interaction-prompt="none"
+            onError={() => setFailed(true)}
+            style={{ width: '100%', height: '100%' }}
+          />
+          {/* Hi-fi drag hint, bottom-left of the running viewer. Decorative — the controls are
+              announced by model-viewer's own alt/aria — so it stays out of the accessibility tree. */}
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute bottom-3 left-3 font-mono text-[11px] text-text-muted"
+          >
+            {t('viewer3dCaption')}
+          </span>
+        </>
       ) : (
         <p
           role="status"
