@@ -109,7 +109,14 @@ export const vi = {
     specsHeading: 'Thông số',
     specDimensions: 'Kích thước',
     specMaterial: 'Chất liệu',
-    madeToOrder: 'In theo đơn · giao trong 3–5 ngày',
+    // Hi-fi spec-chip row: the teal lead-time tile (replaces the old inline madeToOrder line).
+    leadTimeLabel: 'In trong',
+    leadTimeValue: '3–5 ngày',
+    // Hi-fi coral pill on the media tile when the on-demand 3D viewer is available.
+    realtime3dBadge: 'Realtime 3D',
+    // Quantity stepper beside the CTA (−/+ aria-labels; the visible value is aria-live in @lumin/ui).
+    qtyDecrement: 'Giảm số lượng',
+    qtyIncrement: 'Tăng số lượng',
     // Colour picker.
     colorsLabel: 'Màu in',
     selectColorLabel: 'Chọn màu {name}',

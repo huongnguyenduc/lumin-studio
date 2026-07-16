@@ -20,6 +20,7 @@ const product: ProductDetailView = {
   id: 'prod-1',
   slug: 'den-ngu-mochi',
   name: 'Đèn ngủ Mochi',
+  categoryId: 'cat-den-ngu',
   description: 'Ấm và mềm.',
   basePrice: 290_000,
   material: 'rPLA',
