@@ -99,6 +99,14 @@ export function ChevronDownIcon(props: IconProps) {
   );
 }
 
+export function CheckIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="m5 13 4 4L19 7" />
+    </Svg>
+  );
+}
+
 export function PrinterIcon(props: IconProps) {
   return (
     <Svg {...props}>

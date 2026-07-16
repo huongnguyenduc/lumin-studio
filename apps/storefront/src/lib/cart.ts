@@ -72,6 +72,10 @@ export type CartItem = {
   engrave: { optionId: string; text: string } | null;
   /** Line quantity, 1..MAX_QUANTITY. */
   quantity: number;
+  /** Hi-fi 05 "chọn món": only SELECTED lines are quoted and carried into checkout. Defaults to true
+   *  (a fresh add is selected; a cart persisted before this field loads as selected). Client-only UX
+   *  state — the server still re-prices/validates whatever checkout actually sends. */
+  selected: boolean;
 };
 
 /** The slice of OrderItemInput a quote needs — no personalization (engraving does not change the price;
@@ -219,6 +223,7 @@ export function buildCartItem(
     optionChoiceLabels,
     engrave,
     quantity: 1,
+    selected: true,
   };
 }
 
@@ -244,7 +249,8 @@ export function addItem(items: readonly CartItem[], item: CartItem): CartItem[] 
     return [...items, { ...item, quantity: clampQuantity(item.quantity) }];
   }
   return items.map((i, n) =>
-    n === idx ? { ...i, quantity: clampQuantity(i.quantity + item.quantity) } : i,
+    // A re-add merges quantities AND re-selects the line — the shopper clearly wants it again.
+    n === idx ? { ...i, quantity: clampQuantity(i.quantity + item.quantity), selected: true } : i,
   );
 }
 
@@ -258,6 +264,21 @@ export function setItemQuantity(items: readonly CartItem[], key: string, qty: nu
 /** Remove a line by key. New array, no mutation. */
 export function removeItem(items: readonly CartItem[], key: string): CartItem[] {
   return items.filter((i) => i.key !== key);
+}
+
+/** Toggle one line's "chọn món" checkbox (hi-fi 05). New array, no mutation. */
+export function setItemSelected(items: readonly CartItem[], key: string, on: boolean): CartItem[] {
+  return items.map((i) => (i.key === key ? { ...i, selected: on } : i));
+}
+
+/** "Chọn tất cả" (hi-fi 05): set every line's selection at once. New array, no mutation. */
+export function setAllSelected(items: readonly CartItem[], on: boolean): CartItem[] {
+  return items.map((i) => (i.selected === on ? i : { ...i, selected: on }));
+}
+
+/** The lines a quote / checkout actually covers — only the selected ones (hi-fi 05 "chọn món"). */
+export function selectedItems(items: readonly CartItem[]): CartItem[] {
+  return items.filter((i) => i.selected);
 }
 
 /**
@@ -279,10 +300,11 @@ export function cartQuoteItems(items: readonly CartItem[]): QuoteItem[] {
   }));
 }
 
-/** A stable signature of the cart's priced shape (configuration + quantity per line). The cart page
- *  re-quotes whenever this changes — a display-only edit (none exist today) would not move it. */
+/** A stable signature of the cart's priced shape (configuration + quantity + selection per line).
+ *  The cart page re-quotes whenever this changes; selection is in the signature because only selected
+ *  lines are quoted (a toggle changes the priced shape). */
 export function cartSignature(items: readonly CartItem[]): string {
-  return items.map((i) => `${i.key}x${i.quantity}`).join(';');
+  return items.map((i) => `${i.key}x${i.quantity}${i.selected ? '' : '-'}`).join(';');
 }
 
 /** Total number of physical items (Σ quantity), for a count badge / summary. */
@@ -366,6 +388,9 @@ export function sanitizeCart(raw: unknown): CartItem[] {
           ? { optionId: engrave.optionId, text: engrave.text }
           : null,
       quantity: clampQuantity(o.quantity),
+      // Absent (pre-selection cart) or non-boolean → selected, the safe default (nothing silently
+      // drops out of checkout).
+      selected: typeof o.selected === 'boolean' ? o.selected : true,
     });
   }
   return out;

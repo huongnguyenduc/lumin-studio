@@ -10,7 +10,10 @@ import {
   cartSignature,
   removeItem,
   sanitizeCart,
+  selectedItems,
+  setAllSelected,
   setItemQuantity,
+  setItemSelected,
   type CartItem,
 } from '../src/lib/cart';
 import type { ProductDetailView } from '../src/lib/product-view';
@@ -20,6 +23,7 @@ const product: ProductDetailView = {
   id: 'prod-1',
   slug: 'den-ngu-mochi',
   name: 'Đèn ngủ Mochi',
+  categoryId: 'cat-den-ngu',
   description: 'Ấm và mềm.',
   basePrice: 290_000,
   material: 'rPLA',
@@ -140,6 +144,7 @@ function item(overrides: Partial<CartItem> = {}): CartItem {
     optionChoiceLabels: [],
     engrave: null,
     quantity: 1,
+    selected: true,
     ...overrides,
   };
 }
@@ -482,5 +487,45 @@ describe('sanitizeCart', () => {
     expect(out[0].partColorLabels).toEqual(['Chao đèn: Đỏ']);
     expect(out[0].optionChoices).toEqual([{ optionId: 'opt-size', choiceId: 'ch-m' }]);
     expect(out[0].optionChoiceLabels).toEqual([]);
+  });
+});
+
+describe('selection (hi-fi 05 chọn món / chọn tất cả)', () => {
+  it('setItemSelected toggles exactly the addressed line', () => {
+    const items = [item({ key: 'a' }), item({ key: 'b' })];
+    const out = setItemSelected(items, 'a', false);
+    expect(out.map((i) => i.selected)).toEqual([false, true]);
+    expect(items[0].selected).toBe(true); // no mutation
+  });
+
+  it('setAllSelected flips every line at once', () => {
+    const items = [item({ key: 'a', selected: false }), item({ key: 'b' })];
+    expect(setAllSelected(items, true).every((i) => i.selected)).toBe(true);
+    expect(setAllSelected(items, false).some((i) => i.selected)).toBe(false);
+  });
+
+  it('selectedItems returns only the selected lines (what quote/checkout cover)', () => {
+    const items = [item({ key: 'a', selected: false }), item({ key: 'b' })];
+    expect(selectedItems(items).map((i) => i.key)).toEqual(['b']);
+  });
+
+  it('a re-add merges quantity AND re-selects the line', () => {
+    const items = [item({ key: 'a', selected: false, quantity: 1 })];
+    const out = addItem(items, item({ key: 'a', quantity: 2 }));
+    expect(out[0].quantity).toBe(3);
+    expect(out[0].selected).toBe(true);
+  });
+
+  it('cartSignature moves when selection changes (a toggle re-quotes)', () => {
+    const items = [item({ key: 'a' })];
+    expect(cartSignature(setItemSelected(items, 'a', false))).not.toBe(cartSignature(items));
+  });
+
+  it('sanitizeCart defaults a pre-selection persisted line to selected (nothing drops out of checkout)', () => {
+    const legacy = [{ ...item({ key: 'a' }) } as Record<string, unknown>];
+    delete legacy[0].selected;
+    const out = sanitizeCart(legacy);
+    expect(out).toHaveLength(1);
+    expect(out[0].selected).toBe(true);
   });
 });

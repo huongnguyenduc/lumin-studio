@@ -120,7 +120,7 @@ export type OptionView = {
 };
 
 /** The product-detail view the client component renders. A narrow, serialisable projection of the API
- *  `Product`: it drops categoryId and status. `options[]` IS surfaced (P1-j: engrave field + choice add-on
+ *  `Product`: it drops status. `options[]` IS surfaced (P1-j: engrave field + choice add-on
  *  toggles) and `model3dUrl` is surfaced (P1-i: on-demand model-viewer). `import type` only above keeps
  *  this module client-safe, so the server-only catalog client (./catalog) is never pulled into the client
  *  bundle. Money stays raw int-VND — formatted by PriceTag/@lumin/core at render, never here. */
@@ -128,6 +128,9 @@ export type ProductDetailView = {
   id: string;
   slug: string;
   name: string;
+  /** Category id — the detail page resolves it against the (cached) categories list to render the
+   *  hi-fi breadcrumb "Trang chủ / {danh mục} / {tên SP}". */
+  categoryId: string;
   /** Markdown-as-text (spec §02); rendered as plain paragraphs in P1-h (rich rendering not in scope). */
   description: string;
   /** Starting price, int VND. Formatted downstream by PriceTag/@lumin/core — never pre-formatted. */
@@ -169,6 +172,7 @@ export function toProductDetailView(product: components['schemas']['Product']): 
     id: product.id,
     slug: product.slug,
     name: product.name,
+    categoryId: product.categoryId,
     description: product.description,
     basePrice: product.basePrice,
     material: product.material,
