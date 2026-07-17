@@ -145,6 +145,10 @@ func classify(operationID string) authClass {
 		// GetProductAssetJobs/ListFilamentMaterials/GetFilamentMaterial/ListMachines/ListAuxCosts) stay
 		// authRequired (owner+staff) via the default, mirroring settings.
 		return authOwnerOnly
+	case "ListDomains", "CreateDomain", "DeleteDomain", "ListDomainTargets":
+		// Customer-site subdomain provisioning (k8s Ingress create/delete) — an infrastructure
+		// power, not shop config; owner-only for both read and write (mirrors GetAdminStaff below).
+		return authOwnerOnly
 	case "GetAdminStaff", "CreateStaff":
 		// Staff & roles (P3-q) is owner-only for BOTH read and write: managing the team — and even
 		// seeing the roster — is an owner power (spec §08; the design's role matrix gives staff no

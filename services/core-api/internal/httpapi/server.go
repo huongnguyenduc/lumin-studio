@@ -13,6 +13,7 @@ import (
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/auth"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/kube"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/modelstore"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/proofstore"
 )
@@ -94,6 +95,11 @@ type Server struct {
 	// endpoint is fail-closed: authMiddleware rejects every call a constant-time compare can't match, and
 	// an empty secret matches nothing. main.go sets it via WithWorkerCallbackToken from WORKER_CALLBACK_TOKEN.
 	workerCallbackToken string
+	// kube provisions per-domain traefik Ingresses for the admin domains surface (customer-site
+	// subdomains on *.luminstudio.vn). Nil when core-api is not running in-cluster (local dev) —
+	// the domains handlers then fail closed with 503 rather than nil-panicking. Built once in
+	// main.go via kube.NewInCluster and wired with WithKubeClient; tests wire a *kube.Fake.
+	kube kube.Client
 }
 
 // ServerOption customizes an optional Server dependency without churning every existing
@@ -157,6 +163,13 @@ func WithPetPageBaseURL(base string) ServerOption {
 // empty secret, so nothing authenticates until it is set on BOTH core-api and the worker.
 func WithWorkerCallbackToken(token string) ServerOption {
 	return func(s *Server) { s.workerCallbackToken = token }
+}
+
+// WithKubeClient wires the k8s-backed domains provisioner (kube.NewInCluster in main.go, a
+// *kube.Fake in tests). A nil client (unwired / not in-cluster) is the DEFAULT and is valid —
+// the admin domains endpoints fail closed with 503 rather than a nil-pointer panic.
+func WithKubeClient(c kube.Client) ServerOption {
+	return func(s *Server) { s.kube = c }
 }
 
 // NewServer builds the handler root. pool/nats may be nil in unit tests that don't

@@ -1444,6 +1444,105 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /admin/domains:
+    get:
+      tags: [admin]
+      operationId: listDomains
+      summary: List customer-site subdomains provisioned on *.luminstudio.vn (owner-only).
+      description: >
+        Each domain is a live traefik Ingress in the k3s prod namespace — there is no database
+        table backing this list (the cluster IS the source of truth). 503 if core-api is not
+        running in-cluster (local dev has no cluster to query).
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Provisioned subdomains.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Domain'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+    post:
+      tags: [admin]
+      operationId: createDomain
+      summary: Provision a new customer-site subdomain (owner-only).
+      description: >
+        Creates a traefik Ingress routing `<subdomain>.luminstudio.vn` to an existing Service in
+        the prod namespace. DNS itself is NOT automated — a one-time wildcard *.luminstudio.vn
+        Cloudflare record must already point at the tunnel (infra/k8s/README.md).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DomainInput'
+      responses:
+        '201':
+          description: The provisioned domain.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Domain'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /admin/domains/targets:
+    get:
+      tags: [admin]
+      operationId: listDomainTargets
+      summary: List Services in the prod namespace eligible as a domain target (owner-only).
+      description: >
+        Populates the admin "target" picker when creating a domain — every running Service in
+        the prod namespace with its container ports, read live from the cluster (no allowlist).
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Candidate targets.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DomainTarget'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /admin/domains/{subdomain}:
+    parameters:
+      - name: subdomain
+        in: path
+        required: true
+        schema: { type: string }
+    delete:
+      tags: [admin]
+      operationId: deleteDomain
+      summary: Remove a provisioned customer-site subdomain (owner-only).
+      description: >
+        Deletes the backing Ingress. Refuses (404) if the name has no managed Ingress — including
+        an Ingress that exists but was not created by this endpoint (e.g. `wedding`), which is
+        never touched.
+      security:
+        - cookieAuth: []
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
   /admin/staff:
     get:
       tags: [admin]
@@ -2709,6 +2808,12 @@ components:
             $ref: '#/components/schemas/ErrorEnvelope'
     Conflict:
       description: Invalid state transition (edge not allowed from the current status).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ServiceUnavailable:
+      description: A required backing service is unreachable (e.g. core-api not running in-cluster for the k8s-backed domains endpoints).
       content:
         application/json:
           schema:
@@ -4708,6 +4813,54 @@ components:
           type: string
         body:
           type: string
+
+    Domain:
+      type: object
+      description: >
+        A provisioned customer-site subdomain — projected 1:1 from its backing traefik Ingress in
+        the k3s prod namespace (no database row; the cluster is the source of truth).
+      required: [subdomain, targetService, targetPort, createdBy, createdAt]
+      properties:
+        subdomain:
+          type: string
+          description: The label before ".luminstudio.vn", e.g. "test-web".
+        targetService:
+          type: string
+        targetPort:
+          type: integer
+        createdBy:
+          type: string
+          description: Email of the owner who provisioned this domain.
+        createdAt:
+          type: string
+          format: date-time
+
+    DomainInput:
+      type: object
+      description: Create body for POST /admin/domains.
+      required: [subdomain, targetService, targetPort]
+      properties:
+        subdomain:
+          type: string
+          description: >
+            Lowercase label, 1-63 chars, letters/digits/hyphen, no leading/trailing hyphen.
+            Reserved names (www, admin, api, s3, assets, ...) are rejected server-side.
+        targetService:
+          type: string
+        targetPort:
+          type: integer
+
+    DomainTarget:
+      type: object
+      description: A Service in the prod namespace eligible as a domain's backend.
+      required: [name, ports]
+      properties:
+        name:
+          type: string
+        ports:
+          type: array
+          items:
+            type: integer
 
     CheckoutConfig:
       type: object

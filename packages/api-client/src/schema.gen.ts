@@ -789,6 +789,72 @@ export interface paths {
         patch: operations["updateReplyTemplate"];
         trace?: never;
     };
+    "/admin/domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List customer-site subdomains provisioned on *.luminstudio.vn (owner-only).
+         * @description Each domain is a live traefik Ingress in the k3s prod namespace — there is no database table backing this list (the cluster IS the source of truth). 503 if core-api is not running in-cluster (local dev has no cluster to query).
+         */
+        get: operations["listDomains"];
+        put?: never;
+        /**
+         * Provision a new customer-site subdomain (owner-only).
+         * @description Creates a traefik Ingress routing `<subdomain>.luminstudio.vn` to an existing Service in the prod namespace. DNS itself is NOT automated — a one-time wildcard *.luminstudio.vn Cloudflare record must already point at the tunnel (infra/k8s/README.md).
+         */
+        post: operations["createDomain"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/domains/targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Services in the prod namespace eligible as a domain target (owner-only).
+         * @description Populates the admin "target" picker when creating a domain — every running Service in the prod namespace with its container ports, read live from the cluster (no allowlist).
+         */
+        get: operations["listDomainTargets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/domains/{subdomain}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subdomain: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a provisioned customer-site subdomain (owner-only).
+         * @description Deletes the backing Ingress. Refuses (404) if the name has no managed Ingress — including an Ingress that exists but was not created by this endpoint (e.g. `wedding`), which is never touched.
+         */
+        delete: operations["deleteDomain"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/staff": {
         parameters: {
             query?: never;
@@ -2596,6 +2662,29 @@ export interface components {
             title: string;
             body: string;
         };
+        /** @description A provisioned customer-site subdomain — projected 1:1 from its backing traefik Ingress in the k3s prod namespace (no database row; the cluster is the source of truth). */
+        Domain: {
+            /** @description The label before ".luminstudio.vn", e.g. "test-web". */
+            subdomain: string;
+            targetService: string;
+            targetPort: number;
+            /** @description Email of the owner who provisioned this domain. */
+            createdBy: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @description Create body for POST /admin/domains. */
+        DomainInput: {
+            /** @description Lowercase label, 1-63 chars, letters/digits/hyphen, no leading/trailing hyphen. Reserved names (www, admin, api, s3, assets, ...) are rejected server-side. */
+            subdomain: string;
+            targetService: string;
+            targetPort: number;
+        };
+        /** @description A Service in the prod namespace eligible as a domain's backend. */
+        DomainTarget: {
+            name: string;
+            ports: number[];
+        };
         /** @description Public checkout config (GET /checkout/config). A whitelist of the anonymous data the payment step and pre-purchase disclosure need — never the full Settings singleton (no shopInfo PII, no shipping-fee table). */
         CheckoutConfig: {
             bankAccount: components["schemas"]["BankAccount"];
@@ -3097,6 +3186,15 @@ export interface components {
         };
         /** @description Invalid state transition (edge not allowed from the current status). */
         Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorEnvelope"];
+            };
+        };
+        /** @description A required backing service is unreachable (e.g. core-api not running in-cluster for the k8s-backed domains endpoints). */
+        ServiceUnavailable: {
             headers: {
                 [name: string]: unknown;
             };
@@ -4270,6 +4368,105 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listDomains: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Provisioned subdomains. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Domain"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    createDomain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomainInput"];
+            };
+        };
+        responses: {
+            /** @description The provisioned domain. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Domain"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listDomainTargets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Candidate targets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DomainTarget"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    deleteDomain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subdomain: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getAdminStaff: {

@@ -211,6 +211,11 @@ Slice **f-3** epic màu-filament (Track B step 2, "payoff" nhìn thấy được
 
 ---
 
+### ADR-054 — Admin được cấp k8s API ns-scoped để tự provision subdomain khách (Ingress là source of truth, không DB) · Accepted (user 2026-07-18)
+Trang admin quản lý tên miền (`/ten-mien`) tự động tạo/xóa traefik Ingress cho subdomain khách trên `*.luminstudio.vn` thay vì sửa YAML tay. core-api được cấp ServiceAccount + Role ns-scoped (`infra/k8s/core-api.yaml`, ns `prod`: `ingresses` create/get/list/delete, `services` get/list — KHÔNG cluster-wide, KHÔNG RBAC toàn cluster). **KHÔNG có bảng DB** (`internal/kube` package) — mỗi domain LÀ một Ingress object (`lumin-domain-<sub>`, label `app.kubernetes.io/managed-by: lumin-core-api`), list/audit đọc trực tiếp từ cluster — tránh drift DB↔cluster hoàn toàn (không có 2 nguồn để lệch nhau). Xoá chỉ đụng Ingress mang đúng label managed-by (không bao giờ đụng `wedding`/`ingress.yaml` có sẵn dù trùng tên). `internal/kube.Client` là interface nhỏ; `kube.NewInCluster()` trả `nil` khi core-api không chạy trong cluster (local dev) — 4 endpoint (`ListDomains`/`CreateDomain`/`DeleteDomain`/`ListDomainTargets`) fail-closed 503 `CLUSTER_UNAVAILABLE`, không nil-panic. Owner-only cả 4 endpoint (classify→authOwnerOnly) — đây là bề mặt hạ tầng, không phải cấu hình shop, mirror `GetAdminStaff`. Validation server-side: subdomain regex DNS-label lowercase + reserved-name blocklist (`www`/`admin`/`api`/`s3`/`assets`/`wedding-assets`/`giangvahieu`/`traefik`/`mail`) → 400; trùng → 409 `DOMAIN_EXISTS`. Cloudflare DNS vẫn làm tay MỘT LẦN (wildcard `*.luminstudio.vn` CNAME → tunnel, `infra/k8s/README.md` §Customer-site subdomains) — KHÔNG tích hợp Cloudflare API (ponytail: dashboard-state, không đáng để build một client CF chỉ cho một record). **Đảo được:** xoá RBAC + revert middleware_auth + xoá route admin = quay lại runbook thủ công cũ; không đụng dữ liệu (không bảng để rollback).
+
+---
+
 ## Open / informational (chưa chốt, không chặn code)
 - Pháp nhân: hộ kinh doanh vs công ty → ảnh hưởng ngưỡng thuế/hoá đơn điện tử (xem `compliance.md`).
 - Địa chỉ/điểm nhận thật → quyết định Google Business Profile + ship nội thành (Ahamove/Grab) hay bỏ.

@@ -384,3 +384,21 @@ kubectl -n prod patch secret wedding-secrets -p \
 #    commands from .github/workflows/deploy.yml by hand. Then roll wedding-api after step 3's patch:
 kubectl -n prod rollout restart deploy/wedding-api
 ```
+
+## Customer-site subdomains — admin "Tên miền" (once) + usage
+
+Admin (`/ten-mien`) provisions/deprovisions customer-site subdomains on `*.luminstudio.vn` as
+traefik Ingresses in ns `prod`, via core-api's ns-scoped k8s access (SA `core-api` + Role
+`core-api-domains`, `infra/k8s/core-api.yaml`; ADR-054). Each domain is a real Ingress object —
+there is no database table. **One-time setup**, then every subdomain after that is admin-only, no
+manual YAML/kubectl:
+
+```sh
+# One-time: point *.luminstudio.vn at the tunnel (Cloudflare dashboard — DNS + the tunnel's public
+# hostname), so a NEW admin-created host resolves without touching Cloudflare again. If individual
+# hosts (giangvahieu, wedding-assets, …) are already added one-by-one, a wildcard CNAME covers the
+# rest without conflicting with them.
+```
+
+After that: Admin → Tên miền → chọn dịch vụ đích (Service trong ns prod) → thêm tên miền con. Xoá
+tương tự — cả hai xoá/tạo Ingress ngay lập tức, không cần deploy lại.
