@@ -16,18 +16,18 @@ import (
 // off a non-in-cluster boot) is the only dependency. Every operation is owner-only
 // (classify → authOwnerOnly, middleware_auth.go): this is infrastructure, not shop config.
 
-// subdomainRe matches one or more dot-separated DNS labels: lowercase letters/digits, hyphens
-// allowed only between other characters, 1-63 chars each (RFC 1035, tightened to lowercase-only
-// — the admin form lowercases on submit, so an uppercase input is a client bug, not a
-// normalization target here). Dots allow multi-level names like "gianghieu.bh" →
-// "gianghieu.bh.luminstudio.vn" (a nested subdomain, not a different TLD — the ".luminstudio.vn"
-// suffix is always appended, this feature can't point at a domain lumin doesn't own).
-var subdomainRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$`)
-
-// maxSubdomainChars caps the total dotted-label string (RFC 1035 full-hostname limit is 253; the
-// ".luminstudio.vn" suffix and the "lumin-domain-" Ingress-name prefix both eat into that, so this
-// stays comfortably under it rather than chasing the exact k8s object-name limit).
-const maxSubdomainChars = 180
+// subdomainRe matches a single DNS label: lowercase letters/digits, hyphens allowed only between
+// other characters, 1-63 chars (RFC 1035, tightened to lowercase-only — the admin form lowercases
+// on submit, so an uppercase input is a client bug, not a normalization target here).
+//
+// Deliberately single-label (no dots): a multi-label name like "foo.bh.luminstudio.vn" resolves
+// and routes correctly in-cluster, but Cloudflare's Universal SSL cert for luminstudio.vn only
+// covers ONE wildcard level (SAN = luminstudio.vn + *.luminstudio.vn) — a deeper name fails the
+// TLS handshake at Cloudflare's edge before ever reaching the cluster (confirmed live: box-verify
+// 2026-07-17). Multi-label support was shipped and reverted the same day once this was found; see
+// docs/active-context.md. Re-enabling it needs Cloudflare Advanced Certificate Manager (paid) or
+// an explicit SAN for the deeper wildcard — an ops/billing decision, not a code change alone.
+var subdomainRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 
 // reservedSubdomains are hosts already served by an existing manifest (infra/k8s/*.yaml) or that
 // would otherwise be confusing/dangerous to hand out — creating a domain with one of these names
@@ -190,7 +190,7 @@ func cleanDomainTargetInput(in api.DomainTargetUpdate) (newSubdomain, targetServ
 func cleanSubdomain(raw string) (sub string, fields map[string]string) {
 	sub = strings.TrimSpace(raw)
 	fields = map[string]string{}
-	if len(sub) > maxSubdomainChars || !subdomainRe.MatchString(sub) {
+	if !subdomainRe.MatchString(sub) {
 		fields["subdomain"] = msgKey(codeValidation)
 	} else if _, reserved := reservedSubdomains[sub]; reserved {
 		fields["subdomain"] = msgKey(codeValidation)
