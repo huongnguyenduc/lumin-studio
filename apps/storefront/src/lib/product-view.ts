@@ -358,6 +358,34 @@ export function canAddToCartWithOptions(
   return engraveEntries.every((e) => isEngraveWithinLimit(e.text, e.maxChars));
 }
 
+/**
+ * The pre-selected flat colour when the detail page opens (user decision 2026-07-17: default = the FIRST
+ * available colour, so the live 3D viewer is coloured from the start). Null when the product has no
+ * selectable colour (all out of stock / colourless) — the CTA lock then behaves as before. Pure → tested.
+ */
+export function defaultFlatColorId(
+  colors: ReadonlyArray<Pick<ColorView, 'id' | 'available'>>,
+): string | null {
+  return colors.find((c) => c.available)?.id ?? null;
+}
+
+/**
+ * The pre-selected {partId → colorId} map for a parts product (same 2026-07-17 decision, per part): each
+ * part starts on its FIRST available colour. A part with no available colour is simply absent from the
+ * map (its swatch group starts unpicked and keeps the CTA locked — mirrors allPartsSelected). Pure → tested.
+ */
+export function defaultPartColors(
+  parts: ReadonlyArray<Pick<PartView, 'id'>>,
+  colors: ReadonlyArray<Pick<ColorView, 'id' | 'partId' | 'available'>>,
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const part of parts) {
+    const first = colors.find((c) => c.partId === part.id && c.available);
+    if (first) map[part.id] = first.id;
+  }
+  return map;
+}
+
 /** The colours belonging to a named part (ADR-037): `partId === part.id`. Flat colours (partId null) are
  *  never grouped under a part. Used both to render a part's swatch set and to validate a per-part pick. */
 export function colorsForPart(colors: ReadonlyArray<ColorView>, partId: string): ColorView[] {

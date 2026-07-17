@@ -14,6 +14,8 @@ import {
   canAddConfiguredToCart,
   canAddToCart,
   colorsForPart,
+  defaultFlatColorId,
+  defaultPartColors,
   partColorsForViewer,
   formatDimensions,
   isColorSelectable,
@@ -148,14 +150,22 @@ export function ProductDetail({
   const tNav = useTranslations('nav');
   const tErr = useTranslations('core.errors');
 
-  const [activeImage, setActiveImage] = useState(0);
+  // The main media tile: null = the live 3D viewer (the default when the product has a model — user
+  // decision 2026-07-17: 3D first, auto-loaded), a number = that gallery photo shown large.
+  const [activeImage, setActiveImage] = useState<number | null>(product.model3dUrl ? null : 0);
   // Line quantity for the add (hi-fi: −/+ stepper beside the CTA); merged into the cart line's qty.
   const [quantity, setQuantity] = useState(1);
-  // Flat colour (single-piece product). A parts product leaves this null and uses partColorByPart.
-  const [selectedColorId, setSelectedColorId] = useState<string | null>(null);
-  // ADR-037: one colour per named part ({partId → colorId}); one choice per enumerated choice-option
-  // ({optionId → choiceId}). Engraving text per text-option id; toggle add-on ids that are switched on.
-  const [partColorByPart, setPartColorByPart] = useState<Record<string, string>>({});
+  // Flat colour (single-piece product) — pre-selected to the first available colour (2026-07-17) so the
+  // viewer opens coloured. A parts product leaves this null and uses partColorByPart.
+  const [selectedColorId, setSelectedColorId] = useState<string | null>(() =>
+    product.parts.length > 0 ? null : defaultFlatColorId(product.colors),
+  );
+  // ADR-037: one colour per named part ({partId → colorId}) — each part pre-selected to its first
+  // available colour (2026-07-17); one choice per enumerated choice-option ({optionId → choiceId}).
+  // Engraving text per text-option id; toggle add-on ids that are switched on.
+  const [partColorByPart, setPartColorByPart] = useState<Record<string, string>>(() =>
+    defaultPartColors(product.parts, product.colors),
+  );
   const [choiceByOption, setChoiceByOption] = useState<Record<string, string>>({});
   const [engraveTexts, setEngraveTexts] = useState<Record<string, string>>({});
   const [selectedChoiceIds, setSelectedChoiceIds] = useState<string[]>([]);
@@ -170,8 +180,14 @@ export function ProductDetail({
   const router = useRouter();
   const { add } = useCart();
 
-  const cover = product.images[activeImage];
+  const cover = product.images[activeImage ?? 0];
+  const show3d = Boolean(product.model3dUrl) && activeImage === null;
   const hasParts = product.parts.length > 0;
+  // Flat product live recolor (2026-07-17): the picked colour's hex tints the WHOLE model (no part→object
+  // mapping exists for a single-piece product). A parts product uses viewerPartColors instead.
+  const flatColorHex = hasParts
+    ? undefined
+    : product.colors.find((c) => c.id === selectedColorId)?.hex;
   const hasColors = product.colors.length > 0;
   const anyPriceDelta = product.colors.some((c) => c.priceDelta > 0);
 
@@ -276,28 +292,64 @@ export function ProductDetail({
       </nav>
 
       <div className="flex flex-col gap-8 md:flex-row md:gap-9">
-        {/* Media — static cover + thumbnail gallery, then the on-demand 3D viewer (P1-i) when present.
-            The viewer's no-WebGL fallback is the 360° sprite sheet (ADR-049) when the product has one; the
-            card-hover turntable lives on the grid card (CatalogCard), not here. */}
+        {/* Media (revised 2026-07-17): the MAIN tile is the live 3D viewer when the product has a model
+            (auto-loaded; interactive; recoloured live by the colour selection). No WebGL → 360° sprite
+            (ADR-049), else the static cover. The real photos sit below as thumbnails — clicking one shows
+            it large in the main tile; the dashed "360°" thumb returns to the viewer. */}
         <div className="md:w-[460px] md:shrink-0">
           <div className="relative aspect-square overflow-hidden rounded-lg border-2 border-border-strong bg-surface-sunken">
-            {cover ? (
+            {show3d ? (
+              <>
+                <Model3dViewer
+                  src={product.model3dStructuredUrl || product.model3dUrl!}
+                  productName={product.name}
+                  spriteSheetUrl={product.spriteSheetUrl}
+                  partColors={viewerPartColors}
+                  flatColorHex={flatColorHex}
+                  fallback={
+                    cover ? (
+                      <img src={cover} alt={product.name} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="lumin-dotgrid h-full w-full" aria-hidden="true" />
+                    )
+                  }
+                />
+                {/* Hi-fi: coral "Realtime 3D" pill on the media tile while the viewer is up. */}
+                <span className="pointer-events-none absolute right-3 top-3 rounded-pill bg-primary px-3 py-1 font-mono text-[10px] font-bold text-on-primary">
+                  {t('realtime3dBadge')}
+                </span>
+              </>
+            ) : cover ? (
               // Arbitrary shop-photo hosts → a plain <img> (no next/image remotePatterns to maintain),
               // matching @lumin/ui ProductCard. Alt = product name (jsx-a11y).
               <img src={cover} alt={product.name} className="h-full w-full object-cover" />
             ) : (
               <div className="lumin-dotgrid h-full w-full" aria-hidden="true" />
             )}
-            {/* Hi-fi: coral "Realtime 3D" pill on the media tile when the on-demand viewer exists. */}
-            {product.model3dUrl ? (
-              <span className="pointer-events-none absolute right-3 top-3 rounded-pill bg-primary px-3 py-1 font-mono text-[10px] font-bold text-on-primary">
-                {t('realtime3dBadge')}
-              </span>
-            ) : null}
           </div>
 
-          {product.images.length > 1 ? (
+          {(product.model3dUrl && product.images.length > 0) || product.images.length > 1 ? (
             <ul className="mt-3 flex flex-wrap gap-2">
+              {product.model3dUrl ? (
+                <li>
+                  {/* Back-to-3D thumb — the hi-fi dashed mono "360°" square, now a gallery peer. */}
+                  <button
+                    type="button"
+                    aria-label={t('view3dLabel')}
+                    aria-current={activeImage === null}
+                    onClick={() => setActiveImage(null)}
+                    className={cn(
+                      'grid h-[72px] w-[72px] place-items-center rounded-sm border-2 border-dashed font-mono text-[11px] font-bold',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2',
+                      activeImage === null
+                        ? 'border-border-strong text-text-strong'
+                        : 'border-border-default text-text-muted hover:border-border-strong hover:text-text-strong',
+                    )}
+                  >
+                    {t('view3dTile')}
+                  </button>
+                </li>
+              ) : null}
               {product.images.map((src, i) => (
                 <li key={src}>
                   <button
@@ -316,18 +368,6 @@ export function ProductDetail({
                 </li>
               ))}
             </ul>
-          ) : null}
-
-          {/* On-demand 3D viewer (P1-i). Only rendered when the product has a .glb; the component itself
-              loads model-viewer on click (its trigger is the hi-fi dashed "360°" tile) and hides itself
-              when WebGL is unavailable. */}
-          {product.model3dUrl ? (
-            <Model3dViewer
-              src={product.model3dStructuredUrl || product.model3dUrl}
-              productName={product.name}
-              spriteSheetUrl={product.spriteSheetUrl}
-              partColors={viewerPartColors}
-            />
           ) : null}
         </div>
 
