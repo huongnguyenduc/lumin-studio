@@ -724,7 +724,8 @@ export const vi = {
     add: '+ Thêm tên miền',
     subdomainLabel: 'Tên miền con',
     subdomainPlaceholder: 'vd: giangvahieu',
-    subdomainHint: 'Chỉ chữ thường, số và dấu gạch ngang — sẽ thành "<tên>.luminstudio.vn".',
+    subdomainHint:
+      'Chữ thường, số, gạch ngang, có thể thêm dấu chấm để phân cấp — sẽ thành "<tên>.luminstudio.vn".',
     subdomainRenameHint: 'Đổi tên ở đây sẽ tạo lại tên miền — site tạm gián đoạn trong lúc đổi.',
     targetLabel: 'Dịch vụ đích',
     targetPlaceholder: 'Chọn dịch vụ…',
