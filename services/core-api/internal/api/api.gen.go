@@ -742,6 +742,12 @@ type DomainTarget struct {
 	Ports []int  `json:"ports"`
 }
 
+// DomainTargetUpdate Body for PATCH /admin/domains/{subdomain} — repoint an existing domain.
+type DomainTargetUpdate struct {
+	TargetPort    int    `json:"targetPort"`
+	TargetService string `json:"targetService"`
+}
+
 // ErrorEnvelope The one error shape every endpoint returns (ADR-032). `code` is a stable machine code (e.g. NOT_FOUND, INVALID_EDGE, RBAC, REASON_REQUIRED, VALIDATION); `messageKey` is a next-intl key (the domain's Vietnamese prose is NEVER forwarded). `fields` maps a field path → messageKey for per-field validation errors.
 type ErrorEnvelope struct {
 	Code       string             `json:"code"`
@@ -1967,6 +1973,9 @@ type UpdateAdminCategoryJSONRequestBody = CategoryUpdate
 // CreateDomainJSONRequestBody defines body for CreateDomain for application/json ContentType.
 type CreateDomainJSONRequestBody = DomainInput
 
+// UpdateDomainJSONRequestBody defines body for UpdateDomain for application/json ContentType.
+type UpdateDomainJSONRequestBody = DomainTargetUpdate
+
 // CreateFilamentMaterialJSONRequestBody defines body for CreateFilamentMaterial for application/json ContentType.
 type CreateFilamentMaterialJSONRequestBody = FilamentMaterialInput
 
@@ -2235,6 +2244,9 @@ type ServerInterface interface {
 	// Remove a provisioned customer-site subdomain (owner-only).
 	// (DELETE /admin/domains/{subdomain})
 	DeleteDomain(w http.ResponseWriter, r *http.Request, subdomain string)
+	// Change a provisioned subdomain's target service/port (owner-only).
+	// (PATCH /admin/domains/{subdomain})
+	UpdateDomain(w http.ResponseWriter, r *http.Request, subdomain string)
 	// List the filament palette with derived stock + weighted-average cost (admin-gated read).
 	// (GET /admin/filament-materials)
 	ListFilamentMaterials(w http.ResponseWriter, r *http.Request, params ListFilamentMaterialsParams)
@@ -2565,6 +2577,12 @@ func (_ Unimplemented) ListDomainTargets(w http.ResponseWriter, r *http.Request)
 // Remove a provisioned customer-site subdomain (owner-only).
 // (DELETE /admin/domains/{subdomain})
 func (_ Unimplemented) DeleteDomain(w http.ResponseWriter, r *http.Request, subdomain string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Change a provisioned subdomain's target service/port (owner-only).
+// (PATCH /admin/domains/{subdomain})
+func (_ Unimplemented) UpdateDomain(w http.ResponseWriter, r *http.Request, subdomain string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3424,6 +3442,37 @@ func (siw *ServerInterfaceWrapper) DeleteDomain(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DeleteDomain(w, r, subdomain)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateDomain operation middleware
+func (siw *ServerInterfaceWrapper) UpdateDomain(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "subdomain" -------------
+	var subdomain string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "subdomain", chi.URLParam(r, "subdomain"), &subdomain, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subdomain", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateDomain(w, r, subdomain)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5833,6 +5882,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Delete(options.BaseURL+"/admin/domains/{subdomain}", wrapper.DeleteDomain)
 	})
 	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/admin/domains/{subdomain}", wrapper.UpdateDomain)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/filament-materials", wrapper.ListFilamentMaterials)
 	})
 	r.Group(func(r chi.Router) {
@@ -6774,6 +6826,69 @@ func (response DeleteDomain404JSONResponse) VisitDeleteDomainResponse(w http.Res
 type DeleteDomain503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response DeleteDomain503JSONResponse) VisitDeleteDomainResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateDomainRequestObject struct {
+	Subdomain string `json:"subdomain"`
+	Body      *UpdateDomainJSONRequestBody
+}
+
+type UpdateDomainResponseObject interface {
+	VisitUpdateDomainResponse(w http.ResponseWriter) error
+}
+
+type UpdateDomain200JSONResponse Domain
+
+func (response UpdateDomain200JSONResponse) VisitUpdateDomainResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateDomain400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateDomain400JSONResponse) VisitUpdateDomainResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateDomain401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateDomain401JSONResponse) VisitUpdateDomainResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateDomain403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateDomain403JSONResponse) VisitUpdateDomainResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateDomain404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateDomain404JSONResponse) VisitUpdateDomainResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateDomain503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response UpdateDomain503JSONResponse) VisitUpdateDomainResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(503)
 
@@ -10112,6 +10227,9 @@ type StrictServerInterface interface {
 	// Remove a provisioned customer-site subdomain (owner-only).
 	// (DELETE /admin/domains/{subdomain})
 	DeleteDomain(ctx context.Context, request DeleteDomainRequestObject) (DeleteDomainResponseObject, error)
+	// Change a provisioned subdomain's target service/port (owner-only).
+	// (PATCH /admin/domains/{subdomain})
+	UpdateDomain(ctx context.Context, request UpdateDomainRequestObject) (UpdateDomainResponseObject, error)
 	// List the filament palette with derived stock + weighted-average cost (admin-gated read).
 	// (GET /admin/filament-materials)
 	ListFilamentMaterials(ctx context.Context, request ListFilamentMaterialsRequestObject) (ListFilamentMaterialsResponseObject, error)
@@ -10823,6 +10941,39 @@ func (sh *strictHandler) DeleteDomain(w http.ResponseWriter, r *http.Request, su
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(DeleteDomainResponseObject); ok {
 		if err := validResponse.VisitDeleteDomainResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateDomain operation middleware
+func (sh *strictHandler) UpdateDomain(w http.ResponseWriter, r *http.Request, subdomain string) {
+	var request UpdateDomainRequestObject
+
+	request.Subdomain = subdomain
+
+	var body UpdateDomainJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateDomain(ctx, request.(UpdateDomainRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateDomain")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateDomainResponseObject); ok {
+		if err := validResponse.VisitUpdateDomainResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

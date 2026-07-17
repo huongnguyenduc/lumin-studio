@@ -59,6 +59,7 @@ type ServiceTarget struct {
 type Client interface {
 	ListIngresses(ctx context.Context) ([]Domain, error)
 	CreateIngress(ctx context.Context, subdomain, targetService string, targetPort int32, createdBy string) error
+	UpdateIngress(ctx context.Context, subdomain, targetService string, targetPort int32) (Domain, error)
 	DeleteIngress(ctx context.Context, subdomain string) error
 	ListServices(ctx context.Context) ([]ServiceTarget, error)
 }
@@ -178,6 +179,39 @@ func (c *client) CreateIngress(ctx context.Context, subdomain, targetService str
 
 // ErrAlreadyExists is returned by CreateIngress when the subdomain is already provisioned.
 var ErrAlreadyExists = fmt.Errorf("kube: domain already exists")
+
+// UpdateIngress repoints an existing managed Ingress at a different Service/port — the subdomain
+// (host) itself is not renamed; a rename is delete + recreate. Refuses (ErrNotFound) an Ingress
+// that isn't managed by this package, mirroring DeleteIngress.
+func (c *client) UpdateIngress(ctx context.Context, subdomain, targetService string, targetPort int32) (Domain, error) {
+	name := ingressName(subdomain)
+	ing, err := c.cs.NetworkingV1().Ingresses(Namespace).Get(ctx, name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return Domain{}, ErrNotFound
+	}
+	if err != nil {
+		return Domain{}, fmt.Errorf("kube: get ingress: %w", err)
+	}
+	if ing.Labels[managedByLabelKey] != managedByLabelVal {
+		return Domain{}, ErrNotFound
+	}
+	if len(ing.Spec.Rules) == 0 || ing.Spec.Rules[0].HTTP == nil || len(ing.Spec.Rules[0].HTTP.Paths) == 0 {
+		return Domain{}, ErrNotFound
+	}
+	ing.Spec.Rules[0].HTTP.Paths[0].Backend.Service = &networkingv1.IngressServiceBackend{
+		Name: targetService,
+		Port: networkingv1.ServiceBackendPort{Number: targetPort},
+	}
+	updated, err := c.cs.NetworkingV1().Ingresses(Namespace).Update(ctx, ing, metav1.UpdateOptions{})
+	if err != nil {
+		return Domain{}, fmt.Errorf("kube: update ingress: %w", err)
+	}
+	d, ok := domainFromIngress(updated)
+	if !ok {
+		return Domain{}, fmt.Errorf("kube: update ingress: unexpected shape after update")
+	}
+	return d, nil
+}
 
 func (c *client) DeleteIngress(ctx context.Context, subdomain string) error {
 	name := ingressName(subdomain)

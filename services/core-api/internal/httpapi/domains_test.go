@@ -98,6 +98,59 @@ func TestCreateDomainDuplicateConflicts(t *testing.T) {
 	}
 }
 
+func TestUpdateDomainHappyPath(t *testing.T) {
+	srv := newDomainsServer(kube.NewFake())
+	if _, err := srv.CreateDomain(newOwnerCtx(), api.CreateDomainRequestObject{
+		Body: &api.DomainInput{Subdomain: "test-web", TargetService: "wedding-web", TargetPort: 3000},
+	}); err != nil {
+		t.Fatalf("create: unexpected err: %v", err)
+	}
+	resp, err := srv.UpdateDomain(newOwnerCtx(), api.UpdateDomainRequestObject{
+		Subdomain: "test-web",
+		Body:      &api.DomainTargetUpdate{TargetService: "storefront", TargetPort: 3000},
+	})
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	updated, ok := resp.(api.UpdateDomain200JSONResponse)
+	if !ok {
+		t.Fatalf("wrong response type: %T", resp)
+	}
+	if updated.Subdomain != "test-web" || updated.TargetService != "storefront" {
+		t.Fatalf("wrong body: %+v", updated)
+	}
+}
+
+func TestUpdateDomainUnmanagedRefused(t *testing.T) {
+	srv := newDomainsServer(kube.NewFake())
+	_, err := srv.UpdateDomain(newOwnerCtx(), api.UpdateDomainRequestObject{
+		Subdomain: "never-created",
+		Body:      &api.DomainTargetUpdate{TargetService: "svc", TargetPort: 80},
+	})
+	if !errors.Is(err, kube.ErrNotFound) {
+		t.Fatalf("err = %v, want kube.ErrNotFound", err)
+	}
+}
+
+func TestUpdateDomainRejectsInvalidShape(t *testing.T) {
+	srv := newDomainsServer(kube.NewFake())
+	if _, err := srv.CreateDomain(newOwnerCtx(), api.CreateDomainRequestObject{
+		Body: &api.DomainInput{Subdomain: "test-web", TargetService: "wedding-web", TargetPort: 3000},
+	}); err != nil {
+		t.Fatalf("create: unexpected err: %v", err)
+	}
+	resp, err := srv.UpdateDomain(newOwnerCtx(), api.UpdateDomainRequestObject{
+		Subdomain: "test-web",
+		Body:      &api.DomainTargetUpdate{TargetService: "", TargetPort: 3000},
+	})
+	if err != nil {
+		t.Fatalf("unexpected transport err: %v", err)
+	}
+	if _, ok := resp.(api.UpdateDomain400JSONResponse); !ok {
+		t.Fatalf("wrong response type: %T", resp)
+	}
+}
+
 func TestDeleteDomainUnmanagedRefused(t *testing.T) {
 	srv := newDomainsServer(kube.NewFake())
 	_, err := srv.DeleteDomain(newOwnerCtx(), api.DeleteDomainRequestObject{Subdomain: "never-created"})
@@ -121,6 +174,11 @@ func TestDomainsNilClusterUnavailable(t *testing.T) {
 	}); !errors.Is(err, errClusterUnavailable) {
 		t.Fatalf("CreateDomain: err = %v, want errClusterUnavailable", err)
 	}
+	if _, err := srv.UpdateDomain(ctx, api.UpdateDomainRequestObject{
+		Subdomain: "x", Body: &api.DomainTargetUpdate{TargetService: "y", TargetPort: 80},
+	}); !errors.Is(err, errClusterUnavailable) {
+		t.Fatalf("UpdateDomain: err = %v, want errClusterUnavailable", err)
+	}
 	if _, err := srv.DeleteDomain(ctx, api.DeleteDomainRequestObject{Subdomain: "x"}); !errors.Is(err, errClusterUnavailable) {
 		t.Fatalf("DeleteDomain: err = %v, want errClusterUnavailable", err)
 	}
@@ -137,6 +195,11 @@ func TestDomainsStaffForbidden(t *testing.T) {
 		Body: &api.DomainInput{Subdomain: "x", TargetService: "y", TargetPort: 80},
 	}); !errors.Is(err, errForbidden) {
 		t.Fatalf("CreateDomain: err = %v, want errForbidden", err)
+	}
+	if _, err := srv.UpdateDomain(ctx, api.UpdateDomainRequestObject{
+		Subdomain: "x", Body: &api.DomainTargetUpdate{TargetService: "y", TargetPort: 80},
+	}); !errors.Is(err, errForbidden) {
+		t.Fatalf("UpdateDomain: err = %v, want errForbidden", err)
 	}
 	if _, err := srv.DeleteDomain(ctx, api.DeleteDomainRequestObject{Subdomain: "x"}); !errors.Is(err, errForbidden) {
 		t.Fatalf("DeleteDomain: err = %v, want errForbidden", err)

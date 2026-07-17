@@ -1525,6 +1525,33 @@ paths:
         in: path
         required: true
         schema: { type: string }
+    patch:
+      tags: [admin]
+      operationId: updateDomain
+      summary: Change a provisioned subdomain's target service/port (owner-only).
+      description: >
+        Repoints the backing Ingress at a different Service/port — the subdomain itself is not
+        renamed (delete + recreate for that). Refuses (404) if the name has no managed Ingress.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DomainTargetUpdate'
+      responses:
+        '200':
+          description: The updated domain.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Domain'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
     delete:
       tags: [admin]
       operationId: deleteDomain
@@ -4861,6 +4888,16 @@ components:
           type: array
           items:
             type: integer
+
+    DomainTargetUpdate:
+      type: object
+      description: Body for PATCH /admin/domains/{subdomain} — repoint an existing domain.
+      required: [targetService, targetPort]
+      properties:
+        targetService:
+          type: string
+        targetPort:
+          type: integer
 
     CheckoutConfig:
       type: object
