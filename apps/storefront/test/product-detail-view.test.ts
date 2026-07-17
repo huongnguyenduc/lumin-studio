@@ -6,6 +6,8 @@ import {
   canAddToCart,
   canAddToCartWithOptions,
   colorsForPart,
+  defaultFlatColorId,
+  defaultPartColors,
   partColorsForViewer,
   engraveLength,
   formatDimensions,
@@ -436,6 +438,35 @@ describe('allPartsSelected (mirrors the server per-part membership + availabilit
 
   it('true for a product with no parts (the flat lock applies instead)', () => {
     expect(allPartsSelected([], partColors, {})).toBe(true);
+  });
+});
+
+describe('defaultFlatColorId / defaultPartColors (2026-07-17 pre-selected colours)', () => {
+  it('picks the first AVAILABLE flat colour, null when none is selectable', () => {
+    expect(
+      defaultFlatColorId([
+        { id: 'out', available: false },
+        { id: 'ok', available: true },
+      ]),
+    ).toBe('ok');
+    expect(defaultFlatColorId([{ id: 'out', available: false }])).toBeNull();
+    expect(defaultFlatColorId([])).toBeNull();
+  });
+
+  it('picks the first available colour PER PART; a part with none stays absent', () => {
+    // p-shade's first colour is out of stock → skipped to c-shade-red; p-base gets its only colour.
+    expect(
+      defaultPartColors(parts, [
+        { id: 'c-shade-out', partId: 'p-shade', available: false },
+        { id: 'c-shade-red', partId: 'p-shade', available: true },
+        { id: 'c-base-red', partId: 'p-base', available: true },
+        { id: 'c-flat', partId: null, available: true },
+      ]),
+    ).toEqual({ 'p-shade': 'c-shade-red', 'p-base': 'c-base-red' });
+    // No selectable colour for p-base → absent (CTA stays locked via allPartsSelected).
+    expect(
+      defaultPartColors(parts, [{ id: 'c-shade-red', partId: 'p-shade', available: true }]),
+    ).toEqual({ 'p-shade': 'c-shade-red' });
   });
 });
 
