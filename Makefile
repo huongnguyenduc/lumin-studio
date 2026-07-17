@@ -13,7 +13,7 @@
 # Recipes target GNU Make 3.81 (macOS default): no .ONESHELL, so each target is
 # a single backslash-continued shell line.
 
-.PHONY: verify verify-go verify-rs sqlc oapi migrate seed-owner
+.PHONY: verify verify-go verify-rs sqlc oapi migrate migrate-wedding seed-owner
 
 ## verify: run every native-service gate
 verify: verify-go verify-rs
@@ -55,6 +55,10 @@ oapi:
 ## migrate: apply pending up migrations (needs DATABASE_URL + golang-migrate, ADR-028)
 migrate:
 	cd services/core-api && migrate -path db/migrations -database "$$DATABASE_URL" up
+
+## migrate-wedding: same, for the wedding site's SEPARATE `wedding` database
+migrate-wedding:
+	cd services/wedding-api && migrate -path db/migrations -database "$$DATABASE_URL" up
 
 ## seed-owner: create/rotate the first owner login credential (ADR-030 self-issued auth).
 ## Needs OWNER_EMAIL + OWNER_PASSWORD (OWNER_NAME optional) + DATABASE_URL. Idempotent on email.
