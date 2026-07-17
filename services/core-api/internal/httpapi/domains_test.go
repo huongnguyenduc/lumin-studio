@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -46,6 +47,23 @@ func TestCreateDomainHappyPath(t *testing.T) {
 	}
 }
 
+func TestCreateDomainAcceptsMultiLabelSubdomain(t *testing.T) {
+	srv := newDomainsServer(kube.NewFake())
+	resp, err := srv.CreateDomain(newOwnerCtx(), api.CreateDomainRequestObject{
+		Body: &api.DomainInput{Subdomain: "gianghieu.bh", TargetService: "wedding-web", TargetPort: 3000},
+	})
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	created, ok := resp.(api.CreateDomain201JSONResponse)
+	if !ok {
+		t.Fatalf("wrong response type: %T", resp)
+	}
+	if created.Subdomain != "gianghieu.bh" {
+		t.Fatalf("wrong body: %+v", created)
+	}
+}
+
 func TestCreateDomainRejectsReservedName(t *testing.T) {
 	srv := newDomainsServer(kube.NewFake())
 	resp, err := srv.CreateDomain(newOwnerCtx(), api.CreateDomainRequestObject{
@@ -66,12 +84,21 @@ func TestCreateDomainRejectsReservedName(t *testing.T) {
 func TestCreateDomainRejectsInvalidShape(t *testing.T) {
 	srv := newDomainsServer(kube.NewFake())
 	cases := map[string]api.DomainInput{
-		"uppercase":       {Subdomain: "Test-Web", TargetService: "svc", TargetPort: 80},
-		"leading hyphen":  {Subdomain: "-test", TargetService: "svc", TargetPort: 80},
-		"trailing hyphen": {Subdomain: "test-", TargetService: "svc", TargetPort: 80},
-		"empty":           {Subdomain: "", TargetService: "svc", TargetPort: 80},
-		"bad port":        {Subdomain: "test", TargetService: "svc", TargetPort: 0},
-		"port too big":    {Subdomain: "test", TargetService: "svc", TargetPort: 70000},
+		"uppercase":             {Subdomain: "Test-Web", TargetService: "svc", TargetPort: 80},
+		"leading hyphen":        {Subdomain: "-test", TargetService: "svc", TargetPort: 80},
+		"trailing hyphen":       {Subdomain: "test-", TargetService: "svc", TargetPort: 80},
+		"empty":                 {Subdomain: "", TargetService: "svc", TargetPort: 80},
+		"bad port":              {Subdomain: "test", TargetService: "svc", TargetPort: 0},
+		"port too big":          {Subdomain: "test", TargetService: "svc", TargetPort: 70000},
+		"leading dot":           {Subdomain: ".test", TargetService: "svc", TargetPort: 80},
+		"trailing dot":          {Subdomain: "test.", TargetService: "svc", TargetPort: 80},
+		"consecutive dots":      {Subdomain: "test..bh", TargetService: "svc", TargetPort: 80},
+		"label leading hyphen":  {Subdomain: "test.-bh", TargetService: "svc", TargetPort: 80},
+		"single label too long": {Subdomain: strings.Repeat("a", 64), TargetService: "svc", TargetPort: 80},
+		"too long overall": {
+			Subdomain:     strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63),
+			TargetService: "svc", TargetPort: 80,
+		},
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
