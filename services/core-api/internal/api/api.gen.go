@@ -742,10 +742,11 @@ type DomainTarget struct {
 	Ports []int  `json:"ports"`
 }
 
-// DomainTargetUpdate Body for PATCH /admin/domains/{subdomain} — repoint an existing domain.
+// DomainTargetUpdate Body for PATCH /admin/domains/{subdomain} — repoint an existing domain, optionally renaming it. `subdomain` is OPTIONAL: omitted or equal to the path subdomain repoints the existing host in place; a different value renames it (a new Ingress is created and the old one deleted — same validation as POST /admin/domains for the new name).
 type DomainTargetUpdate struct {
-	TargetPort    int    `json:"targetPort"`
-	TargetService string `json:"targetService"`
+	Subdomain     *string `json:"subdomain,omitempty"`
+	TargetPort    int     `json:"targetPort"`
+	TargetService string  `json:"targetService"`
 }
 
 // ErrorEnvelope The one error shape every endpoint returns (ADR-032). `code` is a stable machine code (e.g. NOT_FOUND, INVALID_EDGE, RBAC, REASON_REQUIRED, VALIDATION); `messageKey` is a next-intl key (the domain's Vietnamese prose is NEVER forwarded). `fields` maps a field path → messageKey for per-field validation errors.
@@ -2244,7 +2245,7 @@ type ServerInterface interface {
 	// Remove a provisioned customer-site subdomain (owner-only).
 	// (DELETE /admin/domains/{subdomain})
 	DeleteDomain(w http.ResponseWriter, r *http.Request, subdomain string)
-	// Change a provisioned subdomain's target service/port (owner-only).
+	// Change a provisioned domain's target service/port and/or rename it (owner-only).
 	// (PATCH /admin/domains/{subdomain})
 	UpdateDomain(w http.ResponseWriter, r *http.Request, subdomain string)
 	// List the filament palette with derived stock + weighted-average cost (admin-gated read).
@@ -2580,7 +2581,7 @@ func (_ Unimplemented) DeleteDomain(w http.ResponseWriter, r *http.Request, subd
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Change a provisioned subdomain's target service/port (owner-only).
+// Change a provisioned domain's target service/port and/or rename it (owner-only).
 // (PATCH /admin/domains/{subdomain})
 func (_ Unimplemented) UpdateDomain(w http.ResponseWriter, r *http.Request, subdomain string) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -6886,6 +6887,15 @@ func (response UpdateDomain404JSONResponse) VisitUpdateDomainResponse(w http.Res
 	return json.NewEncoder(w).Encode(response)
 }
 
+type UpdateDomain409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdateDomain409JSONResponse) VisitUpdateDomainResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type UpdateDomain503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response UpdateDomain503JSONResponse) VisitUpdateDomainResponse(w http.ResponseWriter) error {
@@ -10227,7 +10237,7 @@ type StrictServerInterface interface {
 	// Remove a provisioned customer-site subdomain (owner-only).
 	// (DELETE /admin/domains/{subdomain})
 	DeleteDomain(ctx context.Context, request DeleteDomainRequestObject) (DeleteDomainResponseObject, error)
-	// Change a provisioned subdomain's target service/port (owner-only).
+	// Change a provisioned domain's target service/port and/or rename it (owner-only).
 	// (PATCH /admin/domains/{subdomain})
 	UpdateDomain(ctx context.Context, request UpdateDomainRequestObject) (UpdateDomainResponseObject, error)
 	// List the filament palette with derived stock + weighted-average cost (admin-gated read).

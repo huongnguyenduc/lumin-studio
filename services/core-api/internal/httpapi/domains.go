@@ -95,20 +95,17 @@ func (s *Server) CreateDomain(ctx context.Context, req api.CreateDomainRequestOb
 		env.Fields = &fields
 		return api.CreateDomain400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(env)}, nil
 	}
-	if err := s.kube.CreateIngress(ctx, sub, svc, port, actor.ByUser); err != nil {
+	d, err := s.kube.CreateIngress(ctx, sub, svc, port, actor.ByUser)
+	if err != nil {
 		return nil, err // kube.ErrAlreadyExists → 409 (mapError)
 	}
-	return api.CreateDomain201JSONResponse(api.Domain{
-		Subdomain:     sub,
-		TargetService: svc,
-		TargetPort:    int(port),
-		CreatedBy:     actor.ByUser,
-	}), nil
+	return api.CreateDomain201JSONResponse(domainDTO(d)), nil
 }
 
 // UpdateDomain handles PATCH /admin/domains/{subdomain} (owner-only). Repoints the domain at a
-// different Service/port; the subdomain itself is not renamed (delete + recreate for that).
-// Unknown/unmanaged name → 404 (kube.UpdateIngress never touches an Ingress it didn't create).
+// different Service/port; if the body's subdomain differs from the path, also renames it (new
+// Ingress created, old one deleted — kube.UpdateIngress). Unknown/unmanaged name → 404; renaming
+// onto an already-provisioned name → 409 (kube.ErrAlreadyExists).
 func (s *Server) UpdateDomain(ctx context.Context, req api.UpdateDomainRequestObject) (api.UpdateDomainResponseObject, error) {
 	if err := assertOwner(ctx); err != nil {
 		return nil, err
@@ -119,15 +116,15 @@ func (s *Server) UpdateDomain(ctx context.Context, req api.UpdateDomainRequestOb
 	if req.Body == nil {
 		return api.UpdateDomain400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
 	}
-	svc, port, fields := cleanDomainTargetInput(*req.Body)
+	newSub, svc, port, fields := cleanDomainTargetInput(*req.Body)
 	if len(fields) > 0 {
 		env := envelope(codeValidation)
 		env.Fields = &fields
 		return api.UpdateDomain400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(env)}, nil
 	}
-	d, err := s.kube.UpdateIngress(ctx, req.Subdomain, svc, port)
+	d, err := s.kube.UpdateIngress(ctx, req.Subdomain, newSub, svc, port)
 	if err != nil {
-		return nil, err // kube.ErrNotFound → 404 (mapError)
+		return nil, err // kube.ErrNotFound → 404, kube.ErrAlreadyExists → 409 (mapError)
 	}
 	return api.UpdateDomain200JSONResponse(domainDTO(d)), nil
 }
@@ -151,12 +148,10 @@ func (s *Server) DeleteDomain(ctx context.Context, req api.DeleteDomainRequestOb
 // per-field error map (empty ⇒ valid). subdomain must be a valid single DNS label, lowercase, and
 // not a reserved name; targetService/targetPort are validated by cleanDomainTarget.
 func cleanDomainInput(in api.DomainInput) (subdomain, targetService string, targetPort int32, fields map[string]string) {
-	sub := strings.TrimSpace(in.Subdomain)
 	svc, port, fields := cleanDomainTarget(in.TargetService, in.TargetPort)
-	if !subdomainRe.MatchString(sub) {
-		fields["subdomain"] = msgKey(codeValidation)
-	} else if _, reserved := reservedSubdomains[sub]; reserved {
-		fields["subdomain"] = msgKey(codeValidation)
+	sub, subFields := cleanSubdomain(in.Subdomain)
+	for k, v := range subFields {
+		fields[k] = v
 	}
 	if len(fields) > 0 {
 		return "", "", 0, fields
@@ -164,10 +159,35 @@ func cleanDomainInput(in api.DomainInput) (subdomain, targetService string, targ
 	return sub, svc, port, nil
 }
 
-// cleanDomainTargetInput trims + validates an update-domain body (no subdomain field — the
-// subdomain is not renamed via PATCH).
-func cleanDomainTargetInput(in api.DomainTargetUpdate) (targetService string, targetPort int32, fields map[string]string) {
-	return cleanDomainTarget(in.TargetService, in.TargetPort)
+// cleanDomainTargetInput trims + validates an update-domain body. `newSubdomain` is "" when the
+// body omits `subdomain` or repeats the path value — the caller (kube.UpdateIngress) treats that
+// as "no rename"; a non-empty, different value is validated with the same rules as create.
+func cleanDomainTargetInput(in api.DomainTargetUpdate) (newSubdomain, targetService string, targetPort int32, fields map[string]string) {
+	svc, port, fields := cleanDomainTarget(in.TargetService, in.TargetPort)
+	if in.Subdomain != nil {
+		sub, subFields := cleanSubdomain(*in.Subdomain)
+		for k, v := range subFields {
+			fields[k] = v
+		}
+		newSubdomain = sub
+	}
+	if len(fields) > 0 {
+		return "", "", 0, fields
+	}
+	return newSubdomain, svc, port, nil
+}
+
+// cleanSubdomain trims + validates a subdomain label — a valid single DNS label, lowercase, not a
+// reserved name. Shared by create and the optional rename field on update.
+func cleanSubdomain(raw string) (sub string, fields map[string]string) {
+	sub = strings.TrimSpace(raw)
+	fields = map[string]string{}
+	if !subdomainRe.MatchString(sub) {
+		fields["subdomain"] = msgKey(codeValidation)
+	} else if _, reserved := reservedSubdomains[sub]; reserved {
+		fields["subdomain"] = msgKey(codeValidation)
+	}
+	return sub, fields
 }
 
 // cleanDomainTarget validates the service/port pair shared by create and update.

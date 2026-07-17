@@ -853,8 +853,8 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Change a provisioned subdomain's target service/port (owner-only).
-         * @description Repoints the backing Ingress at a different Service/port — the subdomain itself is not renamed (delete + recreate for that). Refuses (404) if the name has no managed Ingress.
+         * Change a provisioned domain's target service/port and/or rename it (owner-only).
+         * @description Repoints the backing Ingress at a different Service/port. If the body's `subdomain` differs from the path, also renames it (new Ingress created, old one deleted). Refuses (404) if the path subdomain has no managed Ingress; a rename to an already-provisioned name is a 409.
          */
         patch: operations["updateDomain"];
         trace?: never;
@@ -2689,8 +2689,9 @@ export interface components {
             name: string;
             ports: number[];
         };
-        /** @description Body for PATCH /admin/domains/{subdomain} — repoint an existing domain. */
+        /** @description Body for PATCH /admin/domains/{subdomain} — repoint an existing domain, optionally renaming it. `subdomain` is OPTIONAL: omitted or equal to the path subdomain repoints the existing host in place; a different value renames it (a new Ingress is created and the old one deleted — same validation as POST /admin/domains for the new name). */
         DomainTargetUpdate: {
+            subdomain?: string;
             targetService: string;
             targetPort: number;
         };
@@ -4506,6 +4507,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             503: components["responses"]["ServiceUnavailable"];
         };
     };

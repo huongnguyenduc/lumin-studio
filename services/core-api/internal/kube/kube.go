@@ -58,8 +58,11 @@ type ServiceTarget struct {
 // httpapi which defines its own fake against this interface — kept minimal on purpose).
 type Client interface {
 	ListIngresses(ctx context.Context) ([]Domain, error)
-	CreateIngress(ctx context.Context, subdomain, targetService string, targetPort int32, createdBy string) error
-	UpdateIngress(ctx context.Context, subdomain, targetService string, targetPort int32) (Domain, error)
+	CreateIngress(ctx context.Context, subdomain, targetService string, targetPort int32, createdBy string) (Domain, error)
+	// UpdateIngress repoints subdomain at targetService/targetPort. newSubdomain, if non-empty and
+	// different from subdomain, also renames it (new Ingress created, old one deleted) —
+	// newSubdomain must not already be provisioned (ErrAlreadyExists).
+	UpdateIngress(ctx context.Context, subdomain, newSubdomain, targetService string, targetPort int32) (Domain, error)
 	DeleteIngress(ctx context.Context, subdomain string) error
 	ListServices(ctx context.Context) ([]ServiceTarget, error)
 }
@@ -134,7 +137,7 @@ func trimHostSuffix(host string) (string, bool) {
 	return host[:len(host)-len(hostSuffix)], true
 }
 
-func (c *client) CreateIngress(ctx context.Context, subdomain, targetService string, targetPort int32, createdBy string) error {
+func (c *client) CreateIngress(ctx context.Context, subdomain, targetService string, targetPort int32, createdBy string) (Domain, error) {
 	pathType := networkingv1.PathTypePrefix
 	ing := &networkingv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
@@ -167,23 +170,29 @@ func (c *client) CreateIngress(ctx context.Context, subdomain, targetService str
 			}},
 		},
 	}
-	_, err := c.cs.NetworkingV1().Ingresses(Namespace).Create(ctx, ing, metav1.CreateOptions{})
+	created, err := c.cs.NetworkingV1().Ingresses(Namespace).Create(ctx, ing, metav1.CreateOptions{})
 	if apierrors.IsAlreadyExists(err) {
-		return fmt.Errorf("%w: domain already exists", ErrAlreadyExists)
+		return Domain{}, fmt.Errorf("%w: domain already exists", ErrAlreadyExists)
 	}
 	if err != nil {
-		return fmt.Errorf("kube: create ingress: %w", err)
+		return Domain{}, fmt.Errorf("kube: create ingress: %w", err)
 	}
-	return nil
+	d, ok := domainFromIngress(created)
+	if !ok {
+		return Domain{}, fmt.Errorf("kube: create ingress: unexpected shape after create")
+	}
+	return d, nil
 }
 
 // ErrAlreadyExists is returned by CreateIngress when the subdomain is already provisioned.
 var ErrAlreadyExists = fmt.Errorf("kube: domain already exists")
 
-// UpdateIngress repoints an existing managed Ingress at a different Service/port — the subdomain
-// (host) itself is not renamed; a rename is delete + recreate. Refuses (ErrNotFound) an Ingress
-// that isn't managed by this package, mirroring DeleteIngress.
-func (c *client) UpdateIngress(ctx context.Context, subdomain, targetService string, targetPort int32) (Domain, error) {
+// UpdateIngress repoints an existing managed Ingress at a different Service/port, and — when
+// newSubdomain is non-empty and differs from subdomain — renames it by creating a new Ingress
+// and deleting the old one (there is no in-place host rename in the k8s API). Refuses
+// (ErrNotFound) an Ingress that isn't managed by this package, mirroring DeleteIngress; a rename
+// to an already-provisioned name is ErrAlreadyExists.
+func (c *client) UpdateIngress(ctx context.Context, subdomain, newSubdomain, targetService string, targetPort int32) (Domain, error) {
 	name := ingressName(subdomain)
 	ing, err := c.cs.NetworkingV1().Ingresses(Namespace).Get(ctx, name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
@@ -198,6 +207,21 @@ func (c *client) UpdateIngress(ctx context.Context, subdomain, targetService str
 	if len(ing.Spec.Rules) == 0 || ing.Spec.Rules[0].HTTP == nil || len(ing.Spec.Rules[0].HTTP.Paths) == 0 {
 		return Domain{}, ErrNotFound
 	}
+
+	if newSubdomain != "" && newSubdomain != subdomain {
+		createdBy := ing.Annotations[createdByAnnoKey]
+		d, err := c.CreateIngress(ctx, newSubdomain, targetService, targetPort, createdBy)
+		if err != nil {
+			return Domain{}, err // ErrAlreadyExists if newSubdomain is already provisioned
+		}
+		if err := c.cs.NetworkingV1().Ingresses(Namespace).Delete(ctx, name, metav1.DeleteOptions{}); err != nil {
+			// The rename's new Ingress is already live; surface the failure so the caller can retry
+			// the delete (DeleteIngress on the OLD name) rather than silently leaving a duplicate.
+			return Domain{}, fmt.Errorf("kube: rename: created %q but failed to delete old %q: %w", newSubdomain, subdomain, err)
+		}
+		return d, nil
+	}
+
 	ing.Spec.Rules[0].HTTP.Paths[0].Backend.Service = &networkingv1.IngressServiceBackend{
 		Name: targetService,
 		Port: networkingv1.ServiceBackendPort{Number: targetPort},

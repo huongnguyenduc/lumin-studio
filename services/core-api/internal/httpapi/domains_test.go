@@ -121,6 +121,88 @@ func TestUpdateDomainHappyPath(t *testing.T) {
 	}
 }
 
+func strPtr(s string) *string { return &s }
+
+func TestUpdateDomainRenameHappyPath(t *testing.T) {
+	srv := newDomainsServer(kube.NewFake())
+	if _, err := srv.CreateDomain(newOwnerCtx(), api.CreateDomainRequestObject{
+		Body: &api.DomainInput{Subdomain: "test-web", TargetService: "wedding-web", TargetPort: 3000},
+	}); err != nil {
+		t.Fatalf("create: unexpected err: %v", err)
+	}
+	resp, err := srv.UpdateDomain(newOwnerCtx(), api.UpdateDomainRequestObject{
+		Subdomain: "test-web",
+		Body: &api.DomainTargetUpdate{
+			Subdomain: strPtr("test-web-2"), TargetService: "wedding-web", TargetPort: 3000,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	renamed, ok := resp.(api.UpdateDomain200JSONResponse)
+	if !ok {
+		t.Fatalf("wrong response type: %T", resp)
+	}
+	if renamed.Subdomain != "test-web-2" {
+		t.Fatalf("wrong body: %+v", renamed)
+	}
+	// The old name must no longer resolve — rename deletes the old Ingress.
+	if _, err := srv.DeleteDomain(newOwnerCtx(), api.DeleteDomainRequestObject{Subdomain: "test-web"}); !errors.Is(err, kube.ErrNotFound) {
+		t.Fatalf("old subdomain still present after rename: err = %v", err)
+	}
+	if _, err := srv.DeleteDomain(newOwnerCtx(), api.DeleteDomainRequestObject{Subdomain: "test-web-2"}); err != nil {
+		t.Fatalf("new subdomain missing after rename: err = %v", err)
+	}
+}
+
+func TestUpdateDomainRenameOntoExistingConflicts(t *testing.T) {
+	srv := newDomainsServer(kube.NewFake())
+	if _, err := srv.CreateDomain(newOwnerCtx(), api.CreateDomainRequestObject{
+		Body: &api.DomainInput{Subdomain: "test-web", TargetService: "wedding-web", TargetPort: 3000},
+	}); err != nil {
+		t.Fatalf("create test-web: unexpected err: %v", err)
+	}
+	if _, err := srv.CreateDomain(newOwnerCtx(), api.CreateDomainRequestObject{
+		Body: &api.DomainInput{Subdomain: "taken", TargetService: "storefront", TargetPort: 3000},
+	}); err != nil {
+		t.Fatalf("create taken: unexpected err: %v", err)
+	}
+	_, err := srv.UpdateDomain(newOwnerCtx(), api.UpdateDomainRequestObject{
+		Subdomain: "test-web",
+		Body: &api.DomainTargetUpdate{
+			Subdomain: strPtr("taken"), TargetService: "wedding-web", TargetPort: 3000,
+		},
+	})
+	if !errors.Is(err, kube.ErrAlreadyExists) {
+		t.Fatalf("err = %v, want kube.ErrAlreadyExists", err)
+	}
+}
+
+func TestUpdateDomainRenameRejectsReservedName(t *testing.T) {
+	srv := newDomainsServer(kube.NewFake())
+	if _, err := srv.CreateDomain(newOwnerCtx(), api.CreateDomainRequestObject{
+		Body: &api.DomainInput{Subdomain: "test-web", TargetService: "wedding-web", TargetPort: 3000},
+	}); err != nil {
+		t.Fatalf("create: unexpected err: %v", err)
+	}
+	resp, err := srv.UpdateDomain(newOwnerCtx(), api.UpdateDomainRequestObject{
+		Subdomain: "test-web",
+		Body: &api.DomainTargetUpdate{
+			Subdomain: strPtr("admin"), TargetService: "wedding-web", TargetPort: 3000,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected transport err: %v", err)
+	}
+	bad, ok := resp.(api.UpdateDomain400JSONResponse)
+	if !ok {
+		t.Fatalf("wrong response type: %T", resp)
+	}
+	if bad.Fields == nil || (*bad.Fields)["subdomain"] == "" {
+		t.Fatalf("expected subdomain field error, got %+v", bad)
+	}
+}
+
 func TestUpdateDomainUnmanagedRefused(t *testing.T) {
 	srv := newDomainsServer(kube.NewFake())
 	_, err := srv.UpdateDomain(newOwnerCtx(), api.UpdateDomainRequestObject{

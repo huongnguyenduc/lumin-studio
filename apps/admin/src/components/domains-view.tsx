@@ -16,8 +16,8 @@ type DomainTarget = components['schemas']['DomainTarget'];
 // prod namespace — there is no DB table, so create/update/delete talk straight to core-api's
 // k8s-backed endpoints. router.refresh() after each write re-reads the RSC list. DNS itself (the
 // one-time wildcard *.luminstudio.vn record) is a manual, one-time Cloudflare step — not part of
-// this screen. Renaming a subdomain is not supported (delete + recreate); only its target can be
-// edited in place.
+// this screen. The edit dialog can also rename a subdomain (server creates the new Ingress and
+// deletes the old one — no in-place host rename in the k8s API), not just repoint its target.
 
 /** Dialog state: closed, adding a new domain, or editing an existing one's target. */
 type Editing = null | { mode: 'add' } | { mode: 'edit'; domain: Domain };
@@ -207,19 +207,22 @@ function DomainFormDialog({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const canSubmit =
-    !pending &&
-    (mode === 'edit' || subdomain.trim() !== '') &&
-    targetService !== '' &&
-    targetPort > 0;
+  const canSubmit = !pending && subdomain.trim() !== '' && targetService !== '' && targetPort > 0;
 
   function submit() {
     setError(null);
+    const sub = subdomain.trim();
     startTransition(async () => {
       const res =
         mode === 'edit' && domain
-          ? await updateDomain(domain.subdomain, { targetService, targetPort })
-          : await createDomain({ subdomain: subdomain.trim(), targetService, targetPort });
+          ? await updateDomain(domain.subdomain, {
+              // Only send `subdomain` when it actually changed — omitting it on a same-value
+              // resubmit keeps the request a plain target repoint, not a no-op rename.
+              subdomain: sub !== domain.subdomain ? sub : undefined,
+              targetService,
+              targetPort,
+            })
+          : await createDomain({ subdomain: sub, targetService, targetPort });
       if (res.ok) {
         router.refresh();
         onClose();
@@ -247,23 +250,14 @@ function DomainFormDialog({
           {t(mode === 'edit' ? 'edit' : 'add')}
         </h2>
 
-        {mode === 'add' ? (
-          <Input
-            label={t('subdomainLabel')}
-            value={subdomain}
-            onChange={(e) => setSubdomain(e.target.value.trim().toLowerCase())}
-            placeholder={t('subdomainPlaceholder')}
-            hint={t('subdomainHint')}
-            autoComplete="off"
-          />
-        ) : (
-          <div className="flex flex-col gap-1.5">
-            <span className="font-display text-sm font-medium text-text-strong">
-              {t('subdomainLabel')}
-            </span>
-            <p className="text-sm text-text-muted">{t('hostFormat', { subdomain })}</p>
-          </div>
-        )}
+        <Input
+          label={t('subdomainLabel')}
+          value={subdomain}
+          onChange={(e) => setSubdomain(e.target.value.trim().toLowerCase())}
+          placeholder={t('subdomainPlaceholder')}
+          hint={mode === 'add' ? t('subdomainHint') : t('subdomainRenameHint')}
+          autoComplete="off"
+        />
 
         <label className="flex flex-col gap-1.5">
           <span className="font-display text-sm font-medium text-text-strong">

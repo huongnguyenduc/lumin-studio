@@ -31,29 +31,41 @@ func (f *Fake) ListIngresses(_ context.Context) ([]Domain, error) {
 	return out, nil
 }
 
-func (f *Fake) CreateIngress(_ context.Context, subdomain, targetService string, targetPort int32, createdBy string) error {
+func (f *Fake) CreateIngress(_ context.Context, subdomain, targetService string, targetPort int32, createdBy string) (Domain, error) {
 	if f.Err != nil {
-		return f.Err
+		return Domain{}, f.Err
 	}
 	if _, exists := f.Domains[subdomain]; exists {
-		return ErrAlreadyExists
+		return Domain{}, ErrAlreadyExists
 	}
-	f.Domains[subdomain] = Domain{
+	d := Domain{
 		Subdomain:     subdomain,
 		TargetService: targetService,
 		TargetPort:    targetPort,
 		CreatedBy:     createdBy,
 	}
-	return nil
+	f.Domains[subdomain] = d
+	return d, nil
 }
 
-func (f *Fake) UpdateIngress(_ context.Context, subdomain, targetService string, targetPort int32) (Domain, error) {
+func (f *Fake) UpdateIngress(_ context.Context, subdomain, newSubdomain, targetService string, targetPort int32) (Domain, error) {
 	if f.Err != nil {
 		return Domain{}, f.Err
 	}
 	d, exists := f.Domains[subdomain]
 	if !exists {
 		return Domain{}, ErrNotFound
+	}
+	if newSubdomain != "" && newSubdomain != subdomain {
+		if _, taken := f.Domains[newSubdomain]; taken {
+			return Domain{}, ErrAlreadyExists
+		}
+		delete(f.Domains, subdomain)
+		d.Subdomain = newSubdomain
+		d.TargetService = targetService
+		d.TargetPort = targetPort
+		f.Domains[newSubdomain] = d
+		return d, nil
 	}
 	d.TargetService = targetService
 	d.TargetPort = targetPort
