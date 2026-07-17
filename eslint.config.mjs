@@ -22,6 +22,8 @@ export default tseslint.config(
       // openapi-typescript output (packages/api-client) — machine-generated, guarded by its
       // own stale-check test; not ours to lint (ADR-031).
       '**/*.gen.ts',
+      // Design-reference prototype (HTML handoff + mock JS, like designs/) — not production code.
+      'design_handoff_wedding_invitation/**',
     ],
   },
   js.configs.recommended,

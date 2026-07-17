@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;family=Great+Vibes&amp;display=swap" rel="stylesheet">
+<style>
+body { margin: 0; background: rgb(236,229,222); }
+a { color: rgb(120,105,93); text-decoration: none; }
+a:hover { color: rgb(89,76,66); }
+@keyframes wishDrift { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+</style>
+</helmet>
+<section style="padding: 48px; font-family: 'Playfair Display', ui-serif, Georgia, serif;">
+  <div style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 6px;">
+    <span style="font-weight: 600; font-size: 18px; color: rgb(120,105,93);">Mục "Lời chúc của khách mời" — 3 phương án</span>
+    <span style="font-size: 13px; color: rgb(176,157,144);">Cùng ngôn ngữ thiết kế của thiệp; phương án đang dùng trên thiệp có thể đổi bằng tweak "wishesStyle".</span>
+  </div>
+  <div style="display: flex; gap: 40px; align-items: flex-start; flex-wrap: wrap;">
+
+    <div id="1a" style="position: relative; width: 393px; flex-shrink: 0;">
+      <div style="position: absolute; top: -30px; left: 0; display: flex; align-items: baseline; gap: 10px;"><a href="#1a" style="padding: 2px 9px; border-radius: 12px; background: rgb(120,105,93); color: rgb(255,251,248); font-size: 12px; font-weight: 600;">1a</a><span style="font-size: 13px; color: rgb(120,105,93);">Sổ lưu bút — thư xếp chồng</span></div>
+      <div style="background: rgb(255,251,248); box-shadow: 0 0 40px rgba(101,101,101,0.2); padding: 52px 24px 56px; display: flex; flex-direction: column; align-items: center;">
+        <span style="font-family: 'Great Vibes', cursive; font-size: 27px; color: rgb(120,105,93);">Lời chúc gửi trao</span>
+        <span style="margin-top: 8px; font-weight: 600; font-size: 10px; letter-spacing: 0.28em; text-transform: uppercase; color: rgb(176,157,144);">Từ những người thương yêu</span>
+        <div style="margin-top: 26px; align-self: stretch; display: flex; flex-direction: column; gap: 14px;">
+          <div style="background: rgb(255,251,248); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144), 0 2px 8px rgba(101,101,101,0.08); padding: 18px 20px 14px; display: flex; flex-direction: column; gap: 10px;">
+            <span style="font-style: italic; font-size: 12px; line-height: 1.7; color: rgb(120,105,93);">“Chúc hai em trăm năm hạnh phúc, sớm có tin vui. Cả nhà mình sẽ có mặt thật sớm!”</span>
+            <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px;">
+              <span style="font-family: 'Great Vibes', cursive; font-size: 18px; color: rgb(203,77,28);">Anh Chị Phúc – Ngân</span>
+              <span style="font-style: italic; font-size: 10px; color: rgb(186,170,159);">7 giờ trước</span>
+            </div>
+          </div>
+          <div style="background: rgb(255,251,248); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144), 0 2px 8px rgba(101,101,101,0.08); padding: 18px 20px 14px; display: flex; flex-direction: column; gap: 10px;">
+            <span style="font-style: italic; font-size: 12px; line-height: 1.7; color: rgb(120,105,93);">“Chị Giang xinh nhất hôm nay luôn! Chúc anh chị mãi ngọt ngào như ngày đầu.”</span>
+            <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px;">
+              <span style="font-family: 'Great Vibes', cursive; font-size: 18px; color: rgb(203,77,28);">Thảo Vy</span>
+              <span style="font-style: italic; font-size: 10px; color: rgb(186,170,159);">1 ngày trước</span>
+            </div>
+          </div>
+          <div style="background: rgb(255,251,248); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144), 0 2px 8px rgba(101,101,101,0.08); padding: 18px 20px 14px; display: flex; flex-direction: column; gap: 10px;">
+            <span style="font-style: italic; font-size: 12px; line-height: 1.7; color: rgb(120,105,93);">“Chúc mừng Giang &amp; Hiếu! Mong hai bạn luôn nắm chặt tay nhau đi qua mọi mùa yêu thương.”</span>
+            <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px;">
+              <span style="font-family: 'Great Vibes', cursive; font-size: 18px; color: rgb(203,77,28);">Minh Anh</span>
+              <span style="font-style: italic; font-size: 10px; color: rgb(186,170,159);">5 ngày trước</span>
+            </div>
+          </div>
+          <div style="align-self: center; margin-top: 4px; padding: 6px 16px; border-radius: 22px; box-shadow: 0 0 0 0.5px rgb(176,157,144); font-size: 11px; color: rgb(120,105,93); cursor: pointer;">Xem thêm lời chúc</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="1b" style="position: relative; width: 393px; flex-shrink: 0;">
+      <div style="position: absolute; top: -30px; left: 0; display: flex; align-items: baseline; gap: 10px;"><a href="#1b" style="padding: 2px 9px; border-radius: 12px; background: rgb(120,105,93); color: rgb(255,251,248); font-size: 12px; font-weight: 600;">1b</a><span style="font-size: 13px; color: rgb(120,105,93);">Dây thư — trôi nhẹ ngang, dừng khi chạm</span></div>
+      <div style="background: rgb(249,241,232); box-shadow: 0 0 40px rgba(101,101,101,0.2); padding: 52px 0 56px; display: flex; flex-direction: column; align-items: center; overflow: hidden;">
+        <span style="font-family: 'Great Vibes', cursive; font-size: 27px; color: rgb(120,105,93);">Lời chúc gửi trao</span>
+        <span style="margin-top: 8px; font-weight: 600; font-size: 10px; letter-spacing: 0.28em; text-transform: uppercase; color: rgb(176,157,144);">Từ những người thương yêu</span>
+        <div style="margin-top: 30px; width: 393px; overflow: hidden; position: relative;">
+          <div style="position: absolute; top: 14px; left: 0; right: 0; height: 0.5px; background: rgb(176,157,144);"></div>
+          <div style="display: flex; gap: 14px; width: max-content; animation: wishDrift 36s linear infinite; padding: 26px 0 6px;" style-hover="animation-play-state: paused;">
+            <div style="width: 200px; flex-shrink: 0; box-sizing: border-box; position: relative; background: rgb(255,251,248); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144), 0 3px 10px rgba(101,101,101,0.12); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; transform: rotate(-1.2deg);">
+              <div style="position: absolute; top: -14px; left: 50%; width: 0.5px; height: 14px; background: rgb(176,157,144);"></div>
+              <div style="position: absolute; top: -17px; left: calc(50% - 3px); width: 6px; height: 6px; border-radius: 3px; background: rgb(176,157,144);"></div>
+              <span style="font-style: italic; font-size: 11px; line-height: 1.65; color: rgb(120,105,93);">“Chúc hai em trăm năm hạnh phúc, sớm có tin vui!”</span>
+              <span style="font-family: 'Great Vibes', cursive; font-size: 16px; color: rgb(203,77,28);">Anh Chị Phúc – Ngân</span>
+            </div>
+            <div style="width: 200px; flex-shrink: 0; box-sizing: border-box; position: relative; background: rgb(255,251,248); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144), 0 3px 10px rgba(101,101,101,0.12); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; transform: rotate(1.4deg); margin-top: 10px;">
+              <div style="position: absolute; top: -24px; left: 50%; width: 0.5px; height: 24px; background: rgb(176,157,144);"></div>
+              <div style="position: absolute; top: -27px; left: calc(50% - 3px); width: 6px; height: 6px; border-radius: 3px; background: rgb(176,157,144);"></div>
+              <span style="font-style: italic; font-size: 11px; line-height: 1.65; color: rgb(120,105,93);">“Chị Giang xinh nhất hôm nay luôn! Mãi ngọt ngào nhé.”</span>
+              <span style="font-family: 'Great Vibes', cursive; font-size: 16px; color: rgb(203,77,28);">Thảo Vy</span>
+            </div>
+            <div style="width: 200px; flex-shrink: 0; box-sizing: border-box; position: relative; background: rgb(255,251,248); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144), 0 3px 10px rgba(101,101,101,0.12); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; transform: rotate(-0.8deg);">
+              <div style="position: absolute; top: -14px; left: 50%; width: 0.5px; height: 14px; background: rgb(176,157,144);"></div>
+              <div style="position: absolute; top: -17px; left: calc(50% - 3px); width: 6px; height: 6px; border-radius: 3px; background: rgb(176,157,144);"></div>
+              <span style="font-style: italic; font-size: 11px; line-height: 1.65; color: rgb(120,105,93);">“Mong hai bạn luôn nắm chặt tay nhau đi qua mọi mùa yêu thương.”</span>
+              <span style="font-family: 'Great Vibes', cursive; font-size: 16px; color: rgb(203,77,28);">Minh Anh</span>
+            </div>
+            <div style="width: 200px; flex-shrink: 0; box-sizing: border-box; position: relative; background: rgb(255,251,248); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144), 0 3px 10px rgba(101,101,101,0.12); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; transform: rotate(-1.2deg);">
+              <div style="position: absolute; top: -14px; left: 50%; width: 0.5px; height: 14px; background: rgb(176,157,144);"></div>
+              <div style="position: absolute; top: -17px; left: calc(50% - 3px); width: 6px; height: 6px; border-radius: 3px; background: rgb(176,157,144);"></div>
+              <span style="font-style: italic; font-size: 11px; line-height: 1.65; color: rgb(120,105,93);">“Chúc hai em trăm năm hạnh phúc, sớm có tin vui!”</span>
+              <span style="font-family: 'Great Vibes', cursive; font-size: 16px; color: rgb(203,77,28);">Anh Chị Phúc – Ngân</span>
+            </div>
+            <div style="width: 200px; flex-shrink: 0; box-sizing: border-box; position: relative; background: rgb(255,251,248); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144), 0 3px 10px rgba(101,101,101,0.12); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; transform: rotate(1.4deg); margin-top: 10px;">
+              <div style="position: absolute; top: -24px; left: 50%; width: 0.5px; height: 24px; background: rgb(176,157,144);"></div>
+              <div style="position: absolute; top: -27px; left: calc(50% - 3px); width: 6px; height: 6px; border-radius: 3px; background: rgb(176,157,144);"></div>
+              <span style="font-style: italic; font-size: 11px; line-height: 1.65; color: rgb(120,105,93);">“Chị Giang xinh nhất hôm nay luôn! Mãi ngọt ngào nhé.”</span>
+              <span style="font-family: 'Great Vibes', cursive; font-size: 16px; color: rgb(203,77,28);">Thảo Vy</span>
+            </div>
+            <div style="width: 200px; flex-shrink: 0; box-sizing: border-box; position: relative; background: rgb(255,251,248); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144), 0 3px 10px rgba(101,101,101,0.12); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; transform: rotate(-0.8deg);">
+              <div style="position: absolute; top: -14px; left: 50%; width: 0.5px; height: 14px; background: rgb(176,157,144);"></div>
+              <div style="position: absolute; top: -17px; left: calc(50% - 3px); width: 6px; height: 6px; border-radius: 3px; background: rgb(176,157,144);"></div>
+              <span style="font-style: italic; font-size: 11px; line-height: 1.65; color: rgb(120,105,93);">“Mong hai bạn luôn nắm chặt tay nhau đi qua mọi mùa yêu thương.”</span>
+              <span style="font-family: 'Great Vibes', cursive; font-size: 16px; color: rgb(203,77,28);">Minh Anh</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="1c" style="position: relative; width: 393px; flex-shrink: 0;">
+      <div style="position: absolute; top: -30px; left: 0; display: flex; align-items: baseline; gap: 10px;"><a href="#1c" style="padding: 2px 9px; border-radius: 12px; background: rgb(120,105,93); color: rgb(255,251,248); font-size: 12px; font-weight: 600;">1c</a><span style="font-size: 13px; color: rgb(120,105,93);">Phong thư — khảm hai cột</span></div>
+      <div style="background: rgb(255,251,248); box-shadow: 0 0 40px rgba(101,101,101,0.2); padding: 52px 24px 56px; display: flex; flex-direction: column; align-items: center;">
+        <span style="font-family: 'Great Vibes', cursive; font-size: 27px; color: rgb(120,105,93);">Lời chúc gửi trao</span>
+        <span style="margin-top: 8px; font-weight: 600; font-size: 10px; letter-spacing: 0.28em; text-transform: uppercase; color: rgb(176,157,144);">Từ những người thương yêu</span>
+        <div style="margin-top: 26px; align-self: stretch; column-count: 2; column-gap: 12px;">
+          <div style="break-inside: avoid; margin-bottom: 12px; background: rgb(255,251,248); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 22px; line-height: 0.6; color: rgb(203,77,28); font-weight: 600;">“</span>
+            <span style="font-style: italic; font-size: 11px; line-height: 1.65; color: rgb(120,105,93);">Chúc hai em trăm năm hạnh phúc, sớm có tin vui. Cả nhà mình sẽ có mặt thật sớm!</span>
+            <span style="margin-top: 4px; font-family: 'Great Vibes', cursive; font-size: 15px; color: rgb(120,105,93); text-align: right;">Anh Chị Phúc – Ngân</span>
+          </div>
+          <div style="break-inside: avoid; margin-bottom: 12px; background: rgb(249,241,232); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 6px; position: relative;">
+            <img src="assets/stamp.png" alt="" style="position: absolute; top: -12px; right: -8px; width: 34px; height: 34px; filter: drop-shadow(1px 2px 4px rgba(101,101,101,0.3));">
+            <span style="font-size: 22px; line-height: 0.6; color: rgb(203,77,28); font-weight: 600;">“</span>
+            <span style="font-style: italic; font-size: 11px; line-height: 1.65; color: rgb(120,105,93);">Chị Giang xinh nhất hôm nay luôn! Chúc anh chị mãi ngọt ngào như ngày đầu.</span>
+            <span style="margin-top: 4px; font-family: 'Great Vibes', cursive; font-size: 15px; color: rgb(120,105,93); text-align: right;">Thảo Vy</span>
+          </div>
+          <div style="break-inside: avoid; margin-bottom: 12px; background: rgb(249,241,232); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 22px; line-height: 0.6; color: rgb(203,77,28); font-weight: 600;">“</span>
+            <span style="font-style: italic; font-size: 11px; line-height: 1.65; color: rgb(120,105,93);">Cô chúc hai con yêu thương, nhường nhịn nhau, xây tổ ấm thật bình yên nhé.</span>
+            <span style="margin-top: 4px; font-family: 'Great Vibes', cursive; font-size: 15px; color: rgb(120,105,93); text-align: right;">Cô Lan</span>
+          </div>
+          <div style="break-inside: avoid; margin-bottom: 12px; background: rgb(255,251,248); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 22px; line-height: 0.6; color: rgb(203,77,28); font-weight: 600;">“</span>
+            <span style="font-style: italic; font-size: 11px; line-height: 1.65; color: rgb(120,105,93);">Chúc mừng Giang &amp; Hiếu! Mong hai bạn luôn nắm chặt tay nhau đi qua mọi mùa yêu thương.</span>
+            <span style="margin-top: 4px; font-family: 'Great Vibes', cursive; font-size: 15px; color: rgb(120,105,93); text-align: right;">Minh Anh</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</x-dc>
+</body>
+</html>

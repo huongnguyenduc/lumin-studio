@@ -30,3 +30,6 @@ CLAUDE.md
 AGENTS.md
 Cat Peek - Behavior Spec.md
 .gitignore
+
+# Design-reference prototype (handoff HTML/JS/assets) — not code we format.
+/design_handoff_wedding_invitation/

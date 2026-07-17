@@ -20,6 +20,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.js
 COPY apps/storefront/package.json apps/storefront/
 COPY apps/admin/package.json apps/admin/
 COPY apps/extension/package.json apps/extension/
+COPY apps/wedding-web/package.json apps/wedding-web/
 COPY packages/api-client/package.json packages/api-client/
 COPY packages/core/package.json packages/core/
 COPY packages/tokens/package.json packages/tokens/
