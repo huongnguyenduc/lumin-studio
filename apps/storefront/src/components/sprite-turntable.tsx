@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react';
 import { SPRITE_COLS, SPRITE_FRAMES, SPRITE_ROWS, spriteFrameCss } from '@/lib/product-view';
 
-// Per-frame dwell for the turntable cycle. ponytail: tuned blind — the feel needs real sprites on the box;
-// ~11fps reads the 360° "rock" without churn. Bump/trim once real assets land (calibration knob).
-const FRAME_MS = 90;
+// Per-frame dwell for the turntable cycle. 65ms × 46 ping-pong steps ≈ 3s — one full gentle
+// there-and-back that lands on frame 0 right as CardCover's 3s play window hands back to the photo.
+// ponytail: tuned blind — the feel needs real sprites on the box; calibration knob.
+const FRAME_MS = 65;
 
 /** True when the OS asks for reduced motion — gates the JS frame loop (the global CSS rule can't stop a
  *  setInterval). Client-only; starts false so SSR/first paint match, then syncs after mount. */
@@ -64,6 +65,9 @@ export function SpriteTurntable({
     <div
       role="img"
       aria-label={alt}
+      // While idle the sprite sits invisible (opacity-0) on top of the real photo, which has its own
+      // alt — hide it from AT then so a screen reader hears ONE image per tile, not two.
+      aria-hidden={!active}
       className={className}
       style={{
         backgroundImage: `url("${src}")`,

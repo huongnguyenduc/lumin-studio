@@ -5,8 +5,10 @@
 --
 -- Idempotent: fixed UUIDs + ON CONFLICT (id) DO NOTHING → re-running is a no-op. Money is int VND
 -- (ADR-019). status='active' is set explicitly — the column default 'draft' would hide these from the
--- storefront. images stays '[]' (no photos uploaded yet); the card/detail DTO renders an empty gallery
--- fine. dimensions is {w,d,h} in mm (the shape the Product DTO unmarshals). The products_search GIN index
+-- storefront. images/sprite_sheet_url point at the placeholder demo art in apps/storefront/public/demo/
+-- (storefront-relative paths, served by the same app) so the card grid shows a cover and the hover-360°
+-- turntable out of the box; real photos/renders replace them via Admin.
+-- dimensions is {w,d,h} in mm (the shape the Product DTO unmarshals). The products_search GIN index
 -- computes immutable_unaccent(name||' '||description) at insert — it exists from migration 000012, so run
 -- this AFTER the migrate Job.
 --
@@ -20,16 +22,19 @@ INSERT INTO categories (id, slug, name, display_order) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO products
-  (id, slug, name, description, category_id, base_price, dimensions, material, images, status) VALUES
+  (id, slug, name, description, category_id, base_price, dimensions, material, images, sprite_sheet_url, status) VALUES
   ('b0000000-0000-4000-8000-000000000001', 'den-ngu-hinh-meo', 'Đèn ngủ hình mèo',
    'Đèn ngủ in 3D hình mèo nhỏ, ánh sáng ấm dịu cho góc phòng của bạn.',
-   'a0000000-0000-4000-8000-000000000001', 390000, '{"w":180,"d":180,"h":240}', 'PLA', '[]', 'active'),
+   'a0000000-0000-4000-8000-000000000001', 390000, '{"w":180,"d":180,"h":240}', 'PLA',
+   '["/demo/den-ngu-hinh-meo.webp"]', '/demo/den-ngu-hinh-meo-sprite.webp', 'active'),
   ('b0000000-0000-4000-8000-000000000002', 'den-de-ban-hinh-nam', 'Đèn để bàn hình nấm',
    'Đèn để bàn dáng nấm, in PETG bền màu, hợp góc bàn làm việc.',
-   'a0000000-0000-4000-8000-000000000002', 450000, '{"w":150,"d":150,"h":300}', 'PETG', '[]', 'active'),
+   'a0000000-0000-4000-8000-000000000002', 450000, '{"w":150,"d":150,"h":300}', 'PETG',
+   '["/demo/den-de-ban-hinh-nam.webp"]', '/demo/den-de-ban-hinh-nam-sprite.webp', 'active'),
   ('b0000000-0000-4000-8000-000000000003', 'den-treo-mat-trang', 'Đèn treo mặt trăng',
    'Đèn treo hình mặt trăng, in từ nhựa tái chế, ánh sáng nhẹ như trăng rằm.',
-   'a0000000-0000-4000-8000-000000000002', 620000, '{"w":200,"d":200,"h":200}', 'recycled-PLA', '[]', 'active')
+   'a0000000-0000-4000-8000-000000000002', 620000, '{"w":200,"d":200,"h":200}', 'recycled-PLA',
+   '["/demo/den-treo-mat-trang.webp"]', '/demo/den-treo-mat-trang-sprite.webp', 'active')
 ON CONFLICT (id) DO NOTHING;
 
 -- price_delta is int VND added on top of base_price (server sums it; ADR-019).
