@@ -98,6 +98,33 @@ jobs:
           kubectl -n "$NS" rollout status deploy/storefront --timeout=180s
           kubectl -n "$NS" rollout status deploy/admin --timeout=180s
 
+      # Wedding site (HANDOFF §6): builds have NO live-API dependency (every page
+      # is force-dynamic), so this is a plain build→import→migrate→roll block.
+      # Gated on the wedding-secrets Secret existing — until the one-time box
+      # bootstrap (infra/k8s/README §wedding) creates it, the whole block no-ops
+      # so a lumin-only deploy never stalls on the side project.
+      - name: Build + roll wedding-api / wedding-web / wedding-migrate
+        run: |
+          set -euo pipefail
+          if ! kubectl -n "$NS" get secret wedding-secrets >/dev/null 2>&1; then
+            echo "wedding-secrets absent — skipping wedding deploy (see infra/k8s/README §wedding bootstrap)"
+            exit 0
+          fi
+          TAG=${GITHUB_SHA::12}
+          img() { sed -E "s|(image: lumin-[a-z-]+):prod|\1:$TAG|g" "$1"; }
+          docker build -f services/wedding-api/Dockerfile -t "lumin-wedding-api:$TAG" services/wedding-api
+          docker build -f infra/k8s/migrate.Dockerfile -t "lumin-wedding-migrate:$TAG" services/wedding-api/db/migrations
+          # --network=host for next/font's Google Fonts... not needed: wedding fonts are self-hosted
+          # files in the repo, but the pnpm fetch still wants the host network on this box.
+          docker build --network=host --build-arg WEDDING_API_URL=http://wedding-api:8081 \
+            -f apps/wedding-web/Dockerfile -t "lumin-wedding-web:$TAG" .
+          k3d image import "lumin-wedding-api:$TAG" "lumin-wedding-migrate:$TAG" "lumin-wedding-web:$TAG" -c "$CLUSTER"
+          kubectl -n "$NS" delete job wedding-migrate --ignore-not-found
+          img infra/k8s/wedding.yaml | kubectl apply -f -
+          kubectl -n "$NS" wait --for=condition=complete job/wedding-migrate --timeout=180s
+          kubectl -n "$NS" rollout status deploy/wedding-api --timeout=180s
+          kubectl -n "$NS" rollout status deploy/wedding-web --timeout=180s
+
       - name: Deployed state
         if: always()
         run: kubectl -n "$NS" get deploy,pods -o wide 2>&1 | head -30
