@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { createTranslator, IntlErrorCode } from 'use-intl/core';
 import { messages } from '../src/messages';
 
 /** Flatten every leaf string in the composed catalog to `[dotted.path, value]`. */
@@ -41,5 +42,28 @@ describe('admin i18n catalog', () => {
   it('exposes the @lumin/core domain catalog under the `core` namespace', () => {
     expect(messages.core?.cart?.empty).toBeTruthy();
     expect(messages.core?.validation?.addressIncomplete).toBeTruthy();
+  });
+
+  // ICU MessageFormat treats bare `<`/`>` as rich-text tag markers — a literal "<tên>" in copy
+  // parses as an unclosed tag (UNCLOSED_TAG) and silently falls back to rendering the raw
+  // "namespace.key" path instead of the string at runtime. Catch that class of bug here instead
+  // of discovering it live: parse every leaf through the real next-intl translator and flag only
+  // genuine syntax errors (INVALID_MESSAGE) — a FORMATTING_ERROR from a legitimately parameterized
+  // message called with no args (e.g. "{count}") is expected here, not a bug.
+  it('every message is syntactically valid ICU (no bare angle brackets, unbalanced braces, etc.)', () => {
+    const bad: string[] = [];
+    let currentPath = '';
+    const t = createTranslator({
+      locale: 'vi',
+      messages,
+      onError: (error) => {
+        if (error.code === IntlErrorCode.INVALID_MESSAGE) bad.push(currentPath);
+      },
+    });
+    for (const [path] of leaves) {
+      currentPath = path;
+      t(path as never);
+    }
+    expect(bad, `messages with an ICU syntax error: ${bad.join(', ')}`).toEqual([]);
   });
 });
