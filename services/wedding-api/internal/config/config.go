@@ -26,6 +26,57 @@ type Config struct {
 	DBMaxConns int32
 	// DBConnectTimeout bounds a single connection attempt.
 	DBConnectTimeout time.Duration
+
+	// AdminPassword is the single shared admin password (HANDOFF §6 — 1–2 operators,
+	// no user management). Empty → login is DISABLED (503), never open.
+	AdminPassword string
+	// JWTSecret signs the admin session JWT (HS256). REQUIRED in production: the
+	// well-known dev fallback yields forgeable admin tokens (guest PII + settings
+	// writes), so main.go refuses to start on the fallback without the opt-in.
+	JWTSecret string
+	// AllowDevJWTSecret must be true to start with JWTSecret unset (local dev only).
+	AllowDevJWTSecret bool
+	// JWTTTL is the admin session lifetime; on expiry the host just logs in again.
+	JWTTTL time.Duration
+	// CookieSecure sets Secure on the session cookie. Default true (Cloudflare edge
+	// terminates HTTPS); set COOKIE_SECURE=false only for local plain-http dev.
+	CookieSecure bool
+
+	// Upload is the presigned-upload config for host-configurable media (HANDOFF
+	// §3.5) — a dedicated `wedding-assets` Garage bucket with its own scoped key.
+	// Any required field empty → uploads are disabled (503), the rest of the API
+	// still boots (mirrors core-api's log-and-disable pattern).
+	Upload UploadConfig
+}
+
+// UploadConfig mirrors core-api's proofstore config, one bucket, presigned POST
+// (POST — not PUT — so the S3 policy enforces content-length-range + Content-Type
+// server-side).
+type UploadConfig struct {
+	// S3Endpoint is the S3 API endpoint the browser POSTs to (e.g. the public
+	// Garage URL behind the tunnel).
+	S3Endpoint string
+	// S3Region is the SigV4 credential-scope region (Garage: "garage").
+	S3Region string
+	// Bucket is the dedicated wedding-assets bucket.
+	Bucket string
+	// PublicBaseURL is the host-pinned base the stored object URL derives from.
+	PublicBaseURL string
+	// AccessKeyID / SecretAccessKey are the bucket-scoped signing key.
+	AccessKeyID     string
+	SecretAccessKey string
+	// PresignTTL bounds how long a signed policy stays valid.
+	PresignTTL time.Duration
+}
+
+// DevJWTSecret is the well-known local-dev signing key. Anything signed with it
+// is forgeable — main.go gates startup on AllowDevJWTSecret when it is in use.
+const DevJWTSecret = "wedding-dev-secret-do-not-use-in-prod"
+
+// UsesForgeableJWTSecret reports the fatal misconfiguration: dev fallback in use
+// without the explicit local-dev opt-in.
+func (c Config) UsesForgeableJWTSecret() bool {
+	return c.JWTSecret == DevJWTSecret && !c.AllowDevJWTSecret
 }
 
 // Load reads configuration from the environment, applying local-dev defaults.
@@ -38,6 +89,22 @@ func Load() Config {
 			"postgres://postgres:postgres@localhost:5432/wedding?sslmode=disable"),
 		DBMaxConns:       getInt32("DB_MAX_CONNS", 5),
 		DBConnectTimeout: getDuration("DB_CONNECT_TIMEOUT", 5*time.Second),
+
+		AdminPassword:     os.Getenv("ADMIN_PASSWORD"),
+		JWTSecret:         getenv("JWT_SECRET", DevJWTSecret),
+		AllowDevJWTSecret: os.Getenv("ALLOW_DEV_JWT_SECRET") == "true",
+		JWTTTL:            getDuration("JWT_TTL", 12*time.Hour),
+		CookieSecure:      getenv("COOKIE_SECURE", "true") == "true",
+
+		Upload: UploadConfig{
+			S3Endpoint:      os.Getenv("UPLOAD_S3_ENDPOINT"),
+			S3Region:        getenv("UPLOAD_S3_REGION", "garage"),
+			Bucket:          getenv("UPLOAD_S3_BUCKET", "wedding-assets"),
+			PublicBaseURL:   os.Getenv("UPLOAD_PUBLIC_BASE_URL"),
+			AccessKeyID:     os.Getenv("UPLOAD_S3_ACCESS_KEY_ID"),
+			SecretAccessKey: os.Getenv("UPLOAD_S3_SECRET_ACCESS_KEY"),
+			PresignTTL:      getDuration("UPLOAD_PRESIGN_TTL", 10*time.Minute),
+		},
 	}
 }
 

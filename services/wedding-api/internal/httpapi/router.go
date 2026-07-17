@@ -1,7 +1,9 @@
-// Package httpapi builds the wedding-api HTTP router (Chi v5).
+// Package httpapi builds the wedding-api HTTP router (Chi v5) — the API surface
+// of HANDOFF §5: rate-limited public invite/RSVP/wishes routes + the /api/admin
+// group behind the shared-password JWT cookie (internal/auth).
 //
-// Scaffold slice: health probes only. The public invite/RSVP/wishes routes and
-// the /api/admin group (HANDOFF §5) land in later slices.
+// Not here on purpose: GET /api/admin/export.xlsx — marked optional in §5; the
+// admin app exports client-side with SheetJS (§3.8).
 package httpapi
 
 import (
@@ -12,14 +14,24 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/huongnguyenduc/lumin-studio/services/wedding-api/internal/auth"
+	"github.com/huongnguyenduc/lumin-studio/services/wedding-api/internal/uploadstore"
 )
 
-// New builds the router. pool is used by /readyz to report database reachability.
-func New(pool *pgxpool.Pool) http.Handler {
+type server struct {
+	pool    *pgxpool.Pool
+	auth    *auth.Auth
+	uploads *uploadstore.Store // nil → presign answers 503 (log-and-disable)
+}
+
+// New builds the router. uploads may be nil when UPLOAD_S3_* is not configured.
+func New(pool *pgxpool.Pool, a *auth.Auth, uploads *uploadstore.Store) http.Handler {
+	s := &server{pool: pool, auth: a, uploads: uploads}
+
 	r := chi.NewRouter()
-	// No RealIP middleware: it's deprecated (IP-spoofable, GHSA-3fxj-6jh8-hvhx). The
-	// public rate-limit slice (HANDOFF §5) should read CF-Connecting-IP deliberately —
-	// the service only ever sits behind the Cloudflare Tunnel.
+	// No RealIP middleware: deprecated/spoofable — clientIP() reads CF-Connecting-IP
+	// deliberately (the service only ever sits behind the Cloudflare Tunnel).
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
 
@@ -28,9 +40,7 @@ func New(pool *pgxpool.Pool) http.Handler {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
-
-	// Readiness: the database answers a ping (pgxpool connects lazily, so this is
-	// the first real proof the DSN + network are good).
+	// Readiness: the database answers a ping.
 	r.Get("/readyz", func(w http.ResponseWriter, req *http.Request) {
 		ctx, cancel := context.WithTimeout(req.Context(), 2*time.Second)
 		defer cancel()
@@ -42,5 +52,75 @@ func New(pool *pgxpool.Pool) http.Handler {
 		_, _ = w.Write([]byte("ok"))
 	})
 
+	// Public routes — per-IP rate limit (HANDOFF §5 "rate-limit these").
+	public := newRateLimiter(10, 30)
+	r.Group(func(r chi.Router) {
+		r.Use(public.middleware)
+		r.Get("/api/invite/{guestId}", s.getInvite)
+		r.Post("/api/invite/{guestId}/rsvp", s.postRSVP)
+		r.Post("/api/wishes", s.postWish)
+		r.Get("/api/wishes", s.getWishes)
+	})
+
+	// Login is rate-limited MUCH tighter (shared password → brute-force surface).
+	login := newRateLimiter(0.2, 5)
+	r.With(login.middleware).Post("/api/admin/login", s.login)
+	r.Post("/api/admin/logout", s.logout)
+
+	// Admin routes — session cookie required.
+	r.Route("/api/admin", func(r chi.Router) {
+		r.Use(s.auth.Middleware)
+		r.Get("/guests", s.listGuests)
+		r.Post("/guests", s.createGuest)
+		r.Patch("/guests/{id}", s.patchGuest)
+		r.Delete("/guests/{id}", s.deleteGuest)
+		r.Post("/guests/bulk-delete", s.bulkDeleteGuests)
+
+		r.Get("/wishes", s.adminListWishes)
+		r.Delete("/wishes/{id}", s.adminDeleteWish)
+		r.Post("/wishes/bulk-delete", s.bulkDeleteWishes)
+
+		r.Get("/groups", s.listGroups)
+		r.Post("/groups", s.createGroup)
+		r.Patch("/groups/{name}", s.renameGroup)
+		r.Delete("/groups/{name}", s.deleteGroup)
+
+		r.Get("/stats", s.adminStats)
+		r.Get("/settings", s.getSettings)
+		r.Patch("/settings", s.patchSettings)
+		r.Post("/uploads/presign", s.presignUpload)
+	})
+
 	return r
+}
+
+// login checks the shared password and sets the session cookie (HANDOFF §6).
+func (s *server) login(w http.ResponseWriter, r *http.Request) {
+	if !s.auth.Enabled() {
+		writeError(w, http.StatusServiceUnavailable, "LOGIN_DISABLED",
+			"đăng nhập chưa được cấu hình (ADMIN_PASSWORD)")
+		return
+	}
+	var body struct {
+		Password string `json:"password"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	if !s.auth.CheckPassword(body.Password) {
+		writeError(w, http.StatusUnauthorized, "BAD_PASSWORD", "mật khẩu không đúng")
+		return
+	}
+	cookie, err := s.auth.IssueCookie()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "TOKEN", err.Error())
+		return
+	}
+	http.SetCookie(w, cookie)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *server) logout(w http.ResponseWriter, _ *http.Request) {
+	http.SetCookie(w, s.auth.Clear())
+	w.WriteHeader(http.StatusNoContent)
 }
