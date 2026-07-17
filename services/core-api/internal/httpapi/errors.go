@@ -12,6 +12,7 @@ import (
 
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/api"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/kube"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/money"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/pricing"
@@ -70,6 +71,11 @@ const (
 	// (P2-a). Gates both GET /checkout/config and a web POST /orders; 422, not 500 — it is a
 	// recoverable shop-config state the storefront renders as "checkout tạm đóng", not a crash.
 	codeNoSTK = "NO_STK_CONFIGURED"
+	// codeDomainExists is the create-domain 409: the subdomain already has a provisioned Ingress.
+	codeDomainExists = "DOMAIN_EXISTS"
+	// codeClusterUnavailable is the domains-endpoint 503: core-api is not running in-cluster (no
+	// k8s API access), so the k8s-backed domain endpoints cannot serve (local dev has no cluster).
+	codeClusterUnavailable = "CLUSTER_UNAVAILABLE"
 )
 
 // errNotImplemented marks a handler stub not yet built (PR-3d scaffolding). Each domain
@@ -124,6 +130,11 @@ var (
 	// BEFORE any write, so a customer can never "pay" against a shop with no destination account.
 	errNoSTKConfigured = errors.New("httpapi: shop bank account (STK) not configured")
 )
+
+// errClusterUnavailable is returned by the domains handlers when core-api has no k8s client (not
+// running in-cluster — local dev). Maps to 503, distinct from a generic 500: this is an
+// environment-shape fact, not a server fault.
+var errClusterUnavailable = errors.New("httpapi: no in-cluster k8s access")
 
 // msgKey derives the next-intl key from a stable code ("errors.<CODE>"). Deriving it
 // mechanically means the code and its i18n key can never drift. Frontend consumers own
@@ -202,6 +213,13 @@ func mapError(err error) (int, api.ErrorEnvelope) {
 		// Shop has no STK configured — no web payment possible (P2-a). 422, not 500: a
 		// recoverable config state the storefront shows as "checkout tạm đóng".
 		return http.StatusUnprocessableEntity, envelope(codeNoSTK)
+	case errors.Is(err, errClusterUnavailable):
+		// core-api has no in-cluster k8s access (local dev) — the domains endpoints can't serve.
+		return http.StatusServiceUnavailable, envelope(codeClusterUnavailable)
+	case errors.Is(err, kube.ErrAlreadyExists):
+		return http.StatusConflict, envelope(codeDomainExists)
+	case errors.Is(err, kube.ErrNotFound):
+		return http.StatusNotFound, envelope(codeNotFound)
 	case errors.Is(err, pricing.ErrColorNotForProduct), errors.Is(err, pricing.ErrOptionNotForProduct),
 		errors.Is(err, pricing.ErrDuplicateOption), errors.Is(err, pricing.ErrEngraveNotAllowed),
 		// ADR-037 configurator: per-part colour + per-option choice selection faults (client bug/hostile).

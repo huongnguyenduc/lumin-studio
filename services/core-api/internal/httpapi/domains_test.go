@@ -1,0 +1,161 @@
+package httpapi
+
+import (
+	"context"
+	"errors"
+	"io"
+	"log/slog"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/api"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/kube"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
+)
+
+// --- Docker-free unit tests — no Postgres, no cluster; kube.Fake stands in for the k8s API. ---
+
+func newOwnerCtx() context.Context {
+	return withActor(context.Background(), Actor{ByUser: uuid.NewString(), Role: order.RoleOwner, At: time.Now().UTC()})
+}
+
+func newStaffCtx() context.Context {
+	return withActor(context.Background(), Actor{ByUser: uuid.NewString(), Role: order.RoleStaff, At: time.Now().UTC()})
+}
+
+func newDomainsServer(fake kube.Client) *Server {
+	return NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, WithKubeClient(fake))
+}
+
+func TestCreateDomainHappyPath(t *testing.T) {
+	srv := newDomainsServer(kube.NewFake())
+	resp, err := srv.CreateDomain(newOwnerCtx(), api.CreateDomainRequestObject{
+		Body: &api.DomainInput{Subdomain: "test-web", TargetService: "wedding-web", TargetPort: 3000},
+	})
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	created, ok := resp.(api.CreateDomain201JSONResponse)
+	if !ok {
+		t.Fatalf("wrong response type: %T", resp)
+	}
+	if created.Subdomain != "test-web" || created.TargetService != "wedding-web" || created.TargetPort != 3000 {
+		t.Fatalf("wrong body: %+v", created)
+	}
+}
+
+func TestCreateDomainRejectsReservedName(t *testing.T) {
+	srv := newDomainsServer(kube.NewFake())
+	resp, err := srv.CreateDomain(newOwnerCtx(), api.CreateDomainRequestObject{
+		Body: &api.DomainInput{Subdomain: "admin", TargetService: "core-api", TargetPort: 8080},
+	})
+	if err != nil {
+		t.Fatalf("unexpected transport err: %v", err)
+	}
+	bad, ok := resp.(api.CreateDomain400JSONResponse)
+	if !ok {
+		t.Fatalf("wrong response type: %T", resp)
+	}
+	if bad.Fields == nil || (*bad.Fields)["subdomain"] == "" {
+		t.Fatalf("expected subdomain field error, got %+v", bad)
+	}
+}
+
+func TestCreateDomainRejectsInvalidShape(t *testing.T) {
+	srv := newDomainsServer(kube.NewFake())
+	cases := map[string]api.DomainInput{
+		"uppercase":       {Subdomain: "Test-Web", TargetService: "svc", TargetPort: 80},
+		"leading hyphen":  {Subdomain: "-test", TargetService: "svc", TargetPort: 80},
+		"trailing hyphen": {Subdomain: "test-", TargetService: "svc", TargetPort: 80},
+		"empty":           {Subdomain: "", TargetService: "svc", TargetPort: 80},
+		"bad port":        {Subdomain: "test", TargetService: "svc", TargetPort: 0},
+		"port too big":    {Subdomain: "test", TargetService: "svc", TargetPort: 70000},
+	}
+	for name, in := range cases {
+		t.Run(name, func(t *testing.T) {
+			resp, err := srv.CreateDomain(newOwnerCtx(), api.CreateDomainRequestObject{Body: &in})
+			if err != nil {
+				t.Fatalf("unexpected transport err: %v", err)
+			}
+			if _, ok := resp.(api.CreateDomain400JSONResponse); !ok {
+				t.Fatalf("%s: wrong response type: %T", name, resp)
+			}
+		})
+	}
+}
+
+func TestCreateDomainDuplicateConflicts(t *testing.T) {
+	srv := newDomainsServer(kube.NewFake())
+	body := &api.DomainInput{Subdomain: "test-web", TargetService: "wedding-web", TargetPort: 3000}
+	if _, err := srv.CreateDomain(newOwnerCtx(), api.CreateDomainRequestObject{Body: body}); err != nil {
+		t.Fatalf("first create: unexpected err: %v", err)
+	}
+	_, err := srv.CreateDomain(newOwnerCtx(), api.CreateDomainRequestObject{Body: body})
+	if !errors.Is(err, kube.ErrAlreadyExists) {
+		t.Fatalf("second create: err = %v, want kube.ErrAlreadyExists", err)
+	}
+}
+
+func TestDeleteDomainUnmanagedRefused(t *testing.T) {
+	srv := newDomainsServer(kube.NewFake())
+	_, err := srv.DeleteDomain(newOwnerCtx(), api.DeleteDomainRequestObject{Subdomain: "never-created"})
+	if !errors.Is(err, kube.ErrNotFound) {
+		t.Fatalf("err = %v, want kube.ErrNotFound", err)
+	}
+}
+
+func TestDomainsNilClusterUnavailable(t *testing.T) {
+	srv := newDomainsServer(nil)
+	ctx := newOwnerCtx()
+
+	if _, err := srv.ListDomains(ctx, api.ListDomainsRequestObject{}); !errors.Is(err, errClusterUnavailable) {
+		t.Fatalf("ListDomains: err = %v, want errClusterUnavailable", err)
+	}
+	if _, err := srv.ListDomainTargets(ctx, api.ListDomainTargetsRequestObject{}); !errors.Is(err, errClusterUnavailable) {
+		t.Fatalf("ListDomainTargets: err = %v, want errClusterUnavailable", err)
+	}
+	if _, err := srv.CreateDomain(ctx, api.CreateDomainRequestObject{
+		Body: &api.DomainInput{Subdomain: "x", TargetService: "y", TargetPort: 80},
+	}); !errors.Is(err, errClusterUnavailable) {
+		t.Fatalf("CreateDomain: err = %v, want errClusterUnavailable", err)
+	}
+	if _, err := srv.DeleteDomain(ctx, api.DeleteDomainRequestObject{Subdomain: "x"}); !errors.Is(err, errClusterUnavailable) {
+		t.Fatalf("DeleteDomain: err = %v, want errClusterUnavailable", err)
+	}
+}
+
+func TestDomainsStaffForbidden(t *testing.T) {
+	srv := newDomainsServer(kube.NewFake())
+	ctx := newStaffCtx()
+
+	if _, err := srv.ListDomains(ctx, api.ListDomainsRequestObject{}); !errors.Is(err, errForbidden) {
+		t.Fatalf("ListDomains: err = %v, want errForbidden", err)
+	}
+	if _, err := srv.CreateDomain(ctx, api.CreateDomainRequestObject{
+		Body: &api.DomainInput{Subdomain: "x", TargetService: "y", TargetPort: 80},
+	}); !errors.Is(err, errForbidden) {
+		t.Fatalf("CreateDomain: err = %v, want errForbidden", err)
+	}
+	if _, err := srv.DeleteDomain(ctx, api.DeleteDomainRequestObject{Subdomain: "x"}); !errors.Is(err, errForbidden) {
+		t.Fatalf("DeleteDomain: err = %v, want errForbidden", err)
+	}
+}
+
+func TestListDomainTargetsReturnsServices(t *testing.T) {
+	fake := kube.NewFake()
+	fake.Services = []kube.ServiceTarget{{Name: "wedding-web", Ports: []int32{3000}}}
+	srv := newDomainsServer(fake)
+	resp, err := srv.ListDomainTargets(newOwnerCtx(), api.ListDomainTargetsRequestObject{})
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	list, ok := resp.(api.ListDomainTargets200JSONResponse)
+	if !ok {
+		t.Fatalf("wrong response type: %T", resp)
+	}
+	if len(list) != 1 || list[0].Name != "wedding-web" || len(list[0].Ports) != 1 || list[0].Ports[0] != 3000 {
+		t.Fatalf("wrong body: %+v", list)
+	}
+}

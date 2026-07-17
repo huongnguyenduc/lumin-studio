@@ -13,6 +13,7 @@ spec:
     metadata:
       labels: { app: core-api }
     spec:
+      serviceAccountName: core-api
       containers:
         - name: core-api
           image: lumin-core-api:prod
@@ -125,3 +126,37 @@ spec:
   selector: { app: core-api }
   ports:
     - { port: 8080, targetPort: 8080 }
+---
+# RBAC for the admin "quản lý domain" surface (docs/decisions.md ADR-054): core-api provisions
+# customer-site subdomains as traefik Ingress objects in THIS namespace only — ns-scoped, no
+# cluster-wide access. ingresses (create/get/list/delete) = provision/deprovision; services
+# (get/list) = the admin target picker (internal/kube).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: core-api
+  namespace: prod
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: core-api-domains
+  namespace: prod
+rules:
+  - apiGroups: ['networking.k8s.io']
+    resources: [ingresses]
+    verbs: [create, get, list, delete]
+  - apiGroups: ['']
+    resources: [services]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: core-api-domains
+  namespace: prod
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: core-api-domains }
+subjects:
+  - kind: ServiceAccount
+    name: core-api
+    namespace: prod

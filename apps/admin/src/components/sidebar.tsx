@@ -9,6 +9,7 @@ import {
   BoxIcon,
   CoilIcon,
   GaugeIcon,
+  GlobeIcon,
   GridIcon,
   OrdersIcon,
   PrinterIcon,
@@ -40,6 +41,7 @@ export function Sidebar() {
     { href: '/vat-tu', label: t('materials'), Icon: CoilIcon },
     { href: '/khach-hang', label: t('customers'), Icon: UsersIcon },
     { href: '/pet-tag', label: t('petTag'), Icon: TagIcon },
+    { href: '/ten-mien', label: t('domains'), Icon: GlobeIcon },
     { href: '/cai-dat', label: t('settings'), Icon: SettingsIcon },
   ];
 

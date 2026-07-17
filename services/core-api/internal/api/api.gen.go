@@ -715,6 +715,33 @@ type Dimensions struct {
 	W int `json:"w"`
 }
 
+// Domain A provisioned customer-site subdomain — projected 1:1 from its backing traefik Ingress in the k3s prod namespace (no database row; the cluster is the source of truth).
+type Domain struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// CreatedBy Email of the owner who provisioned this domain.
+	CreatedBy string `json:"createdBy"`
+
+	// Subdomain The label before ".luminstudio.vn", e.g. "test-web".
+	Subdomain     string `json:"subdomain"`
+	TargetPort    int    `json:"targetPort"`
+	TargetService string `json:"targetService"`
+}
+
+// DomainInput Create body for POST /admin/domains.
+type DomainInput struct {
+	// Subdomain Lowercase label, 1-63 chars, letters/digits/hyphen, no leading/trailing hyphen. Reserved names (www, admin, api, s3, assets, ...) are rejected server-side.
+	Subdomain     string `json:"subdomain"`
+	TargetPort    int    `json:"targetPort"`
+	TargetService string `json:"targetService"`
+}
+
+// DomainTarget A Service in the prod namespace eligible as a domain's backend.
+type DomainTarget struct {
+	Name  string `json:"name"`
+	Ports []int  `json:"ports"`
+}
+
 // ErrorEnvelope The one error shape every endpoint returns (ADR-032). `code` is a stable machine code (e.g. NOT_FOUND, INVALID_EDGE, RBAC, REASON_REQUIRED, VALIDATION); `messageKey` is a next-intl key (the domain's Vietnamese prose is NEVER forwarded). `fields` maps a field path → messageKey for per-field validation errors.
 type ErrorEnvelope struct {
 	Code       string             `json:"code"`
@@ -1820,6 +1847,9 @@ type Forbidden = ErrorEnvelope
 // NotFound The one error shape every endpoint returns (ADR-032). `code` is a stable machine code (e.g. NOT_FOUND, INVALID_EDGE, RBAC, REASON_REQUIRED, VALIDATION); `messageKey` is a next-intl key (the domain's Vietnamese prose is NEVER forwarded). `fields` maps a field path → messageKey for per-field validation errors.
 type NotFound = ErrorEnvelope
 
+// ServiceUnavailable The one error shape every endpoint returns (ADR-032). `code` is a stable machine code (e.g. NOT_FOUND, INVALID_EDGE, RBAC, REASON_REQUIRED, VALIDATION); `messageKey` is a next-intl key (the domain's Vietnamese prose is NEVER forwarded). `fields` maps a field path → messageKey for per-field validation errors.
+type ServiceUnavailable = ErrorEnvelope
+
 // TooManyRequests The one error shape every endpoint returns (ADR-032). `code` is a stable machine code (e.g. NOT_FOUND, INVALID_EDGE, RBAC, REASON_REQUIRED, VALIDATION); `messageKey` is a next-intl key (the domain's Vietnamese prose is NEVER forwarded). `fields` maps a field path → messageKey for per-field validation errors.
 type TooManyRequests = ErrorEnvelope
 
@@ -1933,6 +1963,9 @@ type ReorderAdminCategoriesJSONRequestBody = CategoryReorder
 
 // UpdateAdminCategoryJSONRequestBody defines body for UpdateAdminCategory for application/json ContentType.
 type UpdateAdminCategoryJSONRequestBody = CategoryUpdate
+
+// CreateDomainJSONRequestBody defines body for CreateDomain for application/json ContentType.
+type CreateDomainJSONRequestBody = DomainInput
 
 // CreateFilamentMaterialJSONRequestBody defines body for CreateFilamentMaterial for application/json ContentType.
 type CreateFilamentMaterialJSONRequestBody = FilamentMaterialInput
@@ -2190,6 +2223,18 @@ type ServerInterface interface {
 	// Admin dashboard aggregates (counts + net revenue + recent orders + todos).
 	// (GET /admin/dashboard)
 	GetDashboard(w http.ResponseWriter, r *http.Request)
+	// List customer-site subdomains provisioned on *.luminstudio.vn (owner-only).
+	// (GET /admin/domains)
+	ListDomains(w http.ResponseWriter, r *http.Request)
+	// Provision a new customer-site subdomain (owner-only).
+	// (POST /admin/domains)
+	CreateDomain(w http.ResponseWriter, r *http.Request)
+	// List Services in the prod namespace eligible as a domain target (owner-only).
+	// (GET /admin/domains/targets)
+	ListDomainTargets(w http.ResponseWriter, r *http.Request)
+	// Remove a provisioned customer-site subdomain (owner-only).
+	// (DELETE /admin/domains/{subdomain})
+	DeleteDomain(w http.ResponseWriter, r *http.Request, subdomain string)
 	// List the filament palette with derived stock + weighted-average cost (admin-gated read).
 	// (GET /admin/filament-materials)
 	ListFilamentMaterials(w http.ResponseWriter, r *http.Request, params ListFilamentMaterialsParams)
@@ -2496,6 +2541,30 @@ func (_ Unimplemented) GetAdminCustomer(w http.ResponseWriter, r *http.Request, 
 // Admin dashboard aggregates (counts + net revenue + recent orders + todos).
 // (GET /admin/dashboard)
 func (_ Unimplemented) GetDashboard(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List customer-site subdomains provisioned on *.luminstudio.vn (owner-only).
+// (GET /admin/domains)
+func (_ Unimplemented) ListDomains(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Provision a new customer-site subdomain (owner-only).
+// (POST /admin/domains)
+func (_ Unimplemented) CreateDomain(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List Services in the prod namespace eligible as a domain target (owner-only).
+// (GET /admin/domains/targets)
+func (_ Unimplemented) ListDomainTargets(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Remove a provisioned customer-site subdomain (owner-only).
+// (DELETE /admin/domains/{subdomain})
+func (_ Unimplemented) DeleteDomain(w http.ResponseWriter, r *http.Request, subdomain string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3264,6 +3333,97 @@ func (siw *ServerInterfaceWrapper) GetDashboard(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetDashboard(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListDomains operation middleware
+func (siw *ServerInterfaceWrapper) ListDomains(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDomains(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateDomain operation middleware
+func (siw *ServerInterfaceWrapper) CreateDomain(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateDomain(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListDomainTargets operation middleware
+func (siw *ServerInterfaceWrapper) ListDomainTargets(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDomainTargets(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteDomain operation middleware
+func (siw *ServerInterfaceWrapper) DeleteDomain(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "subdomain" -------------
+	var subdomain string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "subdomain", chi.URLParam(r, "subdomain"), &subdomain, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subdomain", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteDomain(w, r, subdomain)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5661,6 +5821,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/admin/dashboard", wrapper.GetDashboard)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/domains", wrapper.ListDomains)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/domains", wrapper.CreateDomain)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/domains/targets", wrapper.ListDomainTargets)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/admin/domains/{subdomain}", wrapper.DeleteDomain)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/filament-materials", wrapper.ListFilamentMaterials)
 	})
 	r.Group(func(r chi.Router) {
@@ -5896,6 +6068,8 @@ type ConflictJSONResponse ErrorEnvelope
 type ForbiddenJSONResponse ErrorEnvelope
 
 type NotFoundJSONResponse ErrorEnvelope
+
+type ServiceUnavailableJSONResponse ErrorEnvelope
 
 type TooManyRequestsJSONResponse ErrorEnvelope
 
@@ -6402,6 +6576,206 @@ type GetDashboard401JSONResponse struct{ UnauthorizedJSONResponse }
 func (response GetDashboard401JSONResponse) VisitGetDashboardResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListDomainsRequestObject struct {
+}
+
+type ListDomainsResponseObject interface {
+	VisitListDomainsResponse(w http.ResponseWriter) error
+}
+
+type ListDomains200JSONResponse []Domain
+
+func (response ListDomains200JSONResponse) VisitListDomainsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListDomains401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListDomains401JSONResponse) VisitListDomainsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListDomains403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListDomains403JSONResponse) VisitListDomainsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListDomains503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListDomains503JSONResponse) VisitListDomainsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateDomainRequestObject struct {
+	Body *CreateDomainJSONRequestBody
+}
+
+type CreateDomainResponseObject interface {
+	VisitCreateDomainResponse(w http.ResponseWriter) error
+}
+
+type CreateDomain201JSONResponse Domain
+
+func (response CreateDomain201JSONResponse) VisitCreateDomainResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateDomain400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateDomain400JSONResponse) VisitCreateDomainResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateDomain401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateDomain401JSONResponse) VisitCreateDomainResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateDomain403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateDomain403JSONResponse) VisitCreateDomainResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateDomain409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateDomain409JSONResponse) VisitCreateDomainResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateDomain503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateDomain503JSONResponse) VisitCreateDomainResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListDomainTargetsRequestObject struct {
+}
+
+type ListDomainTargetsResponseObject interface {
+	VisitListDomainTargetsResponse(w http.ResponseWriter) error
+}
+
+type ListDomainTargets200JSONResponse []DomainTarget
+
+func (response ListDomainTargets200JSONResponse) VisitListDomainTargetsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListDomainTargets401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListDomainTargets401JSONResponse) VisitListDomainTargetsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListDomainTargets403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListDomainTargets403JSONResponse) VisitListDomainTargetsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListDomainTargets503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListDomainTargets503JSONResponse) VisitListDomainTargetsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteDomainRequestObject struct {
+	Subdomain string `json:"subdomain"`
+}
+
+type DeleteDomainResponseObject interface {
+	VisitDeleteDomainResponse(w http.ResponseWriter) error
+}
+
+type DeleteDomain204Response struct {
+}
+
+func (response DeleteDomain204Response) VisitDeleteDomainResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteDomain401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteDomain401JSONResponse) VisitDeleteDomainResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteDomain403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteDomain403JSONResponse) VisitDeleteDomainResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteDomain404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteDomain404JSONResponse) VisitDeleteDomainResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteDomain503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteDomain503JSONResponse) VisitDeleteDomainResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -9726,6 +10100,18 @@ type StrictServerInterface interface {
 	// Admin dashboard aggregates (counts + net revenue + recent orders + todos).
 	// (GET /admin/dashboard)
 	GetDashboard(ctx context.Context, request GetDashboardRequestObject) (GetDashboardResponseObject, error)
+	// List customer-site subdomains provisioned on *.luminstudio.vn (owner-only).
+	// (GET /admin/domains)
+	ListDomains(ctx context.Context, request ListDomainsRequestObject) (ListDomainsResponseObject, error)
+	// Provision a new customer-site subdomain (owner-only).
+	// (POST /admin/domains)
+	CreateDomain(ctx context.Context, request CreateDomainRequestObject) (CreateDomainResponseObject, error)
+	// List Services in the prod namespace eligible as a domain target (owner-only).
+	// (GET /admin/domains/targets)
+	ListDomainTargets(ctx context.Context, request ListDomainTargetsRequestObject) (ListDomainTargetsResponseObject, error)
+	// Remove a provisioned customer-site subdomain (owner-only).
+	// (DELETE /admin/domains/{subdomain})
+	DeleteDomain(ctx context.Context, request DeleteDomainRequestObject) (DeleteDomainResponseObject, error)
 	// List the filament palette with derived stock + weighted-average cost (admin-gated read).
 	// (GET /admin/filament-materials)
 	ListFilamentMaterials(ctx context.Context, request ListFilamentMaterialsRequestObject) (ListFilamentMaterialsResponseObject, error)
@@ -10332,6 +10718,111 @@ func (sh *strictHandler) GetDashboard(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetDashboardResponseObject); ok {
 		if err := validResponse.VisitGetDashboardResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListDomains operation middleware
+func (sh *strictHandler) ListDomains(w http.ResponseWriter, r *http.Request) {
+	var request ListDomainsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDomains(ctx, request.(ListDomainsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDomains")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDomainsResponseObject); ok {
+		if err := validResponse.VisitListDomainsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateDomain operation middleware
+func (sh *strictHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
+	var request CreateDomainRequestObject
+
+	var body CreateDomainJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateDomain(ctx, request.(CreateDomainRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateDomain")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateDomainResponseObject); ok {
+		if err := validResponse.VisitCreateDomainResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListDomainTargets operation middleware
+func (sh *strictHandler) ListDomainTargets(w http.ResponseWriter, r *http.Request) {
+	var request ListDomainTargetsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDomainTargets(ctx, request.(ListDomainTargetsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDomainTargets")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDomainTargetsResponseObject); ok {
+		if err := validResponse.VisitListDomainTargetsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteDomain operation middleware
+func (sh *strictHandler) DeleteDomain(w http.ResponseWriter, r *http.Request, subdomain string) {
+	var request DeleteDomainRequestObject
+
+	request.Subdomain = subdomain
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteDomain(ctx, request.(DeleteDomainRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteDomain")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteDomainResponseObject); ok {
+		if err := validResponse.VisitDeleteDomainResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

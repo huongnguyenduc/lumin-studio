@@ -22,6 +22,7 @@ import (
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/config"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/httpapi"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/kube"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/modelstore"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/natsx"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/proofstore"
@@ -200,6 +201,7 @@ func main() {
 			httpapi.WithTrackingSecret(cfg.TrackingSecret),
 			httpapi.WithPetPageBaseURL(cfg.PetPageBaseURL),
 			httpapi.WithWorkerCallbackToken(cfg.WorkerCallbackToken),
+			httpapi.WithKubeClient(kube.NewInCluster()),
 		),
 		// ReadHeaderTimeout covers the Slowloris header vector. Read/Write/Idle
 		// timeouts are intentionally unset for now — TODO(phase-1): source
