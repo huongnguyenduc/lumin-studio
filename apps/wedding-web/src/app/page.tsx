@@ -1,12 +1,11 @@
-import { getTranslations } from 'next-intl/server';
+import { getWishes } from '@/lib/api';
+import { InvitationCard } from '@/components/invitation/invitation-card';
 
-// Scaffold placeholder — the real invitation page (fixed 393px card, HANDOFF §2)
-// lands in step 4 as SSR-per-guest at /i/<slug>.
+// Anonymous card ("Xem thiệp mẫu" from Admin, or a shared bare link): generic
+// salutation, RSVP hidden (§9 recommended behavior), wishes still work.
+export const dynamic = 'force-dynamic';
+
 export default async function HomePage() {
-  const t = await getTranslations('home');
-  return (
-    <main className="flex min-h-screen items-center justify-center">
-      <p className="font-serif text-sm italic text-tan">{t('placeholder')}</p>
-    </main>
-  );
+  const wishes = await getWishes();
+  return <InvitationCard guest={null} wishes={wishes.items} />;
 }

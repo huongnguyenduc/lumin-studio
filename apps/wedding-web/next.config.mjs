@@ -1,3 +1,4 @@
+import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import createNextIntlPlugin from 'next-intl/plugin';
@@ -10,6 +11,12 @@ const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Browser calls hit the same origin (/api/*) and Next proxies to wedding-api —
+  // no client-side API URL config, works identically in dev and k3s.
+  async rewrites() {
+    const api = process.env.WEDDING_API_URL ?? 'http://localhost:8081';
+    return [{ source: '/api/:path*', destination: `${api}/api/:path*` }];
+  },
   // Standalone server for the Docker image; tracing root pinned to the monorepo root
   // (pnpm symlink layout) — same trick as apps/storefront.
   output: 'standalone',
