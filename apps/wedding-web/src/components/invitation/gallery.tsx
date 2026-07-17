@@ -56,10 +56,13 @@ function ChevronIcon() {
   );
 }
 
-export function Gallery() {
+export function Gallery({ images }: { images?: string[] }) {
   const t = useTranslations('gallery');
   const [index, setIndex] = useState(-1);
-  const n = IMAGES.length;
+  // Host-configured list (§3.5) or the built-in 12. The span pattern covers the
+  // first 12 cells; extra images continue as 1×1 (CELLS lookup falls through).
+  const srcs = images ?? IMAGES.map((img) => `/invite/${img}.jpg`);
+  const n = srcs.length;
 
   useEffect(() => {
     if (index < 0) return;
@@ -110,18 +113,18 @@ export function Gallery() {
           width: 314,
           display: 'grid',
           gridTemplateColumns: 'repeat(3, 1fr)',
-          gridTemplateRows: 'repeat(7, 118px)',
+          gridAutoRows: 118,
           gap: 16,
           gridAutoFlow: 'dense',
         }}
       >
-        {IMAGES.map((img, i) => (
+        {srcs.map((src, i) => (
           <Reveal
-            key={img}
-            delay={CELLS[i].delay}
+            key={src + i}
+            delay={CELLS[i]?.delay}
             style={{
-              gridColumn: CELLS[i].col ? `span ${CELLS[i].col}` : undefined,
-              gridRow: CELLS[i].row ? `span ${CELLS[i].row}` : undefined,
+              gridColumn: CELLS[i]?.col ? `span ${CELLS[i].col}` : undefined,
+              gridRow: CELLS[i]?.row ? `span ${CELLS[i].row}` : undefined,
             }}
           >
             <button
@@ -133,7 +136,7 @@ export function Gallery() {
                 height: '100%',
                 border: 'none',
                 padding: 0,
-                background: `url(/invite/${img}.jpg) center / cover no-repeat`,
+                background: `url(${src}) center / cover no-repeat`,
                 cursor: 'pointer',
               }}
             />
@@ -188,7 +191,7 @@ export function Gallery() {
             <CrossIcon />
           </button>
           <img
-            src={`/invite/${IMAGES[index]}.jpg`}
+            src={srcs[index]}
             alt={t('photoAlt', { index: index + 1 })}
             style={{
               position: 'relative',

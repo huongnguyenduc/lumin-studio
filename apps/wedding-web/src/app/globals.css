@@ -38,6 +38,14 @@
   background: rgba(255, 251, 248, 0.12) !important;
 }
 
+/* Admin pill hovers (prototype style-hover). */
+.wa-pill-solid:hover {
+  background: rgb(101, 88, 77) !important;
+}
+.wa-pill-ghost:hover {
+  background: rgb(249, 241, 232) !important;
+}
+
 /* Scroll hint (§2.1): centered + 2.2s bob. */
 .invite-hint {
   transform: translateX(-50%);
