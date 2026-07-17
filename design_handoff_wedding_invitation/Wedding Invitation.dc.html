@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;family=Great+Vibes&amp;display=swap" rel="stylesheet">
+<script src="guest-db.js"></script>
+<style>
+@font-face { font-family: 'DFVN Kaelyna Script'; src: url(assets/DFVN-KaelynaScript.otf) format('opentype'); font-display: swap; }
+@font-face { font-family: 'Playfair Display'; src: url(assets/PlayfairDisplay-VariableFont_wght.ttf) format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Playfair Display'; src: url(assets/PlayfairDisplay-Italic-VariableFont_wght.ttf) format('truetype'); font-weight: 100 900; font-style: italic; font-display: swap; }
+@keyframes hintBob { 0%, 100% { transform: translate(-50%, 0); } 50% { transform: translate(-50%, 7px); } }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: rgb(236,229,222); }
+a { color: rgb(120,105,93); text-decoration: none; }
+a:hover { color: rgb(89,76,66); }
+::placeholder { color: rgb(186,170,159); opacity: 1; }
+@keyframes wishDrift { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; justify-content: center; font-family: 'Playfair Display', ui-serif, Georgia, serif;">
+  <div style="position: relative; width: 393px; max-width: 100vw; background: rgb(255,251,248); overflow: hidden; box-shadow: 0 0 60px rgba(101,101,101,0.25);">
+
+    <div data-screen-label="Hero" style="position: relative; height: 852px; overflow: hidden;">
+      <div style="position: absolute; inset: 0; background: url(assets/hero.jpg) 50% 0 / cover no-repeat;"></div>
+      <div data-reveal="" style="position: absolute; top: 63px; left: 148px; transform: translateX(-50%); width: 120px; height: 139px">
+        <div style="position: absolute; left: 22px; top: 37px; width: 72px; height: 70px; background: url(assets/logo-mark.svg) center / contain no-repeat;"></div>
+        <div style="position: absolute; left: 12px; top: 11px; width: 95px; height: 117px; border-radius: 50%; border: 1px dashed rgb(120,105,93); transform: rotate(8.85deg); box-sizing: border-box;"></div>
+        <div style="position: absolute; left: 9px; top: 7px; width: 101px; height: 125px; border-radius: 50%; border: 1px solid rgb(120,105,93); transform: rotate(8.85deg); box-sizing: border-box;"></div>
+      </div>
+      <div style="position: absolute; left: 0; bottom: 0; width: 100%; height: 130px; background: linear-gradient(0deg, rgb(59,47,39) 0%, rgba(59,47,39,0) 100%);"></div>
+      <div data-reveal="" style="position: absolute; left: 0; bottom: 44px; width: 100%; text-align: center; font-family: 'DFVN Kaelyna Script', 'Great Vibes', cursive; font-size: 26px; letter-spacing: 0.04em; color: rgb(186,170,159);">save the date</div>
+      <div onClick="{{ toggleMusic }}" title="Nhạc nền" style="position: absolute; right: 28px; bottom: 33px; width: 32px; height: 32px; border-radius: 16px; background: rgb(120,105,93); display: flex; align-items: center; justify-content: center; cursor: pointer;" style-hover="background: rgb(101,88,77);">
+        <div style="position: absolute; width: 16px; height: 16px; background: url(assets/speaker.png) center / cover no-repeat; mix-blend-mode: screen; opacity: {{ speakerOpacity }}; transition: opacity 0.6s ease;"></div>
+        <div style="position: absolute; display: flex; gap: 3px; opacity: {{ pauseOpacity }}; transition: opacity 0.6s ease;">
+          <div style="width: 3px; height: 11px; border-radius: 1px; background: rgb(255,251,248);"></div>
+          <div style="width: 3px; height: 11px; border-radius: 1px; background: rgb(255,251,248);"></div>
+        </div>
+        <div style="position: absolute; width: 20px; height: 1px; background: rgb(255,251,248); transform: rotate(-45deg); opacity: {{ slashOpacity }}; transition: opacity 0.6s ease;"></div>
+      </div>
+      <sc-if value="{{ showHint }}">
+        <div style="position: absolute; left: 50%; bottom: 108px; z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 7px; animation: hintBob 2.2s ease-in-out infinite; opacity: {{ hintOpacity }}; transition: opacity 0.9s ease; pointer-events: none;">
+          <span style="font-size: 10px; letter-spacing: 0.24em; text-transform: uppercase; color: rgba(255,251,248,0.9); text-shadow: 0 1px 8px rgba(59,47,39,0.5); white-space: nowrap;">Cuộn xuống để mở thiệp</span>
+          <div style="width: 8px; height: 8px; border-right: 1.5px solid rgba(255,251,248,0.9); border-bottom: 1.5px solid rgba(255,251,248,0.9); transform: rotate(45deg);"></div>
+        </div>
+      </sc-if>
+    </div>
+
+    <div data-screen-label="Envelope" style="position: relative; height: 350px; margin-top: -178px; z-index: 2;">
+      <div style="position: absolute; left: 50%; top: 176px; transform: translateX(-50%); width: 480px; height: 121px; clip-path: polygon(0% 0%, 100% 0%, 52.5% 94%, 47.5% 94%); filter: drop-shadow(0px 14px 22px rgba(101,101,101,0.4));">
+        <div style="position: absolute; inset: 0; background: url(assets/flap.jpg) 50% 0.3% / 100% 375% no-repeat; filter: saturate(0.4) brightness(1.01);"></div>
+      </div>
+      <div style="position: absolute; left: 382.9px; top: 0; width: 205.3px; height: 313.9px; transform: rotate(62.47deg); transform-origin: 0 0; background: url(assets/lace.png) center / cover no-repeat;"></div>
+      <div style="position: absolute; left: 11.9px; top: 0; width: 205.3px; height: 313.9px; transform: rotate(-62.47deg) scaleX(-1); transform-origin: 0 0; background: url(assets/lace.png) center / cover no-repeat;"></div>
+      <img src="assets/stamp.png" alt="Wax stamp HG" style="position: absolute; left: 50%; top: 271px; transform: translateX(-50%); width: 73px; height: 73px; filter: drop-shadow(1px 2px 5px rgba(101,101,101,0.35));">
+    </div>
+
+    <div data-screen-label="Letter" style="position: relative; padding: 42px 40px 0;">
+      <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: url(assets/lace-v.png) repeat-y; background-size: 6px auto;"></div>
+      <div style="position: absolute; left: 6px; top: 0; bottom: 0; width: 6px; background: url(assets/lace-v.png) repeat-y; background-size: 6px auto;"></div>
+      <div style="position: absolute; right: 0; top: 0; bottom: 0; width: 6px; background: url(assets/lace-v.png) repeat-y; background-size: 6px auto;"></div>
+      <div style="position: absolute; right: 6px; top: 0; bottom: 0; width: 6px; background: url(assets/lace-v.png) repeat-y; background-size: 6px auto;"></div>
+      <div style="display: flex; flex-direction: column; align-items: center;">
+        <span data-reveal="" style="font-weight: 600; font-size: 14px; text-transform: uppercase; color: rgb(120,105,93); text-align: center;">Trân trọng kính mời</span>
+        <div data-reveal="" data-reveal-delay="120" style="margin-top: 16px; font-family: 'DFVN Kaelyna Script', 'Great Vibes', cursive; font-size: 22px; line-height: 1.3; color: rgb(203,77,28); text-align: center; text-transform: capitalize;">{{ guestLabel }}</div>
+        <span data-reveal="" data-reveal-delay="200" style="margin-top: 36px; font-weight: 600; font-size: 14px; text-transform: uppercase; color: rgb(120,105,93); text-align: center;">Đến tham dự tiệc vu quy</span>
+        <div data-reveal="" style="margin-top: 20px; display: flex; flex-direction: column; align-items: center;">
+          <span style="font-family: 'DFVN Kaelyna Script', 'Great Vibes', cursive; font-size: 42px; line-height: 1.3; color: rgb(120,105,93); position: relative; z-index: 1;">Châu Giang</span>
+          <img src="assets/rings.png" alt="rings" style="width: 66px; height: 66px; margin: -14px 0 -23px;">
+          <span style="font-family: 'DFVN Kaelyna Script', 'Great Vibes', cursive; font-size: 42px; line-height: 1.3; color: rgb(120,105,93);">Trung Hiếu</span>
+        </div>
+        <div data-reveal="" style="margin-top: 36px; display: flex; align-items: center; gap: 20px;">
+          <span style="font-weight: 600; font-size: 18px; text-transform: uppercase; color: rgb(120,105,93);">17:30</span>
+          <div style="width: 1px; height: 34px; background: rgb(176,157,144);"></div>
+          <span style="font-weight: 600; font-size: 18px; text-transform: uppercase; color: rgb(120,105,93); white-space: nowrap;">Thứ bảy</span>
+          <div style="width: 1px; height: 34px; background: rgb(176,157,144);"></div>
+          <span style="font-weight: 600; font-size: 18px; text-transform: uppercase; color: rgb(120,105,93);">12.09.2026</span>
+        </div>
+        <span data-reveal="" style="margin-top: 8px; font-style: italic; font-size: 12px; color: rgb(176,157,144); text-align: center;">(Nhằm ngày 02 tháng 08 năm Bính Ngọ)</span>
+        <svg data-reveal="" width="14" height="18" viewBox="0 0 14 18" fill="none" style="margin-top: 33px; color: rgb(120,105,93);"><path transform="translate(0.2 13.5) scale(12 -12)" d="M 1.104 0.803 C 1.117 0.795 1.125 0.779 1.125 0.766 L 1.125 0.109 C 1.125 0.09 1.111 0.072 1.094 0.064 L 0.766 -0.061 C 0.756 -0.064 0.744 -0.064 0.734 -0.061 L 0.375 0.059 L 0.063 -0.061 C 0.049 -0.066 0.031 -0.064 0.02 -0.055 C 0.006 -0.047 0 -0.031 0 -0.016 L 0 0.641 C 0 0.66 0.012 0.676 0.029 0.684 L 0.357 0.809 C 0.367 0.813 0.379 0.813 0.389 0.809 L 0.748 0.689 L 1.061 0.809 C 1.074 0.814 1.092 0.813 1.104 0.803 L 1.104 0.803 Z M 0.094 0.607 L 0.094 0.051 L 0.328 0.141 L 0.328 0.697 L 0.094 0.607 Z M 0.703 0.049 L 0.703 0.605 L 0.422 0.699 L 0.422 0.143 L 0.703 0.049 Z M 0.797 0.051 L 1.031 0.141 L 1.031 0.697 L 0.797 0.607 L 0.797 0.051 L 0.797 0.051 Z" fill="currentColor"></path></svg>
+        <div data-reveal="" style="margin-top: 18px; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+          <span style="font-weight: 600; font-size: 16px; line-height: 1.5; text-transform: uppercase; color: rgb(120,105,93); text-align: center;">The Mira Central Park</span>
+          <span style="font-weight: 400; font-size: 14px; line-height: 1.5; text-transform: uppercase; color: rgb(120,105,93); text-align: center;">Sảnh tầng 5</span>
+          <span style="margin-top: 8px; width: 227px; font-style: italic; font-size: 12px; line-height: 1.5; color: rgb(176,157,144); text-align: center;">128/16 Nguyễn Ái Quốc, phường Tam Hiệp, Thành phố Đồng Nai</span>
+        </div>
+        <div data-reveal="" style="position: relative; margin-top: 17px; width: 313px; height: 196px; border-radius: 8px; background: rgb(249,241,232); box-shadow: 0 0 0 0.5px rgb(176,157,144);">
+          <img src="assets/map.png" alt="Sơ đồ đường đi" style="position: absolute; left: -19px; top: 28px; width: 351px; height: 145px; object-fit: cover;">
+        </div>
+        <a data-reveal="" href="https://maps.google.com/?q=The+Mira+Central+Park+Bien+Hoa" target="_blank" style="margin-top: 18px; display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; padding: 6px 12px; border-radius: 25px; background: rgb(120,105,93); color: rgb(255,251,248); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer;" style-hover="background: rgb(101,88,77); color: rgb(255,251,248);">Mở trong google maps</a>
+        <svg data-reveal="" width="12" height="18" viewBox="0 0 12 18" fill="none" style="margin-top: 32px; color: rgb(120,105,93);"><path transform="translate(0 13.5) scale(12 -12)" d="M 0.906 0.375 C 0.906 0.52 0.828 0.652 0.703 0.727 C 0.576 0.799 0.422 0.799 0.297 0.727 C 0.17 0.652 0.094 0.52 0.094 0.375 C 0.094 0.229 0.17 0.096 0.297 0.021 C 0.422 -0.051 0.576 -0.051 0.703 0.021 C 0.828 0.096 0.906 0.229 0.906 0.375 Z M 0 0.375 C 0 0.553 0.094 0.717 0.25 0.807 C 0.404 0.896 0.594 0.896 0.75 0.807 C 0.904 0.717 1 0.553 1 0.375 C 1 0.195 0.904 0.031 0.75 -0.059 C 0.594 -0.148 0.404 -0.148 0.25 -0.059 C 0.094 0.031 0 0.195 0 0.375 Z M 0.453 0.641 C 0.453 0.666 0.473 0.688 0.5 0.688 C 0.525 0.688 0.547 0.666 0.547 0.641 L 0.547 0.398 L 0.713 0.289 C 0.734 0.273 0.74 0.244 0.727 0.223 C 0.711 0.201 0.682 0.195 0.66 0.211 L 0.473 0.336 C 0.461 0.344 0.453 0.359 0.453 0.375 L 0.453 0.641 Z" fill="currentColor"></path></svg>
+        <span data-reveal="" style="margin-top: 18px; font-family: 'DFVN Kaelyna Script', 'Great Vibes', cursive; font-size: 24px; color: rgb(120,105,93);">Timeline</span>
+        <div data-reveal="" style="position: relative; margin-top: 21px; width: 180px; padding: 4px 0;">
+          <div style="position: absolute; left: 66px; top: 2px; bottom: 2px; width: 1px; background: rgba(120,105,93,0.55);"></div>
+          <div style="display: flex; flex-direction: column; gap: 16px;">
+            <div style="display: flex; gap: 36px; align-items: center;">
+              <div style="width: 54px; height: 54px; background: url(assets/icon-camera.png) center / 140% no-repeat; flex-shrink: 0;"></div>
+              <div style="display: flex; flex-direction: column; gap: 4px;">
+                <span style="font-weight: 600; font-size: 12px; line-height: 1.5; text-transform: uppercase; color: rgb(120,105,93);">17:30</span>
+                <span style="font-weight: 400; font-size: 12px; line-height: 1.5; text-transform: uppercase; color: rgb(120,105,93);">Đón khách</span>
+              </div>
+            </div>
+            <div style="display: flex; gap: 36px; align-items: center;">
+              <div style="width: 54px; height: 54px; background: url(assets/icon-toast.png) center / 130% no-repeat; flex-shrink: 0;"></div>
+              <div style="display: flex; flex-direction: column; gap: 4px;">
+                <span style="font-weight: 600; font-size: 12px; line-height: 1.5; text-transform: uppercase; color: rgb(120,105,93);">19:00</span>
+                <span style="font-weight: 400; font-size: 12px; line-height: 1.5; text-transform: uppercase; color: rgb(120,105,93);">Nhập tiệc</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="margin: 18px -40px 0; height: 12px; display: flex; flex-direction: column;">
+        <div style="height: 6px; background: url(assets/lace-h.png) repeat-x; background-size: auto 6px;"></div>
+        <div style="height: 6px; background: url(assets/lace-h.png) repeat-x; background-size: auto 6px;"></div>
+      </div>
+    </div>
+
+    <div data-screen-label="Events" style="position: relative; height: 589px; background: linear-gradient(rgba(120,105,93,0.24), rgba(120,105,93,0.24)), url(assets/together.jpg) 50% 0 / cover no-repeat; display: flex; flex-direction: column; align-items: center; padding: 68px 40px; box-sizing: border-box;">
+      <div style="display: flex; gap: 24px; align-items: flex-start;">
+        <div data-reveal="" style="position: relative; width: 144.5px; height: 304px; filter: drop-shadow(0px 3px 4px rgba(0,0,0,0.25)); flex-shrink: 0;">
+          <div style="position: absolute; inset: 0; background: rgb(255,251,248); clip-path: polygon(0 6.8%, 15.6% 0, 84.4% 0, 100% 6.8%, 100% 93.2%, 84.4% 100%, 15.6% 100%, 0 93.2%);"></div>
+          <div style="position: absolute; inset: 4.5px; background: rgb(176,157,144); clip-path: polygon(0 6.8%, 15.6% 0, 84.4% 0, 100% 6.8%, 100% 93.2%, 84.4% 100%, 15.6% 100%, 0 93.2%);"></div>
+          <div style="position: absolute; inset: 5.2px; background: rgb(255,251,248); clip-path: polygon(0 6.8%, 15.6% 0, 84.4% 0, 100% 6.8%, 100% 93.2%, 84.4% 100%, 15.6% 100%, 0 93.2%);"></div>
+          <div style="position: absolute; inset: 0; display: flex; flex-direction: column; gap: 14px; align-items: center; justify-content: center; padding: 24px 15px; box-sizing: border-box;">
+            <div style="width: 24px; height: 24px; background: url(assets/double-happiness.svg) center / contain no-repeat;"></div>
+            <div style="display: flex; flex-direction: column; align-self: stretch;">
+              <span style="font-weight: 600; font-size: 13px; line-height: 1; text-transform: uppercase; color: rgb(120,105,93); text-align: center; white-space: nowrap; padding-bottom: 10px;">Lễ vu quy</span>
+              <div style="border-top: 0.5px solid rgb(176,157,144); padding: 8px 0 10px; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                <span style="font-style: italic; font-size: 10px; line-height: 1.5; color: rgb(186,170,159);">Vào lúc</span>
+                <span style="font-weight: 500; font-size: 12px; line-height: 1.5; text-transform: uppercase; color: rgb(120,105,93);">8:00</span>
+              </div>
+              <div style="border-top: 0.5px solid rgb(176,157,144); padding: 8px 0 10px; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                <span style="font-weight: 500; font-size: 12px; line-height: 1.5; color: rgb(120,105,93);">20.09.2026</span>
+                <span style="font-style: italic; font-size: 9px; line-height: 1.4; color: rgb(186,170,159); text-align: center;">(Nhằm ngày 10 tháng 8 Năm Bính Ngọ)</span>
+              </div>
+              <div style="border-top: 0.5px solid rgb(176,157,144); padding: 8px 0 0; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                <span style="font-weight: 500; font-size: 12px; line-height: 1.5; text-transform: uppercase; color: rgb(120,105,93); white-space: nowrap;">Tư gia Nhà Gái</span>
+                <span style="font-style: italic; font-size: 9px; line-height: 1.4; color: rgb(186,170,159); text-align: center;">Phường Tam Hiệp, Thành phố Đồng Nai</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div data-reveal="" data-reveal-delay="150" style="position: relative; width: 144.5px; height: 304px; filter: drop-shadow(0px 3px 4px rgba(0,0,0,0.25)); flex-shrink: 0;">
+          <div style="position: absolute; inset: 0; background: rgb(255,251,248); clip-path: polygon(0 6.8%, 15.6% 0, 84.4% 0, 100% 6.8%, 100% 93.2%, 84.4% 100%, 15.6% 100%, 0 93.2%);"></div>
+          <div style="position: absolute; inset: 4.5px; background: rgb(176,157,144); clip-path: polygon(0 6.8%, 15.6% 0, 84.4% 0, 100% 6.8%, 100% 93.2%, 84.4% 100%, 15.6% 100%, 0 93.2%);"></div>
+          <div style="position: absolute; inset: 5.2px; background: rgb(255,251,248); clip-path: polygon(0 6.8%, 15.6% 0, 84.4% 0, 100% 6.8%, 100% 93.2%, 84.4% 100%, 15.6% 100%, 0 93.2%);"></div>
+          <div style="position: absolute; inset: 0; display: flex; flex-direction: column; gap: 14px; align-items: center; justify-content: center; padding: 24px 15px; box-sizing: border-box;">
+            <div style="width: 24px; height: 24px; background: url(assets/double-happiness.svg) center / contain no-repeat;"></div>
+            <div style="display: flex; flex-direction: column; align-self: stretch;">
+              <span style="font-weight: 600; font-size: 13px; line-height: 1; text-transform: uppercase; color: rgb(120,105,93); text-align: center; white-space: nowrap; padding-bottom: 10px;">Lễ thành hôn</span>
+              <div style="border-top: 0.5px solid rgb(176,157,144); padding: 8px 0 10px; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                <span style="font-style: italic; font-size: 10px; line-height: 1.5; color: rgb(186,170,159);">Vào lúc</span>
+                <span style="font-weight: 500; font-size: 12px; line-height: 1.5; text-transform: uppercase; color: rgb(120,105,93);">10:30</span>
+              </div>
+              <div style="border-top: 0.5px solid rgb(176,157,144); padding: 8px 0 10px; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                <span style="font-weight: 500; font-size: 12px; line-height: 1.5; color: rgb(120,105,93);">20.09.2026</span>
+                <span style="font-style: italic; font-size: 9px; line-height: 1.4; color: rgb(186,170,159); text-align: center;">(Nhằm ngày 10 tháng 8 Năm Bính Ngọ)</span>
+              </div>
+              <div style="border-top: 0.5px solid rgb(176,157,144); padding: 8px 0 0; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                <span style="font-weight: 500; font-size: 12px; line-height: 1.5; text-transform: uppercase; color: rgb(120,105,93); white-space: nowrap;">Tư gia Nhà Trai</span>
+                <span style="font-style: italic; font-size: 9px; line-height: 1.4; color: rgb(186,170,159); text-align: center;">Phường Bình Thạnh, Thành phố Hồ Chí Minh</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <span data-reveal="" style="font-family: 'DFVN Kaelyna Script', 'Great Vibes', cursive; font-size: 14px; letter-spacing: 1.1em; padding-left: 1.1em; text-transform: uppercase; color: rgb(220,207,197); text-align: center;">together</span>
+    </div>
+
+    <div data-screen-label="Gallery" style="padding: 64px 39.5px 72px; display: flex; flex-direction: column; align-items: center;">
+      <span data-reveal="" style="font-family: 'DFVN Kaelyna Script', 'Great Vibes', cursive; font-size: 44px; line-height: 1.2; color: rgb(120,105,93); text-align: center;">Giang &amp; Hiếu</span>
+      <span data-reveal="" style="margin-top: 8px; font-weight: 600; font-size: 11px; letter-spacing: 0.3em; text-transform: uppercase; color: rgb(176,157,144);">Đà Lạt 2026</span>
+      <div style="margin-top: 30px; width: 314px; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(7, 118px); gap: 16px; grid-auto-flow: dense;">
+        <div data-reveal="" style="grid-column: span 2; grid-row: span 2; background: url(assets/g02.jpg) center / cover no-repeat; cursor: pointer;" onClick="{{ lb0 }}"></div>
+        <div data-reveal="" data-reveal-delay="100" style="background: url(assets/g03.jpg) center / cover no-repeat; cursor: pointer;" onClick="{{ lb1 }}"></div>
+        <div data-reveal="" data-reveal-delay="180" style="background: url(assets/g04.jpg) center / cover no-repeat; cursor: pointer;" onClick="{{ lb2 }}"></div>
+        <div data-reveal="" style="grid-row: span 2; background: url(assets/g05.jpg) center / cover no-repeat; cursor: pointer;" onClick="{{ lb3 }}"></div>
+        <div data-reveal="" data-reveal-delay="100" style="grid-column: span 2; grid-row: span 2; background: url(assets/g06.jpg) center / cover no-repeat; cursor: pointer;" onClick="{{ lb4 }}"></div>
+        <div data-reveal="" style="background: url(assets/g07.jpg) center / cover no-repeat; cursor: pointer;" onClick="{{ lb5 }}"></div>
+        <div data-reveal="" data-reveal-delay="100" style="grid-row: span 2; background: url(assets/g08.jpg) center / cover no-repeat; cursor: pointer;" onClick="{{ lb6 }}"></div>
+        <div data-reveal="" data-reveal-delay="180" style="grid-row: span 2; background: url(assets/g12.jpg) center / cover no-repeat; cursor: pointer;" onClick="{{ lb7 }}"></div>
+        <div data-reveal="" data-reveal-delay="60" style="background: url(assets/g01.jpg) center / cover no-repeat; cursor: pointer;" onClick="{{ lb8 }}"></div>
+        <div data-reveal="" style="background: url(assets/g09.jpg) center / cover no-repeat; cursor: pointer;" onClick="{{ lb9 }}"></div>
+        <div data-reveal="" data-reveal-delay="100" style="background: url(assets/g10.jpg) center / cover no-repeat; cursor: pointer;" onClick="{{ lb10 }}"></div>
+        <div data-reveal="" data-reveal-delay="180" style="background: url(assets/g11.jpg) center / cover no-repeat; cursor: pointer;" onClick="{{ lb11 }}"></div>
+      </div>
+      <sc-if value="{{ lbOpen }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ lbClose }}" style="position: fixed; inset: 0; z-index: 60; background: rgba(32,26,21,0.94); display: flex; flex-direction: column; align-items: center; justify-content: center;">
+          <div onClick="{{ lbClose }}" style="position: absolute; top: 18px; right: 18px; width: 36px; height: 36px; border-radius: 18px; box-shadow: 0 0 0 0.5px rgba(255,251,248,0.5); display: flex; align-items: center; justify-content: center; color: rgb(255,251,248); font-size: 16px; cursor: pointer;" style-hover="background: rgba(255,251,248,0.12);">✕</div>
+          <img src="{{ lbSrc }}" onClick="{{ lbStop }}" style="max-width: 86vw; max-height: 72vh; object-fit: contain; box-shadow: 0 12px 48px rgba(0,0,0,0.5);">
+          <span style="margin-top: 14px; font-size: 11px; letter-spacing: 0.25em; color: rgb(220,207,197);">{{ lbCount }}</span>
+          <div onClick="{{ lbPrev }}" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; border-radius: 20px; box-shadow: 0 0 0 0.5px rgba(255,251,248,0.5); display: flex; align-items: center; justify-content: center; color: rgb(255,251,248); font-size: 20px; cursor: pointer;" style-hover="background: rgba(255,251,248,0.12);">‹</div>
+          <div onClick="{{ lbNext }}" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; border-radius: 20px; box-shadow: 0 0 0 0.5px rgba(255,251,248,0.5); display: flex; align-items: center; justify-content: center; color: rgb(255,251,248); font-size: 20px; cursor: pointer;" style-hover="background: rgba(255,251,248,0.12);">›</div>
+        </div>
+      </sc-if>
+    </div>
+
+    <div data-screen-label="RSVP" style="background: rgb(120,105,93); padding: 60px 40px; display: flex; flex-direction: column; align-items: center; gap: 24px;">
+      <span data-reveal="" style="font-family: 'DFVN Kaelyna Script', 'Great Vibes', cursive; font-size: 27px; color: rgb(255,251,248);">Xác nhận tham gia</span>
+      <span data-reveal="" style="width: 289px; font-size: 12px; line-height: 1.55; color: rgb(255,251,248); text-align: center;">Tiệc cưới sẽ trọn vẹn hơn khi có thêm lời chúc phúc và sự hiện diện của Quý Anh/Chị/Bạn.</span>
+      <span data-reveal="" style="width: 280px; font-size: 12px; line-height: 1.55; color: rgb(255,251,248); text-align: center;">Hi vọng Quý Anh/Chị/Bạn sẽ sắp xếp thời gian và xác nhận tham dự trước ngày 05/09/2026 để cô dâu – chú rể chuẩn bị tiếp đón thật chu đáo nhé!<br>Trân trọng.</span>
+      <div data-reveal="" style="display: flex; gap: 16px; justify-content: center;">
+        <sc-if value="{{ rsvpNotYes }}" hint-placeholder-val="{{ true }}">
+          <div onClick="{{ rsvpYes }}" style="padding: 7px 18px; border-radius: 22px; box-shadow: 0 0 0 0.5px rgb(255,251,248); font-size: 12px; color: rgb(255,251,248); cursor: pointer; white-space: nowrap;" style-hover="background: rgba(255,251,248,0.12);">Tham dự được</div>
+        </sc-if>
+        <sc-if value="{{ rsvpIsYes }}">
+          <div onClick="{{ rsvpYes }}" style="padding: 7px 18px; border-radius: 22px; background: rgb(255,251,248); box-shadow: 0 0 0 0.5px rgb(255,251,248); font-size: 12px; font-weight: 600; color: rgb(120,105,93); cursor: pointer; white-space: nowrap;">✓ Tham dự được</div>
+        </sc-if>
+        <sc-if value="{{ rsvpNotNo }}" hint-placeholder-val="{{ true }}">
+          <div onClick="{{ rsvpNo }}" style="padding: 7px 18px; border-radius: 22px; box-shadow: 0 0 0 0.5px rgb(255,251,248); font-size: 12px; color: rgb(255,251,248); cursor: pointer; white-space: nowrap;" style-hover="background: rgba(255,251,248,0.12);">Không tham dự được</div>
+        </sc-if>
+        <sc-if value="{{ rsvpIsNo }}">
+          <div onClick="{{ rsvpNo }}" style="padding: 7px 18px; border-radius: 22px; background: rgb(255,251,248); box-shadow: 0 0 0 0.5px rgb(255,251,248); font-size: 12px; font-weight: 600; color: rgb(120,105,93); cursor: pointer; white-space: nowrap;">✓ Không tham dự được</div>
+        </sc-if>
+      </div>
+      <sc-if value="{{ rsvpDone }}">
+        <span style="font-style: italic; font-size: 11px; color: rgb(220,207,197); text-align: center; margin-top: -10px;">{{ rsvpThanks }}</span>
+      </sc-if>
+    </div>
+
+    <div data-screen-label="Wish form" style="padding: 68px 40px 8px; display: flex; flex-direction: column; align-items: center;">
+      <div data-reveal="" style="position: relative; width: 310px; height: 475px; background: url(assets/wish-paper.png) center / cover no-repeat;">
+        <div style="position: absolute; inset: 72px 44px 76px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;">
+          <span style="font-size: 12px; line-height: 1.6; color: rgb(120,105,93); text-align: center;">Mỗi lời chúc sẽ là một món quà đặc biệt với Giang &amp; Hiếu.</span>
+          <sc-if value="{{ notWishSent }}" hint-placeholder-val="{{ true }}">
+            <input value="{{ wishName }}" onChange="{{ onWishName }}" placeholder="Tên của bạn" style="width: 171px; box-sizing: border-box; border: none; outline: none; background: transparent; border-radius: 25px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 8px 14px; font-family: 'Playfair Display', serif; font-size: 11px; color: rgb(120,105,93);">
+            <textarea value="{{ wishText }}" onChange="{{ onWishText }}" placeholder="Viết lời chúc..." style="width: 171px; height: 108px; box-sizing: border-box; border: none; outline: none; background: transparent; border-radius: 14px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 10px 14px; font-family: 'Playfair Display', serif; font-size: 11px; line-height: 1.6; color: rgb(120,105,93); resize: none;"></textarea>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-style: italic; font-size: 10px; color: rgb(176,157,144);">Màu thiệp</span>
+              <sc-for list="{{ wishColors }}" as="c" hint-placeholder-count="4">
+                <div onClick="{{ c.pick }}" title="{{ c.name }}" style="width: 18px; height: 18px; border-radius: 9px; background: {{ c.bg }}; box-shadow: {{ c.ring }}; cursor: pointer;"></div>
+              </sc-for>
+            </div>
+            <div onClick="{{ sendWish }}" style="margin-top: 4px; padding: 8px 20px; border-radius: 25px; background: rgb(120,105,93); color: rgb(255,251,248); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;" style-hover="background: rgb(101,88,77);">Gửi lời chúc</div>
+          </sc-if>
+          <sc-if value="{{ wishSent }}">
+            <span style="font-family: 'DFVN Kaelyna Script', 'Great Vibes', cursive; font-size: 28px; color: rgb(203,77,28);">Cảm ơn bạn!</span>
+            <span style="font-style: italic; font-size: 11px; line-height: 1.6; color: rgb(176,157,144); text-align: center; width: 180px;">Lời chúc của bạn đã được gửi đến Giang &amp; Hiếu.</span>
+          </sc-if>
+        </div>
+      </div>
+      <sc-if value="{{ hasWishPreview }}">
+        <div style="margin-top: 20px; width: 310px; display: flex; flex-direction: column; gap: 10px;">
+          <span style="font-weight: 600; font-size: 10px; letter-spacing: 0.28em; text-transform: uppercase; color: rgb(176,157,144); text-align: center;">Xem trước lời chúc của bạn</span>
+          <div style="background: {{ previewBg }}; border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144), 0 2px 8px rgba(101,101,101,0.08); padding: 18px 20px 14px; display: flex; flex-direction: column; gap: 10px;">
+            <span style="font-style: italic; font-size: 12px; line-height: 1.7; color: rgb(120,105,93);">“{{ previewText }}”</span>
+            <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px;">
+              <span style="font-family: 'DFVN Kaelyna Script', 'Great Vibes', cursive; font-size: 18px; color: rgb(203,77,28);">{{ previewName }}</span>
+              <span style="font-style: italic; font-size: 10px; color: rgb(186,170,159); white-space: nowrap;">vừa xong</span>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+
+    <div data-screen-label="Wishes wall" style="padding: 56px 24px 24px; display: flex; flex-direction: column; align-items: center;">
+      <span data-reveal="" style="font-family: 'DFVN Kaelyna Script', 'Great Vibes', cursive; font-size: 27px; color: rgb(120,105,93);">Lời chúc gửi trao</span>
+      <span data-reveal="" style="margin-top: 8px; font-weight: 600; font-size: 10px; letter-spacing: 0.28em; text-transform: uppercase; color: rgb(176,157,144);">Từ những người thương yêu</span>
+      <sc-if value="{{ styleLetters }}" hint-placeholder-val="{{ true }}">
+        <div style="margin-top: 26px; align-self: stretch; display: flex; flex-direction: column; gap: 14px;">
+          <sc-for list="{{ wishesShown }}" as="w" hint-placeholder-count="3">
+            <div style="background: {{ w.bg }}; border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144), 0 2px 8px rgba(101,101,101,0.08); padding: 18px 20px 14px; display: flex; flex-direction: column; gap: 10px;">
+              <span style="font-style: italic; font-size: 12px; line-height: 1.7; color: rgb(120,105,93);">“{{ w.text }}”</span>
+              <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px;">
+                <span style="font-family: 'DFVN Kaelyna Script', 'Great Vibes', cursive; font-size: 18px; color: rgb(203,77,28);">{{ w.name }}</span>
+                <span style="font-style: italic; font-size: 10px; color: rgb(186,170,159); white-space: nowrap;">{{ w.when }}</span>
+              </div>
+            </div>
+          </sc-for>
+          <sc-if value="{{ hasMoreWishes }}">
+            <div onClick="{{ showMoreWishes }}" style="align-self: center; margin-top: 4px; padding: 6px 16px; border-radius: 22px; box-shadow: 0 0 0 0.5px rgb(176,157,144); font-size: 11px; color: rgb(120,105,93); cursor: pointer;" style-hover="background: rgb(249,241,232);">Xem thêm lời chúc</div>
+          </sc-if>
+        </div>
+      </sc-if>
+      <sc-if value="{{ styleMarquee }}">
+        <div style="margin: 26px -24px 0; width: 393px; overflow: hidden; display: flex; flex-direction: column; gap: 14px;">
+          <div style="display: flex; gap: 12px; width: max-content; animation: wishDrift 46s linear infinite;" style-hover="animation-play-state: paused;">
+            <sc-for list="{{ wishesLoop }}" as="w" hint-placeholder-count="4">
+              <div style="width: 210px; flex-shrink: 0; box-sizing: border-box; background: {{ w.bg }}; border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144), 0 2px 8px rgba(101,101,101,0.08); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;">
+                <span style="font-style: italic; font-size: 11px; line-height: 1.65; color: rgb(120,105,93);">“{{ w.text }}”</span>
+                <span style="font-family: 'DFVN Kaelyna Script', 'Great Vibes', cursive; font-size: 16px; color: rgb(203,77,28);">{{ w.name }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ styleCards }}">
+        <div style="margin-top: 26px; align-self: stretch; column-count: 2; column-gap: 12px;">
+          <sc-for list="{{ wishesShown }}" as="w" hint-placeholder-count="4">
+            <div style="break-inside: avoid; margin-bottom: 12px; background: rgb(255,251,248); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 6px;">
+              <span style="font-size: 22px; line-height: 0.6; color: rgb(203,77,28); font-weight: 600;">“</span>
+              <span style="font-style: italic; font-size: 11px; line-height: 1.65; color: rgb(120,105,93);">{{ w.text }}</span>
+              <span style="margin-top: 4px; font-family: 'DFVN Kaelyna Script', 'Great Vibes', cursive; font-size: 15px; color: rgb(120,105,93); text-align: right;">{{ w.name }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+
+    <div data-screen-label="Footer" style="padding: 52px 40px 48px; display: flex; flex-direction: column; align-items: center; gap: 20px;">
+      <span data-reveal="" style="font-family: 'DFVN Kaelyna Script', 'Great Vibes', cursive; font-size: 48px; color: rgb(186,170,159);">Thank You</span>
+      <div data-reveal="" style="width: 22px; height: 22px; background: url(assets/logo-mark.svg) center / contain no-repeat;"></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;wishesStyle&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;letters&quot;, &quot;marquee&quot;, &quot;cards&quot;], &quot;default&quot;: &quot;letters&quot;, &quot;section&quot;: &quot;Lời chúc&quot;, &quot;tsType&quot;: &quot;'letters' | 'marquee' | 'cards'&quot; },
+  &quot;previewGuest&quot;: { &quot;editor&quot;: &quot;text&quot;, &quot;default&quot;: &quot;&quot;, &quot;section&quot;: &quot;Cá nhân hoá&quot;, &quot;tsType&quot;: &quot;string&quot; }
+}">
+class Component extends DCLogic {
+  state = { lbIndex: -1, guest: null, rsvp: null, wishName: '', wishText: '', wishSent: false, wishLimit: 4, music: false, wishColor: 0, showHint: false, hintOpacity: 1 };
+  wishPresets = [
+    { name: 'Trắng ngà', bg: 'rgb(255,251,248)' },
+    { name: 'Kem', bg: 'rgb(249,241,232)' },
+    { name: 'Hồng phấn', bg: 'rgb(248,235,230)' },
+    { name: 'Xanh ô liu', bg: 'rgb(238,239,230)' }
+  ];
+  componentDidMount() {
+    window.addEventListener('keydown', (e) => {
+      if (this.state.lbIndex < 0) return;
+      if (e.key === 'Escape') this.setState({ lbIndex: -1 });
+      if (e.key === 'ArrowLeft') this.setState(s => ({ lbIndex: (s.lbIndex + 11) % 12 }));
+      if (e.key === 'ArrowRight') this.setState(s => ({ lbIndex: (s.lbIndex + 1) % 12 }));
+    });
+    const id = new URLSearchParams(location.search).get('g');
+    if (id && window.WeddingDB) {
+      const g = window.WeddingDB.getGuest(id);
+      if (g) {
+        this.setState({ guest: g, rsvp: g.rsvp, wishName: g.label });
+        window.WeddingDB.markOpened(id);
+      }
+    }
+    if (window.WeddingDB) this._unsub = window.WeddingDB.subscribe(() => this.forceUpdate());
+    setTimeout(() => this.initReveal(), 80);
+    try {
+      const force = new URLSearchParams(location.search).has('hint');
+      if (force || !localStorage.getItem('hg_hint_seen')) this.setState({ showHint: true });
+    } catch (e) {}
+    this._onScroll = () => {
+      if (this._scrolled) return;
+      const sc = document.scrollingElement || document.documentElement;
+      if (sc.scrollTop < 30) return;
+      this._scrolled = true;
+      if (this.state.showHint) {
+        try { localStorage.setItem('hg_hint_seen', '1'); } catch (e) {}
+        this.setState({ hintOpacity: 0 });
+        setTimeout(() => this.setState({ showHint: false }), 1000);
+      }
+      this.startMusic();
+    };
+    window.addEventListener('scroll', this._onScroll, { passive: true });
+  }
+  componentWillUnmount() {
+    if (this._unsub) this._unsub();
+    if (this._io) this._io.disconnect();
+    if (this._onScroll) window.removeEventListener('scroll', this._onScroll);
+    if (this._retryPlay) window.removeEventListener('pointerdown', this._retryPlay);
+    if (this._audio) this._audio.pause();
+  }
+  fadeVolume(target, ms) {
+    if (!this._audio) return;
+    if (this._fadeTimer) clearInterval(this._fadeTimer);
+    const audio = this._audio, steps = 20, step = (target - audio.volume) / steps;
+    let i = 0;
+    this._fadeTimer = setInterval(() => {
+      i++;
+      audio.volume = Math.min(1, Math.max(0, audio.volume + step));
+      if (i >= steps) { clearInterval(this._fadeTimer); if (target === 0) audio.pause(); }
+    }, ms / steps);
+  }
+  startMusic() {
+    if (this.state.music) return;
+    const tryPlay = () => {
+      this._audio.volume = 0;
+      this._audio.play().then(() => {
+        this.setState({ music: true });
+        this.fadeVolume(0.85, 2400);
+      }).catch(() => {
+        if (this._retryPlay) return;
+        this._retryPlay = () => {
+          window.removeEventListener('pointerdown', this._retryPlay);
+          this._retryPlay = null;
+          if (!this.state.music) tryPlay();
+        };
+        window.addEventListener('pointerdown', this._retryPlay);
+      });
+    };
+    if (this._audio) { tryPlay(); return; }
+    if (this._audioTried) return;
+    this._audioTried = true;
+    fetch('assets/music.mp3', { method: 'HEAD' }).then(r => {
+      if (r.ok) {
+        this._audio = new Audio('assets/music.mp3');
+        this._audio.loop = true;
+        tryPlay();
+      }
+    }).catch(() => {});
+  }
+  initReveal() {
+    const els = Array.from(document.querySelectorAll('[data-reveal]'));
+    els.forEach(el => {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(26px)';
+      el.style.transition = 'opacity 1.1s ease-out, transform 1.25s cubic-bezier(0.22,0.61,0.36,1)';
+    });
+    const io = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          const el = e.target;
+          el.style.transitionDelay = (el.dataset.revealDelay || 0) + 'ms';
+          el.style.opacity = '1';
+          el.style.transform = 'none';
+          io.unobserve(el);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -6% 0px' });
+    els.forEach(el => io.observe(el));
+    this._io = io;
+  }
+  toggleMusic = () => {
+    if (this.state.music) {
+      this.setState({ music: false });
+      this.fadeVolume(0, 700);
+    } else {
+      this._audioTried = false;
+      this.startMusic();
+    }
+  };
+  setRsvp(v) {
+    this.setState({ rsvp: v });
+    if (this.state.guest && window.WeddingDB) window.WeddingDB.setRsvp(this.state.guest.id, v);
+  }
+  timeAgo(t) {
+    const d = Date.now() - t;
+    if (d < 3600e3) return 'vừa xong';
+    if (d < 24 * 3600e3) return Math.round(d / 3600e3) + ' giờ trước';
+    if (d < 7 * 24 * 3600e3) return Math.round(d / 864e5) + ' ngày trước';
+    const dt = new Date(t);
+    return dt.getDate() + '.' + (dt.getMonth() + 1) + '.' + dt.getFullYear();
+  }
+  renderVals() {
+    const imgs = ['g02','g03','g04','g05','g06','g07','g08','g12','g01','g09','g10','g11'];
+    const li = this.state.lbIndex, n = imgs.length;
+    const lb = {
+      lbOpen: li >= 0,
+      lbSrc: li >= 0 ? ('assets/' + imgs[li] + '.jpg') : '',
+      lbCount: (li + 1) + ' / ' + n,
+      lbStop: (e) => e.stopPropagation(),
+      lbPrev: (e) => { e.stopPropagation(); this.setState({ lbIndex: (li - 1 + n) % n }); },
+      lbNext: (e) => { e.stopPropagation(); this.setState({ lbIndex: (li + 1) % n }); },
+      lbClose: () => this.setState({ lbIndex: -1 })
+    };
+    for (let k = 0; k < n; k++) lb['lb' + k] = () => this.setState({ lbIndex: k });
+    return Object.assign(this.baseVals(), lb);
+  }
+  baseVals() {
+    const db = window.WeddingDB ? window.WeddingDB.all() : { wishes: [] };
+    const wishes = (db.wishes || []).map(w => ({ id: w.id, text: w.text, name: w.name, when: this.timeAgo(w.at), bg: w.color || 'rgb(255,251,248)' }));
+    const sel = this.state.wishColor || 0;
+    const shown = wishes.slice(0, this.state.wishLimit);
+    const styleKey = this.props.wishesStyle ?? 'letters';
+    const guest = this.state.guest;
+    return {
+      guestLabel: (guest && guest.label) || this.props.previewGuest || 'Quý Khách/Cô/Chú/Anh/Chị/Bạn',
+      musicOff: !this.state.music,
+      speakerOpacity: this.state.music ? 0 : 1,
+      pauseOpacity: this.state.music ? 1 : 0,
+      slashOpacity: this.state.music ? 0 : 1,
+      showHint: this.state.showHint,
+      hintOpacity: this.state.hintOpacity,
+      toggleMusic: this.toggleMusic,
+      rsvpIsYes: this.state.rsvp === 'yes',
+      rsvpNotYes: this.state.rsvp !== 'yes',
+      rsvpIsNo: this.state.rsvp === 'no',
+      rsvpNotNo: this.state.rsvp !== 'no',
+      rsvpDone: !!this.state.rsvp,
+      rsvpThanks: this.state.rsvp === 'yes' ? 'Cảm ơn bạn! Giang & Hiếu rất mong được đón tiếp bạn.' : 'Cảm ơn bạn đã phản hồi. Hẹn gặp bạn một dịp gần nhất!',
+      rsvpYes: () => this.setRsvp('yes'),
+      rsvpNo: () => this.setRsvp('no'),
+      wishName: this.state.wishName,
+      wishText: this.state.wishText,
+      onWishName: e => this.setState({ wishName: e.target.value }),
+      onWishText: e => this.setState({ wishText: e.target.value }),
+      wishSent: this.state.wishSent,
+      notWishSent: !this.state.wishSent,
+      sendWish: () => {
+        const text = this.state.wishText.trim();
+        if (!text) return;
+        if (window.WeddingDB) window.WeddingDB.addWish({
+          guestId: guest ? guest.id : null,
+          name: this.state.wishName.trim() || (guest ? guest.label : 'Khách mời'),
+          text,
+          color: this.wishPresets[sel].bg
+        });
+        this.setState({ wishSent: true, wishText: '' });
+      },
+      wishColors: this.wishPresets.map((p, i) => ({
+        name: p.name, bg: p.bg,
+        ring: i === sel ? '0 0 0 1px rgb(255,251,248), 0 0 0 2.5px rgb(203,77,28)' : '0 0 0 0.5px rgb(176,157,144)',
+        pick: () => this.setState({ wishColor: i })
+      })),
+      previewBg: this.wishPresets[sel].bg,
+      previewText: this.state.wishText.trim() || '…',
+      previewName: this.state.wishName.trim() || 'Khách mời',
+      hasWishPreview: !this.state.wishSent && !!(this.state.wishText.trim() || this.state.wishName.trim()),
+      wishesShown: shown,
+      wishesLoop: shown.concat(shown),
+      hasMoreWishes: wishes.length > this.state.wishLimit && styleKey === 'letters',
+      showMoreWishes: () => this.setState({ wishLimit: this.state.wishLimit + 6 }),
+      styleLetters: styleKey === 'letters',
+      styleMarquee: styleKey === 'marquee',
+      styleCards: styleKey === 'cards'
+    };
+  }
+}
+</script>
+</body>
+</html>

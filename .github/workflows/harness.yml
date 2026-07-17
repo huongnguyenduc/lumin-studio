@@ -73,7 +73,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-          cache-dependency-path: services/core-api/go.sum
+          cache-dependency-path: |
+            services/core-api/go.sum
+            services/wedding-api/go.sum
       - name: install golangci-lint v2 (ADR-020)
         run: |
           # Pin the install SCRIPT to the release tag (not HEAD) so a mutated

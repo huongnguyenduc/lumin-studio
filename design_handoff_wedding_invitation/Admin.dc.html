@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;family=Great+Vibes&amp;display=swap" rel="stylesheet">
+<script src="guest-db.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+body { margin: 0; background: rgb(245,241,236); }
+a { color: rgb(120,105,93); text-decoration: none; }
+a:hover { color: rgb(89,76,66); }
+::placeholder { color: rgb(186,170,159); opacity: 1; }
+</style>
+</helmet>
+<div style="min-height: 100vh; font-family: 'Playfair Display', ui-serif, Georgia, serif; color: rgb(120,105,93); padding: 36px 32px 64px; box-sizing: border-box;">
+  <div style="max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px;">
+
+    <div style="display: flex; align-items: center; gap: 18px;">
+      <div style="width: 40px; height: 40px; background-color: rgb(120,105,93); -webkit-mask: url(assets/logo-mark.svg) center / contain no-repeat; mask: url(assets/logo-mark.svg) center / contain no-repeat;"></div>
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <span style="font-family: 'Great Vibes', cursive; font-size: 30px; line-height: 1.1; color: rgb(120,105,93);">Giang &amp; Hiếu</span>
+        <span style="font-weight: 600; font-size: 11px; letter-spacing: 0.26em; text-transform: uppercase; color: rgb(176,157,144);">Quản lý thiệp mời — 12.09.2026</span>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <div onClick="{{ exportXlsx }}" style="padding: 8px 18px; border-radius: 22px; background: rgb(120,105,93); color: rgb(255,251,248); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; cursor: pointer;" style-hover="background: rgb(101,88,77);">Xuất Excel</div>
+      <a href="Wedding Invitation.dc.html" target="_blank" style="padding: 8px 18px; border-radius: 22px; box-shadow: 0 0 0 0.5px rgb(176,157,144); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;" style-hover="background: rgb(249,241,232);">Xem thiệp mẫu</a>
+      <div onClick="{{ resetData }}" title="Khôi phục dữ liệu mẫu" style="padding: 8px 14px; border-radius: 22px; font-size: 12px; color: rgb(186,170,159); cursor: pointer;" style-hover="color: rgb(120,105,93);">Đặt lại dữ liệu</div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px;">
+      <div style="background: rgb(255,251,248); border-radius: 10px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 18px 20px; display: flex; flex-direction: column; gap: 4px;">
+        <span style="font-weight: 600; font-size: 30px; line-height: 1;">{{ statTotal }}</span>
+        <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">Khách mời</span>
+      </div>
+      <div style="background: rgb(255,251,248); border-radius: 10px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 18px 20px; display: flex; flex-direction: column; gap: 4px;">
+        <span style="font-weight: 600; font-size: 30px; line-height: 1;">{{ statOpened }}</span>
+        <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">Đã mở thiệp</span>
+      </div>
+      <div style="background: rgb(255,251,248); border-radius: 10px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 18px 20px; display: flex; flex-direction: column; gap: 4px;">
+        <span style="font-weight: 600; font-size: 30px; line-height: 1; color: oklch(0.52 0.09 155);">{{ statYes }}</span>
+        <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">Tham dự</span>
+      </div>
+      <div style="background: rgb(255,251,248); border-radius: 10px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 18px 20px; display: flex; flex-direction: column; gap: 4px;">
+        <span style="font-weight: 600; font-size: 30px; line-height: 1; color: oklch(0.52 0.09 30);">{{ statNo }}</span>
+        <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">Không tham dự</span>
+      </div>
+      <div style="background: rgb(255,251,248); border-radius: 10px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 18px 20px; display: flex; flex-direction: column; gap: 4px;">
+        <span style="font-weight: 600; font-size: 30px; line-height: 1;">{{ statWishes }}</span>
+        <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">Lời chúc</span>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 12px; align-items: center;">
+      <input value="{{ search }}" onChange="{{ onSearch }}" placeholder="Tìm khách mời..." style="width: 260px; box-sizing: border-box; border: none; outline: none; background: rgb(255,251,248); border-radius: 22px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 9px 16px; font-family: 'Playfair Display', serif; font-size: 13px; color: rgb(120,105,93);">
+      <div style="flex-grow: 1;"></div>
+      <sc-if value="{{ copiedToast }}">
+        <span style="font-style: italic; font-size: 12px; color: oklch(0.52 0.09 155);">{{ copiedToast }}</span>
+      </sc-if>
+      <sc-if value="{{ addedToast }}">
+        <span style="font-style: italic; font-size: 12px; color: oklch(0.52 0.09 155);">{{ addedToast }}</span>
+      </sc-if>
+    </div>
+
+    <div style="background: rgb(255,251,248); border-radius: 10px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 16px 20px; display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <span style="font-weight: 600; font-size: 13px; white-space: nowrap;">Thêm nhanh</span>
+        <input id="quick-input" value="{{ quickLabel }}" onChange="{{ onQuickLabel }}" onKeyDown="{{ onQuickKey }}" placeholder="Xưng hô trên thiệp — nhấn Enter để thêm liên tục" style="flex-grow: 1; box-sizing: border-box; border: none; outline: none; background: rgb(255,251,248); border-radius: 22px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 9px 16px; font-family: 'Playfair Display', serif; font-size: 13px; color: rgb(120,105,93);">
+        <div onClick="{{ quickAdd }}" style="padding: 9px 20px; border-radius: 22px; background: rgb(120,105,93); color: rgb(255,251,248); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; white-space: nowrap;" style-hover="background: rgb(101,88,77);">Thêm ⏎</div>
+        <div onClick="{{ toggleBulk }}" style="padding: 9px 14px; border-radius: 22px; box-shadow: 0 0 0 0.5px rgb(176,157,144); font-size: 12px; cursor: pointer; white-space: nowrap;" style-hover="background: rgb(249,241,232);">Thêm hàng loạt</div>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">Nhóm</span>
+        <sc-for list="{{ groupChips }}" as="c" hint-placeholder-count="6">
+          <div style="display: flex; align-items: center;">
+            <div onClick="{{ c.pick }}" title="{{ c.title }}" style="padding: 5px 14px; border-radius: 20px; box-shadow: 0 0 0 0.5px rgb(176,157,144); font-size: 12px; cursor: pointer; background: {{ c.bg }}; color: {{ c.color }}; white-space: nowrap;">{{ c.name }}</div>
+            <sc-if value="{{ c.showDel }}">
+              <div onClick="{{ c.del }}" title="Xoá nhóm" style="margin-left: 4px; width: 18px; height: 18px; border-radius: 9px; box-shadow: 0 0 0 0.5px rgb(176,157,144); display: flex; align-items: center; justify-content: center; font-size: 11px; color: rgb(176,157,144); cursor: pointer; line-height: 1;" style-hover="color: oklch(0.52 0.09 30); background: rgb(249,241,232);">×</div>
+            </sc-if>
+          </div>
+        </sc-for>
+        <sc-if value="{{ newGroupOpen }}">
+          <input id="new-group-input" value="{{ newGroupName }}" onChange="{{ onNewGroupName }}" onKeyDown="{{ onNewGroupKey }}" placeholder="Tên nhóm mới — Enter" style="width: 160px; box-sizing: border-box; border: none; outline: none; background: rgb(255,251,248); border-radius: 20px; box-shadow: 0 0 0 0.5px rgb(120,105,93); padding: 5px 14px; font-family: 'Playfair Display', serif; font-size: 12px; color: rgb(120,105,93);">
+        </sc-if>
+        <sc-if value="{{ notNewGroupOpen }}" hint-placeholder-val="{{ true }}">
+          <div onClick="{{ openNewGroup }}" style="padding: 5px 14px; border-radius: 20px; border: 1px dashed rgb(176,157,144); font-size: 12px; color: rgb(120,105,93); cursor: pointer; white-space: nowrap;" style-hover="background: rgb(249,241,232);">+ Nhóm</div>
+        </sc-if>
+        <div onClick="{{ toggleManageGroups }}" style="padding: 5px 8px; font-size: 11px; color: rgb(186,170,159); cursor: pointer; text-decoration: underline; text-underline-offset: 3px;" style-hover="color: rgb(120,105,93);">{{ manageLabel }}</div>
+        <sc-if value="{{ manageGroups }}">
+          <span style="font-size: 11px; font-style: italic; color: rgb(186,170,159);">Bấm tên nhóm để đổi tên · bấm × để xoá</span>
+        </sc-if>
+      </div>
+      <sc-if value="{{ bulkOpen }}">
+        <div style="display: flex; flex-direction: column; gap: 10px; border-top: 0.5px solid rgb(235,226,217); padding-top: 12px;">
+          <span style="font-size: 12px; color: rgb(176,157,144);">Dán danh sách — mỗi dòng một khách. Có thể ghi nhóm sau dấu phẩy, ví dụ: <span style="font-style: italic;">Cô Lan &amp; Chú Minh, Nhà gái</span>. Dòng không ghi nhóm sẽ dùng nhóm đang chọn ở trên.</span>
+          <textarea value="{{ bulkText }}" onChange="{{ onBulkText }}" placeholder="Cô Lan &amp; Chú Minh, Nhà gái&#10;Anh Tuấn, Đồng nghiệp&#10;Bạn Minh Anh" style="height: 120px; box-sizing: border-box; border: none; outline: none; background: rgb(255,251,248); border-radius: 10px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 12px 14px; font-family: 'Playfair Display', serif; font-size: 13px; line-height: 1.7; color: rgb(120,105,93); resize: vertical;"></textarea>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <div onClick="{{ bulkAdd }}" style="padding: 9px 20px; border-radius: 22px; background: rgb(120,105,93); color: rgb(255,251,248); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;" style-hover="background: rgb(101,88,77);">Thêm {{ bulkCount }} khách</div>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+
+    <div style="background: rgb(255,251,248); border-radius: 10px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 16px 20px; display: flex; flex-direction: column; gap: 0px;">
+      <div onClick="{{ toggleSettings }}" style="display: flex; align-items: center; gap: 12px; cursor: pointer; user-select: none;">
+        <span style="font-weight: 600; font-size: 13px;">Cài đặt trang</span>
+        <span style="font-size: 11px; color: rgb(186,170,159);">Ảnh nền · thư viện ảnh · bản đồ · nhạc · thông tin website</span>
+        <div style="flex-grow: 1;"></div>
+        <sc-if value="{{ settingsSavedToast }}"><span style="font-style: italic; font-size: 12px; color: oklch(0.52 0.09 155);">Đã lưu cài đặt</span></sc-if>
+        <span style="font-size: 12px; color: rgb(120,105,93);">{{ settingsChevron }}</span>
+      </div>
+      <sc-if value="{{ settingsOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; gap: 18px; border-top: 0.5px solid rgb(235,226,217); margin-top: 14px; padding-top: 16px;">
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">Ảnh nền (Hero)</span>
+              <div style="position: relative; height: 110px; border-radius: 8px; overflow: hidden; box-shadow: 0 0 0 0.5px rgb(176,157,144); background: url({{ heroPreview }}) center / cover no-repeat;"></div>
+              <label style="align-self: flex-start; padding: 6px 14px; border-radius: 20px; box-shadow: 0 0 0 0.5px rgb(176,157,144); font-size: 11px; cursor: pointer;" style-hover="background: rgb(249,241,232);">Đổi ảnh<input type="file" accept="image/*" onChange="{{ onHeroFile }}" style="display: none;"></label>
+              <sc-if value="{{ heroName }}"><span style="font-style: italic; font-size: 10px; color: rgb(186,170,159);">{{ heroName }}</span></sc-if>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">Ảnh bản đồ</span>
+              <div style="position: relative; height: 110px; border-radius: 8px; overflow: hidden; box-shadow: 0 0 0 0.5px rgb(176,157,144); background: rgb(249,241,232) url({{ mapPreview }}) center / cover no-repeat;"></div>
+              <label style="align-self: flex-start; padding: 6px 14px; border-radius: 20px; box-shadow: 0 0 0 0.5px rgb(176,157,144); font-size: 11px; cursor: pointer;" style-hover="background: rgb(249,241,232);">Đổi ảnh<input type="file" accept="image/*" onChange="{{ onMapFile }}" style="display: none;"></label>
+              <sc-if value="{{ mapName }}"><span style="font-style: italic; font-size: 10px; color: rgb(186,170,159);">{{ mapName }}</span></sc-if>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">Nhạc nền</span>
+              <div style="height: 110px; border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144); background: rgb(249,241,232); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;">
+                <div style="width: 22px; height: 22px; background: url(assets/speaker.png) center / cover no-repeat; opacity: 0.55;"></div>
+                <span style="font-style: italic; font-size: 11px; color: rgb(120,105,93); max-width: 90%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ musicLabel }}</span>
+              </div>
+              <label style="align-self: flex-start; padding: 6px 14px; border-radius: 20px; box-shadow: 0 0 0 0.5px rgb(176,157,144); font-size: 11px; cursor: pointer;" style-hover="background: rgb(249,241,232);">Tải nhạc lên (mp3/m4a)<input type="file" accept="audio/*" onChange="{{ onMusicFile }}" style="display: none;"></label>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">Thư viện ảnh ({{ galleryCount }} ảnh) — kéo lên xuống bằng ‹ › để đổi thứ tự</span>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <sc-for list="{{ galleryItems }}" as="p" hint-placeholder-count="6">
+                <div style="position: relative; width: 84px; height: 84px; border-radius: 8px; overflow: hidden; box-shadow: 0 0 0 0.5px rgb(176,157,144); background: url({{ p.src }}) center / cover no-repeat;">
+                  <div onClick="{{ p.remove }}" title="Xoá ảnh" style="position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; border-radius: 9px; background: rgba(59,47,39,0.65); color: rgb(255,251,248); font-size: 11px; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer;" style-hover="background: rgb(203,77,28);">×</div>
+                  <div style="position: absolute; bottom: 4px; left: 4px; display: flex; gap: 3px;">
+                    <div onClick="{{ p.moveL }}" style="width: 18px; height: 18px; border-radius: 9px; background: rgba(59,47,39,0.55); color: rgb(255,251,248); font-size: 11px; display: flex; align-items: center; justify-content: center; cursor: pointer;" style-hover="background: rgb(120,105,93);">‹</div>
+                    <div onClick="{{ p.moveR }}" style="width: 18px; height: 18px; border-radius: 9px; background: rgba(59,47,39,0.55); color: rgb(255,251,248); font-size: 11px; display: flex; align-items: center; justify-content: center; cursor: pointer;" style-hover="background: rgb(120,105,93);">›</div>
+                  </div>
+                </div>
+              </sc-for>
+              <label style="width: 84px; height: 84px; border-radius: 8px; border: 1px dashed rgb(176,157,144); box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 22px; color: rgb(176,157,144); cursor: pointer;" style-hover="background: rgb(249,241,232);">+<span style="font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;">Thêm ảnh</span><input type="file" accept="image/*" multiple onChange="{{ onGalleryFiles }}" style="display: none;"></label>
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">Link Google Maps</span>
+              <input value="{{ setMapsUrl }}" onChange="{{ onMapsUrl }}" placeholder="https://maps.google.com/..." style="box-sizing: border-box; border: none; outline: none; background: rgb(255,251,248); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 9px 14px; font-family: 'Playfair Display', serif; font-size: 13px; color: rgb(120,105,93);">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">Tên website (title)</span>
+              <input value="{{ setSiteTitle }}" onChange="{{ onSiteTitle }}" placeholder="Giang &amp; Hiếu — Save the date" style="box-sizing: border-box; border: none; outline: none; background: rgb(255,251,248); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 9px 14px; font-family: 'Playfair Display', serif; font-size: 13px; color: rgb(120,105,93);">
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">Mô tả (description — hiện khi chia sẻ link)</span>
+            <textarea value="{{ setSiteDesc }}" onChange="{{ onSiteDesc }}" style="height: 56px; box-sizing: border-box; border: none; outline: none; background: rgb(255,251,248); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 9px 14px; font-family: 'Playfair Display', serif; font-size: 13px; line-height: 1.6; color: rgb(120,105,93); resize: vertical;"></textarea>
+          </div>
+          <div style="display: flex; gap: 24px; align-items: flex-end; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="width: 64px; height: 34px; border-radius: 6px; box-shadow: 0 0 0 0.5px rgb(176,157,144); background: rgb(249,241,232) url({{ ogPreview }}) center / cover no-repeat;"></div>
+              <div style="display: flex; flex-direction: column; gap: 4px;">
+                <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">Ảnh OG (chia sẻ link)</span>
+                <label style="align-self: flex-start; padding: 5px 12px; border-radius: 20px; box-shadow: 0 0 0 0.5px rgb(176,157,144); font-size: 11px; cursor: pointer;" style-hover="background: rgb(249,241,232);">{{ ogLabel }}<input type="file" accept="image/*" onChange="{{ onOgFile }}" style="display: none;"></label>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="width: 34px; height: 34px; border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144); background: rgb(249,241,232); display: flex; align-items: center; justify-content: center;"><div style="width: 20px; height: 20px; background-color: rgb(120,105,93); -webkit-mask: url(assets/logo-mark.svg) center / contain no-repeat; mask: url(assets/logo-mark.svg) center / contain no-repeat;"></div></div>
+              <div style="display: flex; flex-direction: column; gap: 4px;">
+                <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">Icon website (favicon)</span>
+                <label style="align-self: flex-start; padding: 5px 12px; border-radius: 20px; box-shadow: 0 0 0 0.5px rgb(176,157,144); font-size: 11px; cursor: pointer;" style-hover="background: rgb(249,241,232);">{{ iconLabel }}<input type="file" accept="image/*" onChange="{{ onIconFile }}" style="display: none;"></label>
+              </div>
+            </div>
+            <div style="flex-grow: 1;"></div>
+            <div onClick="{{ saveSettings }}" style="padding: 9px 22px; border-radius: 22px; background: rgb(120,105,93); color: rgb(255,251,248); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;" style-hover="background: rgb(101,88,77);">Lưu cài đặt</div>
+          </div>
+          <span style="font-style: italic; font-size: 10px; color: rgb(186,170,159);">Bản mẫu: file tải lên chỉ xem trước trong phiên này. Khi triển khai thật, ảnh/nhạc sẽ được upload lên kho S3 (Garage) của lumin-studio.</span>
+        </div>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{ editing }}">
+      <div style="background: rgb(249,241,232); border-radius: 10px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 20px 24px; display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap;">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">Xưng hô trên thiệp</span>
+          <input value="{{ formLabel }}" onChange="{{ onFormLabel }}" placeholder="VD: Cô Lan &amp; Chú Minh" style="width: 300px; box-sizing: border-box; border: none; outline: none; background: rgb(255,251,248); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 9px 14px; font-family: 'Playfair Display', serif; font-size: 13px; color: rgb(120,105,93);">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">Nhóm</span>
+          <select value="{{ formGroup }}" onChange="{{ onFormGroup }}" style="border: none; outline: none; background: rgb(255,251,248); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 9px 12px; font-family: 'Playfair Display', serif; font-size: 13px; color: rgb(120,105,93); cursor: pointer;">
+            <sc-for list="{{ groupNames }}" as="gn" hint-placeholder-count="6"><option value="{{ gn }}">{{ gn }}</option></sc-for>
+          </select>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">Ghi chú riêng (không hiện trên thiệp)</span>
+          <input value="{{ formNote }}" onChange="{{ onFormNote }}" placeholder="VD: bạn cấp 3 của Hiếu, Tuấn bên khoa Dược…" style="width: 300px; box-sizing: border-box; border: none; outline: none; background: rgb(255,251,248); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(176,157,144); padding: 9px 14px; font-family: 'Playfair Display', serif; font-size: 13px; color: rgb(120,105,93);">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px; flex-grow: 1;">
+          <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">Xem trước trên thiệp</span>
+          <span style="font-family: 'Great Vibes', cursive; font-size: 24px; line-height: 1.3; color: rgb(203,77,28); text-transform: capitalize;">{{ formPreview }}</span>
+        </div>
+        <div onClick="{{ saveForm }}" style="padding: 9px 20px; border-radius: 22px; background: rgb(120,105,93); color: rgb(255,251,248); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;" style-hover="background: rgb(101,88,77);">Lưu</div>
+        <div onClick="{{ cancelForm }}" style="padding: 9px 16px; border-radius: 22px; box-shadow: 0 0 0 0.5px rgb(176,157,144); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; cursor: pointer;" style-hover="background: rgb(255,251,248);">Huỷ</div>
+      </div>
+    </sc-if>
+
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144); width: 76px;">Trạng thái</span>
+        <sc-for list="{{ statusChips }}" as="c" hint-placeholder-count="6">
+          <div onClick="{{ c.pick }}" style="padding: 5px 14px; border-radius: 20px; box-shadow: 0 0 0 0.5px rgb(176,157,144); font-size: 12px; cursor: pointer; background: {{ c.bg }}; color: {{ c.color }}; white-space: nowrap;">{{ c.name }} · {{ c.count }}</div>
+        </sc-for>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144); width: 76px;">Nhóm</span>
+        <sc-for list="{{ groupFilterChips }}" as="c" hint-placeholder-count="7">
+          <div onClick="{{ c.pick }}" style="padding: 5px 14px; border-radius: 20px; box-shadow: 0 0 0 0.5px rgb(176,157,144); font-size: 12px; cursor: pointer; background: {{ c.bg }}; color: {{ c.color }}; white-space: nowrap;">{{ c.name }}</div>
+        </sc-for>
+      </div>
+    </div>
+
+    <sc-if value="{{ selCount }}">
+      <div style="display: flex; align-items: center; gap: 14px; background: rgb(120,105,93); border-radius: 10px; padding: 10px 20px;">
+        <span style="font-size: 13px; color: rgb(255,251,248);">Đã chọn {{ selCount }} khách</span>
+        <div style="flex-grow: 1;"></div>
+        <div onClick="{{ bulkDelete }}" style="padding: 7px 18px; border-radius: 22px; background: rgb(255,251,248); color: rgb(120,105,93); font-size: 12px; font-weight: 600; cursor: pointer;" style-hover="background: rgb(249,241,232);">Xoá đã chọn</div>
+        <div onClick="{{ clearSel }}" style="padding: 7px 14px; border-radius: 22px; box-shadow: 0 0 0 0.5px rgba(255,251,248,0.6); color: rgb(255,251,248); font-size: 12px; cursor: pointer;" style-hover="background: rgba(255,251,248,0.12);">Bỏ chọn</div>
+      </div>
+    </sc-if>
+    <div style="background: rgb(255,251,248); border-radius: 10px; box-shadow: 0 0 0 0.5px rgb(176,157,144); overflow: hidden;">
+      <div style="display: grid; grid-template-columns: 22px 2.2fr 1.2fr 1fr 2fr 2.2fr; gap: 16px; padding: 14px 24px; border-bottom: 0.5px solid rgb(176,157,144); background: rgb(249,241,232);">
+        <input type="checkbox" checked="{{ allSelected }}" onChange="{{ toggleAll }}" title="Chọn tất cả trong trang" style="width: 15px; height: 15px; margin: 0; accent-color: rgb(120,105,93); cursor: pointer; align-self: center;">
+        <span onClick="{{ sortByName }}" title="Bấm để sắp xếp" style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144); cursor: pointer; user-select: none;" style-hover="color: rgb(120,105,93);">Khách mời {{ arrowName }}</span>
+        <span onClick="{{ sortByOpened }}" title="Bấm để sắp xếp" style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144); cursor: pointer; user-select: none;" style-hover="color: rgb(120,105,93);">Mở thiệp {{ arrowOpened }}</span>
+        <span onClick="{{ sortByRsvp }}" title="Bấm để sắp xếp" style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144); cursor: pointer; user-select: none;" style-hover="color: rgb(120,105,93);">Phản hồi {{ arrowRsvp }}</span>
+        <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">Lời chúc</span>
+        <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144); text-align: right;">Liên kết riêng</span>
+      </div>
+      <sc-for list="{{ rows }}" as="r" hint-placeholder-count="5">
+        <div style="display: grid; grid-template-columns: 22px 2.2fr 1.2fr 1fr 2fr 2.2fr; gap: 16px; padding: 16px 24px; border-bottom: 0.5px solid rgb(235,226,217); align-items: center; background: {{ r.rowBg }};" style-hover="background: rgb(252,247,242);">
+          <input type="checkbox" checked="{{ r.selected }}" onChange="{{ r.toggleSel }}" style="width: 15px; height: 15px; margin: 0; accent-color: rgb(120,105,93); cursor: pointer;">
+          <div style="display: flex; flex-direction: column; gap: 3px;">
+            <span style="font-weight: 600; font-size: 15px;">{{ r.label }}</span>
+            <span style="font-size: 11px; color: rgb(186,170,159);">{{ r.group }} · {{ r.id }}</span>
+            <sc-if value="{{ r.editingNote }}">
+              <input id="note-inline-input" value="{{ noteDraft }}" onChange="{{ onNoteDraft }}" onKeyDown="{{ onNoteKey }}" onBlur="{{ saveNote }}" placeholder="Ghi chú riêng — Enter để lưu, Esc huỷ" style="margin-top: 2px; width: 100%; box-sizing: border-box; border: none; outline: none; background: rgb(249,241,232); border-radius: 8px; box-shadow: 0 0 0 0.5px rgb(120,105,93); padding: 5px 10px; font-family: 'Playfair Display', serif; font-style: italic; font-size: 11px; color: rgb(120,105,93);">
+            </sc-if>
+            <sc-if value="{{ r.showNote }}">
+              <span onClick="{{ r.startNote }}" title="Bấm để sửa ghi chú" style="font-style: italic; font-size: 11px; color: rgb(120,105,93); cursor: pointer;" style-hover="color: rgb(203,77,28);">✎ {{ r.note }}</span>
+            </sc-if>
+            <sc-if value="{{ r.showAddNote }}">
+              <span onClick="{{ r.startNote }}" style="align-self: flex-start; font-size: 10px; color: rgb(186,170,159); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px;" style-hover="color: rgb(120,105,93);">+ Ghi chú</span>
+            </sc-if>
+            <sc-if value="{{ r.dupWarn }}">
+              <span onClick="{{ r.startNote }}" style="align-self: flex-start; margin-top: 2px; padding: 2px 10px; border-radius: 12px; box-shadow: 0 0 0 0.5px rgb(203,77,28); font-size: 10px; color: rgb(203,77,28); cursor: pointer;" title="Có khách khác trùng xưng hô và nhóm — bấm để thêm ghi chú phân biệt">Trùng tên — thêm ghi chú</span>
+            </sc-if>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 8px; height: 8px; border-radius: 4px; background: {{ r.openDot }}; flex-shrink: 0;"></div>
+            <span style="font-size: 12px; color: rgb(120,105,93);">{{ r.openText }}</span>
+          </div>
+          <span style="justify-self: start; padding: 4px 12px; border-radius: 20px; font-size: 11px; box-shadow: 0 0 0 0.5px {{ r.rsvpRing }}; color: {{ r.rsvpColor }}; white-space: nowrap;">{{ r.rsvpText }}</span>
+          <span style="font-style: italic; font-size: 12px; line-height: 1.5; color: {{ r.wishColor }}; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">{{ r.wishText }}</span>
+          <div style="display: flex; gap: 8px; justify-content: flex-end; align-items: center;">
+            <div onClick="{{ r.copy }}" style="padding: 6px 12px; border-radius: 20px; box-shadow: 0 0 0 0.5px rgb(176,157,144); font-size: 11px; cursor: pointer; white-space: nowrap;" style-hover="background: rgb(249,241,232);">Sao chép link</div>
+            <a href="{{ r.href }}" target="_blank" style="padding: 6px 12px; border-radius: 20px; box-shadow: 0 0 0 0.5px rgb(176,157,144); font-size: 11px; white-space: nowrap;" style-hover="background: rgb(249,241,232);">Mở</a>
+            <div onClick="{{ r.edit }}" style="padding: 6px 10px; border-radius: 20px; font-size: 11px; color: rgb(186,170,159); cursor: pointer;" style-hover="color: rgb(120,105,93);">Sửa</div>
+            <div onClick="{{ r.remove }}" style="padding: 6px 10px; border-radius: 20px; font-size: 11px; color: rgb(186,170,159); cursor: pointer;" style-hover="color: oklch(0.52 0.09 30);">Xoá</div>
+          </div>
+        </div>
+      </sc-for>
+      <sc-if value="{{ emptyRows }}">
+        <div style="padding: 32px 24px; text-align: center; font-style: italic; font-size: 13px; color: rgb(186,170,159);">Không có khách mời nào khớp bộ lọc.</div>
+      </sc-if>
+      <div style="display: flex; gap: 8px; align-items: center; padding: 12px 24px; background: rgb(249,241,232); border-top: 0.5px solid rgb(176,157,144);">
+        <span style="font-size: 12px; color: rgb(176,157,144);">{{ pageInfo }}</span>
+        <div style="flex-grow: 1;"></div>
+        <span style="font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: rgb(176,157,144);">Mỗi trang</span>
+        <sc-for list="{{ pageSizeChips }}" as="c" hint-placeholder-count="4">
+          <div onClick="{{ c.pick }}" style="padding: 4px 11px; border-radius: 18px; box-shadow: 0 0 0 0.5px rgb(176,157,144); font-size: 12px; cursor: pointer; background: {{ c.bg }}; color: {{ c.color }};">{{ c.name }}</div>
+        </sc-for>
+        <div onClick="{{ prevPage }}" style="margin-left: 8px; width: 26px; height: 26px; border-radius: 13px; box-shadow: 0 0 0 0.5px rgb(176,157,144); display: flex; align-items: center; justify-content: center; font-size: 14px; color: rgb(120,105,93); cursor: pointer; user-select: none;" style-hover="background: rgb(255,251,248);">‹</div>
+        <span style="font-size: 12px; color: rgb(120,105,93); min-width: 70px; text-align: center;">Trang {{ pageLabel }}</span>
+        <div onClick="{{ nextPage }}" style="width: 26px; height: 26px; border-radius: 13px; box-shadow: 0 0 0 0.5px rgb(176,157,144); display: flex; align-items: center; justify-content: center; font-size: 14px; color: rgb(120,105,93); cursor: pointer; user-select: none;" style-hover="background: rgb(255,251,248);">›</div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+        <span style="font-family: 'Great Vibes', cursive; font-size: 26px; color: rgb(120,105,93);">Lời chúc mới nhất</span>
+        <span style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgb(176,157,144);">{{ statWishes }} lời chúc</span>
+        <sc-if value="{{ wishSelCount }}">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 12px; color: rgb(120,105,93);">Đã chọn {{ wishSelCount }}</span>
+            <div onClick="{{ wishBulkDelete }}" style="padding: 5px 14px; border-radius: 20px; background: rgb(120,105,93); color: rgb(255,251,248); font-size: 11px; cursor: pointer;" style-hover="background: rgb(101,88,77);">Xoá đã chọn</div>
+            <div onClick="{{ wishClearSel }}" style="padding: 5px 12px; border-radius: 20px; box-shadow: 0 0 0 0.5px rgb(176,157,144); font-size: 11px; color: rgb(120,105,93); cursor: pointer;" style-hover="background: rgb(249,241,232);">Bỏ chọn</div>
+          </div>
+        </sc-if>
+        <div style="flex-grow: 1;"></div>
+        <span style="font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: rgb(176,157,144);">Mỗi trang</span>
+        <sc-for list="{{ wishSizeChips }}" as="c" hint-placeholder-count="3">
+          <div onClick="{{ c.pick }}" style="padding: 4px 11px; border-radius: 18px; box-shadow: 0 0 0 0.5px rgb(176,157,144); font-size: 12px; cursor: pointer; background: {{ c.bg }}; color: {{ c.color }};">{{ c.name }}</div>
+        </sc-for>
+        <div onClick="{{ wishPrev }}" style="margin-left: 8px; width: 26px; height: 26px; border-radius: 13px; box-shadow: 0 0 0 0.5px rgb(176,157,144); display: flex; align-items: center; justify-content: center; font-size: 14px; color: rgb(120,105,93); cursor: pointer; user-select: none;" style-hover="background: rgb(255,251,248);">‹</div>
+        <span style="font-size: 12px; color: rgb(120,105,93); min-width: 44px; text-align: center;">{{ wishPageLabel }}</span>
+        <div onClick="{{ wishNext }}" style="width: 26px; height: 26px; border-radius: 13px; box-shadow: 0 0 0 0.5px rgb(176,157,144); display: flex; align-items: center; justify-content: center; font-size: 14px; color: rgb(120,105,93); cursor: pointer; user-select: none;" style-hover="background: rgb(255,251,248);">›</div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;">
+        <sc-for list="{{ wishList }}" as="w" hint-placeholder-count="3">
+          <div style="position: relative; background: rgb(255,251,248); border-radius: 10px; box-shadow: 0 0 0 0.5px {{ w.ring }}; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px;">
+            <input type="checkbox" checked="{{ w.selected }}" onChange="{{ w.toggleSel }}" style="position: absolute; top: 12px; right: 12px; width: 15px; height: 15px; margin: 0; accent-color: rgb(120,105,93); cursor: pointer;">
+            <span style="font-style: italic; font-size: 12px; line-height: 1.65; color: rgb(120,105,93); padding-right: 22px;">“{{ w.text }}”</span>
+            <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 10px;">
+              <span style="font-family: 'Great Vibes', cursive; font-size: 17px; color: rgb(203,77,28);">{{ w.name }}</span>
+              <span style="font-style: italic; font-size: 10px; color: rgb(186,170,159); white-space: nowrap;">{{ w.when }}</span>
+            </div>
+            <div onClick="{{ w.del }}" style="align-self: flex-end; font-size: 10px; color: rgb(186,170,159); cursor: pointer; text-decoration: underline; text-underline-offset: 3px;" style-hover="color: oklch(0.52 0.09 30);">Xoá lời chúc</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { search: '', filter: 'all', editing: false, editId: null, formLabel: '', formGroup: 'Bạn bè', copiedToast: '', quickLabel: '', quickGroup: 'Bạn bè', bulkOpen: false, bulkText: '', addedToast: '', manageGroups: false, newGroupOpen: false, newGroupName: '', groupFilter: 'all', sortKey: 'added', sortDir: 'desc', page: 1, pageSize: 10, wishPage: 1, wishPageSize: 6, sel: {}, wishSel: {}, settingsOpen: false, settingsSavedToast: false, set: null, heroBlob: '', mapBlob: '', ogBlob: '', galleryLocal: null };
+  defaultGallery() { return ['g02','g03','g04','g05','g06','g07','g08','g12','g01','g09','g10','g11'].map(n => ({ src: 'assets/' + n + '.jpg', name: n + '.jpg' })); }
+  getSet() { return this.state.set || (window.WeddingDB ? window.WeddingDB.getSettings() : {}); }
+  patchSet(p) { this.setState({ set: Object.assign({}, this.getSet(), p) }); }
+  readBlob(e, cb) { const f = e.target.files && e.target.files[0]; if (!f) return; cb(URL.createObjectURL(f), f.name); e.target.value = ''; }
+  flashSettingsSaved() { this.setState({ settingsSavedToast: true }); clearTimeout(this._setT); this._setT = setTimeout(() => this.setState({ settingsSavedToast: false }), 2600); }
+  sortBy(key) {
+    if (this.state.sortKey === key) this.setState({ sortDir: this.state.sortDir === 'asc' ? 'desc' : 'asc' });
+    else this.setState({ sortKey: key, sortDir: key === 'name' ? 'asc' : 'desc' });
+  }
+  arrow(key) { return this.state.sortKey === key ? (this.state.sortDir === 'asc' ? '▲' : '▼') : ''; }
+  exportXlsx() {
+    const db = window.WeddingDB.all();
+    const guests = (db.guests || []).map(g => {
+      const wish = (db.wishes || []).find(w => w.guestId === g.id);
+      return {
+        'Xưng hô trên thiệp': g.label, 'Nhóm': g.group || '', 'Ghi chú': g.note || '',
+        'Mở thiệp': g.openedAt ? 'Đã mở' : 'Chưa mở',
+        'Thời gian mở': g.openedAt ? new Date(g.openedAt).toLocaleString('vi-VN') : '',
+        'Phản hồi': g.rsvp === 'yes' ? 'Tham dự' : g.rsvp === 'no' ? 'Không tham dự' : 'Chưa phản hồi',
+        'Lời chúc': wish ? wish.text : '',
+        'Link thiệp': this.absoluteLink(g.id)
+      };
+    });
+    if (window.XLSX) {
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(guests);
+      ws['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 10 }, { wch: 18 }, { wch: 15 }, { wch: 50 }, { wch: 50 }];
+      XLSX.utils.book_append_sheet(wb, ws, 'Khách mời');
+      const wishes = (db.wishes || []).map(w => ({ 'Tên': w.name, 'Lời chúc': w.text, 'Thời gian': new Date(w.at).toLocaleString('vi-VN') }));
+      const ws2 = XLSX.utils.json_to_sheet(wishes.length ? wishes : [{ 'Tên': '', 'Lời chúc': '', 'Thời gian': '' }]);
+      ws2['!cols'] = [{ wch: 24 }, { wch: 70 }, { wch: 18 }];
+      XLSX.utils.book_append_sheet(wb, ws2, 'Lời chúc');
+      XLSX.writeFile(wb, 'khach-moi-giang-hieu.xlsx');
+    } else {
+      const head = Object.keys(guests[0] || {});
+      const csv = '\ufeff' + [head.join(',')].concat(guests.map(r => head.map(k => '"' + String(r[k]).replace(/"/g, '""') + '"').join(','))).join('\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      a.download = 'khach-moi-giang-hieu.csv';
+      a.click();
+    }
+  }
+  flashAdded(msg) {
+    this.setState({ addedToast: msg });
+    clearTimeout(this._addT);
+    this._addT = setTimeout(() => this.setState({ addedToast: '' }), 2600);
+  }
+  doQuickAdd() {
+    const label = this.state.quickLabel.trim();
+    if (!label) return;
+    window.WeddingDB.addGuest({ label, group: this.state.quickGroup });
+    this._session = (this._session || 0) + 1;
+    this.setState({ quickLabel: '' });
+    this.flashAdded('Đã thêm "' + label + '" · ' + this._session + ' khách trong phiên này');
+    this.focusQuick();
+  }
+  doBulkAdd() {
+    const lines = this.state.bulkText.split('\n').map(s => s.trim()).filter(Boolean);
+    if (!lines.length) return;
+    lines.forEach(line => {
+      const i = line.lastIndexOf(',');
+      let label = line, group = this.state.quickGroup;
+      if (i > 0) { label = line.slice(0, i).trim(); group = line.slice(i + 1).trim() || group; }
+      window.WeddingDB.addGuest({ label, group });
+    });
+    this._session = (this._session || 0) + lines.length;
+    this.setState({ bulkText: '', bulkOpen: false });
+    this.flashAdded('Đã thêm ' + lines.length + ' khách');
+  }
+  componentDidMount() {
+    if (window.WeddingDB) this._unsub = window.WeddingDB.subscribe(() => this.forceUpdate());
+    setTimeout(() => this.focusQuick(), 120);
+  }
+  focusQuick() {
+    const el = document.getElementById('quick-input');
+    if (el) el.focus();
+  }
+  componentWillUnmount() { if (this._unsub) this._unsub(); }
+  timeAgo(t) {
+    const d = Date.now() - t;
+    if (d < 3600e3) return 'vừa xong';
+    if (d < 24 * 3600e3) return Math.round(d / 3600e3) + ' giờ trước';
+    if (d < 7 * 24 * 3600e3) return Math.round(d / 864e5) + ' ngày trước';
+    const dt = new Date(t);
+    return dt.getDate() + '.' + (dt.getMonth() + 1) + '.' + dt.getFullYear();
+  }
+  guestLink(id) {
+    const url = new URL(location.href);
+    url.search = '?g=' + id;
+    return url.pathname.split('/').slice(0, -1).join('/') + '/Wedding Invitation.dc.html?g=' + id;
+  }
+  absoluteLink(id) {
+    return new URL(this.guestLink(id), location.href).href;
+  }
+  copyLink(g) {
+    const link = this.absoluteLink(g.id);
+    const done = () => {
+      this.setState({ copiedToast: 'Đã sao chép link của ' + g.label + '!' });
+      clearTimeout(this._toastT);
+      this._toastT = setTimeout(() => this.setState({ copiedToast: '' }), 2500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(done, done);
+    else done();
+  }
+  renderVals() {
+    const db = window.WeddingDB ? window.WeddingDB.all() : { guests: [], wishes: [] };
+    const wishes = db.wishes || [];
+    const q = this.state.search.trim().toLowerCase();
+    const f = this.state.filter;
+    const statusMatch = g => {
+      if (f === 'unopened') return !g.openedAt;
+      if (f === 'opened') return !!g.openedAt;
+      if (f === 'yes') return g.rsvp === 'yes';
+      if (f === 'no') return g.rsvp === 'no';
+      if (f === 'pending') return !g.rsvp;
+      return true;
+    };
+    const guests = (db.guests || []).map((g, i) => Object.assign({ _i: i }, g)).filter(g => {
+      if (q && !((g.label || '') + ' ' + (g.note || '')).toLowerCase().includes(q)) return false;
+      if (this.state.groupFilter !== 'all' && (g.group || '') !== this.state.groupFilter) return false;
+      return statusMatch(g);
+    });
+    const dir = this.state.sortDir === 'asc' ? 1 : -1;
+    const sk = this.state.sortKey;
+    const rsvpRank = g => g.rsvp === 'yes' ? 2 : g.rsvp === 'no' ? 1 : 0;
+    guests.sort((a, b) => {
+      if (sk === 'name') return dir * (a.label || '').localeCompare(b.label || '', 'vi');
+      if (sk === 'opened') return dir * ((a.openedAt || 0) - (b.openedAt || 0));
+      if (sk === 'rsvp') return dir * (rsvpRank(a) - rsvpRank(b));
+      return dir * (a._i - b._i);
+    });
+    const dupCount = {};
+    (db.guests || []).forEach(g => {
+      const k = ((g.label || '').trim().toLowerCase()) + '|' + (g.group || '');
+      dupCount[k] = (dupCount[k] || 0) + 1;
+    });
+    const totalRows = guests.length;
+    const ps = this.state.pageSize;
+    const maxPage = Math.max(1, Math.ceil(totalRows / ps));
+    const page = Math.min(this.state.page, maxPage);
+    const pageStart = (page - 1) * ps;
+    const rows = guests.slice(pageStart, pageStart + ps).map(g => {
+      const wish = wishes.find(w => w.guestId === g.id);
+      const dupKey = ((g.label || '').trim().toLowerCase()) + '|' + (g.group || '');
+      return {
+        id: g.id, label: g.label, group: g.group || '—',
+        note: g.note || '',
+        editingNote: this.state.noteEditId === g.id,
+        showNote: !!g.note && this.state.noteEditId !== g.id,
+        showAddNote: !g.note && this.state.noteEditId !== g.id,
+        startNote: () => {
+          this.setState({ noteEditId: g.id, noteDraft: g.note || '' });
+          setTimeout(() => { const el = document.getElementById('note-inline-input'); if (el) el.focus(); }, 80);
+        },
+        dupWarn: dupCount[dupKey] > 1 && !g.note && this.state.noteEditId !== g.id,
+        openDot: g.openedAt ? 'oklch(0.52 0.09 155)' : 'rgb(217,217,217)',
+        openText: g.openedAt ? 'Đã mở · ' + this.timeAgo(g.openedAt) : 'Chưa mở',
+        rsvpText: g.rsvp === 'yes' ? 'Tham dự' : g.rsvp === 'no' ? 'Không tham dự' : 'Chưa phản hồi',
+        rsvpRing: g.rsvp === 'yes' ? 'oklch(0.52 0.09 155)' : g.rsvp === 'no' ? 'oklch(0.52 0.09 30)' : 'rgb(176,157,144)',
+        rsvpColor: g.rsvp === 'yes' ? 'oklch(0.45 0.09 155)' : g.rsvp === 'no' ? 'oklch(0.45 0.09 30)' : 'rgb(186,170,159)',
+        wishText: wish ? wish.text : '—',
+        wishColor: wish ? 'rgb(120,105,93)' : 'rgb(217,209,201)',
+        href: this.guestLink(g.id),
+        copy: () => this.copyLink(g),
+        edit: () => this.setState({ editing: true, editId: g.id, formLabel: g.label, formGroup: g.group || 'Bạn bè', formNote: g.note || '' }),
+        remove: () => { if (confirm('Xoá khách mời "' + g.label + '"?')) window.WeddingDB.removeGuest(g.id); }
+      };
+    });
+    const all = db.guests || [];
+    const sel = this.state.sel;
+    const selIds = Object.keys(sel).filter(id => sel[id] && all.some(g => g.id === id));
+    const pageIds = rows.map(r => r.id);
+    rows.forEach(r => {
+      r.selected = !!sel[r.id];
+      r.rowBg = sel[r.id] ? 'rgb(249,241,232)' : 'transparent';
+      r.toggleSel = () => this.setState({ sel: Object.assign({}, sel, { [r.id]: !sel[r.id] }) });
+    });
+    const set = this.getSet();
+    const gallery = this.state.galleryLocal || set.gallery || this.defaultGallery();
+    const wishSel = this.state.wishSel;
+    const wishSelIds = Object.keys(wishSel).filter(id => wishSel[id] && wishes.some(w => w.id === id));
+    return {
+      selCount: selIds.length,
+      allSelected: pageIds.length > 0 && pageIds.every(id => sel[id]),
+      toggleAll: () => {
+        const allSel = pageIds.length > 0 && pageIds.every(id => sel[id]);
+        const next = Object.assign({}, sel);
+        pageIds.forEach(id => { next[id] = !allSel; });
+        this.setState({ sel: next });
+      },
+      clearSel: () => this.setState({ sel: {} }),
+      bulkDelete: () => {
+        if (!selIds.length) return;
+        if (confirm('Xoá ' + selIds.length + ' khách mời đã chọn?')) {
+          selIds.forEach(id => window.WeddingDB.removeGuest(id));
+          this.setState({ sel: {} });
+        }
+      },
+      wishSelCount: wishSelIds.length,
+      wishBulkDelete: () => {
+        if (!wishSelIds.length) return;
+        if (confirm('Xoá ' + wishSelIds.length + ' lời chúc đã chọn?')) {
+          wishSelIds.forEach(id => window.WeddingDB.removeWish(id));
+          this.setState({ wishSel: {} });
+        }
+      },
+      wishClearSel: () => this.setState({ wishSel: {} }),
+      settingsOpen: this.state.settingsOpen,
+      settingsChevron: this.state.settingsOpen ? 'Thu gọn ▴' : 'Mở rộng ▾',
+      toggleSettings: () => this.setState({ settingsOpen: !this.state.settingsOpen }),
+      settingsSavedToast: this.state.settingsSavedToast,
+      heroPreview: this.state.heroBlob || 'assets/hero.jpg',
+      heroName: set.heroName || '',
+      onHeroFile: e => this.readBlob(e, (url, name) => { this.setState({ heroBlob: url }); this.patchSet({ heroName: name }); }),
+      mapPreview: this.state.mapBlob || 'assets/map.png',
+      mapName: set.mapName || '',
+      onMapFile: e => this.readBlob(e, (url, name) => { this.setState({ mapBlob: url }); this.patchSet({ mapName: name }); }),
+      musicLabel: set.musicName || 'Chưa có nhạc nền',
+      onMusicFile: e => this.readBlob(e, (url, name) => this.patchSet({ musicName: name })),
+      galleryCount: gallery.length,
+      galleryItems: gallery.map((p, i) => ({
+        src: p.src,
+        remove: () => { const g = gallery.slice(); g.splice(i, 1); this.setState({ galleryLocal: g }); },
+        moveL: () => { if (i === 0) return; const g = gallery.slice(); const t = g[i - 1]; g[i - 1] = g[i]; g[i] = t; this.setState({ galleryLocal: g }); },
+        moveR: () => { if (i === gallery.length - 1) return; const g = gallery.slice(); const t = g[i + 1]; g[i + 1] = g[i]; g[i] = t; this.setState({ galleryLocal: g }); }
+      })),
+      onGalleryFiles: e => {
+        const files = Array.from(e.target.files || []);
+        if (!files.length) return;
+        const added = files.map(f => ({ src: URL.createObjectURL(f), name: f.name }));
+        this.setState({ galleryLocal: gallery.concat(added) });
+        e.target.value = '';
+      },
+      setMapsUrl: set.mapsUrl || '',
+      onMapsUrl: e => this.patchSet({ mapsUrl: e.target.value }),
+      setSiteTitle: set.siteTitle || '',
+      onSiteTitle: e => this.patchSet({ siteTitle: e.target.value }),
+      setSiteDesc: set.siteDesc || '',
+      onSiteDesc: e => this.patchSet({ siteDesc: e.target.value }),
+      ogPreview: this.state.ogBlob || 'assets/together.jpg',
+      ogLabel: set.ogName || 'Đổi ảnh',
+      onOgFile: e => this.readBlob(e, (url, name) => { this.setState({ ogBlob: url }); this.patchSet({ ogName: name }); }),
+      iconLabel: set.iconName || 'Đổi icon',
+      onIconFile: e => this.readBlob(e, (url, name) => this.patchSet({ iconName: name })),
+      saveSettings: () => {
+        const s = Object.assign({}, this.getSet());
+        if (this.state.galleryLocal) s.gallery = this.state.galleryLocal;
+        window.WeddingDB.updateSettings(s);
+        this.flashSettingsSaved();
+      },
+      statTotal: all.length,
+      statOpened: all.filter(g => g.openedAt).length,
+      statYes: all.filter(g => g.rsvp === 'yes').length,
+      statNo: all.filter(g => g.rsvp === 'no').length,
+      statWishes: wishes.length,
+      search: this.state.search,
+      onSearch: e => this.setState({ search: e.target.value, page: 1 }),
+      statusChips: [
+        ['all', 'Tất cả', () => true],
+        ['unopened', 'Chưa mở', g => !g.openedAt],
+        ['opened', 'Đã mở', g => !!g.openedAt],
+        ['yes', 'Tham dự', g => g.rsvp === 'yes'],
+        ['no', 'Không tham dự', g => g.rsvp === 'no'],
+        ['pending', 'Chưa phản hồi', g => !g.rsvp]
+      ].map(([key, name, test]) => ({
+        name,
+        count: all.filter(test).length,
+        bg: this.state.filter === key ? 'rgb(120,105,93)' : 'transparent',
+        color: this.state.filter === key ? 'rgb(255,251,248)' : 'rgb(120,105,93)',
+        pick: () => this.setState({ filter: key, page: 1 })
+      })),
+      groupFilterChips: [{ key: 'all', name: 'Tất cả nhóm' }].concat((db.groups || []).map(n => ({ key: n, name: n }))).map(o => ({
+        name: o.name,
+        bg: this.state.groupFilter === o.key ? 'rgb(120,105,93)' : 'transparent',
+        color: this.state.groupFilter === o.key ? 'rgb(255,251,248)' : 'rgb(120,105,93)',
+        pick: () => this.setState({ groupFilter: o.key, page: 1 })
+      })),
+      sortByName: () => this.sortBy('name'),
+      sortByOpened: () => this.sortBy('opened'),
+      sortByRsvp: () => this.sortBy('rsvp'),
+      arrowName: this.arrow('name'),
+      arrowOpened: this.arrow('opened'),
+      arrowRsvp: this.arrow('rsvp'),
+      copiedToast: this.state.copiedToast,
+      quickLabel: this.state.quickLabel,
+      quickGroup: this.state.quickGroup,
+      onQuickLabel: e => this.setState({ quickLabel: e.target.value }),
+      groupChips: (db.groups || []).map(name => ({
+        name,
+        bg: name === this.state.quickGroup ? 'rgb(120,105,93)' : 'transparent',
+        color: name === this.state.quickGroup ? 'rgb(255,251,248)' : 'rgb(120,105,93)',
+        showDel: this.state.manageGroups,
+        title: this.state.manageGroups ? 'Bấm để đổi tên nhóm' : 'Chọn nhóm cho khách thêm mới',
+        pick: () => {
+          if (this.state.manageGroups) {
+            const nn = prompt('Đổi tên nhóm "' + name + '" thành:', name);
+            if (nn && nn.trim() && nn.trim() !== name) {
+              window.WeddingDB.renameGroup(name, nn.trim());
+              if (this.state.quickGroup === name) this.setState({ quickGroup: nn.trim() });
+            }
+          } else { this.setState({ quickGroup: name }); this.focusQuick(); }
+        },
+        del: () => {
+          if (confirm('Xoá nhóm "' + name + '"? Khách trong nhóm sẽ chuyển sang "Khác".')) {
+            window.WeddingDB.removeGroup(name);
+            if (this.state.quickGroup === name) this.setState({ quickGroup: (window.WeddingDB.all().groups || [])[0] || 'Khác' });
+          }
+        }
+      })),
+      groupNames: db.groups || [],
+      manageGroups: this.state.manageGroups,
+      manageLabel: this.state.manageGroups ? 'Xong' : 'Sửa nhóm',
+      toggleManageGroups: () => this.setState({ manageGroups: !this.state.manageGroups }),
+      newGroupOpen: this.state.newGroupOpen,
+      notNewGroupOpen: !this.state.newGroupOpen,
+      newGroupName: this.state.newGroupName,
+      onNewGroupName: e => this.setState({ newGroupName: e.target.value }),
+      openNewGroup: () => {
+        this.setState({ newGroupOpen: true });
+        setTimeout(() => { const el = document.getElementById('new-group-input'); if (el) el.focus(); }, 80);
+      },
+      onNewGroupKey: e => {
+        if (e.key === 'Escape') { this.setState({ newGroupOpen: false, newGroupName: '' }); return; }
+        if (e.key !== 'Enter') return;
+        const name = this.state.newGroupName.trim();
+        if (!name) { this.setState({ newGroupOpen: false }); return; }
+        window.WeddingDB.addGroup(name);
+        this.setState({ newGroupName: '', newGroupOpen: false, quickGroup: name });
+        this.focusQuick();
+      },
+      exportXlsx: () => this.exportXlsx(),
+      onQuickKey: e => { if (e.key === 'Enter') this.doQuickAdd(); },
+      quickAdd: () => this.doQuickAdd(),
+      toggleBulk: () => this.setState({ bulkOpen: !this.state.bulkOpen }),
+      bulkOpen: this.state.bulkOpen,
+      bulkText: this.state.bulkText,
+      onBulkText: e => this.setState({ bulkText: e.target.value }),
+      bulkAdd: () => this.doBulkAdd(),
+      bulkCount: this.state.bulkText.split('\n').map(s => s.trim()).filter(Boolean).length || '',
+      addedToast: this.state.addedToast,
+      editing: this.state.editing,
+      formLabel: this.state.formLabel,
+      formGroup: this.state.formGroup,
+      formNote: this.state.formNote || '',
+      onFormNote: e => this.setState({ formNote: e.target.value }),
+      noteDraft: this.state.noteDraft || '',
+      onNoteDraft: e => this.setState({ noteDraft: e.target.value }),
+      saveNote: () => {
+        if (!this.state.noteEditId) return;
+        window.WeddingDB.updateGuest(this.state.noteEditId, { note: (this.state.noteDraft || '').trim() });
+        this.setState({ noteEditId: null, noteDraft: '' });
+      },
+      onNoteKey: e => {
+        if (e.key === 'Enter') e.target.blur();
+        if (e.key === 'Escape') this.setState({ noteEditId: null, noteDraft: '' });
+      },
+      formPreview: this.state.formLabel || 'Quý Khách/Cô/Chú/Anh/Chị/Bạn',
+      onFormLabel: e => this.setState({ formLabel: e.target.value }),
+      onFormGroup: e => this.setState({ formGroup: e.target.value }),
+      saveForm: () => {
+        const label = this.state.formLabel.trim();
+        if (!label) return;
+        const patch = { label, group: this.state.formGroup, note: (this.state.formNote || '').trim() };
+        if (this.state.editId) window.WeddingDB.updateGuest(this.state.editId, patch);
+        else window.WeddingDB.addGuest(patch);
+        this.setState({ editing: false, editId: null, formLabel: '', formNote: '' });
+      },
+      cancelForm: () => this.setState({ editing: false, editId: null }),
+      resetData: () => { if (confirm('Khôi phục dữ liệu mẫu? Mọi thay đổi sẽ mất.')) window.WeddingDB.reset(); },
+      rows,
+      emptyRows: rows.length === 0,
+      pageInfo: totalRows ? 'Hiển thị ' + (pageStart + 1) + '–' + Math.min(pageStart + ps, totalRows) + ' / ' + totalRows + ' khách' : '0 khách',
+      pageLabel: page + ' / ' + maxPage,
+      prevPage: () => this.setState({ page: Math.max(1, page - 1) }),
+      nextPage: () => this.setState({ page: Math.min(maxPage, page + 1) }),
+      pageSizeChips: [10, 25, 50, 100].map(n => ({
+        name: n,
+        bg: ps === n ? 'rgb(120,105,93)' : 'transparent',
+        color: ps === n ? 'rgb(255,251,248)' : 'rgb(120,105,93)',
+        pick: () => this.setState({ pageSize: n, page: 1 })
+      })),
+      wishList: wishes.slice((Math.min(this.state.wishPage, Math.max(1, Math.ceil(wishes.length / this.state.wishPageSize))) - 1) * this.state.wishPageSize).slice(0, this.state.wishPageSize).map(w => ({
+        text: w.text, name: w.name, when: this.timeAgo(w.at),
+        selected: !!wishSel[w.id],
+        ring: wishSel[w.id] ? 'rgb(120,105,93)' : 'rgb(176,157,144)',
+        toggleSel: () => this.setState({ wishSel: Object.assign({}, wishSel, { [w.id]: !wishSel[w.id] }) }),
+        del: () => { if (confirm('Xoá lời chúc của "' + w.name + '"?')) window.WeddingDB.removeWish(w.id); }
+      })),
+      wishPageLabel: Math.min(this.state.wishPage, Math.max(1, Math.ceil(wishes.length / this.state.wishPageSize))) + ' / ' + Math.max(1, Math.ceil(wishes.length / this.state.wishPageSize)),
+      wishPrev: () => this.setState({ wishPage: Math.max(1, this.state.wishPage - 1) }),
+      wishNext: () => this.setState({ wishPage: Math.min(Math.max(1, Math.ceil(wishes.length / this.state.wishPageSize)), this.state.wishPage + 1) }),
+      wishSizeChips: [6, 12, 24].map(n => ({
+        name: n,
+        bg: this.state.wishPageSize === n ? 'rgb(120,105,93)' : 'transparent',
+        color: this.state.wishPageSize === n ? 'rgb(255,251,248)' : 'rgb(120,105,93)',
+        pick: () => this.setState({ wishPageSize: n, wishPage: 1 })
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -60,3 +60,6 @@ CLAUDE.local.md
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Wedding handoff binary assets (fonts/photos, ~MB) — docs/prototypes are committed, assets are not
+design_handoff_wedding_invitation/assets/

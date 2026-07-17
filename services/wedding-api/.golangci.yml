@@ -1,0 +1,17 @@
+# golangci-lint v2 config for services/wedding-api — run via `make verify-go`.
+# Same lint stack as core-api (ADR-020): default linters + misspell, gofmt
+# enforced separately in the Makefile. No codegen here, so no path excludes.
+version: "2"
+
+run:
+  timeout: 3m
+
+linters:
+  enable:
+    - misspell
+  exclusions:
+    rules:
+      # Tests favour readability over exhaustive error checks on helpers.
+      - path: _test\.go
+        linters:
+          - errcheck

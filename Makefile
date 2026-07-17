@@ -19,7 +19,13 @@
 verify: verify-go verify-rs
 
 ## verify-go: gofmt-check + go vet + golangci-lint v2 + sqlc vet/diff + oapi stale-check + go test -race
+## Covers BOTH Go services: wedding-api (lean — no codegen) then core-api (full: sqlc + oapi gates).
 verify-go:
+	cd services/wedding-api && \
+	  { unformatted="$$(gofmt -l .)"; [ -z "$$unformatted" ] || { echo "gofmt needed on:"; echo "$$unformatted"; exit 1; }; } && \
+	  go vet ./... && \
+	  golangci-lint run && \
+	  go test -race ./...
 	cd services/core-api && \
 	  { unformatted="$$(gofmt -l .)"; [ -z "$$unformatted" ] || { echo "gofmt needed on:"; echo "$$unformatted"; exit 1; }; } && \
 	  go vet ./... && \
