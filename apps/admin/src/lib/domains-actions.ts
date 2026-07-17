@@ -9,6 +9,7 @@ import { SESSION_COOKIE, coreApiBaseUrl } from './session';
 // ./settings-actions.
 
 type DomainInput = components['schemas']['DomainInput'];
+type DomainTargetUpdate = components['schemas']['DomainTargetUpdate'];
 
 /** `forbidden` = staff hit the owner-only edge (403); `validation` = bad/reserved subdomain
  *  (400); `conflict` = subdomain already provisioned (409); `notFound` = delete of an unmanaged
@@ -45,6 +46,23 @@ export async function createDomain(body: DomainInput): Promise<DomainsResult> {
   try {
     const client = await authedClient();
     const { data, response } = await client.POST('/admin/domains', { body });
+    return data ? { ok: true } : { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
+/** Repoint an existing domain's target service/port (PATCH /admin/domains/{subdomain}). */
+export async function updateDomain(
+  subdomain: string,
+  body: DomainTargetUpdate,
+): Promise<DomainsResult> {
+  try {
+    const client = await authedClient();
+    const { data, response } = await client.PATCH('/admin/domains/{subdomain}', {
+      params: { path: { subdomain } },
+      body,
+    });
     return data ? { ok: true } : { ok: false, code: codeFor(response.status) };
   } catch {
     return { ok: false, code: 'error' };

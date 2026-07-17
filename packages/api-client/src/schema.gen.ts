@@ -852,7 +852,11 @@ export interface paths {
         delete: operations["deleteDomain"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Change a provisioned subdomain's target service/port (owner-only).
+         * @description Repoints the backing Ingress at a different Service/port — the subdomain itself is not renamed (delete + recreate for that). Refuses (404) if the name has no managed Ingress.
+         */
+        patch: operations["updateDomain"];
         trace?: never;
     };
     "/admin/staff": {
@@ -2685,6 +2689,11 @@ export interface components {
             name: string;
             ports: number[];
         };
+        /** @description Body for PATCH /admin/domains/{subdomain} — repoint an existing domain. */
+        DomainTargetUpdate: {
+            targetService: string;
+            targetPort: number;
+        };
         /** @description Public checkout config (GET /checkout/config). A whitelist of the anonymous data the payment step and pre-purchase disclosure need — never the full Settings singleton (no shopInfo PII, no shipping-fee table). */
         CheckoutConfig: {
             bankAccount: components["schemas"]["BankAccount"];
@@ -4463,6 +4472,37 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    updateDomain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subdomain: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DomainTargetUpdate"];
+            };
+        };
+        responses: {
+            /** @description The updated domain. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Domain"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

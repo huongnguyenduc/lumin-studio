@@ -47,6 +47,20 @@ func (f *Fake) CreateIngress(_ context.Context, subdomain, targetService string,
 	return nil
 }
 
+func (f *Fake) UpdateIngress(_ context.Context, subdomain, targetService string, targetPort int32) (Domain, error) {
+	if f.Err != nil {
+		return Domain{}, f.Err
+	}
+	d, exists := f.Domains[subdomain]
+	if !exists {
+		return Domain{}, ErrNotFound
+	}
+	d.TargetService = targetService
+	d.TargetPort = targetPort
+	f.Domains[subdomain] = d
+	return d, nil
+}
+
 func (f *Fake) DeleteIngress(_ context.Context, subdomain string) error {
 	if f.Err != nil {
 		return f.Err

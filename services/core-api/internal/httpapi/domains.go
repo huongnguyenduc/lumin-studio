@@ -106,6 +106,32 @@ func (s *Server) CreateDomain(ctx context.Context, req api.CreateDomainRequestOb
 	}), nil
 }
 
+// UpdateDomain handles PATCH /admin/domains/{subdomain} (owner-only). Repoints the domain at a
+// different Service/port; the subdomain itself is not renamed (delete + recreate for that).
+// Unknown/unmanaged name → 404 (kube.UpdateIngress never touches an Ingress it didn't create).
+func (s *Server) UpdateDomain(ctx context.Context, req api.UpdateDomainRequestObject) (api.UpdateDomainResponseObject, error) {
+	if err := assertOwner(ctx); err != nil {
+		return nil, err
+	}
+	if s.kube == nil {
+		return nil, errClusterUnavailable
+	}
+	if req.Body == nil {
+		return api.UpdateDomain400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
+	}
+	svc, port, fields := cleanDomainTargetInput(*req.Body)
+	if len(fields) > 0 {
+		env := envelope(codeValidation)
+		env.Fields = &fields
+		return api.UpdateDomain400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(env)}, nil
+	}
+	d, err := s.kube.UpdateIngress(ctx, req.Subdomain, svc, port)
+	if err != nil {
+		return nil, err // kube.ErrNotFound → 404 (mapError)
+	}
+	return api.UpdateDomain200JSONResponse(domainDTO(d)), nil
+}
+
 // DeleteDomain handles DELETE /admin/domains/{subdomain} (owner-only). Unknown/unmanaged name →
 // 404 (kube.DeleteIngress never deletes an Ingress it didn't create).
 func (s *Server) DeleteDomain(ctx context.Context, req api.DeleteDomainRequestObject) (api.DeleteDomainResponseObject, error) {
@@ -123,26 +149,41 @@ func (s *Server) DeleteDomain(ctx context.Context, req api.DeleteDomainRequestOb
 
 // cleanDomainInput trims + validates a create-domain body and returns the cleaned fields plus a
 // per-field error map (empty ⇒ valid). subdomain must be a valid single DNS label, lowercase, and
-// not a reserved name; targetPort must be a valid TCP port.
+// not a reserved name; targetService/targetPort are validated by cleanDomainTarget.
 func cleanDomainInput(in api.DomainInput) (subdomain, targetService string, targetPort int32, fields map[string]string) {
 	sub := strings.TrimSpace(in.Subdomain)
-	svc := strings.TrimSpace(in.TargetService)
-	fields = map[string]string{}
+	svc, port, fields := cleanDomainTarget(in.TargetService, in.TargetPort)
 	if !subdomainRe.MatchString(sub) {
 		fields["subdomain"] = msgKey(codeValidation)
 	} else if _, reserved := reservedSubdomains[sub]; reserved {
 		fields["subdomain"] = msgKey(codeValidation)
 	}
-	if svc == "" {
-		fields["targetService"] = msgKey(codeValidation)
-	}
-	if in.TargetPort <= 0 || in.TargetPort > 65535 {
-		fields["targetPort"] = msgKey(codeValidation)
-	}
 	if len(fields) > 0 {
 		return "", "", 0, fields
 	}
-	return sub, svc, int32(in.TargetPort), nil
+	return sub, svc, port, nil
+}
+
+// cleanDomainTargetInput trims + validates an update-domain body (no subdomain field — the
+// subdomain is not renamed via PATCH).
+func cleanDomainTargetInput(in api.DomainTargetUpdate) (targetService string, targetPort int32, fields map[string]string) {
+	return cleanDomainTarget(in.TargetService, in.TargetPort)
+}
+
+// cleanDomainTarget validates the service/port pair shared by create and update.
+func cleanDomainTarget(targetService string, targetPort int) (svc string, port int32, fields map[string]string) {
+	svc = strings.TrimSpace(targetService)
+	fields = map[string]string{}
+	if svc == "" {
+		fields["targetService"] = msgKey(codeValidation)
+	}
+	if targetPort <= 0 || targetPort > 65535 {
+		fields["targetPort"] = msgKey(codeValidation)
+	}
+	if len(fields) > 0 {
+		return "", 0, fields
+	}
+	return svc, int32(targetPort), fields
 }
 
 // domainDTO maps one kube.Domain to its wire shape.

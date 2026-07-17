@@ -5,17 +5,22 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button, Card, Input } from '@lumin/ui';
 import type { components } from '@lumin/api-client';
-import { createDomain, deleteDomain } from '@/lib/domains-actions';
+import { createDomain, deleteDomain, updateDomain } from '@/lib/domains-actions';
 import type { DomainsList, DomainTargetsList } from '@/lib/domains-fetch';
 
 type Domain = components['schemas']['Domain'];
 type DomainTarget = components['schemas']['DomainTarget'];
 
-// "Tên miền" (quản lý domain): the owner-only surface to provision/deprovision customer-site
-// subdomains on *.luminstudio.vn. Each row is a live traefik Ingress in the k3s prod namespace —
-// there is no DB table, so create/delete talk straight to core-api's k8s-backed endpoints.
-// router.refresh() after each write re-reads the RSC list. DNS itself (the one-time wildcard
-// *.luminstudio.vn record) is a manual, one-time Cloudflare step — not part of this screen.
+// "Tên miền" (quản lý domain): the owner-only surface to provision/deprovision/repoint
+// customer-site subdomains on *.luminstudio.vn. Each row is a live traefik Ingress in the k3s
+// prod namespace — there is no DB table, so create/update/delete talk straight to core-api's
+// k8s-backed endpoints. router.refresh() after each write re-reads the RSC list. DNS itself (the
+// one-time wildcard *.luminstudio.vn record) is a manual, one-time Cloudflare step — not part of
+// this screen. Renaming a subdomain is not supported (delete + recreate); only its target can be
+// edited in place.
+
+/** Dialog state: closed, adding a new domain, or editing an existing one's target. */
+type Editing = null | { mode: 'add' } | { mode: 'edit'; domain: Domain };
 
 export function DomainsView({
   domains,
@@ -25,7 +30,7 @@ export function DomainsView({
   targets: DomainTargetsList;
 }) {
   const t = useTranslations('domains');
-  const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<Editing>(null);
 
   if (domains.status === 'forbidden') {
     return (
@@ -64,7 +69,7 @@ export function DomainsView({
           <h1 className="font-display text-2xl font-semibold text-text-strong">{t('title')}</h1>
           <p className="mt-1 text-sm text-text-muted">{t('subtitle')}</p>
         </div>
-        <Button onClick={() => setAdding(true)} disabled={targetList.length === 0}>
+        <Button onClick={() => setEditing({ mode: 'add' })} disabled={targetList.length === 0}>
           {t('add')}
         </Button>
       </div>
@@ -77,18 +82,29 @@ export function DomainsView({
         <Card elevation="md" className="overflow-hidden p-0">
           <ul className="divide-y divide-border-subtle">
             {domains.domains.map((d) => (
-              <DomainRow key={d.subdomain} domain={d} />
+              <DomainRow
+                key={d.subdomain}
+                domain={d}
+                onEdit={() => setEditing({ mode: 'edit', domain: d })}
+              />
             ))}
           </ul>
         </Card>
       )}
 
-      {adding && <AddDomainDialog targets={targetList} onClose={() => setAdding(false)} />}
+      {editing && (
+        <DomainFormDialog
+          mode={editing.mode}
+          domain={editing.mode === 'edit' ? editing.domain : undefined}
+          targets={targetList}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </div>
   );
 }
 
-function DomainRow({ domain }: { domain: Domain }) {
+function DomainRow({ domain, onEdit }: { domain: Domain; onEdit: () => void }) {
   const t = useTranslations('domains');
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -145,39 +161,65 @@ function DomainRow({ domain }: { domain: Domain }) {
             </button>
           </>
         ) : (
-          <button
-            type="button"
-            onClick={() => setConfirming(true)}
-            className="min-h-[44px] rounded-pill px-3 text-sm text-danger hover:bg-danger/5"
-          >
-            {t('delete')}
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={onEdit}
+              className="min-h-[44px] rounded-pill px-3 text-sm text-text-body hover:bg-surface-sunken"
+            >
+              {t('edit')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirming(true)}
+              className="min-h-[44px] rounded-pill px-3 text-sm text-danger hover:bg-danger/5"
+            >
+              {t('delete')}
+            </button>
+          </>
         )}
       </div>
     </li>
   );
 }
 
-function AddDomainDialog({ targets, onClose }: { targets: DomainTarget[]; onClose: () => void }) {
+function DomainFormDialog({
+  mode,
+  domain,
+  targets,
+  onClose,
+}: {
+  mode: 'add' | 'edit';
+  domain?: Domain;
+  targets: DomainTarget[];
+  onClose: () => void;
+}) {
   const t = useTranslations('domains');
   const router = useRouter();
-  const [subdomain, setSubdomain] = useState('');
-  const [targetService, setTargetService] = useState(targets[0]?.name ?? '');
+  const [subdomain, setSubdomain] = useState(domain?.subdomain ?? '');
+  const [targetService, setTargetService] = useState(
+    domain?.targetService ?? targets[0]?.name ?? '',
+  );
   const selectedTarget = targets.find((s) => s.name === targetService);
-  const [targetPort, setTargetPort] = useState<number>(selectedTarget?.ports[0] ?? 0);
+  const [targetPort, setTargetPort] = useState<number>(
+    domain?.targetPort ?? selectedTarget?.ports[0] ?? 0,
+  );
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const canSubmit = !pending && subdomain.trim() !== '' && targetService !== '' && targetPort > 0;
+  const canSubmit =
+    !pending &&
+    (mode === 'edit' || subdomain.trim() !== '') &&
+    targetService !== '' &&
+    targetPort > 0;
 
   function submit() {
     setError(null);
     startTransition(async () => {
-      const res = await createDomain({
-        subdomain: subdomain.trim(),
-        targetService,
-        targetPort,
-      });
+      const res =
+        mode === 'edit' && domain
+          ? await updateDomain(domain.subdomain, { targetService, targetPort })
+          : await createDomain({ subdomain: subdomain.trim(), targetService, targetPort });
       if (res.ok) {
         router.refresh();
         onClose();
@@ -191,7 +233,7 @@ function AddDomainDialog({ targets, onClose }: { targets: DomainTarget[]; onClos
     <div
       role="dialog"
       aria-modal="true"
-      aria-labelledby="domains-add-title"
+      aria-labelledby="domains-form-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
     >
       <form
@@ -201,18 +243,27 @@ function AddDomainDialog({ targets, onClose }: { targets: DomainTarget[]; onClos
         }}
         className="flex w-[min(28rem,100%)] flex-col gap-4 rounded-lg border-2 border-border-strong bg-surface-card p-6 shadow-lg"
       >
-        <h2 id="domains-add-title" className="font-display text-xl font-semibold text-text-strong">
-          {t('add')}
+        <h2 id="domains-form-title" className="font-display text-xl font-semibold text-text-strong">
+          {t(mode === 'edit' ? 'edit' : 'add')}
         </h2>
 
-        <Input
-          label={t('subdomainLabel')}
-          value={subdomain}
-          onChange={(e) => setSubdomain(e.target.value.trim().toLowerCase())}
-          placeholder={t('subdomainPlaceholder')}
-          hint={t('subdomainHint')}
-          autoComplete="off"
-        />
+        {mode === 'add' ? (
+          <Input
+            label={t('subdomainLabel')}
+            value={subdomain}
+            onChange={(e) => setSubdomain(e.target.value.trim().toLowerCase())}
+            placeholder={t('subdomainPlaceholder')}
+            hint={t('subdomainHint')}
+            autoComplete="off"
+          />
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            <span className="font-display text-sm font-medium text-text-strong">
+              {t('subdomainLabel')}
+            </span>
+            <p className="text-sm text-text-muted">{t('hostFormat', { subdomain })}</p>
+          </div>
+        )}
 
         <label className="flex flex-col gap-1.5">
           <span className="font-display text-sm font-medium text-text-strong">
