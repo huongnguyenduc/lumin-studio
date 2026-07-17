@@ -87,11 +87,13 @@ export function CardCover({
       ref={ref}
       className="relative aspect-square overflow-hidden rounded-md border border-border-subtle bg-surface-sunken"
     >
-      {imageSrc ? (
+      {imageSrc && !active ? (
         // Plain <img> (matches product-detail): shop photos are remote content-hash URLs served immutable
         // via Cloudflare (storefront rule §CWV). Alt is the product name.
         <img src={imageSrc} alt={name} loading="lazy" className="h-full w-full object-cover" />
       ) : (
+        // While the sprite plays, the layer under it is the dotgrid — not the shop photo — so the
+        // transparent sprite frames read against the pattern, not a ghost of the real image.
         <div className="lumin-dotgrid h-full w-full" aria-hidden="true" />
       )}
       {spriteSheetUrl ? (
