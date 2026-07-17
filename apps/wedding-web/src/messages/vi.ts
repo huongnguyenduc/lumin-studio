@@ -1,11 +1,100 @@
 // Vietnamese message catalog (vi-only, conventions §i18n: no hard-coded JSX text).
-// Grows section-by-section with the invitation/admin slices (HANDOFF §2–§3).
+// Copy is 1:1 from the hi-fi prototype (design_handoff_wedding_invitation) — the
+// wording is locked design; sentence case rules don't apply to the prototype's
+// deliberate uppercase-styled labels (CSS uppercases, the keys stay sentence case).
 export const vi = {
   meta: {
     title: 'Giang & Hiếu — Thiệp mời cưới',
     description: 'Trân trọng kính mời bạn đến chung vui cùng Giang & Hiếu · 12.09.2026',
   },
-  home: {
-    placeholder: 'Thiệp mời đang được chuẩn bị…',
+  hero: {
+    saveTheDate: 'save the date',
+    scrollHint: 'Cuộn xuống để mở thiệp',
+    musicToggle: 'Nhạc nền',
+    stampAlt: 'Con dấu sáp HG',
+  },
+  letter: {
+    invite: 'Trân trọng kính mời',
+    anonymousGuest: 'Quý Khách/Cô/Chú/Anh/Chị/Bạn',
+    toAttend: 'Đến tham dự tiệc vu quy',
+    bride: 'Châu Giang',
+    groom: 'Trung Hiếu',
+    ringsAlt: 'Nhẫn cưới',
+    time: '17:30',
+    weekday: 'Thứ bảy',
+    date: '12.09.2026',
+    lunarDate: '(Nhằm ngày 02 tháng 08 năm Bính Ngọ)',
+    venue: 'The Mira Central Park',
+    venueHall: 'Sảnh tầng 5',
+    venueAddress: '128/16 Nguyễn Ái Quốc, phường Tam Hiệp, Thành phố Đồng Nai',
+    mapAlt: 'Sơ đồ đường đi',
+    openMaps: 'Mở trong google maps',
+    timeline: 'Timeline',
+    timelineWelcomeTime: '17:30',
+    timelineWelcome: 'Đón khách',
+    timelinePartyTime: '19:00',
+    timelineParty: 'Nhập tiệc',
+  },
+  events: {
+    vuQuy: 'Lễ vu quy',
+    vuQuyTime: '8:00',
+    vuQuyPlace: 'Tư gia Nhà Gái',
+    vuQuyAddress: 'Phường Tam Hiệp, Thành phố Đồng Nai',
+    thanhHon: 'Lễ thành hôn',
+    thanhHonTime: '10:30',
+    thanhHonPlace: 'Tư gia Nhà Trai',
+    thanhHonAddress: 'Phường Bình Thạnh, Thành phố Hồ Chí Minh',
+    atTime: 'Vào lúc',
+    date: '20.09.2026',
+    lunarDate: '(Nhằm ngày 10 tháng 8 Năm Bính Ngọ)',
+    together: 'together',
+  },
+  gallery: {
+    heading: 'Giang & Hiếu',
+    kicker: 'Đà Lạt 2026',
+    photoAlt: 'Ảnh cưới {index}',
+    close: 'Đóng',
+    prev: 'Ảnh trước',
+    next: 'Ảnh sau',
+    counter: '{current} / {total}',
+  },
+  rsvp: {
+    heading: 'Xác nhận tham gia',
+    intro1:
+      'Tiệc cưới sẽ trọn vẹn hơn khi có thêm lời chúc phúc và sự hiện diện của Quý Anh/Chị/Bạn.',
+    intro2:
+      'Hi vọng Quý Anh/Chị/Bạn sẽ sắp xếp thời gian và xác nhận tham dự trước ngày 05/09/2026 để cô dâu – chú rể chuẩn bị tiếp đón thật chu đáo nhé!',
+    regards: 'Trân trọng.',
+    yes: 'Tham dự được',
+    yesSelected: '✓ Tham dự được',
+    no: 'Không tham dự được',
+    noSelected: '✓ Không tham dự được',
+    thanksYes: 'Cảm ơn bạn! Giang & Hiếu rất mong được đón tiếp bạn.',
+    thanksNo: 'Cảm ơn bạn đã phản hồi. Hẹn gặp bạn một dịp gần nhất!',
+  },
+  wish: {
+    intro: 'Mỗi lời chúc sẽ là một món quà đặc biệt với Giang & Hiếu.',
+    namePlaceholder: 'Tên của bạn',
+    textPlaceholder: 'Viết lời chúc...',
+    colorLabel: 'Màu thiệp',
+    colorWhite: 'Trắng ngà',
+    colorCream: 'Kem',
+    colorPink: 'Hồng phấn',
+    colorOlive: 'Xanh ô liu',
+    send: 'Gửi lời chúc',
+    sentHeading: 'Cảm ơn bạn!',
+    sentBody: 'Lời chúc của bạn đã được gửi đến Giang & Hiếu.',
+    defaultName: 'Khách mời',
+    previewLabel: 'Xem trước lời chúc của bạn',
+    previewNow: 'vừa xong',
+    previewEmpty: '…',
+  },
+  wall: {
+    heading: 'Lời chúc gửi trao',
+    kicker: 'Từ những người thương yêu',
+    more: 'Xem thêm lời chúc',
+  },
+  footer: {
+    thanks: 'Thank You',
   },
 } as const;

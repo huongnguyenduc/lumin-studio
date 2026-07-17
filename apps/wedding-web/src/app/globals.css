@@ -4,17 +4,71 @@
 
 @layer base {
   body {
-    font-family: theme('fontFamily.serif');
-    color: theme('colors.ink');
-    background-color: theme('colors.page-invite');
+    font-family: var(--font-serif), ui-serif, Georgia, serif;
+    color: rgb(120, 105, 93);
+    background-color: rgb(236, 229, 222);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
+  html {
+    scroll-behavior: smooth;
+  }
+  ::placeholder {
+    color: rgb(186, 170, 159);
+    opacity: 1;
+  }
 }
 
-/* conventions §A11y: every animation added later (scroll reveal, envelope, music
- * fades — HANDOFF §2.11) must respect this. */
+/* Hover states from the prototype's style-hover attributes — inline styles can't
+ * hover, so the few interactive pieces carry these classes. */
+.invite-music-btn:hover {
+  background: rgb(101, 88, 77) !important;
+}
+.invite-pill-solid:hover {
+  background: rgb(101, 88, 77) !important;
+  color: rgb(255, 251, 248);
+}
+.invite-pill-ghost:hover {
+  background: rgba(255, 251, 248, 0.12) !important;
+}
+.invite-pill-ghost-tan:hover {
+  background: rgb(249, 241, 232) !important;
+}
+.invite-lb-btn:hover {
+  background: rgba(255, 251, 248, 0.12) !important;
+}
+
+/* Scroll hint (§2.1): centered + 2.2s bob. */
+.invite-hint {
+  transform: translateX(-50%);
+  animation: hintBob 2.2s ease-in-out infinite;
+}
+@keyframes hintBob {
+  0%,
+  100% {
+    transform: translate(-50%, 0);
+  }
+  50% {
+    transform: translate(-50%, 7px);
+  }
+}
+
+/* Desktop (§7 decision 1): scale the whole 393px composition as a unit — never
+ * reflow (internal absolute positions depend on the 393px canvas). `zoom` keeps
+ * layout height correct where transform:scale would leave a phantom gap; the
+ * 1.25 factor is HANDOFF's suggestion, confirm visually (§9). */
+@media (min-width: 1024px) {
+  .invite-scale {
+    zoom: 1.25;
+  }
+}
+
+/* conventions §A11y: kill decorative motion for prefers-reduced-motion (the
+ * reveal hook also skips itself; this catches the hint bob + smooth scroll). */
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
   *,
   *::before,
   *::after {
