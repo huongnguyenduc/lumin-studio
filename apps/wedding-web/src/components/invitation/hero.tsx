@@ -7,7 +7,15 @@ import { Reveal } from './reveal';
 
 // Hero (§2.1): full-bleed photo, logo mark + rotated ellipse borders, gradient,
 // script "save the date", music toggle, one-time scroll hint (localStorage).
-export function Hero({ playing, onToggleMusic }: { playing: boolean; onToggleMusic: () => void }) {
+export function Hero({
+  playing,
+  onToggleMusic,
+  bgUrl,
+}: {
+  playing: boolean;
+  onToggleMusic: () => void;
+  bgUrl?: string;
+}) {
   const t = useTranslations('hero');
   const [hint, setHint] = useState(false);
   const [hintOpacity, setHintOpacity] = useState(1);
@@ -45,7 +53,7 @@ export function Hero({ playing, onToggleMusic }: { playing: boolean; onToggleMus
         style={{
           position: 'absolute',
           inset: 0,
-          background: 'url(/invite/hero.jpg) 50% 0 / cover no-repeat',
+          background: `url(${bgUrl ?? '/invite/hero.jpg'}) 50% 0 / cover no-repeat`,
         }}
       />
       <Reveal

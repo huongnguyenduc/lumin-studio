@@ -1,4 +1,5 @@
-import { getInvite, getWishes } from '@/lib/api';
+import { getInvite, getSettings, getWishes } from '@/lib/api';
+import { asSiteSettings } from '@/lib/site-settings';
 import { InvitationCard } from '@/components/invitation/invitation-card';
 
 // SSR per guest slug (HANDOFF §6): the salutation renders server-side (no
@@ -8,6 +9,10 @@ export const dynamic = 'force-dynamic';
 
 export default async function InvitePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const [guest, wishes] = await Promise.all([getInvite(slug), getWishes()]);
-  return <InvitationCard guest={guest} wishes={wishes.items} />;
+  const [guest, wishes, settings] = await Promise.all([
+    getInvite(slug),
+    getWishes(),
+    getSettings(),
+  ]);
+  return <InvitationCard guest={guest} wishes={wishes.items} settings={asSiteSettings(settings)} />;
 }

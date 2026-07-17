@@ -35,7 +35,15 @@ const timelineText: CSSProperties = {
 
 // Letter (§2.3): the invitation text framed by vertical lace strips, closed by
 // two horizontal lace strips. guestLabel = personalized salutation (SSR).
-export function Letter({ guestLabel }: { guestLabel: string | null }) {
+export function Letter({
+  guestLabel,
+  mapUrl,
+  mapsUrl,
+}: {
+  guestLabel: string | null;
+  mapUrl?: string;
+  mapsUrl?: string;
+}) {
   const t = useTranslations('letter');
   return (
     <div style={{ position: 'relative', padding: '42px 40px 0' }}>
@@ -137,7 +145,7 @@ export function Letter({ guestLabel }: { guestLabel: string | null }) {
           }}
         >
           <img
-            src="/invite/map.png"
+            src={mapUrl ?? '/invite/map.png'}
             alt={t('mapAlt')}
             style={{
               position: 'absolute',
@@ -151,7 +159,7 @@ export function Letter({ guestLabel }: { guestLabel: string | null }) {
         </Reveal>
         <Reveal style={{ marginTop: 18 }}>
           <a
-            href="https://maps.google.com/?q=The+Mira+Central+Park+Bien+Hoa"
+            href={mapsUrl ?? 'https://maps.google.com/?q=The+Mira+Central+Park+Bien+Hoa'}
             target="_blank"
             rel="noreferrer"
             className="invite-pill-solid"

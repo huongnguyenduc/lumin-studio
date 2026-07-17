@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import type { Invite, Wish } from '@/lib/types';
+import type { SiteSettings } from '@/lib/site-settings';
 import { CREAM, TAN_LIGHT, SCRIPT, SERIF } from './theme';
 import { useMusic } from './use-music';
 import { Reveal } from './reveal';
@@ -18,9 +19,17 @@ import { Wishes } from './wishes';
 // (guest label without flicker), and every section shares the reveal/music
 // runtime. Fixed 393px composition — the desktop breakpoint scales the card as
 // a unit via .invite-scale (globals.css), never reflows (§7 decision 1).
-export function InvitationCard({ guest, wishes }: { guest: Invite | null; wishes: Wish[] }) {
+export function InvitationCard({
+  guest,
+  wishes,
+  settings = {},
+}: {
+  guest: Invite | null;
+  wishes: Wish[];
+  settings?: SiteSettings;
+}) {
   const t = useTranslations('footer');
-  const music = useMusic();
+  const music = useMusic(settings.musicUrl);
 
   // Music starts on first scroll (§2.10) — autoplay usually rejects, then the
   // one-time pointerdown retry inside useMusic picks it up on first tap.
@@ -59,11 +68,15 @@ export function InvitationCard({ guest, wishes }: { guest: Invite | null; wishes
           boxShadow: '0 0 60px rgba(101,101,101,0.25)',
         }}
       >
-        <Hero playing={music.playing} onToggleMusic={music.toggle} />
+        <Hero playing={music.playing} onToggleMusic={music.toggle} bgUrl={settings.heroUrl} />
         <Envelope />
-        <Letter guestLabel={guest?.label ?? null} />
+        <Letter
+          guestLabel={guest?.label ?? null}
+          mapUrl={settings.mapUrl}
+          mapsUrl={settings.mapsUrl}
+        />
         <Events />
-        <Gallery />
+        <Gallery images={settings.gallery} />
         {/* RSVP only for a valid guest link — recommended §9 anonymous behavior. */}
         {guest ? <Rsvp guestId={guest.id} initial={guest.rsvp} /> : null}
         <Wishes

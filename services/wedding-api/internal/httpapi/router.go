@@ -60,6 +60,9 @@ func New(pool *pgxpool.Pool, a *auth.Auth, uploads *uploadstore.Store) http.Hand
 		r.Post("/api/invite/{guestId}/rsvp", s.postRSVP)
 		r.Post("/api/wishes", s.postWish)
 		r.Get("/api/wishes", s.getWishes)
+		// Site settings are public page content (hero/gallery/map/music/meta) —
+		// the invitation SSR reads them without a session (HANDOFF §3.5).
+		r.Get("/api/settings", s.getSettings)
 	})
 
 	// Login is rate-limited MUCH tighter (shared password → brute-force surface).

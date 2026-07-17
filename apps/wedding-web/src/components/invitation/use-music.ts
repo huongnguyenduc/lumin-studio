@@ -6,9 +6,10 @@ import { useEffect, useRef, useState } from 'react';
 // scroll; if the browser rejects (no gesture yet), a one-time pointerdown retry
 // starts it on the first tap. Fade in to 0.85 over 2.4s, fade out 0.7s then
 // pause. Degrades silently when /invite/music.mp3 is absent (HEAD check).
-const SRC = '/invite/music.mp3';
+const DEFAULT_SRC = '/invite/music.mp3';
 
-export function useMusic() {
+export function useMusic(srcOverride?: string) {
+  const SRC = srcOverride ?? DEFAULT_SRC;
   const [playing, setPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fadeTimer = useRef<ReturnType<typeof setInterval> | null>(null);
