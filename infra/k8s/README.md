@@ -344,3 +344,43 @@ Two layers — the external one is load-bearing:
   `kubectl -n prod port-forward svc/uptime-kuma 3001:3001` to add monitors: core-api `/readyz`, storefront,
   admin, garage, and a **push** monitor for the backup's `BACKUP_HEARTBEAT_URL` so a silently-dead backup
   alerts too). Keep its UI off the public internet — port-forward, or a Cloudflare-Access-gated hostname.
+
+## Wedding site — bootstrap (once) + deploy
+
+The wedding invitation ("Giang & Hiếu", `design_handoff_wedding_invitation/HANDOFF.md` §6) rides the
+same cluster: `infra/k8s/wedding.yaml` (api + web + migrate Job + its own Ingress). The deploy workflow
+builds/rolls it automatically **only after** `wedding-secrets` exists — until then that step no-ops, so
+lumin deploys never depend on the side project.
+
+```sh
+# 1. Own database + role on the SHARED postgres (separate db, separate user):
+PW=$(openssl rand -hex 32)
+kubectl -n prod exec deploy/postgres -- psql -U lumin -d lumin -c \
+  "CREATE ROLE wedding LOGIN PASSWORD '$PW'; CREATE DATABASE wedding OWNER wedding;"
+
+# 2. Secret (see wedding-secret.example.yaml; ADMIN_PASSWORD = shared host login):
+kubectl -n prod create secret generic wedding-secrets \
+  --from-literal=DATABASE_URL="postgres://wedding:$PW@postgres:5432/wedding?sslmode=disable" \
+  --from-literal=JWT_SECRET="$(openssl rand -hex 32)" \
+  --from-literal=ADMIN_PASSWORD="<mật khẩu chủ tiệc>"
+
+# 3. Garage: public bucket + scoped owner key + website mode + alias (same recipe as lumin-assets):
+kubectl -n prod exec deploy/garage -- /garage bucket create wedding-assets
+kubectl -n prod exec deploy/garage -- /garage key create wedding-key          # note the ID + secret
+kubectl -n prod exec deploy/garage -- /garage bucket allow wedding-assets --read --write --owner --key wedding-key
+kubectl -n prod exec deploy/garage -- /garage bucket website --allow wedding-assets
+kubectl -n prod exec deploy/garage -- /garage bucket alias wedding-assets wedding-assets.luminstudio.vn
+# CORS for the browser presigned POST from the site origin — ONE RULE PER ORIGIN (v1.0.1 gotcha, §CORS
+# above; re-run after any bucket rebuild — CORS is prod-only state, not in a manifest):
+#   AllowedOrigins=["https://giangvahieu.luminstudio.vn"], AllowedMethods=["POST","GET"] via aws s3api put-bucket-cors
+kubectl -n prod patch secret wedding-secrets -p \
+  '{"stringData":{"UPLOAD_S3_ACCESS_KEY_ID":"<key id>","UPLOAD_S3_SECRET_ACCESS_KEY":"<secret>"}}'
+
+# 4. Cloudflare: add giangvahieu.luminstudio.vn + wedding-assets.luminstudio.vn to the tunnel + DNS
+#    (same wildcard route pattern as the other hosts). A purchased custom domain later = one more
+#    Ingress host + a Cloudflare custom hostname/tunnel route — no code change.
+
+# 5. Deploy: push to main (workflow picks it up now the Secret exists), or run the wedding block's
+#    commands from .github/workflows/deploy.yml by hand. Then roll wedding-api after step 3's patch:
+kubectl -n prod rollout restart deploy/wedding-api
+```

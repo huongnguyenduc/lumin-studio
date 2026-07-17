@@ -1,0 +1,166 @@
+# Wedding invitation site ("Giang & Hiếu") — runs BESIDE lumin-studio in the same
+# prod namespace/cluster (HANDOFF §6): own Go API + Next web + its OWN `wedding`
+# database on the shared Postgres instance + a dedicated wedding-assets Garage
+# bucket. Secrets live in a SEPARATE `wedding-secrets` Secret (see
+# secret.example.yaml). Host list is generic so a purchased custom domain can be
+# added later with no code change (extra Ingress rule + tunnel route only).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wedding-api
+  namespace: prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: wedding-api }
+  template:
+    metadata:
+      labels: { app: wedding-api }
+    spec:
+      containers:
+        - name: wedding-api
+          image: lumin-wedding-api:prod
+          imagePullPolicy: IfNotPresent # locally imported (no registry)
+          ports:
+            - { containerPort: 8081 }
+          env:
+            - { name: PORT, value: '8081' }
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: wedding-secrets, key: DATABASE_URL } }
+            # Fail-fast: wedding-api refuses to boot on the forgeable dev secret.
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: wedding-secrets, key: JWT_SECRET } }
+            - name: ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: wedding-secrets, key: ADMIN_PASSWORD } }
+            - { name: ALLOW_DEV_JWT_SECRET, value: 'false' }
+            - { name: COOKIE_SECURE, value: 'true' } # Cloudflare terminates TLS
+            # --- Garage uploads (§3.5). Endpoint is baked into the browser's presigned
+            # POST → must be the PUBLIC S3 host (same pattern as core-api). Serve base =
+            # website mode on the public bucket alias once bootstrapped. Cred keys are
+            # optional:true — absent until the Garage bootstrap creates the scoped key
+            # (uploads fail closed 503, the API still boots; k8s gotcha: a required ref
+            # to an absent key = CreateContainerConfigError stalls the rollout).
+            - { name: UPLOAD_S3_ENDPOINT, value: 'https://s3.luminstudio.vn' }
+            - { name: UPLOAD_PUBLIC_BASE_URL, value: 'https://wedding-assets.luminstudio.vn' }
+            - name: UPLOAD_S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: wedding-secrets
+                  key: UPLOAD_S3_ACCESS_KEY_ID
+                  optional: true
+            - name: UPLOAD_S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: wedding-secrets
+                  key: UPLOAD_S3_SECRET_ACCESS_KEY
+                  optional: true
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8081 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8081 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wedding-api
+  namespace: prod
+spec:
+  selector: { app: wedding-api }
+  ports:
+    - { port: 8081, targetPort: 8081 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wedding-web
+  namespace: prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: wedding-web }
+  template:
+    metadata:
+      labels: { app: wedding-web }
+    spec:
+      containers:
+        - name: wedding-web
+          image: lumin-wedding-web:prod
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { containerPort: 3000 }
+          env:
+            - { name: PORT, value: '3000' }
+            # SSR + the /api/* rewrite reach wedding-api by internal DNS.
+            - { name: WEDDING_API_URL, value: http://wedding-api:8081 }
+          readinessProbe:
+            httpGet: { path: /, port: 3000 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wedding-web
+  namespace: prod
+spec:
+  selector: { app: wedding-web }
+  ports:
+    - { port: 3000, targetPort: 3000 }
+---
+# Traefik ingress — same pattern as the lumin Ingress (TLS at Cloudflare, HTTP
+# entrypoint, routed by Host through the existing tunnel's *.luminstudio.vn).
+# wedding-assets.luminstudio.vn = Garage WEBSITE mode for the public bucket
+# (anon read; bucket resolved by Host — needs the bucket website+alias bootstrap
+# on the box, same as assets.luminstudio.vn. See infra/k8s/README).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wedding
+  namespace: prod
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: giangvahieu.luminstudio.vn
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: wedding-web, port: { number: 3000 } } }
+    - host: wedding-assets.luminstudio.vn
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: garage, port: { number: 3902 } } }
+---
+# One-shot `wedding` DB migration (golang-migrate) — mirrors the lumin migrate
+# Job; image bakes services/wedding-api/db/migrations via migrate.Dockerfile.
+# Re-run: kubectl -n prod delete job wedding-migrate --ignore-not-found && kubectl apply -f infra/k8s/wedding.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: wedding-migrate
+  namespace: prod
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: lumin-wedding-migrate:prod
+          imagePullPolicy: IfNotPresent
+          args:
+            - -path=/migrations
+            - -database=$(DATABASE_URL)
+            - up
+          env:
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: wedding-secrets, key: DATABASE_URL } }
