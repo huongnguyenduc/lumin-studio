@@ -21,6 +21,8 @@ pub struct ModelIngestProcessor {
     pub store: Option<AssetStore>,
     pub python: String,
     pub script: PathBuf,
+    /// Wall-clock budget (secs) for one ingest.py run (config INGEST_TIMEOUT_SECS).
+    pub timeout_secs: u64,
 }
 
 impl Processor for ModelIngestProcessor {
@@ -48,10 +50,11 @@ impl Processor for ModelIngestProcessor {
 
         // Write source → run trimesh → read glb on a BLOCKING thread, so the async runtime (and the
         // JetStream InProgress heartbeat on it) is not stalled during a long ingest.
-        let (python, script, job_id) = (
+        let (python, script, job_id, timeout_secs) = (
             self.python.clone(),
             self.script.clone(),
             job.asset_job_id.clone(),
+            self.timeout_secs,
         );
         let (glb, structured_glb, object_names) = tokio::task::spawn_blocking(
             move || -> Result<IngestOutput, ProcessError> {
@@ -61,7 +64,7 @@ impl Processor for ModelIngestProcessor {
                 let input = dir.join(format!("input.{ext}"));
                 std::fs::write(&input, &src)
                     .map_err(|e| ProcessError::Transient(format!("write source: {e}")))?;
-                let manifest = run_ingest(&python, &script, &input, &dir)?; // already-classified ProcessError
+                let manifest = run_ingest(&python, &script, &input, &dir, timeout_secs)?; // already-classified ProcessError
                 let glb = std::fs::read(&manifest.glb_path)
                     .map_err(|e| ProcessError::Transient(format!("read glb: {e}")))?;
                 // f-4: read the structured glb too (if the script emitted one — absent for a nameless source).
@@ -166,6 +169,7 @@ mod tests {
             store: None,
             python: "python3".into(),
             script: "ingest.py".into(),
+            timeout_secs: 300,
         };
         let err = p
             .process(&job(JobType::ModelIngest, "https://s3/lumin-assets/x.glb"))
@@ -213,6 +217,7 @@ mod tests {
             store: Some(AssetStore::new(cfg()).unwrap()),
             python,
             script,
+            timeout_secs: 300,
         };
         let out = p.process(&j).await.expect("e2e ingest");
         assert_eq!(
@@ -235,11 +240,13 @@ mod tests {
                 store: None,
                 python: "python3".into(),
                 script: "ingest.py".into(),
+                timeout_secs: 300,
             },
             sprite_render: SpriteRenderProcessor {
                 store: None,
                 python: "python3".into(),
                 script: "render.py".into(),
+                timeout_secs: 300,
             },
         };
         let err = d

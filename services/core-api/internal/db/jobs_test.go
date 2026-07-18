@@ -360,3 +360,66 @@ func TestPrintJobCascadesWithOrderItem(t *testing.T) {
 		t.Fatalf("print job after order delete = %v, want ErrNotFound (ON DELETE CASCADE)", err)
 	}
 }
+
+// FailStuckProcessing (the reconcile sweep) must fail ONLY jobs that are BOTH in 'processing' AND past
+// the cutoff — a fresh processing job (worker alive, heartbeating callbacks) and an old queued job (the
+// relay/worker will still pick it up) are untouched.
+func TestFailStuckProcessingSweepsOnlyOldProcessing(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+	prod := seedProduct(t, ctx, NewCatalog(pool), "den-stuck", 100000)
+	jobs := NewJobs(pool)
+
+	mk := func(status sqlc.AssetJobStatus, age time.Duration) uuid.UUID {
+		id := uuid.New()
+		tx := mustBegin(t, ctx, pool)
+		if _, err := CreateAssetJobTx(ctx, tx, CreateAssetJobInput{
+			ID: id, ProductID: prod.ID, JobType: sqlc.AssetJobTypeModelIngest,
+			SourceModelURL: "https://garage.lumin.vn/models/s.glb", SourceVersion: "v-" + id.String(),
+		}); err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			t.Fatalf("commit: %v", err)
+		}
+		if status != sqlc.AssetJobStatusQueued {
+			if _, err := jobs.MarkAssetJob(ctx, sqlc.UpdateAssetJobStatusParams{ID: id, Status: status, Attempts: 1}); err != nil {
+				t.Fatalf("mark %s: %v", status, err)
+			}
+		}
+		// Backdate the liveness column directly — the repo API always stamps now().
+		if _, err := pool.Exec(ctx, "UPDATE asset_jobs SET updated_at = now() - $2::interval WHERE id = $1", id, age.String()); err != nil {
+			t.Fatalf("backdate: %v", err)
+		}
+		return id
+	}
+
+	stuck := mk(sqlc.AssetJobStatusProcessing, 3*time.Hour) // dead worker → must be swept
+	fresh := mk(sqlc.AssetJobStatusProcessing, time.Minute) // honest in-flight → untouched
+	queued := mk(sqlc.AssetJobStatusQueued, 3*time.Hour)    // old but not processing → untouched
+
+	swept, err := jobs.FailStuckProcessing(ctx, time.Now().UTC().Add(-2*time.Hour))
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if swept != 1 {
+		t.Fatalf("swept = %d, want 1", swept)
+	}
+	got, err := jobs.AssetJobByID(ctx, stuck)
+	if err != nil {
+		t.Fatalf("read stuck: %v", err)
+	}
+	if got.Status != sqlc.AssetJobStatusFailed || got.LastError == nil ||
+		*got.LastError != "reconcile: stuck in processing" || !got.CompletedAt.Valid {
+		t.Fatalf("stuck after sweep = %+v, want failed + reconcile last_error + completed stamped", got)
+	}
+	for name, id := range map[string]uuid.UUID{"fresh": fresh, "queued": queued} {
+		j, err := jobs.AssetJobByID(ctx, id)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		if j.Status == sqlc.AssetJobStatusFailed {
+			t.Fatalf("%s job must survive the sweep, got failed", name)
+		}
+	}
+}

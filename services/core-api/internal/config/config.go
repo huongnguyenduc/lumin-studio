@@ -135,6 +135,14 @@ type Config struct {
 	// (partial-index scan + UPDATE), so a slow cadence keeps it off the hot path; geo outliving retention
 	// by up to one interval is harmless.
 	LostEventSweepInterval time.Duration
+	// AssetJobStuckAfter is how long an asset job may sit in 'processing' without a worker callback
+	// (updated_at refresh) before the reconcile sweeper flips it to 'failed' (ops: a dead worker / a
+	// lost final-attempt callback otherwise leaves it forever-running in Admin). Renders finish in
+	// minutes, so 2h is comfortably past any honest attempt.
+	AssetJobStuckAfter time.Duration
+	// AssetJobSweepInterval is how often the reconcile sweeper scans. One cheap indexed UPDATE, so a
+	// moderate cadence keeps it off the hot path; a stuck job surfacing up to one interval late is fine.
+	AssetJobSweepInterval time.Duration
 }
 
 // ModelUploadConfig holds the S3/Garage signing inputs for source 3D model uploads (ADR-036). Same
@@ -312,6 +320,8 @@ func Load() Config {
 		},
 		LostEventGeoRetention:  getenvDuration("LOST_EVENT_GEO_RETENTION", 30*24*time.Hour),
 		LostEventSweepInterval: getenvDuration("LOST_EVENT_SWEEP_INTERVAL", 6*time.Hour),
+		AssetJobStuckAfter:     getenvDuration("ASSET_JOB_STUCK_AFTER", 2*time.Hour),
+		AssetJobSweepInterval:  getenvDuration("ASSET_JOB_SWEEP_INTERVAL", 15*time.Minute),
 	}
 }
 

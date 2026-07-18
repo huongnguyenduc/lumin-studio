@@ -30,6 +30,14 @@ from pathlib import Path
 
 from PIL import Image
 
+# Wall-clock budget for the Blender subprocess (a CUDA hang on the box otherwise stalls the
+# concurrency=1 worker forever — the heartbeat keeps resetting ack-wait around a dead render).
+# Set on this process by render.rs from worker config (RENDER_TIMEOUT_SECS); the default matches it.
+TIMEOUT_SECS = int(os.environ.get("RENDER_TIMEOUT_SECS", "900"))
+# sysexits EX_TEMPFAIL — the timeout exit the Rust wrapper classifies as TRANSIENT (redeliver),
+# unlike any other non-zero exit (permanent). Keep in sync with render.rs/ingest.rs EXIT_TIMEOUT.
+EXIT_TIMEOUT = 75
+
 # Fixed sprite grid — MUST stay in sync with the storefront tiler (apps/storefront sprite constants).
 FRAMES = 24
 COLS = 6
@@ -57,6 +65,7 @@ def render(input_path: str, out_dir: str) -> dict:
         ],
         capture_output=True,
         text=True,
+        timeout=TIMEOUT_SECS,  # subprocess.run kills Blender on expiry, then raises TimeoutExpired
     )
     if proc.returncode != 0:
         # Surface Blender's tail — the worker reports this as the failure reason (capped there).
@@ -85,6 +94,11 @@ def main() -> int:
         return 2
     try:
         manifest = render(sys.argv[1], sys.argv[2])
+    except subprocess.TimeoutExpired:
+        # A hung Blender (CUDA stall) — an environment fault, not the model's. Distinct exit so the
+        # Rust wrapper redelivers (transient) instead of burning the job as permanently failed.
+        print(f"render timed out after {TIMEOUT_SECS}s (blender killed)", file=sys.stderr)
+        return EXIT_TIMEOUT
     except Exception as e:  # noqa: BLE001 — any render/tile failure is a reportable error
         print(f"render failed: {e}", file=sys.stderr)
         return 1

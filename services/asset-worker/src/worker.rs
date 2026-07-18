@@ -58,11 +58,13 @@ fn build_processor(cfg: &Config) -> Dispatcher {
             store: store.clone(),
             python: cfg.ingest_python.clone(),
             script: cfg.ingest_script.clone().into(),
+            timeout_secs: cfg.ingest_timeout_secs,
         },
         sprite_render: SpriteRenderProcessor {
             store,
             python: cfg.ingest_python.clone(),
             script: cfg.render_script.clone().into(),
+            timeout_secs: cfg.render_timeout_secs,
         },
     }
 }

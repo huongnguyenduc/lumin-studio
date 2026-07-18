@@ -39,6 +39,12 @@ pub struct Config {
     /// (a subprocess it spawns) then tiles the frames into a WebP sheet (ADR-049). Defaults to its image
     /// location; runs on `ingest_python`.
     pub render_script: String,
+    /// Wall-clock budget (secs) for one ingest.py run (INGEST_TIMEOUT_SECS). Passed to the child via env;
+    /// on expiry the script exits EXIT_TIMEOUT (75) which the wrapper maps to Transient (redeliver).
+    pub ingest_timeout_secs: u64,
+    /// Wall-clock budget (secs) for one render.py run (RENDER_TIMEOUT_SECS) — kills a hung Blender
+    /// (CUDA stall on the GTX 1060) that would otherwise wedge the concurrency=1 worker forever.
+    pub render_timeout_secs: u64,
     /// Assets bucket (lumin-assets) access — the worker fetches the source model + uploads the glb here.
     /// `endpoint` is the INTERNAL Garage API; `public_base` the PUBLIC origin for URLs (see objectstore).
     /// Empty endpoint/public_base/creds ⇒ model_ingest is fail-closed (jobs redeliver, never failed).
@@ -53,21 +59,28 @@ pub struct Config {
 impl Config {
     /// Build config from the process environment, applying defaults.
     pub fn from_env() -> Self {
-        // heartbeat < ack_wait is an invariant (a heartbeat that fires after ack_wait can't reset it);
-        // both are simple env knobs with safe defaults, so no cross-validation beyond the max_deliver floor.
+        // heartbeat < ack_wait is an invariant (a heartbeat that fires after ack_wait can't reset it) —
+        // enforced below by clamping a misconfigured heartbeat to half the ack-wait.
+        let ack_wait = Duration::from_secs(env_u64("ASSET_ACK_WAIT_SECS", 30));
+        let heartbeat = clamp_heartbeat(
+            Duration::from_secs(env_u64("ASSET_HEARTBEAT_SECS", 10)),
+            ack_wait,
+        );
         Self {
             nats_url: env_or("NATS_URL", "nats://127.0.0.1:4222"),
             asset_stream: env_or("ASSET_STREAM", "ASSET_JOBS"),
             durable_name: env_or("ASSET_DURABLE", "asset-worker"),
             job_subject: env_or("ASSET_JOB_SUBJECT", "asset_job.created"),
             max_deliver: env_u64("ASSET_MAX_DELIVER", 5).max(1), // 0 would Term the first attempt
-            ack_wait: Duration::from_secs(env_u64("ASSET_ACK_WAIT_SECS", 30)),
-            heartbeat: Duration::from_secs(env_u64("ASSET_HEARTBEAT_SECS", 10)),
+            ack_wait,
+            heartbeat,
             core_api_url: env_or("CORE_API_URL", "http://127.0.0.1:8080"),
             worker_callback_token: env_or("WORKER_CALLBACK_TOKEN", ""),
             ingest_python: env_or("INGEST_PYTHON", "python3"),
             ingest_script: env_or("INGEST_SCRIPT", "/opt/asset-worker/pysrc/ingest.py"),
             render_script: env_or("RENDER_SCRIPT", "/opt/asset-worker/pysrc/render.py"),
+            ingest_timeout_secs: env_u64("INGEST_TIMEOUT_SECS", 300).max(1),
+            render_timeout_secs: env_u64("RENDER_TIMEOUT_SECS", 900).max(1),
             assets_endpoint: env_or("ASSETS_S3_ENDPOINT", ""),
             assets_region: env_or("ASSETS_S3_REGION", "garage"),
             assets_bucket: env_or("ASSETS_BUCKET", "lumin-assets"),
@@ -96,6 +109,23 @@ impl Config {
             secret_access_key: self.assets_secret.clone(),
         })
     }
+}
+
+/// Enforce the heartbeat < ack_wait invariant: a heartbeat that fires at/after ack-wait can never reset
+/// the timer, so an in-flight long render would redeliver mid-flight. A bad env is clamped (with a warn)
+/// to half the ack-wait rather than trusted.
+fn clamp_heartbeat(heartbeat: Duration, ack_wait: Duration) -> Duration {
+    if heartbeat < ack_wait {
+        return heartbeat;
+    }
+    let clamped = (ack_wait / 2).max(Duration::from_secs(1));
+    tracing::warn!(
+        heartbeat_secs = heartbeat.as_secs(),
+        ack_wait_secs = ack_wait.as_secs(),
+        clamped_secs = clamped.as_secs(),
+        "ASSET_HEARTBEAT_SECS >= ASSET_ACK_WAIT_SECS — clamping heartbeat so in-flight jobs are not redelivered"
+    );
+    clamped
 }
 
 /// Read `key` from the environment, falling back to `default` when it is unset or empty.
@@ -144,6 +174,15 @@ mod tests {
     #[test]
     fn env_u64_falls_back_on_unparseable() {
         assert_eq!(env_u64("LUMIN_ASSET_WORKER_UNSET_INT", 5), 5);
+    }
+
+    #[test]
+    fn clamp_heartbeat_enforces_the_invariant() {
+        let s = Duration::from_secs;
+        assert_eq!(clamp_heartbeat(s(10), s(30)), s(10)); // sane config untouched
+        assert_eq!(clamp_heartbeat(s(30), s(30)), s(15)); // equal → half ack-wait
+        assert_eq!(clamp_heartbeat(s(99), s(30)), s(15)); // above → half ack-wait
+        assert_eq!(clamp_heartbeat(s(5), s(1)), s(1)); // tiny ack-wait → 1s floor
     }
 
     #[test]

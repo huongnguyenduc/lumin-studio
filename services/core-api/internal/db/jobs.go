@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
 )
@@ -68,6 +70,14 @@ func (j *Jobs) MarkAssetJob(ctx context.Context, arg sqlc.UpdateAssetJobStatusPa
 		return sqlc.AssetJob{}, ErrNotFound
 	}
 	return row, err
+}
+
+// FailStuckProcessing is the reconcile sweep (ops): it flips every asset job still 'processing' whose
+// updated_at is older than `before` to 'failed' with last_error 'reconcile: stuck in processing', and
+// returns how many were swept. A job can only sit there past the cutoff if the worker died or the
+// final-attempt callback was lost — Admin would otherwise show it forever-running.
+func (j *Jobs) FailStuckProcessing(ctx context.Context, before time.Time) (int64, error) {
+	return j.q.FailStuckAssetJobs(ctx, pgtype.Timestamptz{Time: before, Valid: true})
 }
 
 // PrintJobByID returns the print job, or ErrNotFound.

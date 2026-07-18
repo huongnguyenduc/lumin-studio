@@ -20,6 +20,8 @@ pub struct SpriteRenderProcessor {
     pub store: Option<AssetStore>,
     pub python: String,
     pub script: PathBuf,
+    /// Wall-clock budget (secs) for one render.py run (config RENDER_TIMEOUT_SECS).
+    pub timeout_secs: u64,
 }
 
 impl Processor for SpriteRenderProcessor {
@@ -54,10 +56,11 @@ impl Processor for SpriteRenderProcessor {
 
         // Write source → run Blender turntable + tile → read the WebP on a BLOCKING thread, so the async
         // runtime (and the JetStream InProgress heartbeat on it) is not stalled during a long GPU render.
-        let (python, script, job_id) = (
+        let (python, script, job_id, timeout_secs) = (
             self.python.clone(),
             self.script.clone(),
             job.asset_job_id.clone(),
+            self.timeout_secs,
         );
         let sprite = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, ProcessError> {
             let dir = std::env::temp_dir().join(format!("lumin-sprite-{job_id}"));
@@ -66,7 +69,7 @@ impl Processor for SpriteRenderProcessor {
             let input = dir.join(format!("input.{ext}"));
             std::fs::write(&input, &src)
                 .map_err(|e| ProcessError::Transient(format!("write source: {e}")))?;
-            let manifest = run_render(&python, &script, &input, &dir, &part_colors_json)?; // already-classified ProcessError
+            let manifest = run_render(&python, &script, &input, &dir, &part_colors_json, timeout_secs)?; // already-classified ProcessError
             let sprite = std::fs::read(&manifest.sprite_path)
                 .map_err(|e| ProcessError::Transient(format!("read sprite: {e}")))?;
             tracing::info!(job = %job_id, frames = manifest.frames, cols = manifest.cols, "sprite rendered");
@@ -104,6 +107,7 @@ mod tests {
             store: None,
             python: "python3".into(),
             script: "render.py".into(),
+            timeout_secs: 300,
         };
         let job = AssetJob {
             asset_job_id: "job-sr".into(),

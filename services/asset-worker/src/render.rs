@@ -25,22 +25,25 @@ pub struct RenderManifest {
 /// run_ingest (ingest.rs):
 ///   - non-zero exit → **Permanent** (a bad/unsupported model, OR a Blender/GPU failure — the worker
 ///     reports `failed` so the owner sees it in Admin).
-///     // ponytail: GPU faults are lumped into Permanent — on a dedicated concurrency=1 off-peak box GPU
-///     // availability is stable, not blippy, and a genuine "no CUDA" won't self-heal on retry. If the box
-///     // shows GPU flakiness, give render.py a distinct exit code for env faults and map it to Transient.
+///     // ponytail: non-timeout GPU faults stay Permanent — a genuine "no CUDA" won't self-heal on retry.
+///     // A HANG is different: render.py kills it on the wall-clock budget and exits EXIT_TIMEOUT below.
 ///   - spawn failure (python/script missing) or an exit-0-but-unparseable stdout → **Transient** (an
 ///     environment/tooling fault, not the model's — redeliver, so a mis-provisioned image never burns a job).
+///   - exit `EXIT_TIMEOUT` (75) → **Transient**: render.py killed a hung Blender on its wall-clock budget
+///     (RENDER_TIMEOUT_SECS — the CUDA-stall case that would otherwise wedge the concurrency=1 worker).
 pub fn run_render(
     python: &str,
     script: &Path,
     input: &Path,
     out_dir: &Path,
     part_colors_json: &str,
+    timeout_secs: u64,
 ) -> Result<RenderManifest, ProcessError> {
     let output = Command::new(python)
         .arg(script)
         .arg(input)
         .arg(out_dir)
+        .env("RENDER_TIMEOUT_SECS", timeout_secs.to_string())
         // f-5: the frozen {objectName → "#RRGGBB"} map (JSON) reaches the Blender step via the INHERITED
         // env — render.py never touches it; Blender's subprocess inherits it and _bl_render.py reads
         // LUMIN_PART_COLORS. Env (not a CLI arg) keeps render.py's <input> <out_dir> contract stable and
@@ -52,6 +55,12 @@ pub fn run_render(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        if output.status.code() == Some(crate::ingest::EXIT_TIMEOUT) {
+            return Err(ProcessError::Transient(format!(
+                "render timed out after {timeout_secs}s: {}",
+                stderr.trim()
+            )));
+        }
         let code = output
             .status
             .code()
@@ -104,6 +113,7 @@ mod tests {
             Path::new("in.glb"),
             Path::new("/tmp/out"),
             "{}",
+            900,
         )
         .unwrap_err();
         assert!(matches!(err, ProcessError::Transient(_)), "got {err:?}");
@@ -119,8 +129,28 @@ mod tests {
             Path::new("in.glb"),
             Path::new("/tmp/out"),
             "{}",
+            900,
         )
         .unwrap_err();
         assert!(matches!(err, ProcessError::Permanent(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn exit_timeout_code_is_transient() {
+        // render.py exiting EXIT_TIMEOUT (a killed hung Blender) must redeliver, not burn the job.
+        let dir = std::env::temp_dir().join("lumin-render-timeout-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let script = dir.join("exit75.sh");
+        std::fs::write(&script, "exit 75\n").unwrap();
+        let err = run_render(
+            "sh",
+            &script,
+            Path::new("in.glb"),
+            Path::new("/tmp/out"),
+            "{}",
+            1,
+        )
+        .unwrap_err();
+        assert!(matches!(err, ProcessError::Transient(_)), "got {err:?}");
     }
 }
