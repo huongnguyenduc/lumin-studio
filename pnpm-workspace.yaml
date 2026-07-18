@@ -1,3 +1,5 @@
 packages:
   - 'packages/*'
   - 'apps/*'
+  # E2E smoke Playwright — opt-in thủ công, không vào verify/CI (xem e2e/README.md)
+  - 'e2e'
