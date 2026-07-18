@@ -122,6 +122,11 @@ type Querier interface {
 	// DeleteReplyTemplate removes a template. :execrows so the wrapper can map 0-rows → ErrNotFound (404)
 	// rather than silently succeeding on a bogus id.
 	DeleteReplyTemplate(ctx context.Context, id uuid.UUID) (int64, error)
+	// FailStuckAssetJobs is the reconcile sweep (ops): a job left in 'processing' past the cutoff means the
+	// worker died / the final-attempt callback was lost — nothing will ever move it, and Admin shows it as
+	// forever-running. One cheap UPDATE flips every such job to 'failed' with a recognizable last_error so the
+	// owner can re-enqueue. updated_at is the liveness signal: every worker callback refreshes it.
+	FailStuckAssetJobs(ctx context.Context, stuckBefore pgtype.Timestamptz) (int64, error)
 	GetAssetJobByID(ctx context.Context, id uuid.UUID) (AssetJob, error)
 	// GetAssetJobByIDForUpdate row-locks the job for the worker-callback tx (ReportAssetJobResult): the
 	// handler reads the job under FOR UPDATE, decides idempotency (a `ready` job is terminal + sticky),

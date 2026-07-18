@@ -191,6 +191,21 @@ func main() {
 		<-geoDone
 	}
 
+	// Start the asset-job reconcile sweeper (ops): one goroutine failing jobs stuck in 'processing' past
+	// the window (dead worker / lost final callback), so Admin surfaces them instead of showing a render
+	// as forever-running. Pool-only like the geo sweeper; joined on shutdown BEFORE pool.Close().
+	jobSweepCtx, jobSweepCancel := context.WithCancel(context.Background())
+	jobSweepDone := make(chan struct{})
+	jobSweeper := retention.NewAssetJobSweeper(db.NewJobs(pool), cfg.AssetJobStuckAfter, cfg.AssetJobSweepInterval, logger)
+	go func() {
+		defer close(jobSweepDone)
+		jobSweeper.Run(jobSweepCtx)
+	}()
+	stopJobSweeper := func() {
+		jobSweepCancel()
+		<-jobSweepDone
+	}
+
 	srv := &http.Server{
 		Addr: cfg.Addr,
 		Handler: httpapi.NewRouter(logger, pool, nc, authIssuer,
@@ -230,6 +245,7 @@ func main() {
 		stopRelay()
 		stopSweeper()
 		stopGeoSweeper()
+		stopJobSweeper()
 		nc.Close()
 		pool.Close()
 		os.Exit(1)
@@ -246,6 +262,7 @@ func main() {
 	stopRelay()
 	stopSweeper()
 	stopGeoSweeper()
+	stopJobSweeper()
 	nc.Close()
 	pool.Close()
 	if shutdownErr != nil {

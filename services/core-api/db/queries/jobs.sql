@@ -43,6 +43,19 @@ SET status = sqlc.arg('status'),
 WHERE id = sqlc.arg('id')
 RETURNING *;
 
+-- FailStuckAssetJobs is the reconcile sweep (ops): a job left in 'processing' past the cutoff means the
+-- worker died / the final-attempt callback was lost — nothing will ever move it, and Admin shows it as
+-- forever-running. One cheap UPDATE flips every such job to 'failed' with a recognizable last_error so the
+-- owner can re-enqueue. updated_at is the liveness signal: every worker callback refreshes it.
+-- name: FailStuckAssetJobs :execrows
+UPDATE asset_jobs
+SET status = 'failed',
+    last_error = 'reconcile: stuck in processing',
+    completed_at = now(),
+    updated_at = now()
+WHERE status = 'processing'
+  AND updated_at < sqlc.arg('stuck_before');
+
 -- name: InsertPrintJob :one
 INSERT INTO print_jobs (
   id, order_item_id, stage, printer, color_name, eta

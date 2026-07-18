@@ -11,6 +11,11 @@ use serde::Deserialize;
 
 use crate::processor::ProcessError;
 
+/// sysexits EX_TEMPFAIL — the DISTINCT exit both python scripts return on a wall-clock timeout
+/// (ingest.py SIGALRM / render.py subprocess timeout). Mapped to **Transient** (redeliver): a hang is an
+/// environment fault (a CUDA stall, a wedged load), not the model's — unlike other non-zero exits.
+pub const EXIT_TIMEOUT: i32 = 75;
+
 /// The manifest `ingest.py` prints on success (one line of JSON, camelCase). `dims_mm` is the recentered
 /// bounding box `[w, d, h]` in model units (mm) — the values that prefill Product; `glb_path` is the
 /// exported glb the caller uploads to lumin-assets.
@@ -40,21 +45,31 @@ pub struct Manifest {
 ///   - spawn failure (python/script missing) or an exit-0-but-unparseable stdout → **Transient** (an
 ///     environment/tooling fault, not the model's — redeliver, so a mis-provisioned image never burns a
 ///     good job as `failed`).
+///   - exit `EXIT_TIMEOUT` (75) → **Transient**: the script killed itself on its wall-clock budget
+///     (INGEST_TIMEOUT_SECS, worker config) — a hang is an environment fault, redeliver.
 pub fn run_ingest(
     python: &str,
     script: &Path,
     input: &Path,
     out_dir: &Path,
+    timeout_secs: u64,
 ) -> Result<Manifest, ProcessError> {
     let output = Command::new(python)
         .arg(script)
         .arg(input)
         .arg(out_dir)
+        .env("INGEST_TIMEOUT_SECS", timeout_secs.to_string())
         .output()
         .map_err(|e| ProcessError::Transient(format!("spawn {python}: {e}")))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        if output.status.code() == Some(EXIT_TIMEOUT) {
+            return Err(ProcessError::Transient(format!(
+                "ingest timed out after {timeout_secs}s: {}",
+                stderr.trim()
+            )));
+        }
         let code = output
             .status
             .code()
@@ -139,6 +154,7 @@ mod tests {
             Path::new("ingest.py"),
             Path::new("in.obj"),
             Path::new("/tmp/out"),
+            300,
         )
         .unwrap_err();
         assert!(matches!(err, ProcessError::Transient(_)), "got {err:?}");
@@ -153,9 +169,22 @@ mod tests {
             Path::new("/nonexistent-ingest-script-xyz"),
             Path::new("in.obj"),
             Path::new("/tmp/out"),
+            300,
         )
         .unwrap_err();
         assert!(matches!(err, ProcessError::Permanent(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn exit_timeout_code_is_transient() {
+        // A script exiting EXIT_TIMEOUT (its wall-clock budget fired) must redeliver, not burn the job.
+        let dir = std::env::temp_dir().join("lumin-ingest-timeout-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let script = dir.join("exit75.sh");
+        std::fs::write(&script, "exit 75\n").unwrap();
+        let err =
+            run_ingest("sh", &script, Path::new("in.obj"), Path::new("/tmp/out"), 1).unwrap_err();
+        assert!(matches!(err, ProcessError::Transient(_)), "got {err:?}");
     }
 
     // --- the REAL transform, gated on a trimesh-capable python (INGEST_PYTHON). Skips in CI (no
@@ -169,7 +198,7 @@ mod tests {
         let script = crate_dir().join("pysrc/ingest.py");
         let input = crate_dir().join("testdata/box.obj");
         let out = std::env::temp_dir().join("lumin-ingest-test");
-        let m = run_ingest(&python, &script, &input, &out).expect("real ingest");
+        let m = run_ingest(&python, &script, &input, &out, 300).expect("real ingest");
         // The fixture is a 20×30×40 box translated off-origin — recentering must not change the dims.
         assert_eq!(m.dims_mm, [20.0, 30.0, 40.0]);
         assert!(std::path::Path::new(&m.glb_path).exists(), "glb written");

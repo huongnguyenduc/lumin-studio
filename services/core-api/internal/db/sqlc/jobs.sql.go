@@ -91,6 +91,28 @@ func (q *Queries) CreateAssetJob(ctx context.Context, arg CreateAssetJobParams) 
 	return i, err
 }
 
+const failStuckAssetJobs = `-- name: FailStuckAssetJobs :execrows
+UPDATE asset_jobs
+SET status = 'failed',
+    last_error = 'reconcile: stuck in processing',
+    completed_at = now(),
+    updated_at = now()
+WHERE status = 'processing'
+  AND updated_at < $1
+`
+
+// FailStuckAssetJobs is the reconcile sweep (ops): a job left in 'processing' past the cutoff means the
+// worker died / the final-attempt callback was lost — nothing will ever move it, and Admin shows it as
+// forever-running. One cheap UPDATE flips every such job to 'failed' with a recognizable last_error so the
+// owner can re-enqueue. updated_at is the liveness signal: every worker callback refreshes it.
+func (q *Queries) FailStuckAssetJobs(ctx context.Context, stuckBefore pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, failStuckAssetJobs, stuckBefore)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getAssetJobByID = `-- name: GetAssetJobByID :one
 SELECT id, product_id, job_type, source_model_url, source_version, status, attempts, last_error, created_at, updated_at, completed_at FROM asset_jobs WHERE id = $1
 `

@@ -18,10 +18,19 @@ Contract with the Rust wrapper (src/ingest.rs):
 """
 
 import json
+import os
+import signal
 import sys
 from pathlib import Path
 
 import trimesh
+
+# Wall-clock budget for the whole ingest (trimesh runs IN this process, so a hang here would stall the
+# concurrency=1 worker forever). Set by ingest.rs from worker config (INGEST_TIMEOUT_SECS); default matches.
+TIMEOUT_SECS = int(os.environ.get("INGEST_TIMEOUT_SECS", "300"))
+# sysexits EX_TEMPFAIL — the timeout exit the Rust wrapper classifies as TRANSIENT (redeliver),
+# unlike any other non-zero exit (permanent). Keep in sync with ingest.rs/render.rs EXIT_TIMEOUT.
+EXIT_TIMEOUT = 75
 
 
 def structured_artifact(input_path: str, translation, out_dir: str):
@@ -88,12 +97,25 @@ def ingest(input_path: str, out_dir: str) -> dict:
     return manifest
 
 
+class _IngestTimeout(BaseException):
+    """Raised by the SIGALRM handler. BaseException on purpose: the blanket `except Exception`
+    fallbacks (main, structured_artifact) must never swallow the timeout into a permanent failure."""
+
+
 def main() -> int:
     if len(sys.argv) != 3:
         print("usage: ingest.py <input-model-path> <output-dir>", file=sys.stderr)
         return 2
+    def _on_alarm(_signum, _frame):
+        raise _IngestTimeout()
+
+    signal.signal(signal.SIGALRM, _on_alarm)
+    signal.alarm(TIMEOUT_SECS)
     try:
         manifest = ingest(sys.argv[1], sys.argv[2])
+    except _IngestTimeout:
+        print(f"ingest timed out after {TIMEOUT_SECS}s", file=sys.stderr)
+        return EXIT_TIMEOUT
     except Exception as e:  # noqa: BLE001 — any load/export failure is a permanent, reportable error
         print(f"ingest failed: {e}", file=sys.stderr)
         return 1
