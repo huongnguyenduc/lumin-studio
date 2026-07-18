@@ -3,6 +3,7 @@ package httpapi
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,6 +45,18 @@ func TestPresignDisabledWithoutConfig(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("presign without upload config = %d, want 503", rec.Code)
+	}
+}
+
+func TestWishNameTooLong(t *testing.T) {
+	h := newTestRouter()
+	long := strings.Repeat("ă", 101) // 101 runes — must 400 before any DB work (pool is nil)
+	body := strings.NewReader(`{"name":"` + long + `","text":"chúc mừng"}`)
+	req := httptest.NewRequest("POST", "/api/wishes", body)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("wish with 101-rune name = %d, want 400", rec.Code)
 	}
 }
 

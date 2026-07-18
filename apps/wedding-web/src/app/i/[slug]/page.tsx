@@ -1,10 +1,12 @@
 import { getInvite, getSettings, getWishes } from '@/lib/api';
 import { asSiteSettings } from '@/lib/site-settings';
 import { InvitationCard } from '@/components/invitation/invitation-card';
+import { MarkOpened } from '@/components/invitation/mark-opened';
 
 // SSR per guest slug (HANDOFF §6): the salutation renders server-side (no
-// flicker) and the invite fetch fires the write-once open tracking. no-store —
-// every open must hit the API, and the wall should be current.
+// flicker); open tracking fires client-side after mount (MarkOpened) so
+// link-preview bots don't fake an open. no-store — every open must hit the
+// API, and the wall should be current.
 export const dynamic = 'force-dynamic';
 
 export default async function InvitePage({ params }: { params: Promise<{ slug: string }> }) {
@@ -14,5 +16,10 @@ export default async function InvitePage({ params }: { params: Promise<{ slug: s
     getWishes(),
     getSettings(),
   ]);
-  return <InvitationCard guest={guest} wishes={wishes.items} settings={asSiteSettings(settings)} />;
+  return (
+    <>
+      {guest ? <MarkOpened slug={slug} /> : null}
+      <InvitationCard guest={guest} wishes={wishes.items} settings={asSiteSettings(settings)} />
+    </>
+  );
 }

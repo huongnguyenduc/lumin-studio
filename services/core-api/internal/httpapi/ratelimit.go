@@ -29,6 +29,19 @@ func defaultLookupLimits() lookupLimits {
 	return lookupLimits{rate: defaultLookupRate, burst: defaultLookupBurst, ttl: defaultLookupTTL}
 }
 
+// Login limiter defaults (per normalized email — same keyed token-bucket type as the guest
+// lookup; the edge WAF stays the per-IP layer). Tight: a human retyping a password fits in the
+// burst, an online brute-force against one account does not (~6 sustained attempts/min).
+const (
+	defaultLoginRate  = rate.Limit(0.1)
+	defaultLoginBurst = 10
+	defaultLoginTTL   = 30 * time.Minute
+)
+
+func defaultLoginLimits() lookupLimits {
+	return lookupLimits{rate: defaultLoginRate, burst: defaultLoginBurst, ttl: defaultLoginTTL}
+}
+
 // lookupEntry is the per-code limiter state: a token bucket plus a last-seen stamp for TTL eviction.
 type lookupEntry struct {
 	lim      *rate.Limiter
@@ -74,6 +87,9 @@ func newLookupLimiter(l lookupLimits) *lookupLimiter {
 // called once per request, BEFORE any DB work, and consumes a token on EVERY call — an unknown code, a
 // wrong phone and a legit poll all spend the same, so token cost never distinguishes them.
 func (l *lookupLimiter) allow(code string) bool {
+	if l == nil { // unwired (unit tests) → fail open, mirrors paymentProofUploadLimiter
+		return true
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()

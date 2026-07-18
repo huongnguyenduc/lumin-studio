@@ -135,6 +135,35 @@ func TestLoginSuccessSetsHttpOnlyCookieTokenNotInBody(t *testing.T) {
 	}
 }
 
+// The per-email login limiter must 429 past its burst, key on the NORMALIZED email (case/space
+// variants share one bucket), and leave other emails untouched.
+func TestLoginRateLimitedPerEmail(t *testing.T) {
+	srv := testLoginServer(fakeUsers{user: ownerUser(t, "o@lumin.vn", "secret123")})
+	srv.loginLimiter = newLookupLimiter(lookupLimits{rate: 0, burst: 2, ttl: time.Hour})
+	h := testAuthRouter(srv)
+
+	for i, email := range []string{"o@lumin.vn", "O@Lumin.VN"} { // same bucket after normalize
+		res := postLogin(h, email, "WRONG")
+		res.Body.Close()
+		if res.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("attempt %d = %d, want 401", i, res.StatusCode)
+		}
+	}
+	res := postLogin(h, "o@lumin.vn", "secret123")
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("past burst = %d, want 429", res.StatusCode)
+	}
+	if sessionCookie(res) != nil {
+		t.Fatal("a rate-limited login must not set a cookie")
+	}
+	other := postLogin(h, "other@lumin.vn", "secret123")
+	defer other.Body.Close()
+	if other.StatusCode == http.StatusTooManyRequests {
+		t.Fatal("another email must have its own bucket")
+	}
+}
+
 func TestLoginWrongPasswordUniform401(t *testing.T) {
 	srv := testLoginServer(fakeUsers{user: ownerUser(t, "o@lumin.vn", "secret123")})
 	assertUnauthorizedNoCookie(t, postLogin(testAuthRouter(srv), "o@lumin.vn", "WRONG"))

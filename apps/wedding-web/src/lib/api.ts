@@ -1,8 +1,8 @@
 import 'server-only';
 
 // Server-side calls to wedding-api (the browser talks to the same paths via the
-// next.config rewrite). SSR of /i/<slug> uses no-store so the invite GET always
-// fires the write-once opened_at and the label renders without flicker (§6).
+// next.config rewrite). SSR of /i/<slug> uses no-store so the label renders
+// without flicker (§6); open tracking is a client POST (MarkOpened), not here.
 const base = process.env.WEDDING_API_URL ?? 'http://localhost:8081';
 
 import type { Invite, Wish } from './types';

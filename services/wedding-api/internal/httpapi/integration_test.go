@@ -19,6 +19,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -130,22 +131,32 @@ func TestEndToEndFlows(t *testing.T) {
 			OpenedAt *time.Time `json:"openedAt"`
 		} `json:"items"`
 	}
-	call(t, "GET", u+"/api/admin/guests", admin, nil, &guests)
-	var firstOpen *time.Time
-	for _, it := range guests.Items {
-		if it.ID == g1.ID {
-			firstOpen = it.OpenedAt
+	openedAt := func() *time.Time {
+		call(t, "GET", u+"/api/admin/guests", admin, nil, &guests)
+		for _, it := range guests.Items {
+			if it.ID == g1.ID {
+				return it.OpenedAt
+			}
 		}
+		return nil
 	}
+	// GET is a pure read now — a preview bot fetching the link must not mark it opened.
+	if openedAt() != nil {
+		t.Fatal("opened_at set by GET — must only be set by POST /opened")
+	}
+	if code := call(t, "POST", u+"/api/invite/"+g1.ID+"/opened", nil, nil, nil); code != 204 {
+		t.Fatalf("mark opened = %d, want 204", code)
+	}
+	firstOpen := openedAt()
 	if firstOpen == nil {
 		t.Fatal("opened_at not set on first open")
 	}
-	call(t, "GET", u+"/api/invite/"+g1.ID, nil, nil, nil) // re-open
-	call(t, "GET", u+"/api/admin/guests", admin, nil, &guests)
-	for _, it := range guests.Items {
-		if it.ID == g1.ID && !it.OpenedAt.Equal(*firstOpen) {
-			t.Fatal("opened_at overwritten on re-open — must be write-once")
-		}
+	call(t, "POST", u+"/api/invite/"+g1.ID+"/opened", nil, nil, nil) // re-open
+	if got := openedAt(); got == nil || !got.Equal(*firstOpen) {
+		t.Fatal("opened_at overwritten on re-open — must be write-once")
+	}
+	if code := call(t, "POST", u+"/api/invite/khong-ton-tai/opened", nil, nil, nil); code != 204 {
+		t.Fatalf("mark opened unknown guest = %d, want idempotent 204", code)
 	}
 	if code := call(t, "GET", u+"/api/invite/khong-ton-tai", nil, nil, nil); code != 404 {
 		t.Fatalf("unknown invite = %d, want 404", code)
@@ -178,6 +189,10 @@ func TestEndToEndFlows(t *testing.T) {
 	if code := call(t, "POST", u+"/api/wishes", nil,
 		map[string]string{"text": "x", "color": "red"}, nil); code != 400 {
 		t.Fatalf("bad color = %d, want 400", code)
+	}
+	if code := call(t, "POST", u+"/api/wishes", nil,
+		map[string]string{"text": "x", "name": strings.Repeat("a", 101)}, nil); code != 400 {
+		t.Fatalf("101-char name = %d, want 400", code)
 	}
 	var wall struct {
 		Items []struct{ Name string }

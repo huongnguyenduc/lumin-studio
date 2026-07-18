@@ -26,6 +26,13 @@ func (s *Server) LoginUser(ctx context.Context, req api.LoginUserRequestObject) 
 	}
 	email := normalizeEmail(string(req.Body.Email))
 
+	// Per-email token bucket BEFORE any DB/bcrypt work: bounds an online password brute-force
+	// against one account (the edge WAF is the per-IP layer). 429 RATE_LIMITED via mapError.
+	if !s.loginLimiter.allow(email) {
+		s.logger.Warn("login rate-limited", "email", email)
+		return nil, errRateLimited
+	}
+
 	user, err := s.users.UserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {

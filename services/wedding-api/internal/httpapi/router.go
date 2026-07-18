@@ -57,6 +57,7 @@ func New(pool *pgxpool.Pool, a *auth.Auth, uploads *uploadstore.Store) http.Hand
 	r.Group(func(r chi.Router) {
 		r.Use(public.middleware)
 		r.Get("/api/invite/{guestId}", s.getInvite)
+		r.Post("/api/invite/{guestId}/opened", s.markOpened)
 		r.Post("/api/invite/{guestId}/rsvp", s.postRSVP)
 		r.Post("/api/wishes", s.postWish)
 		r.Get("/api/wishes", s.getWishes)
