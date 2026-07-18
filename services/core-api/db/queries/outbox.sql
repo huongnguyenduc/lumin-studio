@@ -36,3 +36,22 @@ WHERE id = $1;
 -- name: MarkOutboxFailed :exec
 UPDATE outbox SET status = 'failed'
 WHERE id = $1;
+
+-- OutboxStats is the observability snapshot (ops/outbox-observability): pending/failed counts +
+-- the age of the oldest still-pending row. A `failed` row is a quarantined poison — a LOST event
+-- (order.paid etc.) until an owner requeues it, so failed>0 is the alarm condition uptime-kuma
+-- watches via GET /admin/outbox/stats. Age is 0 when nothing is pending.
+-- name: OutboxStats :one
+SELECT
+  count(*) FILTER (WHERE status = 'pending')                       AS pending,
+  count(*) FILTER (WHERE status = 'failed')                        AS failed,
+  COALESCE(EXTRACT(EPOCH FROM now() - min(created_at) FILTER (WHERE status = 'pending')), 0)::bigint
+    AS oldest_pending_age_seconds
+FROM outbox;
+
+-- RequeueFailedOutbox flips every quarantined `failed` row back to `pending` (attempts reset so
+-- the relay retries with a full budget) AFTER the owner has fixed the poison cause. Bulk by
+-- design: poison rows are rare and share a cause; per-id requeue is speculative until needed.
+-- name: RequeueFailedOutbox :execrows
+UPDATE outbox SET status = 'pending', attempts = 0
+WHERE status = 'failed';

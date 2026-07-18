@@ -337,6 +337,11 @@ func TestClassifyFailsClosed(t *testing.T) {
 		"GetAdminStaff": authOwnerOnly,
 		"CreateStaff":   authOwnerOnly,
 
+		// Outbox observability (ops): owner-only read AND write — infrastructure internals, and a
+		// requeue re-publishes quarantined money events.
+		"GetOutboxStats": authOwnerOnly,
+		"RequeueOutbox":  authOwnerOnly,
+
 		// P3-t Pet Tag: the public scan reads (GetPetPage recognises an optional owner cookie; SharePetLocation
 		// is a fully-public finder write) vs the owner writes (ActivatePetTag/ToggleLostMode/UpdatePetProfile —
 		// a valid CUSTOMER session, owner then enforced in SQL). Pins the trust boundary of the whole axis.

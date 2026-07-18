@@ -149,6 +149,11 @@ func classify(operationID string) authClass {
 		// Customer-site subdomain provisioning (k8s Ingress create/delete) — an infrastructure
 		// power, not shop config; owner-only for both read and write (mirrors GetAdminStaff below).
 		return authOwnerOnly
+	case "GetOutboxStats", "RequeueOutbox":
+		// Outbox observability (ops) — owner-only for BOTH read and write: the stats expose relay/
+		// infrastructure internals, and a requeue re-publishes quarantined (money) events. Mirrors
+		// the domains posture (infrastructure power, not shop data).
+		return authOwnerOnly
 	case "GetAdminStaff", "CreateStaff":
 		// Staff & roles (P3-q) is owner-only for BOTH read and write: managing the team — and even
 		// seeing the roster — is an owner power (spec §08; the design's role matrix gives staff no

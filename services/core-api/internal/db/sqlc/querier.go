@@ -489,6 +489,11 @@ type Querier interface {
 	// lines using the product's live parts/colors (grams from parts.est_filament_qty | products.est_filament_qty,
 	// material from colors.filament_material_id).
 	OrderItemForDeduction(ctx context.Context, id uuid.UUID) (OrderItemForDeductionRow, error)
+	// OutboxStats is the observability snapshot (ops/outbox-observability): pending/failed counts +
+	// the age of the oldest still-pending row. A `failed` row is a quarantined poison — a LOST event
+	// (order.paid etc.) until an owner requeues it, so failed>0 is the alarm condition uptime-kuma
+	// watches via GET /admin/outbox/stats. Age is 0 when nothing is pending.
+	OutboxStats(ctx context.Context) (OutboxStatsRow, error)
 	// PetHandleTaken reports whether a candidate vanity handle is already used, driving the auto-suffix loop
 	// (pet_profiles.handle UNIQUE is the final backstop against a check-then-insert race — astronomically
 	// rare at one-shop volume, and a lost race just fails the activate, which the customer retries).
@@ -519,6 +524,10 @@ type Querier interface {
 	// their current order (the FE sends the FULL list after a drag, so that is a no-op in practice); an unknown
 	// id matches no row (harmless). Owner-only at the handler.
 	ReorderCategories(ctx context.Context, ids []uuid.UUID) error
+	// RequeueFailedOutbox flips every quarantined `failed` row back to `pending` (attempts reset so
+	// the relay retries with a full budget) AFTER the owner has fixed the poison cause. Bulk by
+	// design: poison rows are rare and share a cause; per-id requeue is speculative until needed.
+	RequeueFailedOutbox(ctx context.Context) (int64, error)
 	// SelectPendingOutbox scans the WHOLE pending SET in commit order each tick (ADR-029). It
 	// deliberately scans `status='pending' ORDER BY seq` — NOT a `seq > watermark` cursor and NOT
 	// `FOR UPDATE SKIP LOCKED`: bigserial `seq` is assigned at INSERT, not COMMIT, so a lower-seq
