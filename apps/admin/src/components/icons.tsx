@@ -60,15 +60,8 @@ export function OrdersIcon(props: IconProps) {
   );
 }
 
-export function PrinterIcon(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M6 9V2h12v7" />
-      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-      <rect x="6" y="14" width="12" height="8" rx="1.5" />
-    </Svg>
-  );
-}
+// Icons shared with other apps live in @lumin/ui — re-exported here so call sites keep one import.
+export { PrinterIcon, GridIcon, ArrowRightIcon } from '@lumin/ui';
 
 export function BoxIcon(props: IconProps) {
   return (
@@ -76,17 +69,6 @@ export function BoxIcon(props: IconProps) {
       <path d="m21 8-9-5-9 5v8l9 5 9-5Z" />
       <path d="m3 8 9 5 9-5" />
       <path d="M12 13v8" />
-    </Svg>
-  );
-}
-
-export function GridIcon(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <rect x="3" y="3" width="7" height="7" rx="1.5" />
-      <rect x="14" y="3" width="7" height="7" rx="1.5" />
-      <rect x="3" y="14" width="7" height="7" rx="1.5" />
-      <rect x="14" y="14" width="7" height="7" rx="1.5" />
     </Svg>
   );
 }
@@ -126,15 +108,6 @@ export function SettingsIcon(props: IconProps) {
     <Svg {...props}>
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9 2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5 2 2 0 1 1 4 0 1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1 2 2 0 1 1 0 4 1.7 1.7 0 0 0-1.5 1Z" />
-    </Svg>
-  );
-}
-
-export function ArrowRightIcon(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M5 12h14" />
-      <path d="m13 6 6 6-6 6" />
     </Svg>
   );
 }

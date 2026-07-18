@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Badge, Button, Input, type BadgeTone } from '@lumin/ui';
+import { Badge, Button, Input, ORDER_STATUS_TONE } from '@lumin/ui';
 import { formatVnd, type OrderStatus, type Role } from '@lumin/core';
 import type { components } from '@lumin/api-client';
 import { t, type MessageKey } from '../i18n';
@@ -8,18 +8,17 @@ import { nextActions, parseOrderCode, progressSteps, type OrderAction } from '..
 
 type Order = components['schemas']['Order'];
 
-// Per-status visual meta: the i18n label + the Badge tone (mirrors the admin's ORDER_STATUS_BADGE so the
-// panel and the desktop app read the same colours). PRINTING is solid to stand out as the "in progress" beat.
-const STATUS_META: Record<OrderStatus, { labelKey: MessageKey; tone: BadgeTone; solid?: boolean }> =
-  {
-    PENDING_CONFIRM: { labelKey: 'lookup.status.PENDING_CONFIRM', tone: 'primary' },
-    PAID: { labelKey: 'lookup.status.PAID', tone: 'primary' },
-    PRINTING: { labelKey: 'lookup.status.PRINTING', tone: 'primary', solid: true },
-    SHIPPING: { labelKey: 'lookup.status.SHIPPING', tone: 'sky' },
-    COMPLETED: { labelKey: 'lookup.status.COMPLETED', tone: 'teal' },
-    CANCELLED: { labelKey: 'lookup.status.CANCELLED', tone: 'danger' },
-    REFUNDED: { labelKey: 'lookup.status.REFUNDED', tone: 'sun' },
-  };
+// Per-status i18n label — the Badge tone/solid comes from the shared ORDER_STATUS_TONE map
+// (@lumin/ui) so the panel and the desktop app read the same colours.
+const STATUS_LABEL: Record<OrderStatus, MessageKey> = {
+  PENDING_CONFIRM: 'lookup.status.PENDING_CONFIRM',
+  PAID: 'lookup.status.PAID',
+  PRINTING: 'lookup.status.PRINTING',
+  SHIPPING: 'lookup.status.SHIPPING',
+  COMPLETED: 'lookup.status.COMPLETED',
+  CANCELLED: 'lookup.status.CANCELLED',
+  REFUNDED: 'lookup.status.REFUNDED',
+};
 
 // The preset cancel reasons (mirrors the admin transition dialog). The SELECTED radio's translated label is
 // what we store as statusHistory.reason (free vi text) — the server requires a non-empty reason for CANCELLED.
@@ -109,7 +108,7 @@ function OrderCard({
   role: Role;
   onChanged: (order: Order) => void;
 }) {
-  const meta = STATUS_META[order.status];
+  const { tone, solid } = ORDER_STATUS_TONE[order.status];
   const first = order.items[0];
   const firstName = first?.productName ?? t('lookup.item.unnamed');
   const more = order.items.length - 1;
@@ -118,8 +117,8 @@ function OrderCard({
     <div className="flex flex-col gap-4 rounded-lg border border-border-subtle bg-surface-card p-4">
       <div className="flex items-start justify-between gap-2">
         <span className="font-mono text-sm font-semibold text-text-strong">{order.code}</span>
-        <Badge tone={meta.tone} solid={meta.solid}>
-          {t(meta.labelKey)}
+        <Badge tone={tone} solid={solid}>
+          {t(STATUS_LABEL[order.status])}
         </Badge>
       </div>
 
@@ -193,8 +192,8 @@ function ProgressTrack({
                   ? 'bg-primary ring-2 ring-primary/30'
                   : 'bg-border-default')
             }
-            aria-label={t(STATUS_META[step.status].labelKey)}
-            title={t(STATUS_META[step.status].labelKey)}
+            aria-label={t(STATUS_LABEL[step.status])}
+            title={t(STATUS_LABEL[step.status])}
           />
           {i < steps.length - 1 && (
             <span

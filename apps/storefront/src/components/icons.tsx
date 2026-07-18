@@ -71,25 +71,8 @@ export function HomeIcon(props: IconProps) {
   );
 }
 
-export function GridIcon(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <rect x="3" y="3" width="7" height="7" rx="1.5" />
-      <rect x="14" y="3" width="7" height="7" rx="1.5" />
-      <rect x="3" y="14" width="7" height="7" rx="1.5" />
-      <rect x="14" y="14" width="7" height="7" rx="1.5" />
-    </Svg>
-  );
-}
-
-export function ArrowRightIcon(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M5 12h14" />
-      <path d="m13 6 6 6-6 6" />
-    </Svg>
-  );
-}
+// Icons shared with other apps live in @lumin/ui — re-exported here so call sites keep one import.
+export { GridIcon, ArrowRightIcon, PrinterIcon } from '@lumin/ui';
 
 export function ChevronDownIcon(props: IconProps) {
   return (
@@ -103,16 +86,6 @@ export function CheckIcon(props: IconProps) {
   return (
     <Svg {...props}>
       <path d="m5 13 4 4L19 7" />
-    </Svg>
-  );
-}
-
-export function PrinterIcon(props: IconProps) {
-  return (
-    <Svg {...props}>
-      <path d="M6 9V2h12v7" />
-      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-      <rect x="6" y="14" width="12" height="8" rx="1.5" />
     </Svg>
   );
 }

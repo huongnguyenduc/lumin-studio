@@ -1,3 +1,5 @@
+'use client';
+
 import { forwardRef, type ButtonHTMLAttributes } from 'react';
 import { cva } from 'class-variance-authority';
 import { cn } from './lib/cn';

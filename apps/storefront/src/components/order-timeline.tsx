@@ -2,26 +2,13 @@
 
 import { useTranslations } from 'next-intl';
 import { formatVnDateTime, type OrderStatus } from '@lumin/core';
-import { Badge, cn, type BadgeTone } from '@lumin/ui';
+import { Badge, cn, ORDER_STATUS_TONE } from '@lumin/ui';
 import type { StepState, TimelineModel } from '@/lib/order-lookup-view';
-
-// Badge hue per status (design S3 / §08 status set): waiting → sun, paid → flame-soft, printing →
-// flame-solid, shipping → sky, completed → teal, cancelled → danger, refunded → amber (sun). Kept in
-// the presentation layer — the domain only knows the enum, not its colour.
-const STATUS_TONE: Record<OrderStatus, { tone: BadgeTone; solid?: boolean }> = {
-  PENDING_CONFIRM: { tone: 'sun' },
-  PAID: { tone: 'primary' },
-  PRINTING: { tone: 'primary', solid: true },
-  SHIPPING: { tone: 'sky' },
-  COMPLETED: { tone: 'teal' },
-  CANCELLED: { tone: 'danger' },
-  REFUNDED: { tone: 'sun' },
-};
 
 /** The toned status pill with its translated label — shared by the result header and the close banner. */
 export function OrderStatusBadge({ status }: { status: OrderStatus }) {
   const tStatus = useTranslations('core.orderStatus');
-  const { tone, solid } = STATUS_TONE[status];
+  const { tone, solid } = ORDER_STATUS_TONE[status];
   return (
     <Badge tone={tone} solid={solid}>
       {tStatus(status)}

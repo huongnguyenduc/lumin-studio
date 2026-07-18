@@ -15,7 +15,7 @@ export interface PetTagStatusBadgeMeta {
 
 // Maps each lifecycle status to its Badge presentation (label = i18n key, tone follows the design #9
 // palette): awaiting-write = coral/primary, encoded = amber/sun, activated = teal. Pure DATA so it lives
-// in a .ts module (mirrors ORDER_STATUS_BADGE). Lost mode is a SEPARATE danger badge, not a status here.
+// in a .ts module (mirrors ORDER_STATUS_TONE). Lost mode is a SEPARATE danger badge, not a status here.
 export const PET_TAG_STATUS_BADGE: Record<PetTagStatus, PetTagStatusBadgeMeta> = {
   UNENCODED: { labelKey: 'UNENCODED', tone: 'primary' },
   ENCODED: { labelKey: 'ENCODED', tone: 'sun' },

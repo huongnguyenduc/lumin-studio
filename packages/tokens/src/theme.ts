@@ -123,7 +123,7 @@ export const shadow = {
 
 export const fontFamily = {
   display: "'Bricolage Grotesque', 'Arial Black', system-ui, sans-serif",
-  body: "'Hanken Grotesque', system-ui, -apple-system, 'Segoe UI', sans-serif",
+  body: "'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif",
   mono: "'Space Mono', ui-monospace, 'SFMono-Regular', monospace",
 } as const;
 
