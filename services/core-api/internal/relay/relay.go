@@ -43,7 +43,19 @@ type store interface {
 	MarkOutboxPublished(ctx context.Context, id uuid.UUID) error
 	IncrementOutboxAttempts(ctx context.Context, id uuid.UUID) error
 	MarkOutboxFailed(ctx context.Context, id uuid.UUID) error
+	OutboxStats(ctx context.Context) (sqlc.OutboxStatsRow, error)
 }
+
+// healthWarnInterval throttles the recurring unhealthy-outbox warning: a quarantined `failed`
+// row would otherwise be logged exactly once (at quarantine time) and then sit silent forever —
+// a lost money event nobody notices. Once per interval — not per tick — so an unfixed poison
+// keeps surfacing in the logs without drowning them.
+const healthWarnInterval = 5 * time.Minute
+
+// staleAgeThreshold is how old the oldest pending row may get before the relay warns that the
+// drain is stuck (broker down for a while / relay wedged). Well above any healthy publish
+// latency at one-shop scale.
+const staleAgeThreshold = 5 * time.Minute
 
 // errBrokerDown marks a tick skipped because the connection is down — a transient cause the
 // drain loop classifies WITHOUT attempting a publish (so it never burns a ctx timeout per row
@@ -59,6 +71,7 @@ type Relay struct {
 	batch     int32
 	maxAtt    int32
 	dupWindow time.Duration
+	lastWarn  time.Time // last unhealthy-outbox warning (throttle, see maybeWarnUnhealthy)
 }
 
 // New builds a relay over the live pool + NATS connection. *natsx.Conn satisfies broker.
@@ -114,6 +127,7 @@ func (r *Relay) Run(ctx context.Context) {
 			return
 		case <-ticker.C:
 			r.drainOnce(ctx)
+			r.maybeWarnUnhealthy(ctx, time.Now())
 		}
 	}
 }
@@ -224,6 +238,34 @@ func (r *Relay) quarantine(ctx context.Context, row sqlc.SelectPendingOutboxRow)
 		return
 	}
 	r.log.Error("relay: outbox row quarantined as failed (poison)", "id", row.ID, "attempts", attempts)
+}
+
+// maybeWarnUnhealthy logs a recurring warning while the outbox is unhealthy: failed rows exist
+// (quarantined poison = lost events until an owner requeues via POST /admin/outbox/requeue), or
+// the oldest pending row is older than staleAgeThreshold (the drain is stuck). Throttled to one
+// warning per healthWarnInterval, NOT per tick — the point is a periodic heartbeat in the logs,
+// not spam. Panic-safe by construction (no publish path) and best-effort: a stats read failure
+// is itself only logged. Returns whether a warning was emitted so the unit test can pin the
+// throttle without parsing log output.
+func (r *Relay) maybeWarnUnhealthy(ctx context.Context, now time.Time) bool {
+	if now.Sub(r.lastWarn) < healthWarnInterval {
+		return false
+	}
+	stats, err := r.store.OutboxStats(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			r.log.Warn("relay: outbox stats read failed", "err", err)
+		}
+		return false
+	}
+	stale := stats.OldestPendingAgeSeconds > int64(staleAgeThreshold/time.Second)
+	if stats.Failed == 0 && !stale {
+		return false
+	}
+	r.lastWarn = now
+	r.log.Warn("relay: outbox unhealthy — failed rows are LOST events until requeued (POST /admin/outbox/requeue)",
+		"failed", stats.Failed, "pending", stats.Pending, "oldestPendingAgeSeconds", stats.OldestPendingAgeSeconds)
+	return true
 }
 
 // isTransient classifies a publish error as a transient outage (leave pending, no attempts

@@ -1628,6 +1628,51 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /admin/outbox/stats:
+    get:
+      tags: [admin]
+      operationId: getOutboxStats
+      summary: Outbox relay health snapshot (owner-only) — pending/failed counts + oldest pending age.
+      description: >
+        Observability for the transactional outbox (ADR-006/ADR-029). `failed` counts quarantined
+        poison rows — events (order.paid, asset jobs) that will NEVER reach NATS until requeued, so
+        failed > 0 is the alarm condition. `oldestPendingAgeSeconds` catches a stuck/silent relay
+        (rows pile up pending). Plain JSON so an uptime-kuma keyword/JSON monitor can poll it;
+        owner-only because outbox internals are infrastructure, not shop data.
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Current outbox counters.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboxStats'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/outbox/requeue:
+    post:
+      tags: [admin]
+      operationId: requeueOutbox
+      summary: Requeue every failed (poison-quarantined) outbox row for the relay to retry (owner-only).
+      description: >
+        Flips all `failed` rows back to `pending` with attempts reset, AFTER the owner has fixed the
+        poison cause — the relay re-publishes them on its next tick (JetStream dedups by Nats-Msg-Id,
+        so an already-delivered duplicate inside the window is collapsed). Idempotent: with nothing
+        failed it requeues 0. The acting user is logged server-side for the audit trail.
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: How many rows were requeued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboxRequeueResult'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /admin/categories:
     get:
       tags: [admin]
@@ -5791,6 +5836,35 @@ components:
         at:
           type: string
           format: date-time
+
+    # --- Outbox observability (ops) ---------------------------------------------------------------
+    OutboxStats:
+      type: object
+      description: >
+        Outbox relay health counters. failed > 0 means quarantined poison events that will never
+        publish until requeued; oldestPendingAgeSeconds grows when the relay is stuck (0 when
+        nothing is pending).
+      required: [pending, failed, oldestPendingAgeSeconds]
+      properties:
+        pending:
+          type: integer
+          format: int64
+        failed:
+          type: integer
+          format: int64
+        oldestPendingAgeSeconds:
+          type: integer
+          format: int64
+
+    OutboxRequeueResult:
+      type: object
+      description: Result of a failed→pending requeue sweep.
+      required: [requeued]
+      properties:
+        requeued:
+          type: integer
+          format: int64
+          description: How many failed rows were flipped back to pending.
 
     # --- Errors -----------------------------------------------------------------------------------
     ErrorEnvelope:

@@ -45,7 +45,9 @@ type fakeRow struct {
 }
 
 type fakeStore struct {
-	rows []*fakeRow // in insertion (seq) order
+	rows      []*fakeRow // in insertion (seq) order
+	oldestAge int64      // reported OldestPendingAgeSeconds (fakeRow carries no created_at)
+	statsErr  error      // injected OutboxStats failure
 }
 
 func (s *fakeStore) add(eventType string) *fakeRow {
@@ -88,6 +90,23 @@ func (s *fakeStore) IncrementOutboxAttempts(_ context.Context, id uuid.UUID) err
 func (s *fakeStore) MarkOutboxFailed(_ context.Context, id uuid.UUID) error {
 	s.find(id).status = "failed"
 	return nil
+}
+
+func (s *fakeStore) OutboxStats(_ context.Context) (sqlc.OutboxStatsRow, error) {
+	if s.statsErr != nil {
+		return sqlc.OutboxStatsRow{}, s.statsErr
+	}
+	var row sqlc.OutboxStatsRow
+	for _, r := range s.rows {
+		switch r.status {
+		case "pending":
+			row.Pending++
+		case "failed":
+			row.Failed++
+		}
+	}
+	row.OldestPendingAgeSeconds = s.oldestAge
+	return row, nil
 }
 
 type fakeBroker struct {
@@ -286,4 +305,57 @@ func TestNewRelayClampsNonPositiveKnobs(t *testing.T) {
 	if r.maxAtt <= 0 {
 		t.Fatalf("maxAtt = %d, want clamped > 0 (else first poison quarantines immediately)", r.maxAtt)
 	}
+}
+
+// TestMaybeWarnUnhealthy pins the periodic-warning contract (ops/outbox-observability): a
+// quarantined failed row (or a too-old pending backlog) keeps re-surfacing in the logs once per
+// healthWarnInterval — never per tick (spam) and never only-once (silence forever).
+func TestMaybeWarnUnhealthy(t *testing.T) {
+	t0 := time.Now()
+
+	t.Run("healthy outbox never warns", func(t *testing.T) {
+		store := &fakeStore{}
+		store.add("order.paid") // pending but fresh (oldestAge 0)
+		r := newRelay(store, &fakeBroker{}, testCfg(), testLogger())
+		if r.maybeWarnUnhealthy(context.Background(), t0) {
+			t.Fatal("warned on a healthy outbox")
+		}
+	})
+
+	t.Run("failed row warns, throttled, then warns again", func(t *testing.T) {
+		store := &fakeStore{}
+		store.add("order.paid").status = "failed"
+		r := newRelay(store, &fakeBroker{}, testCfg(), testLogger())
+		if !r.maybeWarnUnhealthy(context.Background(), t0) {
+			t.Fatal("failed row present but no warning")
+		}
+		if r.maybeWarnUnhealthy(context.Background(), t0.Add(time.Second)) {
+			t.Fatal("warned again inside the throttle window (spam)")
+		}
+		if !r.maybeWarnUnhealthy(context.Background(), t0.Add(healthWarnInterval+time.Second)) {
+			t.Fatal("did not re-warn after the throttle window (poison went silent)")
+		}
+	})
+
+	t.Run("stale pending backlog warns", func(t *testing.T) {
+		store := &fakeStore{oldestAge: int64(staleAgeThreshold/time.Second) + 1}
+		store.add("order.paid")
+		r := newRelay(store, &fakeBroker{}, testCfg(), testLogger())
+		if !r.maybeWarnUnhealthy(context.Background(), t0) {
+			t.Fatal("stale pending backlog but no warning")
+		}
+	})
+
+	t.Run("stats error does not warn and does not consume the throttle", func(t *testing.T) {
+		store := &fakeStore{statsErr: errors.New("db down")}
+		store.add("order.paid").status = "failed"
+		r := newRelay(store, &fakeBroker{}, testCfg(), testLogger())
+		if r.maybeWarnUnhealthy(context.Background(), t0) {
+			t.Fatal("warned despite a stats read failure")
+		}
+		store.statsErr = nil
+		if !r.maybeWarnUnhealthy(context.Background(), t0.Add(time.Second)) {
+			t.Fatal("stats error must not consume the throttle window")
+		}
+	})
 }

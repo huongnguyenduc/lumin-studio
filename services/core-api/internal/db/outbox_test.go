@@ -12,6 +12,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -222,4 +224,81 @@ func TestMigrationsReversible(t *testing.T) {
 	}
 
 	applyMigrations(t, ctx, pool, ".up.sql", false) // re-runnable
+}
+
+// Outbox observability queries (ops/outbox-observability): OutboxStats counts pending/failed
+// (the uptime-kuma alarm feed — a failed row is a lost event until requeued) and reports the
+// oldest pending age; RequeueFailedOutbox flips failed→pending with attempts reset so the relay
+// retries with a full budget, touching nothing else.
+func TestOutboxStatsAndRequeue(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+	q := sqlc.New(pool)
+
+	insert := func(dedup, status string, attempts int32) uuid.UUID {
+		ev := sampleEvent("order.paid", dedup)
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		if err := EnqueueOutbox(ctx, tx, ev); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			t.Fatalf("commit: %v", err)
+		}
+		if _, err := pool.Exec(ctx, `UPDATE outbox SET status=$1, attempts=$2 WHERE id=$3`, status, attempts, ev.ID); err != nil {
+			t.Fatalf("set status: %v", err)
+		}
+		return ev.ID
+	}
+	insert("obs-pending", "pending", 0)
+	insert("obs-published", "published", 1)
+	failedID := insert("obs-failed", "failed", 5)
+
+	stats, err := q.OutboxStats(ctx)
+	if err != nil {
+		t.Fatalf("OutboxStats: %v", err)
+	}
+	if stats.Pending != 1 || stats.Failed != 1 {
+		t.Fatalf("stats = %+v, want pending=1 failed=1", stats)
+	}
+	if stats.OldestPendingAgeSeconds < 0 {
+		t.Fatalf("oldest pending age = %d, want >= 0", stats.OldestPendingAgeSeconds)
+	}
+
+	n, err := q.RequeueFailedOutbox(ctx)
+	if err != nil {
+		t.Fatalf("RequeueFailedOutbox: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("requeued %d rows, want 1", n)
+	}
+	var status string
+	var attempts int32
+	if err := pool.QueryRow(ctx, `SELECT status, attempts FROM outbox WHERE id=$1`, failedID).Scan(&status, &attempts); err != nil {
+		t.Fatalf("read requeued row: %v", err)
+	}
+	if status != "pending" || attempts != 0 {
+		t.Fatalf("requeued row = %s/%d, want pending/0 (full retry budget)", status, attempts)
+	}
+	// Published rows are untouched; a second sweep is an idempotent no-op.
+	if c := countRows(t, ctx, pool, `SELECT count(*) FROM outbox WHERE status='published'`); c != 1 {
+		t.Fatalf("published rows = %d after requeue, want 1 (untouched)", c)
+	}
+	if n, err := q.RequeueFailedOutbox(ctx); err != nil || n != 0 {
+		t.Fatalf("second requeue = (%d, %v), want (0, nil)", n, err)
+	}
+
+	// Empty table: age reports 0, not NULL/error (uptime-kuma parses plain JSON numbers).
+	if _, err := pool.Exec(ctx, `DELETE FROM outbox`); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+	stats, err = q.OutboxStats(ctx)
+	if err != nil {
+		t.Fatalf("OutboxStats empty: %v", err)
+	}
+	if stats.Pending != 0 || stats.Failed != 0 || stats.OldestPendingAgeSeconds != 0 {
+		t.Fatalf("empty stats = %+v, want all zeros", stats)
+	}
 }

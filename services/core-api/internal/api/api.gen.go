@@ -1141,6 +1141,19 @@ type OrderMilestone struct {
 // OrderStatus Order lifecycle status (spec §04). 5 progress milestones + 2 close states.
 type OrderStatus string
 
+// OutboxRequeueResult Result of a failed→pending requeue sweep.
+type OutboxRequeueResult struct {
+	// Requeued How many failed rows were flipped back to pending.
+	Requeued int64 `json:"requeued"`
+}
+
+// OutboxStats Outbox relay health counters. failed > 0 means quarantined poison events that will never publish until requeued; oldestPendingAgeSeconds grows when the relay is stuck (0 when nothing is pending).
+type OutboxStats struct {
+	Failed                  int64 `json:"failed"`
+	OldestPendingAgeSeconds int64 `json:"oldestPendingAgeSeconds"`
+	Pending                 int64 `json:"pending"`
+}
+
 // Part A named part of a product (ADR-037) — e.g. "Chao đèn". colors[] belong to a part via Color.partId; the customer picks one colour per part.
 type Part struct {
 	// DisplayOrder Sort order within the product's parts.
@@ -2287,6 +2300,12 @@ type ServerInterface interface {
 	// Admin order detail by id — the full internal order (admin-gated).
 	// (GET /admin/orders/{id})
 	GetAdminOrder(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Requeue every failed (poison-quarantined) outbox row for the relay to retry (owner-only).
+	// (POST /admin/outbox/requeue)
+	RequeueOutbox(w http.ResponseWriter, r *http.Request)
+	// Outbox relay health snapshot (owner-only) — pending/failed counts + oldest pending age.
+	// (GET /admin/outbox/stats)
+	GetOutboxStats(w http.ResponseWriter, r *http.Request)
 	// Admin Pet Tag roster — every tag with its lifecycle + linked pet (admin-gated).
 	// (GET /admin/pet-tags)
 	GetAdminPetTags(w http.ResponseWriter, r *http.Request)
@@ -2662,6 +2681,18 @@ func (_ Unimplemented) GetAdminOrderByCode(w http.ResponseWriter, r *http.Reques
 // Admin order detail by id — the full internal order (admin-gated).
 // (GET /admin/orders/{id})
 func (_ Unimplemented) GetAdminOrder(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Requeue every failed (poison-quarantined) outbox row for the relay to retry (owner-only).
+// (POST /admin/outbox/requeue)
+func (_ Unimplemented) RequeueOutbox(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Outbox relay health snapshot (owner-only) — pending/failed counts + oldest pending age.
+// (GET /admin/outbox/stats)
+func (_ Unimplemented) GetOutboxStats(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3864,6 +3895,46 @@ func (siw *ServerInterfaceWrapper) GetAdminOrder(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAdminOrder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RequeueOutbox operation middleware
+func (siw *ServerInterfaceWrapper) RequeueOutbox(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RequeueOutbox(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOutboxStats operation middleware
+func (siw *ServerInterfaceWrapper) GetOutboxStats(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOutboxStats(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5925,6 +5996,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/admin/orders/{id}", wrapper.GetAdminOrder)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/outbox/requeue", wrapper.RequeueOutbox)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/outbox/stats", wrapper.GetOutboxStats)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/pet-tags", wrapper.GetAdminPetTags)
 	})
 	r.Group(func(r chi.Router) {
@@ -7448,6 +7525,74 @@ type GetAdminOrder404JSONResponse struct{ NotFoundJSONResponse }
 func (response GetAdminOrder404JSONResponse) VisitGetAdminOrderResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type RequeueOutboxRequestObject struct {
+}
+
+type RequeueOutboxResponseObject interface {
+	VisitRequeueOutboxResponse(w http.ResponseWriter) error
+}
+
+type RequeueOutbox200JSONResponse OutboxRequeueResult
+
+func (response RequeueOutbox200JSONResponse) VisitRequeueOutboxResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type RequeueOutbox401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response RequeueOutbox401JSONResponse) VisitRequeueOutboxResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type RequeueOutbox403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RequeueOutbox403JSONResponse) VisitRequeueOutboxResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetOutboxStatsRequestObject struct {
+}
+
+type GetOutboxStatsResponseObject interface {
+	VisitGetOutboxStatsResponse(w http.ResponseWriter) error
+}
+
+type GetOutboxStats200JSONResponse OutboxStats
+
+func (response GetOutboxStats200JSONResponse) VisitGetOutboxStatsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetOutboxStats401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetOutboxStats401JSONResponse) VisitGetOutboxStatsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetOutboxStats403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetOutboxStats403JSONResponse) VisitGetOutboxStatsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -10279,6 +10424,12 @@ type StrictServerInterface interface {
 	// Admin order detail by id — the full internal order (admin-gated).
 	// (GET /admin/orders/{id})
 	GetAdminOrder(ctx context.Context, request GetAdminOrderRequestObject) (GetAdminOrderResponseObject, error)
+	// Requeue every failed (poison-quarantined) outbox row for the relay to retry (owner-only).
+	// (POST /admin/outbox/requeue)
+	RequeueOutbox(ctx context.Context, request RequeueOutboxRequestObject) (RequeueOutboxResponseObject, error)
+	// Outbox relay health snapshot (owner-only) — pending/failed counts + oldest pending age.
+	// (GET /admin/outbox/stats)
+	GetOutboxStats(ctx context.Context, request GetOutboxStatsRequestObject) (GetOutboxStatsResponseObject, error)
 	// Admin Pet Tag roster — every tag with its lifecycle + linked pet (admin-gated).
 	// (GET /admin/pet-tags)
 	GetAdminPetTags(ctx context.Context, request GetAdminPetTagsRequestObject) (GetAdminPetTagsResponseObject, error)
@@ -11358,6 +11509,54 @@ func (sh *strictHandler) GetAdminOrder(w http.ResponseWriter, r *http.Request, i
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAdminOrderResponseObject); ok {
 		if err := validResponse.VisitGetAdminOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RequeueOutbox operation middleware
+func (sh *strictHandler) RequeueOutbox(w http.ResponseWriter, r *http.Request) {
+	var request RequeueOutboxRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RequeueOutbox(ctx, request.(RequeueOutboxRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RequeueOutbox")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RequeueOutboxResponseObject); ok {
+		if err := validResponse.VisitRequeueOutboxResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOutboxStats operation middleware
+func (sh *strictHandler) GetOutboxStats(w http.ResponseWriter, r *http.Request) {
+	var request GetOutboxStatsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOutboxStats(ctx, request.(GetOutboxStatsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOutboxStats")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOutboxStatsResponseObject); ok {
+		if err := validResponse.VisitGetOutboxStatsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
