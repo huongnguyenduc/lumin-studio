@@ -3,21 +3,20 @@
 # `prod`. Images are tagged by commit SHA so a `kubectl apply` actually triggers a rollout and an old
 # SHA can be re-deployed to roll back. Manifests + runbook live in infra/k8s/.
 #
-# ⚠ SECURITY GUARDRAIL (D4): the runner executes on the prod box, so this triggers ONLY on push→main
-# and manual dispatch. It MUST NOT gain a `pull_request` trigger — a fork PR would then run
-# attacker-controlled code on the box (RCE). Keep it push-main + manual.
+# ⚠ SECURITY GUARDRAIL (D4): the runner executes on the prod box, so this triggers ONLY after CI on
+# main and manual dispatch. It MUST NOT gain a `pull_request` trigger — a fork PR would then run
+# attacker-controlled code on the box (RCE). The `branches: [main]` filter on workflow_run keeps that
+# guarantee: only harness runs whose head branch IS main can trigger a deploy.
 name: deploy
 
 on:
-  push:
+  # Deploy only AFTER harness-selftest finishes on main — a straight `push` trigger raced CI and
+  # could ship an untested SHA. harness.yml's paths cover everything deploy cares about (incl.
+  # infra/k8s), so docs-only pushes still skip the deploy.
+  workflow_run:
+    workflows: [harness-selftest]
+    types: [completed]
     branches: [main]
-    # Skip docs-only pushes; a workflow_dispatch always runs regardless of paths.
-    paths:
-      - 'services/**'
-      - 'apps/**'
-      - 'packages/**'
-      - 'infra/k8s/**'
-      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 # One deploy at a time; let a running deploy finish rather than cancel mid-rollout.
@@ -39,13 +38,20 @@ env:
   CLUSTER: luminstudio
   NS: prod
   SITE_URL: https://www.luminstudio.vn
+  # workflow_run: github.sha is the default-branch head at EVENT time (can race a newer push) —
+  # deploy exactly the SHA CI just validated. Dispatch: current head.
+  DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
   deploy:
+    # Gate: only deploy when the triggering CI run succeeded (manual dispatch bypasses by intent).
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: self-hosted
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
 
       # core-api / migrate / admin build without a live backend. (Go + baked-migrations images use the
       # default bridge network; admin is a Next build so it needs --network=host for next/font's Google
@@ -53,7 +59,7 @@ jobs:
       - name: Build core-api / migrate / admin (+ import, SHA-tagged)
         run: |
           set -euo pipefail
-          TAG=${GITHUB_SHA::12}
+          TAG=${DEPLOY_SHA::12}
           docker build -f services/core-api/Dockerfile -t "lumin-core-api:$TAG" services/core-api
           docker build -f infra/k8s/migrate.Dockerfile -t "lumin-migrate:$TAG"  services/core-api/db/migrations
           docker build --network=host -f apps/admin/Dockerfile -t "lumin-admin:$TAG" .
@@ -64,7 +70,7 @@ jobs:
       - name: Apply infra + migrate + roll core-api
         run: |
           set -euo pipefail
-          TAG=${GITHUB_SHA::12}
+          TAG=${DEPLOY_SHA::12}
           img() { sed -E "s|(image: lumin-[a-z-]+):prod|\1:$TAG|g" "$1"; }
           kubectl apply -f infra/k8s/postgres.yaml -f infra/k8s/nats.yaml
           kubectl -n "$NS" rollout status deploy/postgres --timeout=180s
@@ -82,11 +88,14 @@ jobs:
       - name: Build storefront against live core-api + roll storefront/admin + ingress
         run: |
           set -euo pipefail
-          TAG=${GITHUB_SHA::12}
+          TAG=${DEPLOY_SHA::12}
           img() { sed -E "s|(image: lumin-[a-z-]+):prod|\1:$TAG|g" "$1"; }
           kubectl -n "$NS" port-forward svc/core-api 8080:8080 >/tmp/pf-coreapi.log 2>&1 &
           PF=$!
           for i in $(seq 1 20); do curl -sf http://localhost:8080/healthz >/dev/null 2>&1 && break; sleep 1; done
+          # The loop above breaks on success but falls through on exhaustion — without this check a
+          # dead core-api would let the ISR prerender bake error pages into the prod image.
+          curl -sf http://localhost:8080/healthz >/dev/null || { echo "core-api healthz never came up"; exit 1; }
           docker build --network=host \
             --build-arg SITE_URL="$SITE_URL" --build-arg CORE_API_URL=http://localhost:8080 \
             -f apps/storefront/Dockerfile -t "lumin-storefront:$TAG" .
@@ -110,7 +119,7 @@ jobs:
             echo "wedding-secrets absent — skipping wedding deploy (see infra/k8s/README §wedding bootstrap)"
             exit 0
           fi
-          TAG=${GITHUB_SHA::12}
+          TAG=${DEPLOY_SHA::12}
           img() { sed -E "s|(image: lumin-[a-z-]+):prod|\1:$TAG|g" "$1"; }
           docker build -f services/wedding-api/Dockerfile -t "lumin-wedding-api:$TAG" services/wedding-api
           docker build -f infra/k8s/migrate.Dockerfile -t "lumin-wedding-migrate:$TAG" services/wedding-api/db/migrations
@@ -124,6 +133,18 @@ jobs:
           kubectl -n "$NS" wait --for=condition=complete job/wedding-migrate --timeout=180s
           kubectl -n "$NS" rollout status deploy/wedding-api --timeout=180s
           kubectl -n "$NS" rollout status deploy/wedding-web --timeout=180s
+
+      # Rollout status only proves pods are Ready in-cluster; this proves the apps answer from the
+      # public edge (ingress + tunnel + TLS) — the thing users actually hit.
+      - name: Smoke check (public ingress)
+        run: |
+          set -euo pipefail
+          curl -sfm 15 https://api.luminstudio.vn/healthz >/dev/null
+          curl -sfm 15 -o /dev/null https://www.luminstudio.vn/
+          curl -sfm 15 -o /dev/null https://admin.luminstudio.vn/
+          if kubectl -n "$NS" get secret wedding-secrets >/dev/null 2>&1; then
+            curl -sfm 15 -o /dev/null https://giangvahieu.luminstudio.vn/
+          fi
 
       - name: Deployed state
         if: always()

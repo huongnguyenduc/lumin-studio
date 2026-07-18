@@ -21,6 +21,16 @@ on:
       - 'apps/**'
       - 'package.json'
       - 'Makefile'
+      # review 2026-07-18: lockfile/toolchain-config đổi hành vi build/lint mà không chạm src —
+      # thiếu các dòng này thì PR bump lockfile skip toàn bộ gate.
+      - 'pnpm-lock.yaml'
+      - 'turbo.json'
+      - 'eslint.config.mjs'
+      - 'tsconfig.base.json'
+      # deploy.yml giờ trigger bằng workflow_run sau harness → harness PHẢI chạy khi infra đổi,
+      # kẻo push chỉ-chạm-infra không bao giờ deploy.
+      - 'infra/k8s/**'
+      - '.github/workflows/deploy.yml'
   pull_request:
     paths:
       - '.claude/**'
@@ -33,6 +43,12 @@ on:
       - 'apps/**'
       - 'package.json'
       - 'Makefile'
+      - 'pnpm-lock.yaml'
+      - 'turbo.json'
+      - 'eslint.config.mjs'
+      - 'tsconfig.base.json'
+      - 'infra/k8s/**'
+      - '.github/workflows/deploy.yml'
 
 jobs:
   selftest:
