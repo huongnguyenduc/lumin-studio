@@ -883,6 +883,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/outbox/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Outbox relay health snapshot (owner-only) — pending/failed counts + oldest pending age.
+         * @description Observability for the transactional outbox (ADR-006/ADR-029). `failed` counts quarantined poison rows — events (order.paid, asset jobs) that will NEVER reach NATS until requeued, so failed > 0 is the alarm condition. `oldestPendingAgeSeconds` catches a stuck/silent relay (rows pile up pending). Plain JSON so an uptime-kuma keyword/JSON monitor can poll it; owner-only because outbox internals are infrastructure, not shop data.
+         */
+        get: operations["getOutboxStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/outbox/requeue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Requeue every failed (poison-quarantined) outbox row for the relay to retry (owner-only).
+         * @description Flips all `failed` rows back to `pending` with attempts reset, AFTER the owner has fixed the poison cause — the relay re-publishes them on its next tick (JetStream dedups by Nats-Msg-Id, so an already-delivered duplicate inside the window is collapsed). Idempotent: with nothing failed it requeues 0. The acting user is logged server-side for the audit trail.
+         */
+        post: operations["requeueOutbox"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/categories": {
         parameters: {
             query?: never;
@@ -3148,6 +3188,23 @@ export interface components {
             /** Format: date-time */
             at: string;
         };
+        /** @description Outbox relay health counters. failed > 0 means quarantined poison events that will never publish until requeued; oldestPendingAgeSeconds grows when the relay is stuck (0 when nothing is pending). */
+        OutboxStats: {
+            /** Format: int64 */
+            pending: number;
+            /** Format: int64 */
+            failed: number;
+            /** Format: int64 */
+            oldestPendingAgeSeconds: number;
+        };
+        /** @description Result of a failed→pending requeue sweep. */
+        OutboxRequeueResult: {
+            /**
+             * Format: int64
+             * @description How many failed rows were flipped back to pending.
+             */
+            requeued: number;
+        };
         /** @description The one error shape every endpoint returns (ADR-032). `code` is a stable machine code (e.g. NOT_FOUND, INVALID_EDGE, RBAC, REASON_REQUIRED, VALIDATION); `messageKey` is a next-intl key (the domain's Vietnamese prose is NEVER forwarded). `fields` maps a field path → messageKey for per-field validation errors. */
         ErrorEnvelope: {
             code: string;
@@ -4559,6 +4616,50 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getOutboxStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current outbox counters. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboxStats"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    requeueOutbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description How many rows were requeued. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutboxRequeueResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     getAdminCategories: {
