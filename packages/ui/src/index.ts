@@ -16,3 +16,5 @@ export { QuantityStepper, type QuantityStepperProps } from './QuantityStepper';
 export { Rating, type RatingProps } from './Rating';
 export { PriceTag, type PriceTagProps } from './PriceTag';
 export { ProductCard, type ProductCardProps } from './ProductCard';
+export { ORDER_STATUS_TONE } from './order-status-tone';
+export { PrinterIcon, GridIcon, ArrowRightIcon, type IconProps } from './icons';

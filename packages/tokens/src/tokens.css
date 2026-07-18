@@ -120,7 +120,7 @@
 
   /* ---------- Typography ---------- */
   --font-display: 'Bricolage Grotesque', 'Arial Black', system-ui, sans-serif;
-  --font-body: 'Hanken Grotesque', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body: 'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'Space Mono', ui-monospace, 'SFMono-Regular', monospace;
 
   --weight-regular: 400;

@@ -42,7 +42,7 @@ của codebase, đừng đoán). Dưới đây là bản tóm tắt + ý đồ s
 | Vai trò | Font | Dùng |
 |---|---|---|
 | Display (`--font-display`) | **Bricolage Grotesque** 600–800 | Heading & button. Tracking `-0.02em`, line-height 1.0–1.1 ở size lớn |
-| Body/UI (`--font-body`) | **Hanken Grotesque** 400–800 | Toàn bộ body & UI |
+| Body/UI (`--font-body`) | **Hanken Grotesk** 400–800 | Toàn bộ body & UI |
 | Spec/mono (`--font-mono`) | **Space Mono** 400/700 | Kích thước, SKU, mã, label nhỏ |
 
 Scale: `--text-xs 12` → `sm 14` → `base 16` → `lg 18` → `xl 20` → `2xl 24` → `3xl 30` →
