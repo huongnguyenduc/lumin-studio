@@ -1,9 +1,11 @@
 import type { CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 
+// top:176 matches the flap's top — above that the section is transparent
+// and shows the Hero photo underneath, so the border must not start at 0.
 const laceV: CSSProperties = {
   position: 'absolute',
-  top: 0,
+  top: 176,
   bottom: 0,
   width: 6,
   background: 'url(/invite/lace-v.png) repeat-y',
