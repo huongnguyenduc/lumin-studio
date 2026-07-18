@@ -71,6 +71,16 @@
   }
 }
 
+/* Large-phone tier: same scale-only trick as the desktop rule above, just a
+ * mild bump so the fixed 393px canvas isn't lost in empty side margins on
+ * bigger phones (414px+ — Plus/Pro Max/Android) before the desktop rule takes
+ * over. Still never reflows. */
+@media (min-width: 414px) and (max-width: 1023px) {
+  .invite-scale {
+    zoom: 1.08;
+  }
+}
+
 /* conventions §A11y: kill decorative motion for prefers-reduced-motion (the
  * reveal hook also skips itself; this catches the hint bob + smooth scroll). */
 @media (prefers-reduced-motion: reduce) {

@@ -1,11 +1,26 @@
+import type { CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 
+const laceV: CSSProperties = {
+  position: 'absolute',
+  top: 0,
+  bottom: 0,
+  width: 6,
+  background: 'url(/invite/lace-v.png) repeat-y',
+  backgroundSize: '6px auto',
+};
+
 // Envelope transition (§2.2): flap (clip-path), two rotated lace panels, wax
-// stamp. Pure decoration, no interaction; overlaps the hero by −178px.
+// stamp, vertical lace borders (matches Letter). Pure decoration, no
+// interaction; overlaps the hero by −178px.
 export function Envelope() {
   const t = useTranslations('hero');
   return (
     <div style={{ position: 'relative', height: 350, marginTop: -178, zIndex: 2 }}>
+      <div style={{ ...laceV, left: 0 }} />
+      <div style={{ ...laceV, left: 6 }} />
+      <div style={{ ...laceV, right: 0 }} />
+      <div style={{ ...laceV, right: 6 }} />
       <div
         style={{
           position: 'absolute',
