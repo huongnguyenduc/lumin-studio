@@ -45,6 +45,10 @@ export function Reveal({
     return () => io.disconnect();
   }, []);
 
+  // A caller's own `transform` (e.g. translateX(-50%) to center) must combine
+  // with the reveal's translateY, not be replaced by it — otherwise a
+  // centered element loses its centering once revealed.
+  const base = style?.transform ? `${style.transform} ` : '';
   return (
     <div
       ref={ref}
@@ -53,7 +57,7 @@ export function Reveal({
         ...(animate
           ? {
               opacity: shown ? 1 : 0,
-              transform: shown ? 'none' : 'translateY(26px)',
+              transform: shown ? (style?.transform ?? 'none') : `${base}translateY(26px)`,
               transition: 'opacity 1.1s ease-out, transform 1.25s cubic-bezier(0.22,0.61,0.36,1)',
               transitionDelay: `${delay}ms`,
             }

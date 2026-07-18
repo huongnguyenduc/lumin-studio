@@ -6,7 +6,18 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
-**➡️ NOW (2026-07-18, branch `fix/admin-domains-single-label-only`, CHƯA commit): ADMIN "quản lý domain" — bước 1-3 + ICU fix (PR #158/#159/#160/#161/#162) ĐÃ MERGE + deploy live; vừa REVERT tính năng multi-label subdomain sau box-verify phát hiện nó không dùng được thật.** GOTCHA merge-conflict đã gặp dọc đường: GitHub squash-merge tạo commit MỚI trên main (hash khác local) → PR báo CONFLICTING giả dù nội dung không đổi — fix bằng `git rebase origin/main` + `push --force-with-lease`; từng mất 1 commit do merge xảy ra trước khi push kịp — phải cherry-pick sang branch mới.
+**➡️ NOW (2026-07-19, nhánh `main`, CHƯA commit): wedding-web — hero section khớp Figma (`Hieu-Giang` node 107:212) + 2 fix bleed/overlap phát hiện dọc đường, đều đã verify xanh trên preview local (`pnpm --filter @lumin/wedding-web typecheck` xanh).** MCP Figma cần đổi sang account `luminstudio.work@gmail.com` (account cũ `web.dev@cellphones.com.vn` không có quyền file) mới `get_design_context` được — nếu Figma MCP báo "no edit access" lần sau, nhắc user check lại `/mcp` auth trước khi debug code.
+
+Đã sửa 3 chỗ trong `apps/wedding-web/src/components/invitation/`:
+1. `hero.tsx` — monogram giờ render nguyên khối asset SVG tải từ Figma (`public/invite/logo-oval.svg`, thay khung oval CSS tự dựng trước đó không khớp thiết kế); gradient đáy + "save the date" trả về đúng token gốc (`DARK`/`TAN_LIGHT`) sau khi rõ bản trước đó tự đoán sai theo ảnh.
+2. `globals.css` §desktop `.invite-scale` — `zoom` giờ `clamp(1.25, 100vh/852, 2)` thay vì cố định 1.25: cửa sổ desktop cao làm hero (852px thiết kế) không phủ hết viewport, lộ mép envelope chồm lên — **bug có sẵn trên prod** (`giangvahieu.luminstudio.vn`), tái hiện được ở cùng kích thước cửa sổ, không phải do thay đổi hero.
+3. `envelope.tsx` — 4 dải ren dọc (`laceV`) đổi `top:0`→`top:178`: envelope bị kéo `marginTop:-178` chồng lên hero (chủ đích, cho hiệu ứng nắp phong bì/flap), nhưng ren dọc là viền trang trí không nên lem theo — cũng là **bug có sẵn trên prod**, gây đường kẻ mảnh ở 2 mép ảnh hero.
+
+**NEXT: hỏi user commit gộp 1 hay tách 3 (design-match / desktop-zoom-fix / envelope-bleed-fix) — đang chờ trả lời, chưa commit.** File mới `public/invite/logo-oval.svg` (untracked) đi kèm commit #1.
+
+---
+
+**Trước đó (2026-07-18, branch `fix/admin-domains-single-label-only`, CHƯA commit): ADMIN "quản lý domain" — bước 1-3 + ICU fix (PR #158/#159/#160/#161/#162) ĐÃ MERGE + deploy live; vừa REVERT tính năng multi-label subdomain sau box-verify phát hiện nó không dùng được thật.** GOTCHA merge-conflict đã gặp dọc đường: GitHub squash-merge tạo commit MỚI trên main (hash khác local) → PR báo CONFLICTING giả dù nội dung không đổi — fix bằng `git rebase origin/main` + `push --force-with-lease`; từng mất 1 commit do merge xảy ra trước khi push kịp — phải cherry-pick sang branch mới.
 
 **Box-verify multi-label 2026-07-18 (SSH `pc-server` + Chrome + `dig`/`curl`/`openssl s_client` từ máy Mac) — phát hiện tính năng KHÔNG dùng được thật:** tạo `gianghieuwedding.bh.luminstudio.vn` qua admin → Ingress đúng, DNS resolve đúng (Cloudflare anycast IP), `curl http://` trả 200 đúng trang wedding-web — nhưng `curl https://`/`openssl s_client` **FAIL ngay bước TLS handshake** (`handshake_failure`). Nguyên nhân: chứng chỉ Cloudflare Universal SSL cho `luminstudio.vn` chỉ có SAN `luminstudio.vn` + `*.luminstudio.vn` — **wildcard 1 cấp**, không phủ tên 2-cấp trở lên. Xác nhận đối chứng: `giangvahieu.luminstudio.vn` (1 cấp) có HTTPS bình thường, cert cùng SAN list. Trình duyệt mặc định HTTPS nên tính năng multi-label **luôn fail** dù backend đúng 100% — đây là giới hạn Cloudflare (ops/billing, cần Advanced Certificate Manager trả phí để sửa thật), không phải bug code.
 

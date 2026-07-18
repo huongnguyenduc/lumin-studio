@@ -1,9 +1,13 @@
 import type { CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 
+// top starts at 178 (not 0): the envelope box overlaps the hero by -178px
+// (see below) for the flap/lace-panel bleed effect, but this plain border
+// strip has no reason to bleed into the photo too — start it where the
+// envelope is actually visible, i.e. right where the hero ends.
 const laceV: CSSProperties = {
   position: 'absolute',
-  top: 0,
+  top: 178,
   bottom: 0,
   width: 6,
   background: 'url(/invite/lace-v.png) repeat-y',

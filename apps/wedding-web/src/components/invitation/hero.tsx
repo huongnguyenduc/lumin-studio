@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { CREAM, INK, SCRIPT, TAN_LIGHT, DARK } from './theme';
+import { CREAM, DARK, INK, SCRIPT, TAN_LIGHT } from './theme';
 import { Reveal } from './reveal';
 
 // Hero (§2.1): full-bleed photo, logo mark + rotated ellipse borders, gradient,
@@ -56,53 +56,18 @@ export function Hero({
           background: `url(${bgUrl ?? '/invite/hero.jpg'}) 50% 0 / cover no-repeat`,
         }}
       />
+      {/* Figma node 32:834 — oval stamp logo exported as one asset. */}
       <Reveal
         style={{
           position: 'absolute',
-          top: 63,
-          left: 148,
+          top: 59,
+          left: '50%',
           transform: 'translateX(-50%)',
-          width: 120,
-          height: 139,
+          width: 116,
+          height: 128,
+          background: 'url(/invite/logo-oval.svg) center / contain no-repeat',
         }}
-      >
-        <div
-          style={{
-            position: 'absolute',
-            left: 22,
-            top: 37,
-            width: 72,
-            height: 70,
-            background: 'url(/invite/logo-mark.svg) center / contain no-repeat',
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            left: 12,
-            top: 11,
-            width: 95,
-            height: 117,
-            borderRadius: '50%',
-            border: `1px dashed ${INK}`,
-            transform: 'rotate(8.85deg)',
-            boxSizing: 'border-box',
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            left: 9,
-            top: 7,
-            width: 101,
-            height: 125,
-            borderRadius: '50%',
-            border: `1px solid ${INK}`,
-            transform: 'rotate(8.85deg)',
-            boxSizing: 'border-box',
-          }}
-        />
-      </Reveal>
+      />
       <div
         style={{
           position: 'absolute',
@@ -117,12 +82,12 @@ export function Hero({
         style={{
           position: 'absolute',
           left: 0,
-          bottom: 44,
+          bottom: 48,
           width: '100%',
           textAlign: 'center',
           fontFamily: SCRIPT,
-          fontSize: 26,
-          letterSpacing: '0.04em',
+          fontSize: 24,
+          letterSpacing: '0.48px',
           color: TAN_LIGHT,
         }}
       >
