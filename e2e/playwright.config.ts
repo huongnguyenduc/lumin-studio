@@ -12,7 +12,7 @@ export default defineConfig({
   // reducedMotion: các section thiệp cưới reveal theo scroll (opacity 0 tới khi
   // IntersectionObserver bắn) — reduce cho nội dung hiện ngay, test khỏi phụ
   // thuộc timing animation (site tôn trọng prefers-reduced-motion theo convention).
-  use: { reducedMotion: 'reduce' },
+  use: { contextOptions: { reducedMotion: 'reduce' } },
   projects: [
     { name: 'phone-393', use: { viewport: { width: 393, height: 852 } } },
     { name: 'phone-414', use: { viewport: { width: 414, height: 896 } } },
