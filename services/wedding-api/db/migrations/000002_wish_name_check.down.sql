@@ -1,0 +1,1 @@
+ALTER TABLE wishes DROP CONSTRAINT IF EXISTS wishes_name_len;

@@ -52,6 +52,10 @@ type Server struct {
 	// param so the existing call sites stay unchanged; tests that exercise the lockout path swap in a
 	// tight limiter directly (same package). See ratelimit.go.
 	lookup *lookupLimiter
+	// loginLimiter throttles POST /auth/login per normalized email (online brute-force backstop
+	// behind the edge WAF's per-IP layer). Same keyed token-bucket type as lookup; nil (unit
+	// tests built without NewServer) fails open.
+	loginLimiter *lookupLimiter
 	// proofUploads signs presigned POST policies for payment receipt images (P2-c). Nil means the
 	// environment has not wired S3/Garage credentials; the endpoint then fails closed with a 500 rather
 	// than issuing a spoofable or partial upload contract. Built once in main.go and shared with the
@@ -184,6 +188,7 @@ func NewServer(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus, authIss
 		auth:               authIssuer,
 		users:              db.NewIdentity(pool),
 		lookup:             newLookupLimiter(defaultLookupLimits()),
+		loginLimiter:       newLookupLimiter(defaultLoginLimits()),
 		proofUploadLimiter: newPaymentProofUploadLimiter(defaultPaymentProofUploadLimits()),
 		lostShareLimiter:   newPaymentProofUploadLimiter(defaultLostShareLimits()),
 		imageUploadLimiter: newPaymentProofUploadLimiter(defaultPaymentProofUploadLimits()),

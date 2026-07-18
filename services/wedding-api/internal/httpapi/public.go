@@ -19,23 +19,19 @@ var wishColors = map[string]bool{
 	"rgb(238,239,230)": true, // Xanh ô liu
 }
 
-const maxWishLen = 500
+const (
+	maxWishLen     = 500
+	maxWishNameLen = 100
+)
 
-// getInvite resolves a guest link and fires the write-once open tracking
-// (HANDOFF §5): the UPDATE only touches a NULL opened_at, so re-opens never
-// overwrite the first timestamp. 404 → the page renders the anonymous card.
+// getInvite resolves a guest link — a pure read. Open tracking moved to
+// markOpened (POST) so link-preview bots (Zalo/Messenger fetch the page via
+// GET) never fake an open. 404 → the page renders the anonymous card.
 func (s *server) getInvite(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "guestId")
-	// Write-once mark, then read.
-	_, err := s.pool.Exec(r.Context(),
-		`UPDATE guests SET opened_at = now() WHERE id = $1 AND opened_at IS NULL`, id)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "DB", err.Error())
-		return
-	}
 	var label string
 	var rsvp *string
-	err = s.pool.QueryRow(r.Context(),
+	err := s.pool.QueryRow(r.Context(),
 		`SELECT label, rsvp FROM guests WHERE id = $1`, id).Scan(&label, &rsvp)
 	if err == pgx.ErrNoRows {
 		writeError(w, http.StatusNotFound, "GUEST_NOT_FOUND", "không tìm thấy khách mời")
@@ -46,6 +42,21 @@ func (s *server) getInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "label": label, "rsvp": rsvp})
+}
+
+// markOpened is the write-once open tracking (HANDOFF §5), fired by the client
+// after the invitation mounts: the UPDATE only touches a NULL opened_at, so
+// re-opens never overwrite the first timestamp. Idempotent 204 either way —
+// the client fires-and-forgets.
+func (s *server) markOpened(w http.ResponseWriter, r *http.Request) {
+	_, err := s.pool.Exec(r.Context(),
+		`UPDATE guests SET opened_at = now() WHERE id = $1 AND opened_at IS NULL`,
+		chi.URLParam(r, "guestId"))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB", err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // postRSVP upserts the guest's answer — last write wins, always stamps rsvp_at
@@ -104,6 +115,10 @@ func (s *server) postWish(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(body.Name)
 	if name == "" {
 		name = "Khách mời"
+	}
+	if len([]rune(name)) > maxWishNameLen {
+		writeError(w, http.StatusBadRequest, "BAD_NAME", "tên tối đa 100 ký tự")
+		return
 	}
 	var guestID *string
 	if body.GuestID != "" {
