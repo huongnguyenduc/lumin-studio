@@ -6,6 +6,7 @@ import { fontScript, fontSerif } from '@/fonts';
 import { getSettings } from '@/lib/api';
 import { asSiteSettings } from '@/lib/site-settings';
 import { locale } from '@/messages';
+import { SmoothScroll } from '@/components/smooth-scroll';
 import './globals.css';
 
 // viewportFit: 'cover' matters only for standalone/home-screen mode — in a
@@ -34,6 +35,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang={locale} className={`${fontScript.variable} ${fontSerif.variable}`}>
       <body>
+        <SmoothScroll />
         <NextIntlClientProvider messages={messages}>{children}</NextIntlClientProvider>
       </body>
     </html>
