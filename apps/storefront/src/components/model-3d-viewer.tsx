@@ -18,6 +18,8 @@ interface ModelViewerElement extends HTMLElement {
     materials: MaterialLike[];
     getMaterialByName(name: string): MaterialLike | null;
   };
+  getBoundingBoxCenter(): { x: number; y: number; z: number };
+  getDimensions(): { x: number; y: number; z: number };
 }
 
 // Minimal typing for Google's <model-viewer> custom element — we use only these attributes. The element type
@@ -70,6 +72,7 @@ export function Model3dViewer({
   spriteSheetUrl,
   partColors,
   flatColorHex,
+  engraveText,
   fallback,
 }: {
   src: string;
@@ -80,6 +83,12 @@ export function Model3dViewer({
    *  model (a flat product has no part→object mapping, so the whole piece is the colour — mirrors what
    *  the printer does). Undefined for a parts product (partColors drives those) or before any pick. */
   flatColorHex?: string;
+  /** Live engraving preview (P1-j): the typed text, pinned as a model-viewer HOTSPOT to the front of
+   *  the model's bounding box so it tracks the camera and fades when rotated away. Realtime by
+   *  construction — plain React state → DOM, client-side only (storefront rule: no server render per
+   *  keystroke). ponytail: billboard hotspot, not baked-into-surface; a real engraved look needs a
+   *  per-product UV engrave zone in the Blender pipeline. Empty/undefined → no hotspot. */
+  engraveText?: string;
   /** Rendered while loading, on failure, and when the browser has neither WebGL nor a sprite —
    *  typically the parent's static cover image. */
   fallback?: React.ReactNode;
@@ -90,6 +99,9 @@ export function Model3dViewer({
   const [webglOk, setWebglOk] = useState<boolean | null>(null);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
+  // "x y z" for the hotspot's data-position — front-centre of the model's bounding box, computed once
+  // per loaded model (the box doesn't move; only the text content changes per keystroke).
+  const [engraveAnchor, setEngraveAnchor] = useState<string | null>(null);
 
   // WebGL is client-only; detect after mount, then start loading the web component right away.
   // The ingest glbs (fused AND structured) are Draco-compressed (worker LOD pass), so point
@@ -139,6 +151,23 @@ export function Model3dViewer({
     return () => el.removeEventListener('load', apply);
   }, [ready, partColors, flatColorHex]);
 
+  // Engrave hotspot anchor: front-centre of the loaded model's bounding box (normal +Z). Computed on
+  // `load` — before that model-viewer has no geometry to measure. model-viewer registers a slotted
+  // hotspot with its attributes at slot time, so the anchor must be known BEFORE the hotspot div
+  // renders; gating the div on `engraveAnchor` guarantees that order.
+  useEffect(() => {
+    const el = viewerRef.current;
+    if (!ready || !el) return;
+    const measure = () => {
+      const c = el.getBoundingBoxCenter();
+      const d = el.getDimensions();
+      setEngraveAnchor(`${c.x}m ${c.y}m ${c.z + d.z / 2}m`);
+    };
+    if (el.model) measure();
+    el.addEventListener('load', measure);
+    return () => el.removeEventListener('load', measure);
+  }, [ready]);
+
   // No WebGL → the 360° sprite sheet is the fallback (ADR-007/ADR-049): a self-turning turntable so a
   // WebGL-less browser still gets a rotating preview (stilled under reduced-motion). No sprite → the
   // parent's static cover (fallback). SSR / undetermined renders the fallback too (no hydration mismatch).
@@ -184,7 +213,22 @@ export function Model3dViewer({
             interaction-prompt="none"
             onError={() => setFailed(true)}
             style={{ width: '100%', height: '100%' }}
-          />
+          >
+            {/* Live engraving preview: the typed text pinned to the model's front face. Tracks camera
+                rotation; model-viewer fades hotspots that face away (--min-hotspot-opacity). aria-hidden:
+                it duplicates the engrave input's value (a sighted affordance, like the nameplate). */}
+            {engraveText?.trim() && engraveAnchor ? (
+              <div
+                slot="hotspot-engrave"
+                data-position={engraveAnchor}
+                data-normal="0 0 1"
+                aria-hidden="true"
+                className="pointer-events-none -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-sm bg-black/40 px-2 py-0.5 font-display text-sm font-bold tracking-wide text-white"
+              >
+                {engraveText}
+              </div>
+            ) : null}
+          </model-viewer>
           {/* Hi-fi drag hint, bottom-left of the running viewer. Decorative — the controls are
               announced by model-viewer's own alt/aria — so it stays out of the accessibility tree. */}
           <span

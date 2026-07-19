@@ -306,6 +306,7 @@ export function ProductDetail({
                   spriteSheetUrl={product.spriteSheetUrl}
                   partColors={viewerPartColors}
                   flatColorHex={flatColorHex}
+                  engraveText={textOptions[0] ? engraveTexts[textOptions[0].id] : undefined}
                   fallback={
                     cover ? (
                       <img src={cover} alt={product.name} className="h-full w-full object-cover" />
