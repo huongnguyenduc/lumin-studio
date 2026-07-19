@@ -8,7 +8,7 @@ paths:
 
 > Vì sao: [`/docs/plan.md`](../../docs/plan.md) Phase 1 · [`/docs/conventions.md`](../../docs/conventions.md) · [`/spec.md`](../../spec.md).
 
-- **3D sprite-first:** ảnh card/list = **ảnh shop chụp** (`Product.images[0]`); **hover (PC) / dừng-2s (mobile) → 360° sprite** lắc trái-phải. Trên **trang chi tiết** `model-viewer` **auto-load làm tile chính** khi SP có model + WebGL (user chốt 2026-07-17 — dynamic import, không vào bundle đầu); **360° sprite** server-render làm fallback no-WebGL, ảnh cover làm fallback cuối (**KHÔNG poster**). Card/list KHÔNG auto-load WebGL.
+- **3D sprite-first:** ảnh card/list = **ảnh shop chụp** (`Product.images[0]`); **hover (PC) / dừng-2s (mobile) → 360° sprite** lắc trái-phải. Trên **trang chi tiết** viewer 3D (three.js trực tiếp, `lib/viewer3d.ts` — thay `model-viewer` từ PR #178 vì khắc chữ decal bám bề mặt cần scene access) **auto-load làm tile chính** khi SP có model + WebGL (user chốt 2026-07-17 — dynamic import, không vào bundle đầu); **360° sprite** server-render làm fallback no-WebGL, ảnh cover làm fallback cuối (**KHÔNG poster**). Card/list KHÔNG auto-load WebGL.
 - **Checkout web:** màn QR **tĩnh** (render từ STK; memo CK **không bắt buộc**) → khách **đính ảnh biên lai CK + xác nhận** thì mới `POST /orders` (đơn ở `PENDING_CONFIRM`, kèm `paymentProofUrl`); **không** tạo đơn ở bước checkout. Sau đó điều hướng tới **link tra cứu đơn** (màn "chờ xác nhận" + auto-poll).
 - **Preview khắc tên: client-side** (canvas/CSS) + đếm `maxChars`. **KHÔNG** render server-side mỗi phím gõ.
 - **Add-to-cart sticky** trên mobile, tổng tiền lấy **live từ server** (không tự cộng ở client).
