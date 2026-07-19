@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { DARK, SCRIPT, TAN_LIGHT } from './theme';
+import { CREAM, DARK, SCRIPT, TAN_LIGHT } from './theme';
 import { Reveal } from './reveal';
 
 // Hero (§2.1): full-bleed photo, logo mark + rotated ellipse borders, gradient,
@@ -79,8 +79,12 @@ export function Hero({ bgUrl }: { bgUrl?: string }) {
           left: 0,
           bottom: 0,
           width: '100%',
-          height: 130,
-          background: `linear-gradient(0deg, ${DARK} 0%, rgba(59,47,39,0) 100%)`,
+          height: 170,
+          // Resolves to CREAM at the very bottom row, so the hero dissolves
+          // into the cream section under it instead of ending on a hard
+          // dark-to-cream line. DARK peaks at 24% — just below the "save the
+          // date" baseline (bottom: 48) — so the text keeps its contrast.
+          background: `linear-gradient(0deg, ${CREAM} 0%, ${DARK} 24%, rgba(59,47,39,0) 100%)`,
         }}
       />
       <Reveal
