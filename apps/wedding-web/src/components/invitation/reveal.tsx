@@ -68,3 +68,59 @@ export function Reveal({
     </div>
   );
 }
+
+// GrowLine: same scroll-trigger as Reveal, but draws the line top-to-bottom
+// (scaleY from a fixed transformOrigin) instead of fading — for a connector
+// line that should feel like it flows down into what follows (events §2.4).
+export function GrowLine({ style, background }: { style?: CSSProperties; background: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [shown, setShown] = useState(false);
+  const [animate, setAnimate] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setShown(true);
+      return;
+    }
+    setAnimate(true);
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            setShown(true);
+            io.unobserve(e.target);
+          }
+        }
+      },
+      { threshold: 0.12, rootMargin: '10000px 0px -6% 0px' },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  // The IntersectionObserver watches THIS outer div, which keeps its full
+  // flex-resolved size — the scaleY animation lives on an inner absolutely
+  // positioned child instead. Animating the observed element itself would
+  // collapse its box to zero height, and a zero-area target never crosses a
+  // >0 intersection threshold: the reveal would permanently deadlock hidden.
+  return (
+    <div ref={ref} aria-hidden style={{ ...style, position: 'relative' }}>
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background,
+          transformOrigin: 'top',
+          ...(animate
+            ? {
+                transform: shown ? 'scaleY(1)' : 'scaleY(0)',
+                transition: 'transform 1.1s cubic-bezier(0.22,0.61,0.36,1)',
+              }
+            : { transform: 'scaleY(1)' }),
+        }}
+      />
+    </div>
+  );
+}

@@ -8,6 +8,8 @@ export const TAN_LIGHT = 'rgb(186,170,159)';
 export const CREAM = 'rgb(255,251,248)';
 export const CREAM_2 = 'rgb(249,241,232)';
 export const TERRACOTTA = 'rgb(203,77,28)';
+// Bản rev Figma 107:240 dịu hoá lời chào trên thư mời; wishes/admin giữ tông cũ.
+export const TERRACOTTA_SOFT = 'rgb(166,115,90)';
 export const DARK = 'rgb(59,47,39)';
 
 export const SCRIPT = 'var(--font-script), cursive';

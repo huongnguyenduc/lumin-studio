@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
-import { INK, TAN, TERRACOTTA, CREAM_2, CREAM, RING, SCRIPT } from './theme';
+import { INK, TAN, TERRACOTTA_SOFT, CREAM, SCRIPT } from './theme';
 import { Reveal } from './reveal';
 
 const laceV: CSSProperties = {
@@ -18,23 +18,52 @@ const label600: CSSProperties = {
   color: INK,
   textAlign: 'center',
 };
-const timeText: CSSProperties = {
+// Date strip (§2.3 rev): three cells joined by 0.5px rules instead of free dividers.
+const dateCell: CSSProperties = {
+  padding: '2px 16px',
   fontWeight: 600,
   fontSize: 18,
+  lineHeight: 'normal',
   textTransform: 'uppercase',
   color: INK,
+  whiteSpace: 'nowrap',
+  // Figma: fontFeatureSettings '"cpsp" 1' — capital-spacing OpenType feature,
+  // Playfair Display hỗ trợ, thêm tracking nhẹ cho chữ hoa (thiếu ở bản port đầu).
+  fontFeatureSettings: '"cpsp" 1, "lnum" 1, "pnum" 1',
 };
-const divider: CSSProperties = { width: 1, height: 34, background: TAN };
-const timelineRow: CSSProperties = { display: 'flex', gap: 36, alignItems: 'center' };
-const timelineText: CSSProperties = {
+const timelineLabel: CSSProperties = {
   fontSize: 12,
   lineHeight: 1.5,
   textTransform: 'uppercase',
   color: INK,
+  textAlign: 'center',
 };
 
-// Letter (§2.3): the invitation text framed by vertical lace strips, closed by
-// two horizontal lace strips. guestLabel = personalized salutation (SSR).
+// A 48px photo medallion for the timeline endpoints; inset percentages are the
+// Figma crop of the full exported image.
+function Medallion({ src, inset }: { src: string; inset: { l: number; t: number; s: number } }) {
+  return (
+    <div style={{ position: 'relative', width: 48, height: 48, overflow: 'hidden' }}>
+      <img
+        alt=""
+        aria-hidden
+        src={src}
+        style={{
+          position: 'absolute',
+          maxWidth: 'none',
+          left: `${inset.l}%`,
+          top: `${inset.t}%`,
+          width: `${inset.s}%`,
+          height: `${inset.s}%`,
+        }}
+      />
+    </div>
+  );
+}
+
+// Letter (§2.3 rev, Figma 107:239): the invitation text framed by vertical lace
+// strips, closed by two horizontal lace strips. guestLabel = personalized
+// salutation (SSR). Names run bigger with no rings mark; timeline is horizontal.
 export function Letter({
   guestLabel,
   mapUrl,
@@ -46,7 +75,8 @@ export function Letter({
 }) {
   const t = useTranslations('letter');
   return (
-    <div style={{ position: 'relative', padding: '42px 40px 0' }}>
+    // 33.5px: giữ content 313px như Figma sau khi frame thu còn ~380 (canvas trừ 6.75 mỗi bên).
+    <div style={{ position: 'relative', padding: '42px 33.5px 0' }}>
       <div style={{ ...laceV, left: 0 }} />
       <div style={{ ...laceV, left: 6 }} />
       <div style={{ ...laceV, right: 0 }} />
@@ -60,39 +90,45 @@ export function Letter({
             fontFamily: SCRIPT,
             fontSize: 22,
             lineHeight: 1.3,
-            color: TERRACOTTA,
+            color: TERRACOTTA_SOFT,
             textAlign: 'center',
             textTransform: 'capitalize',
           }}
         >
           {guestLabel ?? t('anonymousGuest')}
         </Reveal>
-        <Reveal delay={200} style={{ ...label600, marginTop: 36 }}>
+        <Reveal delay={200} style={{ ...label600, marginTop: 48 }}>
           {t('toAttend')}
         </Reveal>
         <Reveal
-          style={{ marginTop: 20, display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+          style={{
+            marginTop: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 18,
+            textTransform: 'capitalize',
+          }}
         >
-          <span
-            style={{ fontFamily: SCRIPT, fontSize: 42, lineHeight: 1.3, color: INK, zIndex: 1 }}
-          >
+          <span style={{ fontFamily: SCRIPT, fontSize: 48, lineHeight: 'normal', color: INK }}>
             {t('bride')}
           </span>
-          <img
-            src="/invite/rings.png"
-            alt={t('ringsAlt')}
-            style={{ width: 66, height: 66, margin: '-14px 0 -23px' }}
-          />
-          <span style={{ fontFamily: SCRIPT, fontSize: 42, lineHeight: 1.3, color: INK }}>
+          <span style={{ fontFamily: SCRIPT, fontSize: 48, lineHeight: 'normal', color: INK }}>
             {t('groom')}
           </span>
         </Reveal>
-        <Reveal style={{ marginTop: 36, display: 'flex', alignItems: 'center', gap: 20 }}>
-          <span style={timeText}>{t('time')}</span>
-          <span style={divider} />
-          <span style={{ ...timeText, whiteSpace: 'nowrap' }}>{t('weekday')}</span>
-          <span style={divider} />
-          <span style={timeText}>{t('date')}</span>
+        <Reveal style={{ marginTop: 24, display: 'flex', alignItems: 'center' }}>
+          <span style={{ ...dateCell, borderRight: `0.5px solid ${TAN}` }}>{t('time')}</span>
+          <span
+            style={{
+              ...dateCell,
+              borderLeft: `0.5px solid ${TAN}`,
+              borderRight: `0.5px solid ${TAN}`,
+            }}
+          >
+            {t('weekday')}
+          </span>
+          <span style={{ ...dateCell, borderLeft: `0.5px solid ${TAN}` }}>{t('date')}</span>
         </Reveal>
         <Reveal
           style={{
@@ -105,12 +141,12 @@ export function Letter({
         >
           {t('lunarDate')}
         </Reveal>
-        <Reveal style={{ marginTop: 33 }}>
-          <MapPinIcon />
+        <Reveal style={{ marginTop: 48 }}>
+          <img alt="" aria-hidden src="/invite/icon-map.svg" style={{ width: 16, height: 14 }} />
         </Reveal>
         <Reveal
           style={{
-            marginTop: 18,
+            marginTop: 16,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -118,11 +154,13 @@ export function Letter({
           }}
         >
           <span style={{ ...label600, fontSize: 16, lineHeight: 1.5 }}>{t('venue')}</span>
-          <span style={{ ...label600, fontWeight: 400, lineHeight: 1.5 }}>{t('venueHall')}</span>
+          <span style={{ ...label600, fontSize: 16, fontWeight: 400, lineHeight: 1.5 }}>
+            {t('venueHall')}
+          </span>
           <span
             style={{
-              marginTop: 8,
-              width: 227,
+              marginTop: 6,
+              width: 256,
               fontStyle: 'italic',
               fontSize: 12,
               lineHeight: 1.5,
@@ -136,12 +174,13 @@ export function Letter({
         <Reveal
           style={{
             position: 'relative',
-            marginTop: 17,
+            marginTop: 16,
             width: 313,
             height: 196,
-            borderRadius: 8,
-            background: CREAM_2,
-            boxShadow: RING,
+            borderRadius: 12,
+            border: `0.5px solid ${INK}`,
+            boxSizing: 'border-box',
+            overflow: 'hidden',
           }}
         >
           <img
@@ -149,15 +188,15 @@ export function Letter({
             alt={t('mapAlt')}
             style={{
               position: 'absolute',
-              left: -19,
-              top: 28,
-              width: 351,
+              left: 3,
+              top: 34,
+              width: 305,
               height: 145,
               objectFit: 'cover',
             }}
           />
         </Reveal>
-        <Reveal style={{ marginTop: 18 }}>
+        <Reveal style={{ marginTop: 16 }}>
           <a
             href={mapsUrl ?? 'https://maps.google.com/?q=The+Mira+Central+Park+Bien+Hoa'}
             target="_blank"
@@ -169,7 +208,7 @@ export function Letter({
               height: 28,
               boxSizing: 'border-box',
               padding: '6px 12px',
-              borderRadius: 25,
+              borderRadius: 24,
               background: INK,
               color: CREAM,
               fontSize: 12,
@@ -180,56 +219,85 @@ export function Letter({
             {t('openMaps')}
           </a>
         </Reveal>
-        <Reveal style={{ marginTop: 32 }}>
-          <ClockIcon />
+        <Reveal style={{ marginTop: 36 }}>
+          <img alt="" aria-hidden src="/invite/icon-clock.svg" style={{ width: 15, height: 15 }} />
         </Reveal>
-        <Reveal style={{ marginTop: 18, fontFamily: SCRIPT, fontSize: 24, color: INK }}>
+        <Reveal
+          style={{
+            marginTop: 16,
+            fontWeight: 600,
+            fontSize: 16,
+            lineHeight: 1.5,
+            textTransform: 'uppercase',
+            color: INK,
+          }}
+        >
           {t('timeline')}
         </Reveal>
-        <Reveal style={{ position: 'relative', marginTop: 21, width: 180, padding: '4px 0' }}>
+        <Reveal
+          style={{
+            marginTop: 8,
+            width: 281,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
           <div
             style={{
-              position: 'absolute',
-              left: 66,
-              top: 2,
-              bottom: 2,
-              width: 1,
-              background: 'rgba(120,105,93,0.55)',
+              width: 80,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <Medallion
+              src="/invite/timeline-arch.png"
+              inset={{ l: -18.12, t: -15.28, s: 136.24 }}
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ ...timelineLabel, fontWeight: 600 }}>{t('timelineWelcomeTime')}</span>
+              <span style={timelineLabel}>{t('timelineWelcome')}</span>
+            </div>
+          </div>
+          {/* Dotted connector between the two moments; the icons sit at row centre
+              so the line lands mid-medallion (Figma anchors it at y=47). */}
+          <img
+            alt=""
+            aria-hidden
+            src="/invite/timeline-line.svg"
+            style={{
+              flex: '1 0 0',
+              minWidth: 1,
+              height: 3,
+              alignSelf: 'flex-start',
+              marginTop: 46,
             }}
           />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={timelineRow}>
-              <div
-                style={{
-                  width: 54,
-                  height: 54,
-                  background: 'url(/invite/icon-camera.png) center / 140% no-repeat',
-                  flexShrink: 0,
-                }}
-              />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ ...timelineText, fontWeight: 600 }}>{t('timelineWelcomeTime')}</span>
-                <span style={timelineText}>{t('timelineWelcome')}</span>
-              </div>
-            </div>
-            <div style={timelineRow}>
-              <div
-                style={{
-                  width: 54,
-                  height: 54,
-                  background: 'url(/invite/icon-toast.png) center / 130% no-repeat',
-                  flexShrink: 0,
-                }}
-              />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ ...timelineText, fontWeight: 600 }}>{t('timelinePartyTime')}</span>
-                <span style={timelineText}>{t('timelineParty')}</span>
-              </div>
+          <div
+            style={{
+              width: 80,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <Medallion
+              src="/invite/timeline-toast.png"
+              inset={{ l: -29.01, t: -15.35, s: 146.35 }}
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ ...timelineLabel, fontWeight: 600 }}>{t('timelinePartyTime')}</span>
+              <span style={timelineLabel}>{t('timelineParty')}</span>
             </div>
           </div>
         </Reveal>
       </div>
-      <div style={{ margin: '18px -40px 0', height: 12, display: 'flex', flexDirection: 'column' }}>
+      <div
+        style={{ margin: '36px -33.5px 0', height: 12, display: 'flex', flexDirection: 'column' }}
+      >
         <div
           style={{
             height: 6,
@@ -246,30 +314,5 @@ export function Letter({
         />
       </div>
     </div>
-  );
-}
-
-// The two glyphs between letter blocks — inline SVG paths from the prototype.
-function MapPinIcon() {
-  return (
-    <svg width="14" height="18" viewBox="0 0 14 18" fill="none" style={{ color: INK }} aria-hidden>
-      <path
-        transform="translate(0.2 13.5) scale(12 -12)"
-        d="M 1.104 0.803 C 1.117 0.795 1.125 0.779 1.125 0.766 L 1.125 0.109 C 1.125 0.09 1.111 0.072 1.094 0.064 L 0.766 -0.061 C 0.756 -0.064 0.744 -0.064 0.734 -0.061 L 0.375 0.059 L 0.063 -0.061 C 0.049 -0.066 0.031 -0.064 0.02 -0.055 C 0.006 -0.047 0 -0.031 0 -0.016 L 0 0.641 C 0 0.66 0.012 0.676 0.029 0.684 L 0.357 0.809 C 0.367 0.813 0.379 0.813 0.389 0.809 L 0.748 0.689 L 1.061 0.809 C 1.074 0.814 1.092 0.813 1.104 0.803 L 1.104 0.803 Z M 0.094 0.607 L 0.094 0.051 L 0.328 0.141 L 0.328 0.697 L 0.094 0.607 Z M 0.703 0.049 L 0.703 0.605 L 0.422 0.699 L 0.422 0.143 L 0.703 0.049 Z M 0.797 0.051 L 1.031 0.141 L 1.031 0.697 L 0.797 0.607 L 0.797 0.051 L 0.797 0.051 Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-function ClockIcon() {
-  return (
-    <svg width="12" height="18" viewBox="0 0 12 18" fill="none" style={{ color: INK }} aria-hidden>
-      <path
-        transform="translate(0 13.5) scale(12 -12)"
-        d="M 0.906 0.375 C 0.906 0.52 0.828 0.652 0.703 0.727 C 0.576 0.799 0.422 0.799 0.297 0.727 C 0.17 0.652 0.094 0.52 0.094 0.375 C 0.094 0.229 0.17 0.096 0.297 0.021 C 0.422 -0.051 0.576 -0.051 0.703 0.021 C 0.828 0.096 0.906 0.229 0.906 0.375 Z M 0 0.375 C 0 0.553 0.094 0.717 0.25 0.807 C 0.404 0.896 0.594 0.896 0.75 0.807 C 0.904 0.717 1 0.553 1 0.375 C 1 0.195 0.904 0.031 0.75 -0.059 C 0.594 -0.148 0.404 -0.148 0.25 -0.059 C 0.094 0.031 0 0.195 0 0.375 Z M 0.453 0.641 C 0.453 0.666 0.473 0.688 0.5 0.688 C 0.525 0.688 0.547 0.666 0.547 0.641 L 0.547 0.398 L 0.713 0.289 C 0.734 0.273 0.74 0.244 0.727 0.223 C 0.711 0.201 0.682 0.195 0.66 0.211 L 0.473 0.336 C 0.461 0.344 0.453 0.359 0.453 0.375 L 0.453 0.641 Z"
-        fill="currentColor"
-      />
-    </svg>
   );
 }

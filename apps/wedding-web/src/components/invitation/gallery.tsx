@@ -2,26 +2,30 @@
 
 import { useEffect, useState, type CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
-import { INK, TAN, SCRIPT } from './theme';
+import { INK, SCRIPT } from './theme';
 import { Reveal } from './reveal';
 
-// Gallery (§2.5): 12 photos, 3-col dense grid with locked span pattern, lightbox
-// with keyboard support (Esc/←/→), wrap-around, scrim click closes.
+// Gallery (§2.5 rev, Figma 132:212): script two-line heading, then three photo
+// blocks with a caption under each. 12 slots (3+5+4); extra host photos flow into the
+// last block as 1×1 (lightbox indexes the flat list). Keyboard lightbox kept.
 const IMAGES = ['g02', 'g03', 'g04', 'g05', 'g06', 'g07', 'g08', 'g12', 'g01', 'g09', 'g10', 'g11'];
-// span pattern + reveal stagger per prototype, indexed like IMAGES
-const CELLS: { col?: number; row?: number; delay?: number }[] = [
-  { col: 2, row: 2 },
-  { delay: 100 },
-  { delay: 180 },
-  { row: 2 },
-  { col: 2, row: 2, delay: 100 },
-  {},
-  { row: 2, delay: 100 },
-  { row: 2, delay: 180 },
-  { delay: 60 },
-  {},
-  { delay: 100 },
-  { delay: 180 },
+type Cell = { col?: number; row?: number; delay?: number };
+const BLOCKS: { cells: Cell[]; captionKey: string; captionPad: number }[] = [
+  {
+    cells: [{ col: 2, row: 2 }, { delay: 100 }, { delay: 180 }],
+    captionKey: 'caption1',
+    captionPad: 24,
+  },
+  {
+    cells: [{}, { delay: 100 }, { delay: 180 }, {}, { col: 2, delay: 100 }],
+    captionKey: 'caption2',
+    captionPad: 36,
+  },
+  {
+    cells: [{ col: 3, row: 2 }, { delay: 100 }, { delay: 180 }, { delay: 260 }],
+    captionKey: 'caption3',
+    captionPad: 36,
+  },
 ];
 
 const navBtn: CSSProperties = {
@@ -64,6 +68,19 @@ export function Gallery({ images }: { images?: string[] }) {
   const srcs = images ?? IMAGES.map((img) => `/invite/${img}.jpg`);
   const n = srcs.length;
 
+  // Deal srcs into the 3 fixed blocks; anything past the 11 patterned slots
+  // joins the last block as 1×1 cells. Short lists just leave trailing blocks empty.
+  let offset = 0;
+  const blocks = BLOCKS.map((b, bi) => {
+    const isLast = bi === BLOCKS.length - 1;
+    const want = isLast ? Math.max(b.cells.length, n - offset) : b.cells.length;
+    const count = Math.min(want, Math.max(0, n - offset));
+    const cells = Array.from({ length: count }, (_, ci) => b.cells[ci] ?? {});
+    const out = { ...b, cells, offset };
+    offset += count;
+    return out;
+  }).filter((b) => b.cells.length > 0);
+
   useEffect(() => {
     if (index < 0) return;
     const onKey = (e: KeyboardEvent) => {
@@ -86,61 +103,89 @@ export function Gallery({ images }: { images?: string[] }) {
     >
       <Reveal
         style={{
+          position: 'relative',
+          width: 260,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 17,
           fontFamily: SCRIPT,
-          fontSize: 44,
-          lineHeight: 1.2,
+          fontSize: 40,
+          lineHeight: 'normal',
+          textBox: 'trim-both cap alphabetic',
           color: INK,
-          textAlign: 'center',
         }}
       >
-        {t('heading')}
+        <span>{t('line1')}</span>
+        <span style={{ textAlign: 'right' }}>{t('line2')}</span>
+        {/* Con dấu HG (asset chung với envelope) — nhỏ, đứng tách bên trái "Forever.",
+            không đè lên chữ (design để hở một khoảng trước chữ F). */}
+        <img
+          src="/invite/stamp.png"
+          alt=""
+          aria-hidden
+          style={{
+            position: 'absolute',
+            left: 74,
+            top: 73,
+            width: 42,
+            height: 42,
+            filter: 'drop-shadow(1px 2px 5px rgba(101,101,101,0.35))',
+          }}
+        />
       </Reveal>
-      <Reveal
-        style={{
-          marginTop: 8,
-          fontWeight: 600,
-          fontSize: 11,
-          letterSpacing: '0.3em',
-          textTransform: 'uppercase',
-          color: TAN,
-        }}
-      >
-        {t('kicker')}
-      </Reveal>
-      <div
-        style={{
-          marginTop: 30,
-          width: 314,
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gridAutoRows: 118,
-          gap: 16,
-          gridAutoFlow: 'dense',
-        }}
-      >
-        {srcs.map((src, i) => (
-          <Reveal
-            key={src + i}
-            delay={CELLS[i]?.delay}
-            style={{
-              gridColumn: CELLS[i]?.col ? `span ${CELLS[i].col}` : undefined,
-              gridRow: CELLS[i]?.row ? `span ${CELLS[i].row}` : undefined,
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setIndex(i)}
-              aria-label={t('photoAlt', { index: i + 1 })}
+      <div style={{ marginTop: 36, width: 313, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        {blocks.map((block, bi) => (
+          <div key={bi} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <div
               style={{
-                width: '100%',
-                height: '100%',
-                border: 'none',
-                padding: 0,
-                background: `url(${src}) center / cover no-repeat`,
-                cursor: 'pointer',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gridAutoRows: 118,
+                gap: 16,
+                gridAutoFlow: 'dense',
               }}
-            />
-          </Reveal>
+            >
+              {block.cells.map((cell, ci) => {
+                const i = block.offset + ci;
+                return (
+                  <Reveal
+                    key={srcs[i] + i}
+                    delay={cell.delay}
+                    style={{
+                      gridColumn: cell.col ? `span ${cell.col}` : undefined,
+                      gridRow: cell.row ? `span ${cell.row}` : undefined,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setIndex(i)}
+                      aria-label={t('photoAlt', { index: i + 1 })}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        border: 'none',
+                        padding: 0,
+                        background: `url(${srcs[i]}) center / cover no-repeat`,
+                        cursor: 'pointer',
+                      }}
+                    />
+                  </Reveal>
+                );
+              })}
+            </div>
+            <p
+              style={{
+                margin: 0,
+                padding: `0 ${block.captionPad}px`,
+                fontSize: 12,
+                lineHeight: 1.5,
+                color: INK,
+                textAlign: 'center',
+              }}
+            >
+              {t(block.captionKey)}
+            </p>
+          </div>
         ))}
       </div>
       {index >= 0 ? (

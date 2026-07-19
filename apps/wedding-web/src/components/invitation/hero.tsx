@@ -11,16 +11,30 @@ import { Reveal } from './reveal';
 export function Hero({ bgUrl }: { bgUrl?: string }) {
   const t = useTranslations('hero');
   const [hint, setHint] = useState(false);
-  const [hintOpacity, setHintOpacity] = useState(1);
+  const [hintOpacity, setHintOpacity] = useState(0);
 
   useEffect(() => {
     try {
       const force = new URLSearchParams(location.search).has('hint');
-      if (force || !localStorage.getItem('hg_hint_seen')) setHint(true);
+      if (!force && localStorage.getItem('hg_hint_seen')) return;
     } catch {
-      /* storage blocked → no hint, fine */
+      return; /* storage blocked → no hint, fine */
     }
+    const sc = document.scrollingElement ?? document.documentElement;
+    const timer = setTimeout(() => {
+      if (sc.scrollTop < 30) setHint(true);
+    }, 2000);
+    return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    // two rAFs so the mount (opacity: 0) commits before the transition target
+    // (opacity: 1) — a single rAF can still land in the same paint on some
+    // browsers and skip the fade-in.
+    if (!hint) return;
+    const raf = requestAnimationFrame(() => requestAnimationFrame(() => setHintOpacity(1)));
+    return () => cancelAnimationFrame(raf);
+  }, [hint]);
 
   useEffect(() => {
     if (!hint) return;
@@ -104,38 +118,18 @@ export function Hero({ bgUrl }: { bgUrl?: string }) {
           style={{
             position: 'absolute',
             left: '50%',
-            bottom: 108,
+            bottom: 14,
             zIndex: 3,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 7,
+            width: 13,
+            height: 21,
+            borderRadius: 7,
+            border: '1px solid rgba(255,251,248,0.55)',
             opacity: hintOpacity,
-            transition: 'opacity 0.9s ease',
+            transition: 'opacity 1.4s ease',
             pointerEvents: 'none',
           }}
         >
-          <span
-            style={{
-              fontSize: 10,
-              letterSpacing: '0.24em',
-              textTransform: 'uppercase',
-              color: 'rgba(255,251,248,0.9)',
-              textShadow: '0 1px 8px rgba(59,47,39,0.5)',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {t('scrollHint')}
-          </span>
-          <span
-            style={{
-              width: 8,
-              height: 8,
-              borderRight: '1.5px solid rgba(255,251,248,0.9)',
-              borderBottom: '1.5px solid rgba(255,251,248,0.9)',
-              transform: 'rotate(45deg)',
-            }}
-          />
+          <span className="invite-hint-dot" />
         </div>
       ) : null}
     </div>
