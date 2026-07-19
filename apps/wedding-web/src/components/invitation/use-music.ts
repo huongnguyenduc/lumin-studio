@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 
 // Background music per HANDOFF §2.10: never on load — first attempt on first
 // scroll; if the browser rejects (no gesture yet), a one-time pointerdown retry
-// starts it on the first tap. Fade in to 0.85 over 2.4s, fade out 0.7s then
-// pause. Degrades silently when the source is absent/unplayable (audio 'error'
+// starts it on the first tap. Fade in to 0.6 over 2.4s, fade out 0.7s then
+// pause — also fades out when the tab/window loses visibility (switching app
+// or tab), so the music doesn't keep playing in the background unnoticed.
+// Degrades silently when the source is absent/unplayable (audio 'error'
 // event) — NOT via a HEAD existence check: admin-uploaded music lives on a
 // different origin (wedding-assets.luminstudio.vn) with no CORS policy for
 // reads, so a cross-origin `fetch(HEAD)` always network-errors even though
@@ -48,7 +50,7 @@ export function useMusic(srcOverride?: string) {
       audio.play().then(
         () => {
           setPlaying(true);
-          fadeVolume(0.85, 2400);
+          fadeVolume(0.6, 2400);
         },
         () => {
           if (retryRef.current) return;
@@ -87,7 +89,15 @@ export function useMusic(srcOverride?: string) {
   };
 
   useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.hidden && playingRef.current) {
+        setPlaying(false);
+        fadeVolume(0, 700);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       if (fadeTimer.current) clearInterval(fadeTimer.current);
       if (retryRef.current) window.removeEventListener('pointerdown', retryRef.current);
       audioRef.current?.pause();
