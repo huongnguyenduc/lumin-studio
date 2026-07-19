@@ -146,6 +146,8 @@ export const vi = {
     // accessible name) and the mono drag-hint overlaid on the running viewer — both hi-fi desktop detail.
     view3dTile: '360°',
     viewer3dCaption: 'kéo xoay · cuộn zoom',
+    // Shown instead of the caption while an engraving is typed — a tap on the model re-anchors it.
+    engravePickHint: 'chạm vào mẫu để chọn vị trí khắc',
     view3dLoading: 'Đang tải mẫu 3D…',
     view3dError: 'Chưa tải được mẫu 3D — bạn xem ảnh phía trên nhé.',
     view3dAlt: 'Mẫu 3D của {name}',
