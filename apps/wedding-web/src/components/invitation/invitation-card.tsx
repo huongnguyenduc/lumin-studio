@@ -32,6 +32,7 @@ export function InvitationCard({
   const t = useTranslations('footer');
   const music = useMusic(settings.musicUrl);
   const scaleRef = useRef<HTMLDivElement>(null);
+  const dvhRef = useRef<HTMLDivElement>(null);
 
   // Music starts on first scroll (§2.10) — autoplay usually rejects, then the
   // one-time pointerdown retry inside useMusic picks it up on first tap.
@@ -54,13 +55,15 @@ export function InvitationCard({
   // Next's CSS pipeline (Lightning CSS) silently drops any calc()/clamp()/max()
   // value for the `zoom` property, so this can't be expressed as plain CSS.
   // Below 1024px it's driven by viewport HEIGHT so the hero (fixed 852px tall
-  // in design space) always fills exactly one screen — `visualViewport` (not
-  // just `resize`) matters on mobile Safari: its address-bar show/hide changes
-  // the *visible* height without firing `resize`, which was leaving a
-  // cream-colored gap under the hero on some devices (e.g. iPhone 15 Pro Max)
-  // once the bar collapsed. Below 1024px the static @media tiers in
-  // globals.css are the pre-hydration fallback only — this effect overrides
-  // them once JS runs.
+  // in design space) always fills exactly one screen. Measured off a hidden
+  // `height: 100dvh` sentinel instead of `window.visualViewport.height` —
+  // dvh is Safari's own live answer to "how tall is the visible area right
+  // now" (toolbar shown or collapsed), whereas visualViewport's *first*
+  // reading on load races the toolbar-settle animation with no reliable
+  // follow-up resize, which was leaving a cream-colored gap under the hero
+  // on some devices (e.g. iPhone 15 Pro Max). Below 1024px the static
+  // @media tiers in globals.css are the pre-hydration fallback only — this
+  // effect overrides them once JS runs.
   // At 1024px+ the page just scrolls (there's no "one screen" to fill), so
   // it's driven by viewport WIDTH instead — otherwise the card sat pinned at
   // its 1.25 floor on any wide-but-not-very-tall window and read as tiny on a
@@ -75,7 +78,7 @@ export function InvitationCard({
         const targetWidth = Math.min(vw * 0.4, 760);
         el.style.zoom = String(Math.max(1.25, targetWidth / 393));
       } else {
-        const vh = window.visualViewport?.height ?? window.innerHeight;
+        const vh = dvhRef.current?.getBoundingClientRect().height ?? window.innerHeight;
         el.style.zoom = String(vh / 852);
       }
     };
@@ -91,6 +94,11 @@ export function InvitationCard({
   return (
     <>
       <MusicButton playing={music.playing} onToggle={music.toggle} />
+      {/* Measurement-only: 100dvh tracks Safari's live toolbar state, read via ref above. */}
+      <div
+        ref={dvhRef}
+        style={{ position: 'fixed', top: 0, height: '100dvh', width: 0, visibility: 'hidden' }}
+      />
       <div
         ref={scaleRef}
         className="invite-scale"
