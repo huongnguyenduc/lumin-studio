@@ -14,6 +14,29 @@ use crate::sprite_render::SpriteRenderProcessor;
 /// names [f-2]). A named type so the `spawn_blocking` closure signature stays clippy-simple.
 type IngestOutput = (Vec<u8>, Option<Vec<u8>>, Vec<String>);
 
+/// RAII scratch dir under the OS temp dir, shared by `model_ingest` and `sprite_render`: removed on drop
+/// no matter which `?` early-return fires (fetch/timeout/read failure), so a failed job doesn't leak
+/// `/tmp/lumin-*` forever — the old `let _ = remove_dir_all(...)` only ran on the happy path.
+pub(crate) struct TempJobDir(PathBuf);
+
+impl TempJobDir {
+    pub(crate) fn create(prefix: &str, job_id: &str) -> std::io::Result<Self> {
+        let dir = std::env::temp_dir().join(format!("{prefix}-{job_id}"));
+        std::fs::create_dir_all(&dir)?;
+        Ok(Self(dir))
+    }
+
+    pub(crate) fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for TempJobDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 /// Processes `model_ingest` jobs. `store` is None when the assets bucket creds are unwired — then every
 /// job is Transient (redeliver, wait for creds) rather than failed, mirroring core-api's fail-closed
 /// upload stores. `script` is the baked `ingest.py` path; `python` the interpreter that has trimesh.
@@ -58,13 +81,12 @@ impl Processor for ModelIngestProcessor {
         );
         let (glb, structured_glb, object_names) = tokio::task::spawn_blocking(
             move || -> Result<IngestOutput, ProcessError> {
-                let dir = std::env::temp_dir().join(format!("lumin-ingest-{job_id}"));
-                std::fs::create_dir_all(&dir)
+                let dir = TempJobDir::create("lumin-ingest", &job_id)
                     .map_err(|e| ProcessError::Transient(format!("tmpdir: {e}")))?;
-                let input = dir.join(format!("input.{ext}"));
+                let input = dir.path().join(format!("input.{ext}"));
                 std::fs::write(&input, &src)
                     .map_err(|e| ProcessError::Transient(format!("write source: {e}")))?;
-                let manifest = run_ingest(&python, &script, &input, &dir, timeout_secs)?; // already-classified ProcessError
+                let manifest = run_ingest(&python, &script, &input, dir.path(), timeout_secs)?; // already-classified ProcessError
                 let glb = std::fs::read(&manifest.glb_path)
                     .map_err(|e| ProcessError::Transient(format!("read glb: {e}")))?;
                 // f-4: read the structured glb too (if the script emitted one — absent for a nameless source).
@@ -75,7 +97,7 @@ impl Processor for ModelIngestProcessor {
                     None => None,
                 };
                 tracing::info!(job = %job_id, dims_mm = ?manifest.dims_mm, triangles = manifest.triangles, objects = manifest.object_names.len(), structured = structured.is_some(), "model ingested");
-                let _ = std::fs::remove_dir_all(&dir); // best-effort
+                // `dir` drops here (and on every early return above via `?`), always cleaning up.
                 Ok((glb, structured, manifest.object_names))
             },
         )

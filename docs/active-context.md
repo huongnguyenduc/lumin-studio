@@ -6,7 +6,20 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
-**➡️ NOW (2026-07-19, nhánh `main`, CHƯA commit): wedding-web — hero section khớp Figma (`Hieu-Giang` node 107:212) + 2 fix bleed/overlap phát hiện dọc đường, đều đã verify xanh trên preview local (`pnpm --filter @lumin/wedding-web typecheck` xanh).** MCP Figma cần đổi sang account `luminstudio.work@gmail.com` (account cũ `web.dev@cellphones.com.vn` không có quyền file) mới `get_design_context` được — nếu Figma MCP báo "no edit access" lần sau, nhắc user check lại `/mcp` auth trước khi debug code.
+**➡️ NOW (2026-07-19, nhánh `fix/asset-worker-disk-leak` off `main`): C: đầy trên box WSL2 ("Luca"/ADMIN-PC) làm WSL chết → giangvahieu.luminstudio.vn lỗi Cloudflare 1033 (tunnel không reach được).** Audit repo tìm nguồn ghi disk không kiểm soát (agent Explore) → 2 chỗ code + 1 chỗ ops đã fix, **đang tạo PR**:
+1. `services/asset-worker/src/model_ingest.rs` — thêm `TempJobDir` (RAII, `Drop` xoá dir) thay `let _ = remove_dir_all` chỉ chạy khi thành công → trước đó mỗi job lỗi/timeout (fetch/ingest/read fail) rò `/tmp/lumin-ingest-{job_id}` vĩnh viễn trong container `docker run --gpus all` chạy thẳng trên host (ADR-048) → ăn thẳng vào WSL2 vhdx = C:.
+2. `services/asset-worker/src/sprite_render.rs` — cùng pattern, dùng lại `TempJobDir` từ model_ingest (`lumin-sprite-{job_id}`), job Blender render nặng hơn nên dễ leak hơn.
+3. `.github/workflows/deploy.yml` — thêm step "Prune old image tags + build cache" (luôn chạy kể cả deploy fail): giữ 5 tag gần nhất/repo qua `docker rmi`, rồi `docker image prune -f` + `docker builder prune -f --filter until=168h`. Trước đó mỗi deploy build image SHA-tag MỚI, không bao giờ xoá.
+
+`cargo test` (44 pass, gồm `real_e2e_fetch_ingest_upload`) xanh; YAML kiểm tay khớp indent các step khác.
+
+**✅ Box đã sống lại (`ssh pc-server` OK) — đã dọn tay ngay trên box (không đợi PR merge) vì cần site sống lại sớm:** `docker image prune -a -f` + `docker builder prune -af` + `docker container prune -f` → 288→3 image, build cache 93.2GB→0, disk guest 131G→37G used (`df -h /`: 1007G total, 4% used). **Chưa xong hẳn:** freed block bên trong ext4 KHÔNG tự trả lại cho `.vhdx` trên Windows C: (WSL2 known behavior) — cần user tự chạy `wsl --shutdown` + `Optimize-VHD -Mode Full` (hoặc `diskpart compact vdisk`) từ PowerShell admin bên Windows, tôi không có shell Windows để làm hộ. `fstrim` qua SSH cũng fail (cần sudo password, không có TTY/askpass).
+
+**NEXT:** mở PR cho `fix/asset-worker-disk-leak` → merge → deploy tự áp step prune mới cho các lần sau.
+
+---
+
+**(2026-07-19, đã đẩy lên PR #175): wedding-web — hero section khớp Figma (`Hieu-Giang` node 107:212) + 2 fix bleed/overlap phát hiện dọc đường, đều đã verify xanh trên preview local (`pnpm --filter @lumin/wedding-web typecheck` xanh).** MCP Figma cần đổi sang account `luminstudio.work@gmail.com` (account cũ `web.dev@cellphones.com.vn` không có quyền file) mới `get_design_context` được — nếu Figma MCP báo "no edit access" lần sau, nhắc user check lại `/mcp` auth trước khi debug code.
 
 Đã sửa 3 chỗ trong `apps/wedding-web/src/components/invitation/`:
 1. `hero.tsx` — monogram giờ render nguyên khối asset SVG tải từ Figma (`public/invite/logo-oval.svg`, thay khung oval CSS tự dựng trước đó không khớp thiết kế); gradient đáy + "save the date" trả về đúng token gốc (`DARK`/`TAN_LIGHT`) sau khi rõ bản trước đó tự đoán sai theo ảnh.

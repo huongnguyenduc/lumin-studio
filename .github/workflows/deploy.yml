@@ -149,3 +149,21 @@ jobs:
       - name: Deployed state
         if: always()
         run: kubectl -n "$NS" get deploy,pods -o wide 2>&1 | head -30
+
+      # Every deploy builds fresh SHA-tagged images (line 3 comment) and none of them are ever removed
+      # — on this box that's the WSL2 vhdx, i.e. Windows C:. Keep the last 5 tags per repo (rollback
+      # margin) and drop the rest, then clear dangling layers/build cache. Runs even on a failed deploy
+      # so a broken run doesn't also skip cleanup.
+      - name: Prune old image tags + build cache
+        if: always()
+        run: |
+          set -euo pipefail
+          for repo in lumin-core-api lumin-migrate lumin-admin lumin-storefront \
+                      lumin-wedding-api lumin-wedding-migrate lumin-wedding-web; do
+            docker images "$repo" --format '{{.Tag}}' \
+              | grep -v '^prod$' \
+              | tail -n +6 \
+              | xargs -r -I{} docker rmi -f "$repo:{}"
+          done
+          docker image prune -f
+          docker builder prune -f --filter until=168h
