@@ -77,26 +77,30 @@ export function InvitationCard({
       const el = scaleRef.current;
       if (!el) return;
       const vw = window.innerWidth;
+      const vh = window.visualViewport?.height ?? window.innerHeight;
       if (vw >= 1024) {
-        el.style.zoom = String(Math.max(1.25, Math.min(vw * 0.4, 500) / 393));
-        // Desktop keeps the hero at its design 852px rather than fitting it to
-        // the window. Fitting it squeezes the hero to ~607 design px, which is
-        // barely more than the 178px the envelope rides up over it — so the
-        // white lace panels end up ABOVE the 130px bottom gradient, over the
-        // bright part of the photo, reading as a pale band across the bottom
-        // of the first screen. At this zoom 852px overfills the window anyway,
-        // so the photo still covers it edge to edge and the overlap stays
-        // below the fold, exactly as the design intends.
-        el.style.removeProperty('--invite-hero-h');
-      } else {
-        // Phones: fit the hero to the visible height so it's exactly one
-        // screen whatever Safari's toolbar is doing. This lands on ~852px on
-        // its own (phone aspect ≈ the 393×852 Figma canvas), so the envelope
-        // overlap stays tucked inside the gradient like the design assumes.
-        const zoom = vw / 393;
-        const vh = window.visualViewport?.height ?? window.innerHeight;
+        const zoom = Math.max(1.25, Math.min(vw * 0.4, 500) / 393);
         el.style.zoom = String(zoom);
         el.style.setProperty('--invite-hero-h', `${vh / zoom}px`);
+        // The two requirements only conflict on desktop, and this is the way
+        // out. A hero sized to exactly the viewport means the envelope's 178px
+        // ride-up ALWAYS lands on the first screen — its white lace panels read
+        // as a pale band across the bottom. Leaving the hero at its design
+        // 852px pushes the overlap below the fold but then overshoots a desktop
+        // window by ~250px, hiding "save the date". Clipping the overlapping
+        // strip off the envelope buys both: hero is exactly one screen, and
+        // nothing is painted over the photo. The cost is the flap no longer
+        // bleeding over the photo — a decorative touch phones still get.
+        el.style.setProperty('--invite-envelope-clip', '178px');
+      } else {
+        // Phones: fit the hero to the visible height so it's exactly one screen
+        // whatever Safari's toolbar is doing. This lands on ~852px on its own
+        // (phone aspect ≈ the 393×852 Figma canvas), so the overlap sits where
+        // the design put it and the lace stays tucked into the bottom gradient.
+        const zoom = vw / 393;
+        el.style.zoom = String(zoom);
+        el.style.setProperty('--invite-hero-h', `${vh / zoom}px`);
+        el.style.removeProperty('--invite-envelope-clip');
       }
       // Reveal only once the real zoom is applied — SSR/pre-hydration paints
       // with the static @media fallback (visually wrong) before any JS runs

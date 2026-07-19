@@ -14,19 +14,28 @@ const laceV: CSSProperties = {
   backgroundSize: '6px auto',
 };
 
-/// How far the envelope rides up over the hero photo (§2.2). The hero adds this
-/// to its own height so the overlap always lands BELOW the fold — otherwise the
-/// white lace panels bleed into the bottom of the first screen once the hero is
-/// sized to exactly the viewport.
-export const ENVELOPE_OVERLAP = 178;
-
 // Envelope transition (§2.2): flap (clip-path), two rotated lace panels, wax
 // stamp, vertical lace borders (matches Letter). Pure decoration, no
-// interaction; overlaps the hero by −ENVELOPE_OVERLAP.
+// interaction; overlaps the hero by −178px.
+//
+// --invite-envelope-clip trims that overlapping strip back off. InvitationCard
+// sets it to 178px on desktop, where the hero is sized to exactly the viewport
+// and the overlap would otherwise put the white lace panels on the first screen
+// as a pale band. Clipping (rather than dropping the negative margin) keeps the
+// envelope's visible content flush against the photo — zeroing the margin
+// instead leaves a blank strip where the overlapped part used to be.
 export function Envelope() {
   const t = useTranslations('hero');
   return (
-    <div style={{ position: 'relative', height: 350, marginTop: -ENVELOPE_OVERLAP, zIndex: 2 }}>
+    <div
+      style={{
+        position: 'relative',
+        height: 350,
+        marginTop: -178,
+        clipPath: 'inset(var(--invite-envelope-clip, 0px) 0 0 0)',
+        zIndex: 2,
+      }}
+    >
       <div style={{ ...laceV, left: 0 }} />
       <div style={{ ...laceV, left: 6 }} />
       <div style={{ ...laceV, right: 0 }} />
