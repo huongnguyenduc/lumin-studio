@@ -10,14 +10,11 @@ import './globals.css';
 
 // viewportFit: 'cover' matters only for standalone/home-screen mode — in a
 // normal Safari tab the status bar strip is fixed browser chrome that page
-// content can never draw under (confirmed: Safari's contentInset.top ignores
-// viewport-fit in tab mode). What DOES work in tab mode is themeColor: Safari
-// tints that chrome from it. #edf1f1 is the averaged pixel color of the top
-// ~3% of hero.jpg (sky/veil), so the strip blends with the photo instead of
-// standing out as a flat cream band. Static, not settings.heroUrl-derived —
-// only mismatches if an admin swaps in a hero photo with a very different
-// top color, which nobody has done yet.
-export const viewport: Viewport = { viewportFit: 'cover', themeColor: '#edf1f1' };
+// content can never draw under. themeColor covers browsers that do tint that
+// chrome from it; iOS Safari in practice takes the body background instead
+// (see globals.css), so both carry the same value: #eff3f2, the averaged
+// color of the hero photo's visible top edge.
+export const viewport: Viewport = { viewportFit: 'cover', themeColor: '#eff3f2' };
 
 // Site meta is admin-configurable (HANDOFF §3.5): settings override the catalog
 // defaults so link previews on Zalo/Messenger show the host's title/OG/icon.

@@ -53,23 +53,19 @@ export function InvitationCard({
   // Zoom scales the whole 393px canvas as a unit — set imperatively because
   // Next's CSS pipeline (Lightning CSS) silently drops any calc()/clamp()/max()
   // value for the `zoom` property, so this can't be expressed as plain CSS.
-  // Below 1024px: zoom is WIDTH-driven (canvas always fills the screen
-  // edge-to-edge) and the HERO'S HEIGHT is made dynamic to absorb the
-  // vertical mismatch — --invite-hero-h is set to exactly the visible
-  // height divided by the zoom, so the hero fills one screen precisely.
-  // Every single-factor scheme tried before failed one way or the other:
-  // height-driven zoom left side margins (device width doesn't shrink when
-  // Safari's toolbar shows, but height does), width-driven overflowed the
-  // hero's "save the date" under the toolbar, min(width,height) just picked
-  // which of those two bugs you got. Splitting the concerns — zoom owns
-  // width, hero height owns the vertical fit — is the only shape that fills
-  // both axes with nothing clipped. Safe because the hero's children are
-  // all anchored to its top/bottom edges and its photo uses `cover`.
-  // At 1024px+ zoom targets ~40% of window width (capped) instead of 100% —
-  // otherwise the card sat pinned at its 1.25 floor on any
-  // wide-but-not-very-tall window and read as tiny on a real desktop
-  // monitor — and the hero keeps its design-space 852px (the page just
-  // scrolls; there is no "one screen" to fit).
+  // Two separate concerns, deliberately not fused into one factor:
+  //   zoom  → how wide the card is. Below 1024px that's the full screen;
+  //           above it, ~40% of window width (capped) so the card doesn't
+  //           read as tiny on a desktop monitor or balloon on an ultrawide.
+  //   --invite-hero-h → how tall the hero is, in design-space px, always
+  //           set so hero × zoom === the visible viewport height.
+  // Every attempt to do both with a single zoom factor failed one way or the
+  // other: height-driven left side margins (device width doesn't shrink when
+  // Safari's toolbar shows, but height does), width-driven pushed the hero's
+  // "save the date" under the toolbar, min(width,height) just picked which of
+  // those two you got. Letting the hero's height flex is what makes both axes
+  // fit at once, and it's safe because the hero's children are all anchored
+  // to its top/bottom edges and its photo is `cover`.
   // useLayoutEffect (not useEffect): runs synchronously before the browser
   // paints, so the JS-computed zoom replaces the static @media fallback
   // before the user ever sees it — useEffect fires after paint, which was
@@ -80,16 +76,10 @@ export function InvitationCard({
       const el = scaleRef.current;
       if (!el) return;
       const vw = window.innerWidth;
-      if (vw >= 1024) {
-        const targetWidth = Math.min(vw * 0.4, 760);
-        el.style.zoom = String(Math.max(1.25, targetWidth / 393));
-        el.style.removeProperty('--invite-hero-h');
-      } else {
-        const zoom = vw / 393;
-        const vh = window.visualViewport?.height ?? window.innerHeight;
-        el.style.zoom = String(zoom);
-        el.style.setProperty('--invite-hero-h', `${vh / zoom}px`);
-      }
+      const vh = window.visualViewport?.height ?? window.innerHeight;
+      const zoom = vw >= 1024 ? Math.max(1.25, Math.min(vw * 0.4, 760) / 393) : vw / 393;
+      el.style.zoom = String(zoom);
+      el.style.setProperty('--invite-hero-h', `${vh / zoom}px`);
       // Reveal only once the real zoom is applied — SSR/pre-hydration paints
       // with the static @media fallback (visually wrong) before any JS runs
       // at all, a gap useLayoutEffect can't close by itself; staying hidden
