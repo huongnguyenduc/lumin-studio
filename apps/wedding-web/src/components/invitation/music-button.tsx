@@ -23,7 +23,7 @@ export function MusicButton({ playing, onToggle }: { playing: boolean; onToggle:
         // TAP target to 44px (a11y rule ≥44px) without changing the rendered size.
         position: 'fixed',
         right: 22,
-        bottom: 27,
+        bottom: 'calc(27px + env(safe-area-inset-bottom))',
         zIndex: 20,
         width: 44,
         height: 44,
