@@ -33,3 +33,7 @@ Cat Peek - Behavior Spec.md
 
 # Design-reference prototype (handoff HTML/JS/assets) — not code we format.
 /design_handoff_wedding_invitation/
+
+# Draco decoder vendored verbatim from three (self-hosted, PDPL) — third-party emscripten
+# output, not ours to format (mirrors the eslint ignore).
+/apps/storefront/public/draco/
