@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 
 use crate::job::AssetJob;
-use crate::model_ingest::extension_of;
+use crate::model_ingest::{extension_of, TempJobDir};
 use crate::objectstore::AssetStore;
 use crate::processor::{Outcome, ProcessError, Processor};
 use crate::render::run_render;
@@ -63,17 +63,17 @@ impl Processor for SpriteRenderProcessor {
             self.timeout_secs,
         );
         let sprite = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, ProcessError> {
-            let dir = std::env::temp_dir().join(format!("lumin-sprite-{job_id}"));
-            std::fs::create_dir_all(&dir)
+            let dir = TempJobDir::create("lumin-sprite", &job_id)
                 .map_err(|e| ProcessError::Transient(format!("tmpdir: {e}")))?;
-            let input = dir.join(format!("input.{ext}"));
+            let input = dir.path().join(format!("input.{ext}"));
             std::fs::write(&input, &src)
                 .map_err(|e| ProcessError::Transient(format!("write source: {e}")))?;
-            let manifest = run_render(&python, &script, &input, &dir, &part_colors_json, timeout_secs)?; // already-classified ProcessError
+            let manifest =
+                run_render(&python, &script, &input, dir.path(), &part_colors_json, timeout_secs)?; // already-classified ProcessError
             let sprite = std::fs::read(&manifest.sprite_path)
                 .map_err(|e| ProcessError::Transient(format!("read sprite: {e}")))?;
             tracing::info!(job = %job_id, frames = manifest.frames, cols = manifest.cols, "sprite rendered");
-            let _ = std::fs::remove_dir_all(&dir); // best-effort
+            // `dir` drops here (and on every early return above via `?`), always cleaning up.
             Ok(sprite)
         })
         .await
