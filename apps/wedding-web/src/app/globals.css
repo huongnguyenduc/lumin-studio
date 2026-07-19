@@ -64,14 +64,15 @@
 /* Desktop (§7 decision 1): scale the whole 393px composition as a unit — never
  * reflow (internal absolute positions depend on the 393px canvas). `zoom` keeps
  * layout height correct where transform:scale would leave a phantom gap; the
- * 1.25 factor is HANDOFF's suggestion, confirm visually (§9). On tall windows
- * a flat 1.25 leaves the hero shorter than the viewport, exposing the
- * envelope section's negative-margin overlap into the first screen — scale
- * with viewport height (852px = hero's own height) so hero still fills it,
- * same effect as on a tall phone, never going below the 1.25 baseline. */
+ * 1.25 factor is HANDOFF's suggestion, confirm visually (§9). This is the
+ * static baseline (first paint, no-JS) — on tall windows JS (invitation-card
+ * .tsx) overrides `zoom` inline to scale with viewport height instead, since
+ * Next's CSS pipeline (Lightning CSS) silently drops `zoom` declarations that
+ * use calc()/clamp()/max() (accepts only a plain number), so that scaling
+ * can't be expressed in CSS alone here. */
 @media (min-width: 1024px) {
   .invite-scale {
-    zoom: clamp(1.25, calc(100vh / 852), 2);
+    zoom: 1.25;
   }
 }
 

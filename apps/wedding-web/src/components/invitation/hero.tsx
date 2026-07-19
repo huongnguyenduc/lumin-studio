@@ -2,20 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { CREAM, DARK, INK, SCRIPT, TAN_LIGHT } from './theme';
+import { DARK, SCRIPT, TAN_LIGHT } from './theme';
 import { Reveal } from './reveal';
 
 // Hero (§2.1): full-bleed photo, logo mark + rotated ellipse borders, gradient,
-// script "save the date", music toggle, one-time scroll hint (localStorage).
-export function Hero({
-  playing,
-  onToggleMusic,
-  bgUrl,
-}: {
-  playing: boolean;
-  onToggleMusic: () => void;
-  bgUrl?: string;
-}) {
+// script "save the date", one-time scroll hint (localStorage). Music toggle
+// lives in <MusicButton> — floats over the whole page, not just the hero.
+export function Hero({ bgUrl }: { bgUrl?: string }) {
   const t = useTranslations('hero');
   const [hint, setHint] = useState(false);
   const [hintOpacity, setHintOpacity] = useState(1);
@@ -93,80 +86,6 @@ export function Hero({
       >
         {t('saveTheDate')}
       </Reveal>
-      <button
-        type="button"
-        onClick={onToggleMusic}
-        title={t('musicToggle')}
-        aria-label={t('musicToggle')}
-        aria-pressed={playing}
-        className="invite-music-btn"
-        style={{
-          // Visual puck is 32px (§2.1); border-box + transparent border pads the
-          // TAP target to 44px (a11y rule ≥44px) without changing the rendered size.
-          position: 'absolute',
-          right: 22,
-          bottom: 27,
-          width: 44,
-          height: 44,
-          borderRadius: 22,
-          border: '6px solid transparent',
-          boxSizing: 'border-box',
-          padding: 0,
-          background: INK,
-          backgroundClip: 'padding-box',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
-        }}
-      >
-        <span
-          style={{
-            // speaker.png is a solid black glyph on transparent — a CSS mask
-            // recolors it to CREAM (matching the pause-bars/slash below);
-            // mixBlendMode:'screen' with a BLACK source is a no-op (screen
-            // blend with black never lightens anything), which is why the
-            // glyph never actually appeared.
-            position: 'absolute',
-            width: 16,
-            height: 16,
-            background: CREAM,
-            WebkitMaskImage: 'url(/invite/speaker.png)',
-            maskImage: 'url(/invite/speaker.png)',
-            WebkitMaskSize: 'contain',
-            maskSize: 'contain',
-            WebkitMaskRepeat: 'no-repeat',
-            maskRepeat: 'no-repeat',
-            WebkitMaskPosition: 'center',
-            maskPosition: 'center',
-            opacity: playing ? 0 : 1,
-            transition: 'opacity 0.6s ease',
-          }}
-        />
-        <span
-          style={{
-            position: 'absolute',
-            display: 'flex',
-            gap: 3,
-            opacity: playing ? 1 : 0,
-            transition: 'opacity 0.6s ease',
-          }}
-        >
-          <span style={{ width: 3, height: 11, borderRadius: 1, background: CREAM }} />
-          <span style={{ width: 3, height: 11, borderRadius: 1, background: CREAM }} />
-        </span>
-        <span
-          style={{
-            position: 'absolute',
-            width: 20,
-            height: 1,
-            background: CREAM,
-            transform: 'rotate(-45deg)',
-            opacity: playing ? 0 : 1,
-            transition: 'opacity 0.6s ease',
-          }}
-        />
-      </button>
       {hint ? (
         <div
           className="invite-hint"
