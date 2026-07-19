@@ -55,8 +55,9 @@ export function InvitationCard({
   // value for the `zoom` property, so this can't be expressed as plain CSS.
   // Two separate concerns, deliberately not fused into one factor:
   //   zoom  → how wide the card is. Below 1024px that's the full screen;
-  //           above it, ~40% of window width (capped) so the card doesn't
-  //           read as tiny on a desktop monitor or balloon on an ultrawide.
+  //           above it, ~40% of window width capped at 500px, so the card
+  //           doesn't read as tiny on a desktop monitor or run too wide on
+  //           a large one.
   //   --invite-hero-h → how tall the hero is, in design-space px, always
   //           set so hero × zoom === the visible viewport height.
   // Every attempt to do both with a single zoom factor failed one way or the
@@ -77,7 +78,7 @@ export function InvitationCard({
       if (!el) return;
       const vw = window.innerWidth;
       const vh = window.visualViewport?.height ?? window.innerHeight;
-      const zoom = vw >= 1024 ? Math.max(1.25, Math.min(vw * 0.4, 760) / 393) : vw / 393;
+      const zoom = vw >= 1024 ? Math.max(1.25, Math.min(vw * 0.4, 500) / 393) : vw / 393;
       el.style.zoom = String(zoom);
       el.style.setProperty('--invite-hero-h', `${vh / zoom}px`);
       // Reveal only once the real zoom is applied — SSR/pre-hydration paints
