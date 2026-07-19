@@ -66,77 +66,75 @@ describe('model3dViewToAttrs', () => {
 });
 
 describe('pickedObjectName (f-2 click-on-model)', () => {
-  const rect = { left: 100, top: 50 };
   const hit = (name: string) => () => ({ name });
 
   it('returns the material name for a click (no pointer movement)', () => {
     const at = hit('Chao đèn');
-    expect(pickedObjectName({ x: 130, y: 90 }, { x: 130, y: 90 }, rect, at)).toBe('Chao đèn');
+    expect(pickedObjectName({ x: 130, y: 90 }, { x: 130, y: 90 }, at)).toBe('Chao đèn');
   });
 
-  it('passes viewer-local coordinates (up minus rect) to the hit-test', () => {
+  it('feeds CLIENT pixels to the hit-test (model-viewer subtracts the rect itself)', () => {
     let seen: [number, number] | null = null;
-    pickedObjectName({ x: 130, y: 90 }, { x: 130, y: 90 }, rect, (x, y) => {
+    pickedObjectName({ x: 130, y: 90 }, { x: 130, y: 90 }, (x, y) => {
       seen = [x, y];
       return { name: 'Đế' };
     });
-    expect(seen).toEqual([30, 40]); // 130-100, 90-50
+    expect(seen).toEqual([130, 90]);
   });
 
   it('ignores a drag (an orbit, moved past the slop) — returns null', () => {
     const at = hit('Chao đèn');
-    expect(pickedObjectName({ x: 130, y: 90 }, { x: 150, y: 90 }, rect, at)).toBeNull(); // 20px > 6
+    expect(pickedObjectName({ x: 130, y: 90 }, { x: 150, y: 90 }, at)).toBeNull(); // 20px > 6
   });
 
   it('allows a tiny jitter within the slop', () => {
     const at = hit('Đế');
-    expect(pickedObjectName({ x: 130, y: 90 }, { x: 134, y: 92 }, rect, at)).toBe('Đế'); // ~4.5px < 6
+    expect(pickedObjectName({ x: 130, y: 90 }, { x: 134, y: 92 }, at)).toBe('Đế'); // ~4.5px < 6
   });
 
   it('returns null when the click misses geometry (no material)', () => {
-    expect(pickedObjectName({ x: 130, y: 90 }, { x: 130, y: 90 }, rect, () => null)).toBeNull();
+    expect(pickedObjectName({ x: 130, y: 90 }, { x: 130, y: 90 }, () => null)).toBeNull();
   });
 
   it('returns null for an empty / whitespace material name (fused or unnamed)', () => {
-    expect(pickedObjectName({ x: 1, y: 1 }, { x: 1, y: 1 }, rect, hit('   '))).toBeNull();
+    expect(pickedObjectName({ x: 1, y: 1 }, { x: 1, y: 1 }, hit('   '))).toBeNull();
   });
 
   it('returns null when no pointerdown was captured', () => {
-    expect(pickedObjectName(null, { x: 130, y: 90 }, rect, hit('Chao đèn'))).toBeNull();
+    expect(pickedObjectName(null, { x: 130, y: 90 }, hit('Chao đèn'))).toBeNull();
   });
 });
 
 describe('pickedAnchor', () => {
-  const rect = { left: 100, top: 50 };
   const surface =
     (pos = { x: 0.1, y: 0.2, z: 0.3 }, norm = { x: 0, y: 0, z: 2 }) =>
     () => ({ position: pos, normal: norm });
 
   it('maps a clean tap to a clamped anchor with a renormalised unit normal', () => {
-    const a = pickedAnchor({ x: 130, y: 90 }, { x: 130, y: 90 }, rect, surface());
+    const a = pickedAnchor({ x: 130, y: 90 }, { x: 130, y: 90 }, surface());
     expect(a).toEqual({ posX: 0.1, posY: 0.2, posZ: 0.3, normX: 0, normY: 0, normZ: 1 });
   });
 
-  it('feeds element-local pixels to the hit-test', () => {
+  it('feeds CLIENT pixels to the hit-test (model-viewer subtracts the rect itself)', () => {
     let seen: [number, number] | null = null;
-    pickedAnchor({ x: 130, y: 90 }, { x: 130, y: 90 }, rect, (x, y) => {
+    pickedAnchor({ x: 130, y: 90 }, { x: 130, y: 90 }, (x, y) => {
       seen = [x, y];
       return { position: { x: 0, y: 0, z: 0 }, normal: { x: 1, y: 0, z: 0 } };
     });
-    expect(seen).toEqual([30, 40]);
+    expect(seen).toEqual([130, 90]);
   });
 
   it('ignores a drag (an orbit, moved past the slop) — returns null', () => {
-    expect(pickedAnchor({ x: 130, y: 90 }, { x: 150, y: 90 }, rect, surface())).toBeNull();
+    expect(pickedAnchor({ x: 130, y: 90 }, { x: 150, y: 90 }, surface())).toBeNull();
   });
 
   it('returns null on a miss (tap on empty space)', () => {
-    expect(pickedAnchor({ x: 1, y: 1 }, { x: 1, y: 1 }, rect, () => null)).toBeNull();
+    expect(pickedAnchor({ x: 1, y: 1 }, { x: 1, y: 1 }, () => null)).toBeNull();
   });
 
   it('returns null for a degenerate zero normal (cannot orient the decal)', () => {
     expect(
-      pickedAnchor({ x: 1, y: 1 }, { x: 1, y: 1 }, rect, surface(undefined, { x: 0, y: 0, z: 0 })),
+      pickedAnchor({ x: 1, y: 1 }, { x: 1, y: 1 }, surface(undefined, { x: 0, y: 0, z: 0 })),
     ).toBeNull();
   });
 
@@ -144,7 +142,6 @@ describe('pickedAnchor', () => {
     const a = pickedAnchor(
       { x: 1, y: 1 },
       { x: 1, y: 1 },
-      rect,
       surface({ x: 500, y: -500, z: 0 }, { x: 0, y: 1, z: 0 }),
     );
     expect(a?.posX).toBe(100);
@@ -152,6 +149,6 @@ describe('pickedAnchor', () => {
   });
 
   it('returns null when no pointerdown was captured', () => {
-    expect(pickedAnchor(null, { x: 130, y: 90 }, rect, surface())).toBeNull();
+    expect(pickedAnchor(null, { x: 130, y: 90 }, surface())).toBeNull();
   });
 });

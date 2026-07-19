@@ -36,6 +36,7 @@ export function Model3dViewer({
   flatColorHex,
   engraveText,
   engraveAnchor,
+  model3dView,
   fallback,
 }: {
   src: string;
@@ -59,6 +60,16 @@ export function Model3dViewer({
     normX: number;
     normY: number;
     normZ: number;
+  };
+  /** Owner-saved default camera pose (ADR-038) — the exact angle the admin aligned in "Xem trước &
+   *  căn chỉnh 3D". Undefined → auto-framing. */
+  model3dView?: {
+    orbitTheta: number;
+    orbitPhi: number;
+    orbitRadius: number;
+    targetX: number;
+    targetY: number;
+    targetZ: number;
   };
   /** Rendered while loading, on failure, and when the browser has neither WebGL nor a sprite —
    *  typically the parent's static cover image. */
@@ -107,6 +118,10 @@ export function Model3dViewer({
   useEffect(() => {
     if (ready) viewerRef.current?.setServerAnchor(engraveAnchor ?? null);
   }, [ready, engraveAnchor]);
+  // ADR-038: open at the owner-saved camera pose (and follow if it ever changes).
+  useEffect(() => {
+    if (ready) viewerRef.current?.setView(model3dView ?? null);
+  }, [ready, model3dView]);
   useEffect(() => {
     if (ready) viewerRef.current?.setEngraveText(engraveText ?? '');
   }, [ready, engraveText]);

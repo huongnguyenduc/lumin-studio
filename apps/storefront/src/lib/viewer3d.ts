@@ -43,6 +43,16 @@ export class Viewer3d {
   // admin-picked serverAnchor when one exists, else the front-centre heuristic on load.
   private anchor: { mesh: THREE.Mesh; point: THREE.Vector3; normal: THREE.Vector3 } | null = null;
   private serverAnchor: { pos: THREE.Vector3; normal: THREE.Vector3 } | null = null;
+  private savedView: {
+    orbitTheta: number;
+    orbitPhi: number;
+    orbitRadius: number;
+    targetX: number;
+    targetY: number;
+    targetZ: number;
+  } | null = null;
+  private center = new THREE.Vector3();
+  private sphereRadius = 1;
   private loaded = false;
 
   constructor(
@@ -113,21 +123,17 @@ export class Viewer3d {
 
       // Frame the model: orbit target at its centre, camera pulled back on +Z with a slight lift.
       const box = new THREE.Box3().setFromObject(root);
-      const center = box.getCenter(new THREE.Vector3());
+      const center = box.getCenter(this.center);
       const size = box.getSize(new THREE.Vector3());
       this.maxDim = Math.max(size.x, size.y, size.z) || 1;
-      this.controls.target.copy(center);
-      this.camera.position.set(
-        center.x,
-        center.y + this.maxDim * 0.15,
-        center.z + this.maxDim * 2.2,
-      );
+      this.sphereRadius = size.length() / 2 || 1;
       this.camera.near = this.maxDim / 100;
       this.camera.far = this.maxDim * 20;
       this.camera.updateProjectionMatrix();
 
       this.loaded = true;
       this.frontCenter = { center, frontZ: box.max.z };
+      this.applyCamera();
       this.resolveAnchor();
     } catch {
       if (!this.disposed) this.onError();
@@ -147,6 +153,50 @@ export class Viewer3d {
   setEngraveText(text: string) {
     this.engraveText = text.trim();
     this.rebuildDecal();
+  }
+
+  /** The owner-saved default camera pose (ADR-038): model-viewer camera-orbit semantics — theta/phi in
+   *  degrees (theta 0 = in front, +Z), radius as percent of the auto-frame distance, target in model-space
+   *  metres. Null → the viewer's own default framing. Safe to call before load. */
+  setView(
+    v: {
+      orbitTheta: number;
+      orbitPhi: number;
+      orbitRadius: number;
+      targetX: number;
+      targetY: number;
+      targetZ: number;
+    } | null,
+  ) {
+    this.savedView = v;
+    if (this.loaded) this.applyCamera();
+  }
+
+  /** Place the camera: the saved pose when one exists, else auto-framing. The "ideal" (100%) distance is
+   *  approximated by fitting the bounding sphere to the vertical FoV — a few percent off model-viewer's
+   *  exact framing math, which only shifts zoom slightly, never the angle. */
+  private applyCamera() {
+    const v = this.savedView;
+    if (v) {
+      const fov = (this.camera.fov * Math.PI) / 180;
+      const ideal = this.sphereRadius / Math.sin(fov / 2);
+      const r = (v.orbitRadius / 100) * ideal;
+      const phi = (v.orbitPhi * Math.PI) / 180;
+      const theta = (v.orbitTheta * Math.PI) / 180;
+      this.controls.target.set(v.targetX, v.targetY, v.targetZ);
+      this.camera.position.set(
+        v.targetX + r * Math.sin(phi) * Math.sin(theta),
+        v.targetY + r * Math.cos(phi),
+        v.targetZ + r * Math.sin(phi) * Math.cos(theta),
+      );
+    } else {
+      this.controls.target.copy(this.center);
+      this.camera.position.set(
+        this.center.x,
+        this.center.y + this.maxDim * 0.15,
+        this.center.z + this.maxDim * 2.2,
+      );
+    }
   }
 
   /** The admin-picked engrave anchor from the product (model-space metres + outward normal), or null
