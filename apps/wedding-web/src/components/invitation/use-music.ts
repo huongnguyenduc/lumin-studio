@@ -5,7 +5,11 @@ import { useEffect, useRef, useState } from 'react';
 // Background music per HANDOFF §2.10: never on load — first attempt on first
 // scroll; if the browser rejects (no gesture yet), a one-time pointerdown retry
 // starts it on the first tap. Fade in to 0.85 over 2.4s, fade out 0.7s then
-// pause. Degrades silently when /invite/music.mp3 is absent (HEAD check).
+// pause. Degrades silently when the source is absent/unplayable (audio 'error'
+// event) — NOT via a HEAD existence check: admin-uploaded music lives on a
+// different origin (wedding-assets.luminstudio.vn) with no CORS policy for
+// reads, so a cross-origin `fetch(HEAD)` always network-errors even though
+// plain <audio> playback needs no CORS at all.
 const DEFAULT_SRC = '/invite/music.mp3';
 
 export function useMusic(srcOverride?: string) {
@@ -63,16 +67,13 @@ export function useMusic(srcOverride?: string) {
     }
     if (triedRef.current) return;
     triedRef.current = true;
-    fetch(SRC, { method: 'HEAD' })
-      .then((r) => {
-        if (r.ok) {
-          const audio = new Audio(SRC);
-          audio.loop = true;
-          audioRef.current = audio;
-          tryPlay();
-        }
-      })
-      .catch(() => {});
+    const audio = new Audio(SRC);
+    audio.loop = true;
+    audio.addEventListener('error', () => {
+      if (audioRef.current === audio) audioRef.current = null;
+    });
+    audioRef.current = audio;
+    tryPlay();
   };
 
   const toggle = () => {
