@@ -116,7 +116,7 @@ export function GrowLine({ style, background }: { style?: CSSProperties; backgro
           ...(animate
             ? {
                 transform: shown ? 'scaleY(1)' : 'scaleY(0)',
-                transition: 'transform 1.1s cubic-bezier(0.22,0.61,0.36,1)',
+                transition: 'transform 1.7s cubic-bezier(0.22,0.61,0.36,1)',
               }
             : { transform: 'scaleY(1)' }),
         }}
