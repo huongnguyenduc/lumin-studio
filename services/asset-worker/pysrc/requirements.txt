@@ -6,6 +6,9 @@
 # python — pinning the dev machine's versions would break the box build. lxml gives trimesh .3mf support.
 # The image build on the box is the gate (like the Blender bake); adjust these pins there if a wheel is missing.
 trimesh==4.12.2
+# quadric-decimation backend for trimesh.simplify_quadric_decimation — caps every served glb at
+# INGEST_MAX_TRIS so the printable full-res source never reaches the browser (anti-download).
+fast-simplification
 numpy
 lxml
 Pillow

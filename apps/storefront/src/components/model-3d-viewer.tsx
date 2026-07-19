@@ -92,15 +92,19 @@ export function Model3dViewer({
   const [failed, setFailed] = useState(false);
 
   // WebGL is client-only; detect after mount, then start loading the web component right away.
-  // ponytail: model-viewer's DEFAULT Draco/KTX2 decoders load from gstatic.com — a *compressed* .glb
-  // would fetch WASM from Google at runtime, against the self-host/PDPL posture. The ingest glb (fused
-  // AND structured) is UNCOMPRESSED, so it loads entirely from `src` with zero third-party fetch.
-  // Upgrade path if a later LOD pass compresses: self-host the decoders (setDRACODecoderLocation).
+  // The ingest glbs (fused AND structured) are Draco-compressed (worker LOD pass), so point
+  // model-viewer at the SELF-HOSTED decoder in public/draco/ (vendored from three) — its default
+  // decoder loads WASM from gstatic.com at runtime, against the self-host/PDPL posture.
+  // MUST be the GLOBAL config object, set before the element is constructed: model-viewer's
+  // constructor re-reads `self.ModelViewerElement.dracoDecoderLocation` and silently resets to the
+  // gstatic default when the global is absent (loading.js) — the static class setter alone is undone.
   useEffect(() => {
     const ok = hasWebGL();
     setWebglOk(ok);
     if (!ok) return;
     let alive = true;
+    const g = window as unknown as { ModelViewerElement?: { dracoDecoderLocation?: string } };
+    g.ModelViewerElement = { ...g.ModelViewerElement, dracoDecoderLocation: '/draco/' };
     import('@google/model-viewer')
       .then(() => alive && setReady(true))
       .catch(() => alive && setFailed(true));
