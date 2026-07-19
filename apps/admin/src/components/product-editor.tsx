@@ -25,7 +25,7 @@ import { ProductGallery } from './product-gallery';
 import { ProductModel } from './product-model';
 import { ProductColors } from './product-colors';
 import { ProductOptions } from './product-options';
-import { ProductModelView } from './product-model-view';
+import { ProductModelView, EngraveAnchorPicker } from './product-model-view';
 
 type Product = components['schemas']['Product'];
 type Category = components['schemas']['Category'];
@@ -333,6 +333,23 @@ export function ProductEditor({
             productId={product.id}
             model3dUrl={product.model3dUrl}
             model3dView={product.model3dView}
+            productName={product.name}
+          />
+        </Card>
+      )}
+
+      {/* Engrave anchor (edit only — needs the pipeline's model3dUrl). Owner taps the model to pick
+          WHERE a customer's engraving text sits; the storefront decal projects at that exact spot. */}
+      {isEdit && (
+        <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
+          <div>
+            <h2 className="font-semibold text-text-strong">{t('edit.sectionEngraveAnchor')}</h2>
+            <p className="mt-0.5 text-sm text-text-muted">{t('edit.engraveAnchorHint')}</p>
+          </div>
+          <EngraveAnchorPicker
+            productId={product.id}
+            model3dUrl={product.model3dUrl}
+            engraveAnchor={product.engraveAnchor}
             productName={product.name}
           />
         </Card>

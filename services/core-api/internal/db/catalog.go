@@ -277,6 +277,20 @@ func (c *Catalog) UpdateProductModelView(ctx context.Context, id uuid.UUID, view
 	return nil
 }
 
+// UpdateProductEngraveAnchor persists the owner-picked engrave anchor (position + normal on the model
+// surface where engraving text is projected), or ErrNotFound for an unknown id — same :execrows contract
+// as UpdateProductModelView. anchor is the marshalled + range-validated jsonb blob.
+func (c *Catalog) UpdateProductEngraveAnchor(ctx context.Context, id uuid.UUID, anchor []byte) error {
+	rows, err := c.q.UpdateProductEngraveAnchor(ctx, sqlc.UpdateProductEngraveAnchorParams{ID: id, EngraveAnchor: anchor})
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // SetProductModel3dURL writes the LOD glb URL onto a product — the asset pipeline's ONE write of the
 // column UpdateProduct never touches (ADR-045). Called only from the render callback when a model_ingest
 // job reaches `ready`; the URL is host-pinned at the HTTP boundary. :execrows, so an unknown id (0 rows)

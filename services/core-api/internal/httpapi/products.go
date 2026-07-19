@@ -110,6 +110,10 @@ func productDTO(p sqlc.Product, colors []sqlc.Color, options []sqlc.Option, part
 	if err != nil {
 		return api.Product{}, fmt.Errorf("product %s: decode model3d_view jsonb: %w", p.Slug, err)
 	}
+	engraveAnchor, err := engraveAnchorFromJSON(p.EngraveAnchor)
+	if err != nil {
+		return api.Product{}, fmt.Errorf("product %s: decode engrave_anchor jsonb: %w", p.Slug, err)
+	}
 	return api.Product{
 		Id:                   p.ID,
 		Slug:                 p.Slug,
@@ -122,6 +126,7 @@ func productDTO(p sqlc.Product, colors []sqlc.Color, options []sqlc.Option, part
 		Model3dUrl:           p.Model3dUrl,
 		Model3dStructuredUrl: structuredURLPtr(p.Model3dStructuredUrl), // f-4: named-objects glb for the live viewer's per-part recolor; nil until ingested
 		Model3dView:          view,                                     // ADR-038: owner-saved default camera pose; nil = auto-frame
+		EngraveAnchor:        engraveAnchor,                            // owner-picked engraving spot; nil = storefront front-centre heuristic
 		SpriteSheetUrl:       spriteURLPtr(p.SpriteSheetUrl),           // ADR-049: 360° sprite sheet; nil until rendered
 		ModelObjectNames:     objectNamesPtr(p.ModelObjectNames),       // f-2: object list for the editor's part mapping; nil until ingested
 		Images:               images,
@@ -159,6 +164,19 @@ func model3dViewFromJSON(raw []byte) (*api.Model3dView, error) {
 		return nil, err
 	}
 	return &v, nil
+}
+
+// engraveAnchorFromJSON parses the nullable engrave_anchor jsonb into the wire anchor, or nil when the
+// column is NULL/empty — no anchor picked, so the storefront falls back to its front-centre heuristic.
+func engraveAnchorFromJSON(raw []byte) (*api.EngraveAnchor, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var a api.EngraveAnchor
+	if err := json.Unmarshal(raw, &a); err != nil {
+		return nil, err
+	}
+	return &a, nil
 }
 
 // colorsDTO maps color rows to the wire shape, dropping the internal productId. A nil/empty result yields

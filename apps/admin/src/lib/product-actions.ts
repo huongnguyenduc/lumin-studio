@@ -278,6 +278,25 @@ export async function deleteChoice(
   }
 }
 
+// Save the engrave anchor — the owner-picked surface point where the storefront projects a customer's
+// engraving text onto the 3D model. Owner-only; 204 no body. Display metadata, not money.
+export async function saveEngraveAnchor(
+  productId: string,
+  anchor: components['schemas']['EngraveAnchor'],
+): Promise<SubWriteResult> {
+  try {
+    const client = await authedClient();
+    const { error, response } = await client.PATCH('/admin/products/{id}/engrave-anchor', {
+      params: { path: { id: productId } },
+      body: anchor,
+    });
+    if (!error) return { ok: true };
+    return { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
 // Save the default 3D camera pose (P3-l l-5, ADR-038). Owner-only; 204 no body. The pose is display
 // metadata (degrees/percent/metres floats), not money — the storefront viewer opens at it.
 export async function saveModelView(productId: string, view: Model3dView): Promise<SubWriteResult> {

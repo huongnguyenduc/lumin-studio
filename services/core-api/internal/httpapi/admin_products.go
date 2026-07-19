@@ -265,6 +265,53 @@ func cleanModelView(v api.Model3dView) map[string]string {
 	return fields
 }
 
+// UpdateProductEngraveAnchor handles PATCH /admin/products/{id}/engrave-anchor (owner-only). It persists
+// the owner-picked surface point where the storefront projects a customer's engraving text onto the 3D
+// model — same contract shape as UpdateProductModelView: a separate write from the core-fields PATCH,
+// display metadata only. Out-of-range values → 400 field-map; unknown id → 404; success → 204.
+func (s *Server) UpdateProductEngraveAnchor(ctx context.Context, request api.UpdateProductEngraveAnchorRequestObject) (api.UpdateProductEngraveAnchorResponseObject, error) {
+	if err := assertOwner(ctx); err != nil {
+		return nil, err
+	}
+	if request.Body == nil {
+		return api.UpdateProductEngraveAnchor400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
+	}
+	if fields := cleanEngraveAnchor(*request.Body); len(fields) > 0 {
+		return api.UpdateProductEngraveAnchor400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
+	}
+	raw, err := json.Marshal(*request.Body)
+	if err != nil {
+		return nil, fmt.Errorf("engrave_anchor: marshal: %w", err)
+	}
+	if err := db.NewCatalog(s.pool).UpdateProductEngraveAnchor(ctx, request.Id, raw); err != nil {
+		return nil, err // db.ErrNotFound → 404
+	}
+	return api.UpdateProductEngraveAnchor204Response{}, nil
+}
+
+// cleanEngraveAnchor validates an engrave anchor: per-field error map (empty = ok). Position must sit in
+// the same [-100, 100] metre envelope as the camera target (a real model is centimetres-scale); each
+// normal component in [-1, 1] and the normal vector must be non-zero (a zero normal cannot orient the
+// decal). Every field must be finite. Display metadata, not money — plain floats.
+func cleanEngraveAnchor(a api.EngraveAnchor) map[string]string {
+	fields := map[string]string{}
+	check := func(name string, val, lo, hi float64) {
+		if math.IsNaN(val) || math.IsInf(val, 0) || val > hi || val < lo {
+			fields[name] = msgKey(codeValidation)
+		}
+	}
+	check("posX", a.PosX, -100, 100)
+	check("posY", a.PosY, -100, 100)
+	check("posZ", a.PosZ, -100, 100)
+	check("normX", a.NormX, -1, 1)
+	check("normY", a.NormY, -1, 1)
+	check("normZ", a.NormZ, -1, 1)
+	if a.NormX == 0 && a.NormY == 0 && a.NormZ == 0 {
+		fields["normX"] = msgKey(codeValidation)
+	}
+	return fields
+}
+
 // CreateProductColor handles POST /admin/products/{id}/colors (owner-only). An unknown product id raises a
 // foreign_key_violation → 404 (the color's only inbound reference is the product).
 func (s *Server) CreateProductColor(ctx context.Context, request api.CreateProductColorRequestObject) (api.CreateProductColorResponseObject, error) {

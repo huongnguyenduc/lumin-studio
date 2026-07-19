@@ -9,8 +9,9 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
  * Imperative three.js wrapper behind the PDP's Model3dViewer (P1-j rev 2: real surface engraving).
  * Replaces <model-viewer> because engraving needs geometry added to the scene — the typed text is
  * drawn to a canvas texture and projected onto the model's surface as a DecalGeometry, so it hugs
- * curvature like a real engraving instead of floating as a billboard. A tap on the model (pointer
- * up-down within a small slop, i.e. not an orbit drag) re-anchors the decal there: "chọn vị trí".
+ * curvature like a real engraving instead of floating as a billboard. WHERE it sits is the owner's
+ * call: the admin-picked engrave anchor (position + normal, PATCHed per product) is fed in via
+ * setServerAnchor; a product without one falls back to the front-centre heuristic.
  *
  * Kept from the model-viewer setup: the self-hosted Draco decoder in public/draco/ (PDPL posture —
  * no gstatic), per-material recolor by NAME (f-3/ADR-052: structured glb names materials after
@@ -38,26 +39,11 @@ export class Viewer3d {
   private decal: THREE.Mesh | null = null;
   private decalTexture: THREE.CanvasTexture;
   private decalCanvas: HTMLCanvasElement;
-  // Where the engraving sits: a surface point + normal on a specific mesh. Defaulted to the
-  // front-most surface point at model centre height on load; replaced by taps.
+  // Where the engraving sits: a surface point + normal on a specific mesh. Resolved from the
+  // admin-picked serverAnchor when one exists, else the front-centre heuristic on load.
   private anchor: { mesh: THREE.Mesh; point: THREE.Vector3; normal: THREE.Vector3 } | null = null;
-
-  private downAt: { x: number; y: number } | null = null;
-  private onPointerDown = (e: PointerEvent) => {
-    this.downAt = { x: e.clientX, y: e.clientY };
-  };
-  private onPointerUp = (e: PointerEvent) => {
-    const d = this.downAt;
-    this.downAt = null;
-    // A drag is orbiting, not picking — only a near-stationary tap places the engraving.
-    if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) return;
-    if (!this.engraveText) return;
-    const hit = this.raycastClient(e.clientX, e.clientY);
-    if (hit) {
-      this.anchor = hit;
-      this.rebuildDecal();
-    }
-  };
+  private serverAnchor: { pos: THREE.Vector3; normal: THREE.Vector3 } | null = null;
+  private loaded = false;
 
   constructor(
     private container: HTMLElement,
@@ -84,9 +70,6 @@ export class Viewer3d {
     this.decalTexture = new THREE.CanvasTexture(this.decalCanvas);
     this.decalTexture.colorSpace = THREE.SRGBColorSpace;
     this.decalTexture.anisotropy = 4;
-
-    this.renderer.domElement.addEventListener('pointerdown', this.onPointerDown);
-    this.renderer.domElement.addEventListener('pointerup', this.onPointerUp);
 
     this.resize();
     const loop = () => {
@@ -143,20 +126,9 @@ export class Viewer3d {
       this.camera.far = this.maxDim * 20;
       this.camera.updateProjectionMatrix();
 
-      // Default engraving anchor: the front-most surface at model-centre height (a ray fired from
-      // in front of the model toward its centre). Falls back to null on a degenerate model — the
-      // decal then only appears once the customer taps a position.
-      const from = new THREE.Vector3(center.x, center.y, box.max.z + this.maxDim);
-      this.raycaster.set(from, new THREE.Vector3(0, 0, -1));
-      const hit = this.raycaster.intersectObjects(this.meshes, false)[0];
-      if (hit?.face) {
-        const normal = hit.face.normal
-          .clone()
-          .transformDirection(hit.object.matrixWorld)
-          .normalize();
-        this.anchor = { mesh: hit.object as THREE.Mesh, point: hit.point, normal };
-      }
-      this.rebuildDecal();
+      this.loaded = true;
+      this.frontCenter = { center, frontZ: box.max.z };
+      this.resolveAnchor();
     } catch {
       if (!this.disposed) this.onError();
     } finally {
@@ -177,17 +149,67 @@ export class Viewer3d {
     this.rebuildDecal();
   }
 
-  private raycastClient(clientX: number, clientY: number) {
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const ndc = new THREE.Vector2(
-      ((clientX - rect.left) / rect.width) * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1,
-    );
-    this.raycaster.setFromCamera(ndc, this.camera);
-    const hit = this.raycaster.intersectObjects(this.meshes, false)[0];
-    if (!hit?.face) return null;
-    const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
-    return { mesh: hit.object as THREE.Mesh, point: hit.point, normal };
+  /** The admin-picked engrave anchor from the product (model-space metres + outward normal), or null
+   *  when the owner hasn't picked one. Safe to call before load — resolved once geometry is in. */
+  setServerAnchor(
+    a: {
+      posX: number;
+      posY: number;
+      posZ: number;
+      normX: number;
+      normY: number;
+      normZ: number;
+    } | null,
+  ) {
+    this.serverAnchor =
+      a == null
+        ? null
+        : {
+            pos: new THREE.Vector3(a.posX, a.posY, a.posZ),
+            normal: new THREE.Vector3(a.normX, a.normY, a.normZ).normalize(),
+          };
+    if (this.loaded) this.resolveAnchor();
+  }
+
+  private frontCenter: { center: THREE.Vector3; frontZ: number } | null = null;
+
+  /** Resolve `anchor` (mesh + point + normal) from the admin-picked serverAnchor when present, else
+   *  the front-centre heuristic. DecalGeometry needs a target MESH: for a server anchor, a short ray
+   *  fired from just outside the surface along -normal finds the mesh under the point (mesh identity
+   *  isn't persisted — the glb can be re-ingested); a miss keeps the point but projects onto the
+   *  largest mesh, so a slightly-stale anchor degrades to "roughly there", never a crash. */
+  private resolveAnchor() {
+    this.anchor = null;
+    if (this.serverAnchor && this.meshes.length > 0) {
+      const { pos, normal } = this.serverAnchor;
+      this.raycaster.set(
+        pos.clone().addScaledVector(normal, this.maxDim * 0.05),
+        normal.clone().negate(),
+      );
+      this.raycaster.far = this.maxDim * 0.2;
+      const hit = this.raycaster.intersectObjects(this.meshes, false)[0];
+      this.raycaster.far = Infinity;
+      this.anchor = {
+        mesh: (hit?.object as THREE.Mesh | undefined) ?? this.meshes[0],
+        point: hit?.point ?? pos,
+        normal,
+      };
+    } else if (this.frontCenter) {
+      // Front-centre heuristic: the front-most surface at model-centre height (a ray fired from in
+      // front of the model toward its centre). Null on a degenerate model — no decal shown.
+      const { center } = this.frontCenter;
+      const from = new THREE.Vector3(center.x, center.y, this.frontCenter.frontZ + this.maxDim);
+      this.raycaster.set(from, new THREE.Vector3(0, 0, -1));
+      const hit = this.raycaster.intersectObjects(this.meshes, false)[0];
+      if (hit?.face) {
+        const normal = hit.face.normal
+          .clone()
+          .transformDirection(hit.object.matrixWorld)
+          .normalize();
+        this.anchor = { mesh: hit.object as THREE.Mesh, point: hit.point, normal };
+      }
+    }
+    this.rebuildDecal();
   }
 
   /** Engraved look on a 2D canvas: dark text with a 1px light drop below reads as carved-in under
@@ -246,8 +268,6 @@ export class Viewer3d {
   dispose() {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
-    this.renderer.domElement.removeEventListener('pointerdown', this.onPointerDown);
-    this.renderer.domElement.removeEventListener('pointerup', this.onPointerUp);
     this.controls.dispose();
     this.decalTexture.dispose();
     this.renderer.dispose();
