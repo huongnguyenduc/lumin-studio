@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import type { Invite, Wish } from '@/lib/types';
 import type { SiteSettings } from '@/lib/site-settings';
@@ -69,7 +69,12 @@ export function InvitationCard({
   // its 1.25 floor on any wide-but-not-very-tall window and read as tiny on a
   // real desktop monitor. Target ~40% of window width, capped so it doesn't
   // balloon on ultrawide screens.
-  useEffect(() => {
+  // useLayoutEffect (not useEffect): runs synchronously before the browser
+  // paints, so the JS-computed zoom replaces the static @media fallback
+  // before the user ever sees it — useEffect fires after paint, which was
+  // showing the wrong (pre-hydration) zoom for a beat then visibly snapping
+  // to the correct one.
+  useLayoutEffect(() => {
     const update = () => {
       const el = scaleRef.current;
       if (!el) return;
