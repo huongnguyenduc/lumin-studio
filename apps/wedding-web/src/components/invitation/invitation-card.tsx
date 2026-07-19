@@ -50,22 +50,42 @@ export function InvitationCard({
     // deps deliberately empty: bind once on mount; music.start reads refs, not state
   }, []);
 
-  // Desktop zoom scales with viewport height (globals.css §7 decision 1
-  // comment) so a tall window doesn't leave the hero shorter than the
-  // viewport — set imperatively because Next's CSS pipeline (Lightning CSS)
-  // silently drops any calc()/clamp()/max() value for the `zoom` property,
-  // so this can't be expressed as plain CSS. Below 1024px, clear the inline
-  // override so the static @media tiers in globals.css take over again.
+  // Zoom scales the whole 393px canvas as a unit — set imperatively because
+  // Next's CSS pipeline (Lightning CSS) silently drops any calc()/clamp()/max()
+  // value for the `zoom` property, so this can't be expressed as plain CSS.
+  // Below 1024px it's driven by viewport HEIGHT so the hero (fixed 852px tall
+  // in design space) always fills exactly one screen — `visualViewport` (not
+  // just `resize`) matters on mobile Safari: its address-bar show/hide changes
+  // the *visible* height without firing `resize`, which was leaving a
+  // cream-colored gap under the hero on some devices (e.g. iPhone 15 Pro Max)
+  // once the bar collapsed. Below 1024px the static @media tiers in
+  // globals.css are the pre-hydration fallback only — this effect overrides
+  // them once JS runs.
+  // At 1024px+ the page just scrolls (there's no "one screen" to fill), so
+  // it's driven by viewport WIDTH instead — otherwise the card sat pinned at
+  // its 1.25 floor on any wide-but-not-very-tall window and read as tiny on a
+  // real desktop monitor. Target ~40% of window width, capped so it doesn't
+  // balloon on ultrawide screens.
   useEffect(() => {
     const update = () => {
       const el = scaleRef.current;
       if (!el) return;
-      el.style.zoom =
-        window.innerWidth >= 1024 ? String(Math.max(1.25, window.innerHeight / 852)) : '';
+      const vw = window.innerWidth;
+      if (vw >= 1024) {
+        const targetWidth = Math.min(vw * 0.4, 760);
+        el.style.zoom = String(Math.max(1.25, targetWidth / 393));
+      } else {
+        const vh = window.visualViewport?.height ?? window.innerHeight;
+        el.style.zoom = String(vh / 852);
+      }
     };
     update();
     window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
+    window.visualViewport?.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.visualViewport?.removeEventListener('resize', update);
+    };
   }, []);
 
   return (
