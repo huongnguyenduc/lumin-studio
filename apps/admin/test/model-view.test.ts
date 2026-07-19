@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { orbitToModel3dView, model3dViewToAttrs, pickedObjectName, pickedAnchor } from '../src/lib/model-view';
+import {
+  orbitToModel3dView,
+  model3dViewToAttrs,
+  pickedObjectName,
+  pickedAnchor,
+} from '../src/lib/model-view';
 
 const HALF_PI = Math.PI / 2;
 const QUARTER_PI = Math.PI / 4;
