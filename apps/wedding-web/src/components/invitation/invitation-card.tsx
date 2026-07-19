@@ -86,6 +86,12 @@ export function InvitationCard({
         const vh = dvhRef.current?.getBoundingClientRect().height ?? window.innerHeight;
         el.style.zoom = String(vh / 852);
       }
+      // Reveal only once the real zoom is applied — SSR/pre-hydration paints
+      // with the static @media fallback (visually wrong) before any JS runs
+      // at all, a gap useLayoutEffect can't close by itself; staying hidden
+      // through that gap swaps "wrong zoom snaps to right zoom" for "briefly
+      // blank, then correct", which reads as a normal load instead of a jump.
+      el.style.visibility = 'visible';
     };
     update();
     window.addEventListener('resize', update);
@@ -112,6 +118,7 @@ export function InvitationCard({
           display: 'flex',
           justifyContent: 'center',
           fontFamily: SERIF,
+          visibility: 'hidden',
         }}
       >
         <div
