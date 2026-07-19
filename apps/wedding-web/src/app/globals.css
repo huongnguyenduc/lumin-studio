@@ -12,6 +12,11 @@
   }
   html {
     scroll-behavior: smooth;
+    /* iOS Safari (bottom address-bar layout) tints the status-bar strip and
+     * top overscroll from the html/body background, NOT the theme-color meta
+     * — cream there clashed with the hero photo. #edf1f1 = averaged top-strip
+     * color of hero.jpg (sky/veil), same value as themeColor in layout.tsx. */
+    background-color: rgb(237, 241, 241);
   }
   ::placeholder {
     color: rgb(186, 170, 159);

@@ -41,7 +41,19 @@ export function Hero({ bgUrl }: { bgUrl?: string }) {
   }, [hint]);
 
   return (
-    <div style={{ position: 'relative', height: 852, overflow: 'hidden' }}>
+    // --invite-hero-h is set by InvitationCard's zoom effect on <1024px
+    // screens: exactly the visible viewport height in design-space px, so
+    // the hero fills one screen at full width regardless of Safari's
+    // toolbar state. 852px (the Figma design height) is the SSR/desktop
+    // fallback. Children stay top/bottom-anchored, photo is `cover` — the
+    // flexible height never distorts the composition.
+    <div
+      style={{
+        position: 'relative',
+        height: 'var(--invite-hero-h, 852px)',
+        overflow: 'hidden',
+      }}
+    >
       <div
         style={{
           position: 'absolute',
