@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { orbitToModel3dView, model3dViewToAttrs, pickedObjectName } from '../src/lib/model-view';
+import { orbitToModel3dView, model3dViewToAttrs, pickedObjectName, pickedAnchor } from '../src/lib/model-view';
 
 const HALF_PI = Math.PI / 2;
 const QUARTER_PI = Math.PI / 4;
@@ -98,5 +98,55 @@ describe('pickedObjectName (f-2 click-on-model)', () => {
 
   it('returns null when no pointerdown was captured', () => {
     expect(pickedObjectName(null, { x: 130, y: 90 }, rect, hit('Chao đèn'))).toBeNull();
+  });
+});
+
+describe('pickedAnchor', () => {
+  const rect = { left: 100, top: 50 };
+  const surface =
+    (pos = { x: 0.1, y: 0.2, z: 0.3 }, norm = { x: 0, y: 0, z: 2 }) =>
+    () => ({ position: pos, normal: norm });
+
+  it('maps a clean tap to a clamped anchor with a renormalised unit normal', () => {
+    const a = pickedAnchor({ x: 130, y: 90 }, { x: 130, y: 90 }, rect, surface());
+    expect(a).toEqual({ posX: 0.1, posY: 0.2, posZ: 0.3, normX: 0, normY: 0, normZ: 1 });
+  });
+
+  it('feeds element-local pixels to the hit-test', () => {
+    let seen: [number, number] | null = null;
+    pickedAnchor({ x: 130, y: 90 }, { x: 130, y: 90 }, rect, (x, y) => {
+      seen = [x, y];
+      return { position: { x: 0, y: 0, z: 0 }, normal: { x: 1, y: 0, z: 0 } };
+    });
+    expect(seen).toEqual([30, 40]);
+  });
+
+  it('ignores a drag (an orbit, moved past the slop) — returns null', () => {
+    expect(pickedAnchor({ x: 130, y: 90 }, { x: 150, y: 90 }, rect, surface())).toBeNull();
+  });
+
+  it('returns null on a miss (tap on empty space)', () => {
+    expect(pickedAnchor({ x: 1, y: 1 }, { x: 1, y: 1 }, rect, () => null)).toBeNull();
+  });
+
+  it('returns null for a degenerate zero normal (cannot orient the decal)', () => {
+    expect(
+      pickedAnchor({ x: 1, y: 1 }, { x: 1, y: 1 }, rect, surface(undefined, { x: 0, y: 0, z: 0 })),
+    ).toBeNull();
+  });
+
+  it('clamps a wild position into the contract envelope', () => {
+    const a = pickedAnchor(
+      { x: 1, y: 1 },
+      { x: 1, y: 1 },
+      rect,
+      surface({ x: 500, y: -500, z: 0 }, { x: 0, y: 1, z: 0 }),
+    );
+    expect(a?.posX).toBe(100);
+    expect(a?.posY).toBe(-100);
+  });
+
+  it('returns null when no pointerdown was captured', () => {
+    expect(pickedAnchor(null, { x: 130, y: 90 }, rect, surface())).toBeNull();
   });
 });

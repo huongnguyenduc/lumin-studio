@@ -2036,6 +2036,38 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /admin/products/{id}/engrave-anchor:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [admin]
+      operationId: updateProductEngraveAnchor
+      summary: Save a product's engrave anchor — where engraving text sits on the 3D model (owner-only).
+      description: >
+        Persists the owner-picked surface point (position + outward normal, model space) where the
+        storefront projects a customer's engraving text onto the 3D model. The whole anchor is set
+        together (atomic). Display metadata, never money. Out-of-range values → 400 with a per-field
+        error. Unknown id → 404. A product with no saved anchor falls back to the storefront's
+        front-centre heuristic.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EngraveAnchor'
+      responses:
+        '204':
+          description: Saved.
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /admin/products/{id}/colors:
     parameters:
       - name: id
@@ -3159,6 +3191,8 @@ components:
             part by object name (f-3), else falls back to model3dUrl. Empty until a model_ingest has produced one.
         model3dView:
           $ref: '#/components/schemas/Model3dView'
+        engraveAnchor:
+          $ref: '#/components/schemas/EngraveAnchor'
         spriteSheetUrl:
           type: string
           format: uri
@@ -3243,6 +3277,41 @@ components:
           type: number
           format: double
           description: camera-target z in metres, [-100, 100].
+
+    EngraveAnchor:
+      type: object
+      description: >
+        Owner-picked surface point on the product's 3D model where a customer's engraving text is
+        projected (storefront decal). Position in model-space metres (matches the glb the viewer
+        loads); normal is the outward surface direction at that point (unit-ish vector, must be
+        non-zero). Absent on a Product = no anchor picked → the storefront falls back to its
+        front-centre heuristic. Display metadata, not money — plain floats (not int-VND).
+      required: [posX, posY, posZ, normX, normY, normZ]
+      properties:
+        posX:
+          type: number
+          format: double
+          description: Anchor x in model-space metres, [-100, 100].
+        posY:
+          type: number
+          format: double
+          description: Anchor y in model-space metres, [-100, 100].
+        posZ:
+          type: number
+          format: double
+          description: Anchor z in model-space metres, [-100, 100].
+        normX:
+          type: number
+          format: double
+          description: Surface-normal x, [-1, 1]; the (normX, normY, normZ) vector must be non-zero.
+        normY:
+          type: number
+          format: double
+          description: Surface-normal y, [-1, 1].
+        normZ:
+          type: number
+          format: double
+          description: Surface-normal z, [-1, 1].
 
     Part:
       type: object

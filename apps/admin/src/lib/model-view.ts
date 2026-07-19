@@ -67,3 +67,40 @@ export function pickedObjectName(
   const name = materialAt(up.x - rect.left, up.y - rect.top)?.name.trim();
   return name ? name : null;
 }
+
+type EngraveAnchor = components['schemas']['EngraveAnchor'];
+
+/**
+ * Decide what a tap on the engrave-anchor picker maps to: the EngraveAnchor to save, or null to ignore.
+ * Pure (testable without WebGL) — the component binds `el.positionAndNormalFromPoint` as `surfaceAt`.
+ * Ignores a DRAG (an orbit, same slop rule as pickedObjectName) and a miss (tap on empty space). The
+ * position is clamped to the contract envelope ([-100, 100] m) and the normal renormalised to unit
+ * length (BE requires each component in [-1, 1] and a non-zero vector); a degenerate zero normal → null.
+ */
+export function pickedAnchor(
+  down: { x: number; y: number } | null,
+  up: { x: number; y: number },
+  rect: { left: number; top: number },
+  surfaceAt: (
+    localX: number,
+    localY: number,
+  ) => { position: { x: number; y: number; z: number }; normal: { x: number; y: number; z: number } } | null,
+  slop = 6,
+): EngraveAnchor | null {
+  if (!down) return null;
+  if (Math.hypot(up.x - down.x, up.y - down.y) > slop) return null; // a drag/orbit, not a pick
+  const hit = surfaceAt(up.x - rect.left, up.y - rect.top);
+  if (!hit) return null;
+  const len = Math.hypot(hit.normal.x, hit.normal.y, hit.normal.z);
+  if (!Number.isFinite(len) || len === 0) return null;
+  const pos = (n: number) => round(clamp(n, -100, 100));
+  const norm = (n: number) => round(clamp(n / len, -1, 1));
+  return {
+    posX: pos(hit.position.x),
+    posY: pos(hit.position.y),
+    posZ: pos(hit.position.z),
+    normX: norm(hit.normal.x),
+    normY: norm(hit.normal.y),
+    normZ: norm(hit.normal.z),
+  };
+}

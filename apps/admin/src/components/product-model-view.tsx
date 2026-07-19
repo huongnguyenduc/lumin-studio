@@ -5,10 +5,16 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button } from '@lumin/ui';
 import type { components } from '@lumin/api-client';
-import { orbitToModel3dView, model3dViewToAttrs, pickedObjectName } from '@/lib/model-view';
-import { saveModelView } from '@/lib/product-actions';
+import {
+  orbitToModel3dView,
+  model3dViewToAttrs,
+  pickedObjectName,
+  pickedAnchor,
+} from '@/lib/model-view';
+import { saveModelView, saveEngraveAnchor } from '@/lib/product-actions';
 
 type Model3dView = components['schemas']['Model3dView'];
+type EngraveAnchor = components['schemas']['EngraveAnchor'];
 
 /** The imperative slice of <model-viewer> we read: current camera, load state, and click hit-test. */
 interface ModelViewerElement extends HTMLElement {
@@ -18,6 +24,14 @@ interface ModelViewerElement extends HTMLElement {
   // f-2 click-on-model: the material under a pixel. f-3 names each object's material after the object, so
   // material.name is the object name to map. (Model$1.Material has more fields; we read only .name.)
   materialFromPoint(pixelX: number, pixelY: number): { name: string } | null;
+  // Engrave-anchor picking: the surface point + normal under a pixel (null on a miss).
+  positionAndNormalFromPoint(
+    pixelX: number,
+    pixelY: number,
+  ): {
+    position: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+  } | null;
 }
 
 // Minimal typing for Google's <model-viewer> custom element — we use only these attributes/events. The
@@ -290,6 +304,170 @@ export function PartObjectPicker({
       <p className="text-xs text-text-muted">
         {selected ? t('objectPickSelected', { name: selected }) : t('objectPickHint')}
       </p>
+    </div>
+  );
+}
+
+/**
+ * Pick WHERE engraving text sits on the model (edit-mode only, needs the pipeline's glb). A tap on the
+ * model (not a drag/orbit — `pickedAnchor` guards that) hit-tests the surface via
+ * `positionAndNormalFromPoint` and drops an "Aa" marker hotspot there; "Lưu vị trí khắc" PATCHes it as
+ * the product's engrave anchor (owner-only at the BE) — the storefront then projects the customer's
+ * text at exactly that spot. No WebGL → a plain note (there is no keyboard path to pick a 3D surface
+ * point; the storefront's front-centre fallback still applies to products without an anchor). No
+ * auto-rotate / no interaction-prompt → prefers-reduced-motion honoured by construction.
+ */
+export function EngraveAnchorPicker({
+  productId,
+  model3dUrl,
+  engraveAnchor,
+  productName,
+}: {
+  productId: string;
+  model3dUrl: string;
+  engraveAnchor?: EngraveAnchor;
+  productName: string;
+}) {
+  const t = useTranslations('products.edit.engraveAnchor');
+  const router = useRouter();
+  const viewerRef = useRef<ModelViewerElement | null>(null);
+  const downRef = useRef<{ x: number; y: number } | null>(null);
+  const [webglOk, setWebglOk] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
+  // The anchor being previewed: starts at the saved one, replaced by each tap. Saved separately.
+  const [anchor, setAnchor] = useState<EngraveAnchor | undefined>(engraveAnchor);
+  const [dirty, setDirty] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  useEffect(() => {
+    setWebglOk(hasWebGL());
+  }, []);
+
+  useEffect(() => {
+    if (!webglOk || !model3dUrl) return;
+    let alive = true;
+    import('@google/model-viewer')
+      .then(() => alive && setReady(true))
+      .catch(() => alive && setFailed(true));
+    return () => {
+      alive = false;
+    };
+  }, [webglOk, model3dUrl]);
+
+  function onClick(e: React.MouseEvent<ModelViewerElement>) {
+    const el = viewerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const next = pickedAnchor(downRef.current, { x: e.clientX, y: e.clientY }, rect, (x, y) =>
+      el.positionAndNormalFromPoint(x, y),
+    );
+    if (next) {
+      setAnchor(next);
+      setDirty(true);
+      setSaved(false);
+    }
+  }
+
+  function onSave() {
+    if (!anchor) return;
+    setSaved(false);
+    setSaveError(null);
+    start(async () => {
+      const res = await saveEngraveAnchor(productId, anchor);
+      if (res.ok) {
+        setSaved(true);
+        setDirty(false);
+        router.refresh();
+      } else {
+        setSaveError(res.code);
+      }
+    });
+  }
+
+  if (!model3dUrl) {
+    return <p className="text-sm text-text-muted">{t('noModel')}</p>;
+  }
+  if (!webglOk) {
+    return <p className="text-sm text-text-muted">{t('noWebgl')}</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-text-muted">{t('hint')}</p>
+      <div className="aspect-square overflow-hidden rounded-lg bg-surface-sunken">
+        {failed ? (
+          <p
+            role="alert"
+            className="flex h-full w-full items-center justify-center px-4 text-center text-sm text-text-muted"
+          >
+            {t('error')}
+          </p>
+        ) : ready ? (
+          <model-viewer
+            ref={viewerRef}
+            src={model3dUrl}
+            alt={t('alt', { name: productName })}
+            camera-controls={true}
+            interaction-prompt="none"
+            onPointerDown={(e) => {
+              downRef.current = { x: e.clientX, y: e.clientY };
+            }}
+            onClick={onClick}
+            onError={() => setFailed(true)}
+            style={{ width: '100%', height: '100%', cursor: 'crosshair' }}
+          >
+            {/* "Aa" marker at the picked spot — tracks the camera, fades when facing away. Decorative
+                (the status line below announces the state). */}
+            {anchor ? (
+              <div
+                slot="hotspot-engrave"
+                data-position={`${anchor.posX}m ${anchor.posY}m ${anchor.posZ}m`}
+                data-normal={`${anchor.normX} ${anchor.normY} ${anchor.normZ}`}
+                aria-hidden="true"
+                className="pointer-events-none -translate-x-1/2 -translate-y-1/2 rounded-sm bg-black/50 px-1.5 py-0.5 font-display text-xs font-bold text-white"
+              >
+                {t('marker')}
+              </div>
+            ) : null}
+          </model-viewer>
+        ) : (
+          <p
+            role="status"
+            className="flex h-full w-full items-center justify-center text-sm text-text-muted"
+          >
+            {t('loading')}
+          </p>
+        )}
+      </div>
+
+      {ready && !failed && (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="outline" onClick={onSave} disabled={pending || !anchor || !dirty}>
+            {pending ? t('saving') : t('save')}
+          </Button>
+          <span role="status" className="text-sm text-text-muted">
+            {saved ? (
+              <span className="text-accent-teal">{t('saved')}</span>
+            ) : anchor ? (
+              dirty ? (
+                t('pickedUnsaved')
+              ) : (
+                t('savedExisting')
+              )
+            ) : (
+              t('empty')
+            )}
+          </span>
+          {saveError && (
+            <span role="alert" className="text-sm text-danger">
+              {t(`saveErr.${saveError}`)}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

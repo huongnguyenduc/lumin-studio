@@ -1111,6 +1111,28 @@ export interface paths {
         patch: operations["updateProductModelView"];
         trace?: never;
     };
+    "/admin/products/{id}/engrave-anchor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Save a product's engrave anchor — where engraving text sits on the 3D model (owner-only).
+         * @description Persists the owner-picked surface point (position + outward normal, model space) where the storefront projects a customer's engraving text onto the 3D model. The whole anchor is set together (atomic). Display metadata, never money. Out-of-range values → 400 with a per-field error. Unknown id → 404. A product with no saved anchor falls back to the storefront's front-centre heuristic.
+         */
+        patch: operations["updateProductEngraveAnchor"];
+        trace?: never;
+    };
     "/admin/products/{id}/colors": {
         parameters: {
             query?: never;
@@ -1672,6 +1694,7 @@ export interface components {
             /** @description .glb URL of the STRUCTURED derivative (f-4) — named objects/materials preserved (unlike the fused model3dUrl), same recenter as model3dUrl. The live viewer loads this when present to recolor each part by object name (f-3), else falls back to model3dUrl. Empty until a model_ingest has produced one. */
             model3dStructuredUrl?: string;
             model3dView?: components["schemas"]["Model3dView"];
+            engraveAnchor?: components["schemas"]["EngraveAnchor"];
             /**
              * Format: uri
              * @description 360° sprite-sheet URL (ADR-049) — the card-hover turntable and the model-viewer's no-WebGL fallback. Omitted until a `sprite_render` job has produced one. Grid is the fixed shared const (24 frames, 6 cols).
@@ -1728,6 +1751,39 @@ export interface components {
              * @description camera-target z in metres, [-100, 100].
              */
             targetZ: number;
+        };
+        /** @description Owner-picked surface point on the product's 3D model where a customer's engraving text is projected (storefront decal). Position in model-space metres (matches the glb the viewer loads); normal is the outward surface direction at that point (unit-ish vector, must be non-zero). Absent on a Product = no anchor picked → the storefront falls back to its front-centre heuristic. Display metadata, not money — plain floats (not int-VND). */
+        EngraveAnchor: {
+            /**
+             * Format: double
+             * @description Anchor x in model-space metres, [-100, 100].
+             */
+            posX: number;
+            /**
+             * Format: double
+             * @description Anchor y in model-space metres, [-100, 100].
+             */
+            posY: number;
+            /**
+             * Format: double
+             * @description Anchor z in model-space metres, [-100, 100].
+             */
+            posZ: number;
+            /**
+             * Format: double
+             * @description Surface-normal x, [-1, 1]; the (normX, normY, normZ) vector must be non-zero.
+             */
+            normX: number;
+            /**
+             * Format: double
+             * @description Surface-normal y, [-1, 1].
+             */
+            normY: number;
+            /**
+             * Format: double
+             * @description Surface-normal z, [-1, 1].
+             */
+            normZ: number;
         };
         /** @description A named part of a product (ADR-037) — e.g. "Chao đèn". colors[] belong to a part via Color.partId; the customer picks one colour per part. */
         Part: {
@@ -4983,6 +5039,34 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["Model3dView"];
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateProductEngraveAnchor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EngraveAnchor"];
             };
         };
         responses: {

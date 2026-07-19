@@ -929,6 +929,7 @@ type Product struct {
 	SpriteSheetUrl       string             `json:"spriteSheetUrl"`
 	ModelObjectNames     []string           `json:"modelObjectNames"`
 	Model3dStructuredUrl string             `json:"model3dStructuredUrl"`
+	EngraveAnchor        []byte             `json:"engraveAnchor"`
 }
 
 type ReplyTemplate struct {
