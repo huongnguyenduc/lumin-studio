@@ -19,7 +19,7 @@ function hasWebGL(): boolean {
  * Live 3D viewer (P1-i, revised again for P1-j rev 2): the PDP's MAIN media tile, auto-loaded when
  * the browser has WebGL. Now a thin React shell over the imperative three.js wrapper in
  * `lib/viewer3d.ts` — <model-viewer> was replaced because REAL surface engraving (the typed text
- * projected onto the model as a decal, re-anchored by tapping a position) needs scene access that
+ * projected onto the model as a decal at the admin-picked anchor) needs scene access that
  * model-viewer does not expose. The heavy module is still pulled via dynamic import so it stays out
  * of the initial JS bundle and only costs product pages that actually have a model. Orbit is
  * user-driven only — no autonomous motion, so prefers-reduced-motion is honoured by construction
