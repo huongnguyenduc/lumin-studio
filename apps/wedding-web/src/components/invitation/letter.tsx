@@ -37,6 +37,9 @@ const timelineLabel: CSSProperties = {
   textTransform: 'uppercase',
   color: INK,
   textAlign: 'center',
+  // Figma: same OpenType feature set as dateCell (capital-spacing + lining
+  // figures), plus ordn/dlig for the "17:30" style time readout.
+  fontFeatureSettings: '"cpsp" 1, "ordn" 1, "dlig" 1, "lnum" 1, "pnum" 1',
 };
 
 // A 48px photo medallion for the timeline endpoints; inset percentages are the
