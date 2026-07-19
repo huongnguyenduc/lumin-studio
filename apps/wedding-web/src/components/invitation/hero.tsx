@@ -122,11 +122,23 @@ export function Hero({
       >
         <span
           style={{
+            // speaker.png is a solid black glyph on transparent — a CSS mask
+            // recolors it to CREAM (matching the pause-bars/slash below);
+            // mixBlendMode:'screen' with a BLACK source is a no-op (screen
+            // blend with black never lightens anything), which is why the
+            // glyph never actually appeared.
             position: 'absolute',
             width: 16,
             height: 16,
-            background: 'url(/invite/speaker.png) center / cover no-repeat',
-            mixBlendMode: 'screen',
+            background: CREAM,
+            WebkitMaskImage: 'url(/invite/speaker.png)',
+            maskImage: 'url(/invite/speaker.png)',
+            WebkitMaskSize: 'contain',
+            maskSize: 'contain',
+            WebkitMaskRepeat: 'no-repeat',
+            maskRepeat: 'no-repeat',
+            WebkitMaskPosition: 'center',
+            maskPosition: 'center',
             opacity: playing ? 0 : 1,
             transition: 'opacity 0.6s ease',
           }}
