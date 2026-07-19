@@ -53,19 +53,23 @@ export function InvitationCard({
   // Zoom scales the whole 393px canvas as a unit — set imperatively because
   // Next's CSS pipeline (Lightning CSS) silently drops any calc()/clamp()/max()
   // value for the `zoom` property, so this can't be expressed as plain CSS.
-  // Below 1024px it's driven by viewport WIDTH so the canvas always fills the
-  // screen edge-to-edge. It was height-driven before (fitting the fixed
-  // 852px-tall hero to exactly one screen), but device WIDTH never changes
-  // when Safari's toolbar shows/hides while height does — so a height-driven
-  // zoom left the canvas narrower than the screen any time the toolbar was
-  // visible (i.e. most of the time, including right on load), which is a
-  // more visible bug than the hero occasionally running slightly short/tall
-  // by the few px real-device aspect ratios differ from the 393:852 design
-  // ratio. Width is also immune to the whole class of toolbar-timing races
-  // (visualViewport, dvh) that height-driven zoom kept hitting.
-  // At 1024px+ same idea but target ~40% of window width (capped) instead of
-  // 100% — otherwise the card sat pinned at its 1.25 floor on any
-  // wide-but-not-very-tall window and read as tiny on a real desktop monitor.
+  // Below 1024px it's driven by whichever of viewport WIDTH or HEIGHT gives
+  // the SMALLER zoom — pure width-driven (an earlier version of this fix)
+  // left the canvas taller than the visible area whenever Safari's bottom
+  // toolbar was showing (most of the time, including right on load), which
+  // isn't just a cosmetic gap: it pushed real content (the hero's "save the
+  // date" text) UNDER the toolbar, invisible until the user scrolled. Pure
+  // height-driven (the version before that) left side margins instead for
+  // the same reason in reverse. Taking the min of both guarantees the canvas
+  // never overflows either axis — worst case is a margin on one side, never
+  // clipped content — and it self-corrects as the toolbar collapses (the
+  // resize/visualViewport listeners below re-run this and the width term
+  // takes over once there's enough height to allow full-width without
+  // overflowing).
+  // At 1024px+ same width-driven idea but target ~40% of window width
+  // (capped) instead of 100% — otherwise the card sat pinned at its 1.25
+  // floor on any wide-but-not-very-tall window and read as tiny on a real
+  // desktop monitor.
   // useLayoutEffect (not useEffect): runs synchronously before the browser
   // paints, so the JS-computed zoom replaces the static @media fallback
   // before the user ever sees it — useEffect fires after paint, which was
@@ -80,7 +84,8 @@ export function InvitationCard({
         const targetWidth = Math.min(vw * 0.4, 760);
         el.style.zoom = String(Math.max(1.25, targetWidth / 393));
       } else {
-        el.style.zoom = String(vw / 393);
+        const vh = window.innerHeight;
+        el.style.zoom = String(Math.min(vw / 393, vh / 852));
       }
       // Reveal only once the real zoom is applied — SSR/pre-hydration paints
       // with the static @media fallback (visually wrong) before any JS runs
@@ -91,7 +96,13 @@ export function InvitationCard({
     };
     update();
     window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
+    // visualViewport resize matters on mobile Safari specifically: toolbar
+    // show/hide doesn't always reliably fire a plain window 'resize'.
+    window.visualViewport?.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.visualViewport?.removeEventListener('resize', update);
+    };
   }, []);
 
   return (
