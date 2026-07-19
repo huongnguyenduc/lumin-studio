@@ -84,7 +84,10 @@ export function pickedAnchor(
   surfaceAt: (
     localX: number,
     localY: number,
-  ) => { position: { x: number; y: number; z: number }; normal: { x: number; y: number; z: number } } | null,
+  ) => {
+    position: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+  } | null,
   slop = 6,
 ): EngraveAnchor | null {
   if (!down) return null;
