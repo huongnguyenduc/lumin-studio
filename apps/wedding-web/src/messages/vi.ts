@@ -27,7 +27,7 @@ export const vi = {
     venueHall: 'Sảnh tầng 5',
     venueAddress: '128/16 Nguyễn Ái Quốc, phường Tam Hiệp, Thành phố Đồng Nai',
     mapAlt: 'Sơ đồ đường đi',
-    openMaps: 'Mở trong google maps',
+    openMaps: 'Xem chỉ đường',
     timeline: 'Timeline',
     timelineWelcomeTime: '17:30',
     timelineWelcome: 'Đón khách',
