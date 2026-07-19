@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { DARK, SCRIPT, TAN_LIGHT } from './theme';
+import { ENVELOPE_OVERLAP } from './envelope';
 import { Reveal } from './reveal';
 
 // Hero (§2.1): full-bleed photo, logo mark + rotated ellipse borders, gradient,
@@ -41,16 +42,18 @@ export function Hero({ bgUrl }: { bgUrl?: string }) {
   }, [hint]);
 
   return (
-    // --invite-hero-h is set by InvitationCard's zoom effect on <1024px
-    // screens: exactly the visible viewport height in design-space px, so
-    // the hero fills one screen at full width regardless of Safari's
-    // toolbar state. 852px (the Figma design height) is the SSR/desktop
-    // fallback. Children stay top/bottom-anchored, photo is `cover` — the
-    // flexible height never distorts the composition.
+    // --invite-hero-h is set by InvitationCard's zoom effect: exactly the
+    // visible viewport height in design-space px, so the hero fills one screen
+    // regardless of Safari's toolbar state (852px, the Figma design height, is
+    // the pre-hydration fallback). ENVELOPE_OVERLAP is added on top of that:
+    // the envelope rides up over the hero by that much, so without the extra
+    // height its white lace panels bleed into the bottom of the first screen.
+    // Everything anchored to the hero's bottom is offset by the same amount to
+    // stay on-screen — i.e. the extra strip is exactly the below-the-fold part.
     <div
       style={{
         position: 'relative',
-        height: 'var(--invite-hero-h, 852px)',
+        height: `calc(var(--invite-hero-h, 852px) + ${ENVELOPE_OVERLAP}px)`,
         overflow: 'hidden',
       }}
     >
@@ -77,7 +80,7 @@ export function Hero({ bgUrl }: { bgUrl?: string }) {
         style={{
           position: 'absolute',
           left: 0,
-          bottom: 0,
+          bottom: ENVELOPE_OVERLAP,
           width: '100%',
           height: 130,
           background: `linear-gradient(0deg, ${DARK} 0%, rgba(59,47,39,0) 100%)`,
@@ -87,7 +90,7 @@ export function Hero({ bgUrl }: { bgUrl?: string }) {
         style={{
           position: 'absolute',
           left: 0,
-          bottom: 48,
+          bottom: 48 + ENVELOPE_OVERLAP,
           width: '100%',
           textAlign: 'center',
           fontFamily: SCRIPT,
@@ -104,7 +107,7 @@ export function Hero({ bgUrl }: { bgUrl?: string }) {
           style={{
             position: 'absolute',
             left: '50%',
-            bottom: 108,
+            bottom: 108 + ENVELOPE_OVERLAP,
             zIndex: 3,
             display: 'flex',
             flexDirection: 'column',

@@ -14,13 +14,19 @@ const laceV: CSSProperties = {
   backgroundSize: '6px auto',
 };
 
+/// How far the envelope rides up over the hero photo (§2.2). The hero adds this
+/// to its own height so the overlap always lands BELOW the fold — otherwise the
+/// white lace panels bleed into the bottom of the first screen once the hero is
+/// sized to exactly the viewport.
+export const ENVELOPE_OVERLAP = 178;
+
 // Envelope transition (§2.2): flap (clip-path), two rotated lace panels, wax
 // stamp, vertical lace borders (matches Letter). Pure decoration, no
-// interaction; overlaps the hero by −178px.
+// interaction; overlaps the hero by −ENVELOPE_OVERLAP.
 export function Envelope() {
   const t = useTranslations('hero');
   return (
-    <div style={{ position: 'relative', height: 350, marginTop: -178, zIndex: 2 }}>
+    <div style={{ position: 'relative', height: 350, marginTop: -ENVELOPE_OVERLAP, zIndex: 2 }}>
       <div style={{ ...laceV, left: 0 }} />
       <div style={{ ...laceV, left: 6 }} />
       <div style={{ ...laceV, right: 0 }} />
