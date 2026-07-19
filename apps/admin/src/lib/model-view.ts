@@ -48,7 +48,9 @@ export function model3dViewToAttrs(v: Model3dView): { orbit: string; target: str
 /**
  * Decide what a click on the 3D part-picker (f-2 click-on-model) maps to: the object name to assign, or null
  * to ignore. Pure so it's testable without a WebGL/DOM viewer — the component feeds it the real pointer
- * positions, the viewer's bounding rect, and `el.materialFromPoint` bound as `materialAt`.
+ * positions and `el.materialFromPoint` bound as `materialAt`. model-viewer's *FromPoint hit-tests take
+ * CLIENT (page) pixel coordinates — its getNDC subtracts the element rect itself, so passing
+ * element-local pixels double-subtracts and every pick misses (verified live on prod, 2026-07-19).
  *
  * Ignores a DRAG (an orbit, not a pick — pointer moved > `slop` px between down and up) and an empty/absent
  * material name (a gap in the model, or a fused glb whose one material is unnamed). The material name IS the
@@ -58,13 +60,12 @@ export function model3dViewToAttrs(v: Model3dView): { orbit: string; target: str
 export function pickedObjectName(
   down: { x: number; y: number } | null,
   up: { x: number; y: number },
-  rect: { left: number; top: number },
-  materialAt: (localX: number, localY: number) => { name: string } | null,
+  materialAt: (clientX: number, clientY: number) => { name: string } | null,
   slop = 6,
 ): string | null {
   if (!down) return null;
   if (Math.hypot(up.x - down.x, up.y - down.y) > slop) return null; // a drag/orbit, not a pick
-  const name = materialAt(up.x - rect.left, up.y - rect.top)?.name.trim();
+  const name = materialAt(up.x, up.y)?.name.trim();
   return name ? name : null;
 }
 
@@ -72,7 +73,8 @@ type EngraveAnchor = components['schemas']['EngraveAnchor'];
 
 /**
  * Decide what a tap on the engrave-anchor picker maps to: the EngraveAnchor to save, or null to ignore.
- * Pure (testable without WebGL) — the component binds `el.positionAndNormalFromPoint` as `surfaceAt`.
+ * Pure (testable without WebGL) — the component binds `el.positionAndNormalFromPoint` as `surfaceAt`,
+ * fed CLIENT (page) pixel coordinates (same contract as `materialAt` above).
  * Ignores a DRAG (an orbit, same slop rule as pickedObjectName) and a miss (tap on empty space). The
  * position is clamped to the contract envelope ([-100, 100] m) and the normal renormalised to unit
  * length (BE requires each component in [-1, 1] and a non-zero vector); a degenerate zero normal → null.
@@ -80,10 +82,9 @@ type EngraveAnchor = components['schemas']['EngraveAnchor'];
 export function pickedAnchor(
   down: { x: number; y: number } | null,
   up: { x: number; y: number },
-  rect: { left: number; top: number },
   surfaceAt: (
-    localX: number,
-    localY: number,
+    clientX: number,
+    clientY: number,
   ) => {
     position: { x: number; y: number; z: number };
     normal: { x: number; y: number; z: number };
@@ -92,7 +93,7 @@ export function pickedAnchor(
 ): EngraveAnchor | null {
   if (!down) return null;
   if (Math.hypot(up.x - down.x, up.y - down.y) > slop) return null; // a drag/orbit, not a pick
-  const hit = surfaceAt(up.x - rect.left, up.y - rect.top);
+  const hit = surfaceAt(up.x, up.y);
   if (!hit) return null;
   const len = Math.hypot(hit.normal.x, hit.normal.y, hit.normal.z);
   if (!Number.isFinite(len) || len === 0) return null;

@@ -260,8 +260,7 @@ export function PartObjectPicker({
   function onClick(e: React.MouseEvent<ModelViewerElement>) {
     const el = viewerRef.current;
     if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const name = pickedObjectName(downRef.current, { x: e.clientX, y: e.clientY }, rect, (x, y) =>
+    const name = pickedObjectName(downRef.current, { x: e.clientX, y: e.clientY }, (x, y) =>
       el.materialFromPoint(x, y),
     );
     if (name) onPick(name);
@@ -360,8 +359,7 @@ export function EngraveAnchorPicker({
   function onClick(e: React.MouseEvent<ModelViewerElement>) {
     const el = viewerRef.current;
     if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const next = pickedAnchor(downRef.current, { x: e.clientX, y: e.clientY }, rect, (x, y) =>
+    const next = pickedAnchor(downRef.current, { x: e.clientX, y: e.clientY }, (x, y) =>
       el.positionAndNormalFromPoint(x, y),
     );
     if (next) {
