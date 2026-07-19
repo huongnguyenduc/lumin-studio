@@ -58,8 +58,8 @@ export function InvitationCard({
   //           above it, ~40% of window width capped at 500px, so the card
   //           doesn't read as tiny on a desktop monitor or run too wide on
   //           a large one.
-  //   --invite-hero-h → how tall the hero is, in design-space px, always
-  //           set so hero × zoom === the visible viewport height.
+  //   --invite-hero-h → how tall the hero is, in design-space px. Phones only;
+  //           see the branch below for why desktop keeps the design default.
   // Every attempt to do both with a single zoom factor failed one way or the
   // other: height-driven left side margins (device width doesn't shrink when
   // Safari's toolbar shows, but height does), width-driven pushed the hero's
@@ -77,12 +77,27 @@ export function InvitationCard({
       const el = scaleRef.current;
       if (!el) return;
       const vw = window.innerWidth;
-      const vh = window.visualViewport?.height ?? window.innerHeight;
-      const zoom = vw >= 1024 ? Math.max(1.25, Math.min(vw * 0.4, 500) / 393) : vw / 393;
-      el.style.zoom = String(zoom);
-      // Hero adds ENVELOPE_OVERLAP on top of this, so sub-pixel rounding on
-      // the way back out of `zoom` can't expose a hairline under the photo.
-      el.style.setProperty('--invite-hero-h', `${vh / zoom}px`);
+      if (vw >= 1024) {
+        el.style.zoom = String(Math.max(1.25, Math.min(vw * 0.4, 500) / 393));
+        // Desktop keeps the hero at its design 852px rather than fitting it to
+        // the window. Fitting it squeezes the hero to ~607 design px, which is
+        // barely more than the 178px the envelope rides up over it — so the
+        // white lace panels end up ABOVE the 130px bottom gradient, over the
+        // bright part of the photo, reading as a pale band across the bottom
+        // of the first screen. At this zoom 852px overfills the window anyway,
+        // so the photo still covers it edge to edge and the overlap stays
+        // below the fold, exactly as the design intends.
+        el.style.removeProperty('--invite-hero-h');
+      } else {
+        // Phones: fit the hero to the visible height so it's exactly one
+        // screen whatever Safari's toolbar is doing. This lands on ~852px on
+        // its own (phone aspect ≈ the 393×852 Figma canvas), so the envelope
+        // overlap stays tucked inside the gradient like the design assumes.
+        const zoom = vw / 393;
+        const vh = window.visualViewport?.height ?? window.innerHeight;
+        el.style.zoom = String(zoom);
+        el.style.setProperty('--invite-hero-h', `${vh / zoom}px`);
+      }
       // Reveal only once the real zoom is applied — SSR/pre-hydration paints
       // with the static @media fallback (visually wrong) before any JS runs
       // at all, a gap useLayoutEffect can't close by itself; staying hidden
