@@ -80,7 +80,11 @@ export function InvitationCard({
       const vh = window.visualViewport?.height ?? window.innerHeight;
       const zoom = vw >= 1024 ? Math.max(1.25, Math.min(vw * 0.4, 500) / 393) : vw / 393;
       el.style.zoom = String(zoom);
-      el.style.setProperty('--invite-hero-h', `${vh / zoom}px`);
+      // +1 device px before dividing: zoom rounds the hero's used height DOWN,
+      // which left a hairline of the card's cream background showing under the
+      // photo. The extra pixel is invisible (the photo is `cover`-cropped) and
+      // always closes the gap.
+      el.style.setProperty('--invite-hero-h', `${(vh + 1) / zoom}px`);
       // Reveal only once the real zoom is applied — SSR/pre-hydration paints
       // with the static @media fallback (visually wrong) before any JS runs
       // at all, a gap useLayoutEffect can't close by itself; staying hidden
