@@ -58,6 +58,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pysrc/ /opt/asset-worker/pysrc/
 RUN pip3 install --no-cache-dir -r /opt/asset-worker/pysrc/requirements.txt
 
+# Node + gltf-transform for the Draco pass (ingest.py compress()) — served glbs shrink ~10x. Same
+# pinned-tarball pattern as Blender below; ubuntu 22.04's apt node (v12) is too old for the CLI.
+# CLI version = the one the ingest.py Draco round-trip was verified against. Best-effort at runtime:
+# if this layer is dropped, ingest still works and serves uncompressed glbs.
+ARG NODE_VERSION=22.14.0
+ADD https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz /tmp/node.tar.xz
+RUN mkdir -p /opt/node \
+    && tar -xf /tmp/node.tar.xz -C /opt/node --strip-components=1 \
+    && rm /tmp/node.tar.xz \
+    && ln -s /opt/node/bin/node /usr/local/bin/node \
+    && /opt/node/bin/npm install -g --no-fund --no-audit @gltf-transform/cli@4.4.1 \
+    && ln -s /opt/node/bin/gltf-transform /usr/local/bin/gltf-transform
+
 # ponytail: no --checksum on the download — HTTPS from blender.org is the v1; add
 # `ADD --checksum=sha256:<hash>` to pin the tarball if supply-chain hardening is wanted.
 ADD https://download.blender.org/release/Blender${BLENDER_SERIES}/blender-${BLENDER_VERSION}-linux-x64.tar.xz /tmp/blender.tar.xz

@@ -19,7 +19,9 @@ Contract with the Rust wrapper (src/ingest.rs):
 
 import json
 import os
+import shutil
 import signal
+import subprocess
 import sys
 from pathlib import Path
 
@@ -31,6 +33,39 @@ TIMEOUT_SECS = int(os.environ.get("INGEST_TIMEOUT_SECS", "300"))
 # sysexits EX_TEMPFAIL — the timeout exit the Rust wrapper classifies as TRANSIENT (redeliver),
 # unlike any other non-zero exit (permanent). Keep in sync with ingest.rs/render.rs EXIT_TIMEOUT.
 EXIT_TIMEOUT = 75
+# Triangle cap for EVERY served glb (fused + structured) — the anti-download measure: the browser only
+# ever receives a decimated display shell; the printable source never leaves the bucket. 50k = the
+# asset-worker rule's LOD ceiling. Decimation failure on an over-cap mesh FAILS the ingest (fail-closed:
+# never fall back to shipping the full-res mesh).
+MAX_TRIS = int(os.environ.get("INGEST_MAX_TRIS", "50000"))
+
+
+def decimated(mesh, target: int):
+    """Quadric-decimate to ≤ target faces; a mesh already under cap passes through untouched."""
+    if mesh.faces.shape[0] <= target:
+        return mesh
+    return mesh.simplify_quadric_decimation(face_count=target)
+
+
+def compress(glb_path: Path) -> None:
+    """Draco-compress a served glb in place via gltf-transform (Node CLI baked in the worker image).
+    Pure size optimization — the decimation cap above is the security measure — so best-effort: a
+    missing CLI (local dev) or a compressor quirk leaves the uncompressed glb and logs to stderr.
+    `draco` (not `optimize`) on purpose: optimize's weld/prune/join can rename or merge the named
+    objects/materials the f-2..f-5 chain keys on. model-viewer decodes KHR_draco_mesh_compression
+    with its default gstatic decoder (model-3d-viewer.tsx)."""
+    cli = shutil.which("gltf-transform")
+    if cli is None:
+        print("gltf-transform not found — serving uncompressed glb", file=sys.stderr)
+        return
+    tmp = glb_path.with_suffix(".draco.glb")
+    try:
+        subprocess.run([cli, "draco", str(glb_path), str(tmp)], check=True, capture_output=True)
+        tmp.replace(glb_path)
+    except Exception as e:  # noqa: BLE001 — best-effort; _IngestTimeout is a BaseException, never swallowed here
+        detail = getattr(e, "stderr", b"") or b""
+        print(f"draco compress failed ({e}): {detail.decode(errors='replace')[:500]}", file=sys.stderr)
+        tmp.unlink(missing_ok=True)
 
 
 def structured_artifact(input_path: str, translation, out_dir: str):
@@ -50,13 +85,23 @@ def structured_artifact(input_path: str, translation, out_dir: str):
         # model-viewer `getMaterialByName(objectName)` (model-viewer recolors by MATERIAL — mesh→material is
         # not public API). A geometry with no material (e.g. vertex-colour visuals) is skipped → that part
         # simply won't recolour (graceful), never a crash.
-        for name, geom in geometry.items():
+        total = sum(g.faces.shape[0] for g in geometry.values()) or 1
+        for name, geom in list(geometry.items()):
             material = getattr(getattr(geom, "visual", None), "material", None)
             if material is not None:
                 material.name = name
+            # Decimate each part to its proportional share of the cap (floor 64 keeps tiny parts intact).
+            # Decimation returns a bare mesh → reattach the named material so f-3 recolouring still works.
+            share = max(int(MAX_TRIS * geom.faces.shape[0] / total), 64)
+            if geom.faces.shape[0] > share:
+                slim = geom.simplify_quadric_decimation(face_count=share)
+                if material is not None:
+                    slim.visual = trimesh.visual.TextureVisuals(material=material)
+                scene.geometry[name] = slim
         scene.apply_translation(translation)  # the SAME vector as the fused export → the two stay aligned
         structured_path = Path(out_dir) / "model_structured.glb"
         structured_path.write_bytes(trimesh.exchange.gltf.export_glb(scene))
+        compress(structured_path)
         return names, structured_path
     except Exception:  # noqa: BLE001 — the structured artifact is optional metadata; never fail the ingest over it
         return [], None
@@ -79,7 +124,9 @@ def ingest(input_path: str, out_dir: str) -> dict:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     glb_path = out / "model.glb"
-    glb_path.write_bytes(trimesh.exchange.gltf.export_glb(trimesh.Scene(mesh)))
+    # Dims/triangles/watertight above are measured on the ORIGINAL; only the SERVED artifact is decimated.
+    glb_path.write_bytes(trimesh.exchange.gltf.export_glb(trimesh.Scene(decimated(mesh, MAX_TRIS))))
+    compress(glb_path)
 
     # ponytail: a SECOND load (in structured_artifact) reads names + exports the structured glb — keeps THIS
     # fused path (what ADR-038's pose is curated against) byte-identical; dedupe to one load only if latency bites.

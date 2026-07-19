@@ -22,6 +22,9 @@ export default tseslint.config(
       // openapi-typescript output (packages/api-client) — machine-generated, guarded by its
       // own stale-check test; not ours to lint (ADR-031).
       '**/*.gen.ts',
+      // Draco decoder vendored verbatim from three (self-hosted so model-viewer never fetches
+      // WASM from gstatic — PDPL posture); third-party emscripten output, not ours to lint.
+      'apps/storefront/public/draco/**',
       // Design-reference prototype (HTML handoff + mock JS, like designs/) — not production code.
       'design_handoff_wedding_invitation/**',
     ],
