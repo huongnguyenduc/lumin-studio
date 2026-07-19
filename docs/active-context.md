@@ -6,7 +6,7 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
-**➡️ NOW (2026-07-19, storefront PDP, trên nhánh `fix/wedding-hero-dvh-gap` — CHƯA commit): khắc chữ hiện realtime trên model 3D.** 2 file: `apps/storefront/src/components/model-3d-viewer.tsx` (prop `engraveText` → hotspot `<model-viewer>` ghim tâm mặt trước bounding box, đo 1 lần khi `load`; billboard, không khắc chìm — cần engrave-zone UV Blender nếu muốn thật hơn) + `product-detail.tsx` (truyền text option khắc đầu tiên). Nameplate preview trong `EngraveField` giữ nguyên (fallback no-WebGL). **Verify xanh:** storefront typecheck + lint + 240 test. **NEXT: tách nhánh riêng khỏi wedding-branch + commit (đợi user), smoke browser nếu user muốn.**
+**➡️ NOW (2026-07-19, nhánh `feat/pdp-engrave-3d-preview`, PR #178): khắc chữ realtime BÁM BỀ MẶT model 3D + chạm chọn vị trí.** V1 billboard hotspot bị user reject → rev 2: thay `<model-viewer>` bằng three.js trực tiếp (`apps/storefront/src/lib/viewer3d.ts`, dynamic import) — text canvas → `DecalGeometry` chiếu lên mesh (ôm độ cong, look chìm), tap raycast dời anchor, anchor mặc định trước-giữa. Giữ Draco `/draco/` self-host, recolor theo tên material, sprite/cover fallback, reduced-motion by construction. Bỏ dep `@google/model-viewer`, thêm `three`+`@types/three`. Vị trí khắc CHƯA lưu vào order (zoneId dropped spec §5). **Verify xanh:** typecheck + lint + 240 test + build compile. **NEXT: user review PR #178 + smoke browser thật (decal look/size cần mắt người chỉnh).**
 
 ---
 
