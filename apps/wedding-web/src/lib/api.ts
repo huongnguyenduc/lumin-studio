@@ -5,9 +5,9 @@ import 'server-only';
 // without flicker (§6); open tracking is a client POST (MarkOpened), not here.
 const base = process.env.WEDDING_API_URL ?? 'http://localhost:8081';
 
-import type { Invite, Wish } from './types';
+import type { EventSummary, Invite, Wish } from './types';
 
-export type { Invite, Wish };
+export type { Invite, Wish, EventSummary };
 
 export async function getInvite(slug: string): Promise<Invite | null> {
   try {
@@ -32,6 +32,27 @@ export async function getSettings(): Promise<Record<string, unknown>> {
   } catch {
     return {};
   }
+}
+
+// Every event (venue/timeline/ceremony data per wedding). getActiveEvent()
+// resolves which one this deployment serves: WEDDING_EVENT_SLUG if set, else
+// the first by sortOrder — so a single-wedding deployment needs no env change.
+export async function getEvents(): Promise<EventSummary[]> {
+  try {
+    const res = await fetch(`${base}/api/events`, { cache: 'no-store' });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { items: EventSummary[] };
+    return data.items;
+  } catch {
+    return [];
+  }
+}
+
+export async function getActiveEvent(): Promise<EventSummary | null> {
+  const events = await getEvents();
+  if (events.length === 0) return null;
+  const wanted = process.env.WEDDING_EVENT_SLUG;
+  return (wanted && events.find((e) => e.slug === wanted)) || events[0];
 }
 
 export async function getWishes(limit = 100): Promise<{ items: Wish[]; total: number }> {

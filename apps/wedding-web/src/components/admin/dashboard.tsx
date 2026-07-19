@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import {
   adminApi,
   ApiError,
+  type AdminEvent,
   type AdminGuest,
   type AdminWish,
   type AdminStats,
@@ -15,8 +16,10 @@ import { QuickAdd } from './quick-add';
 import { GuestTable } from './guest-table';
 import { WishesPanel } from './wishes-panel';
 import { SettingsPanel } from './settings-panel';
+import { EventPanel } from './event-panel';
 import {
   card,
+  chipStyle,
   inputBase,
   kicker,
   pillSolid,
@@ -24,6 +27,7 @@ import {
   GREEN,
   INK,
   RED,
+  TAN,
   TAN_LIGHT,
   SCRIPT,
 } from './ui';
@@ -33,6 +37,10 @@ type EditState = { id: string | null; label: string; group: string; note: string
 export function AdminDashboard() {
   const t = useTranslations('admin');
   const [authed, setAuthed] = useState<boolean | null>(null); // null = probing
+  const [events, setEvents] = useState<AdminEvent[]>([]);
+  const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
+  const [newEventOpen, setNewEventOpen] = useState(false);
+  const [newEventName, setNewEventName] = useState('');
   const [guests, setGuests] = useState<AdminGuest[]>([]);
   const [groups, setGroups] = useState<string[]>([]);
   const [wishes, setWishes] = useState<AdminWish[]>([]);
@@ -51,28 +59,48 @@ export function AdminDashboard() {
     toastTimer.current = setTimeout(() => setToast(null), 2600);
   }, []);
 
-  const reload = useCallback(async () => {
-    try {
-      const [g, gr, w, s, set] = await Promise.all([
-        adminApi.guests(),
-        adminApi.groups(),
-        adminApi.wishes(),
-        adminApi.stats(),
-        adminApi.settings(),
-      ]);
-      setGuests(g.items);
-      setGroups(gr.items.map((x) => x.name));
-      setWishes(w.items);
-      setStats(s);
-      setSettings(set);
-      setAuthed(true);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) setAuthed(false);
-      else flash(t('toasts.apiError'), true);
-    }
-  }, [flash, t]);
+  // Every event has its own guests/groups/wishes-adjacent stats — reload keeps
+  // whatever event tab is selected (falling back to the first one on initial
+  // load) and re-fetches that event's scoped data alongside the shared bits
+  // (wishes/stats/settings stay global — not split per event).
+  const reload = useCallback(
+    async (forEvent?: string) => {
+      try {
+        const ev = await adminApi.events();
+        setEvents(ev.items);
+        const slug = forEvent ?? selectedEvent ?? ev.items[0]?.slug ?? null;
+        setSelectedEvent(slug);
+        if (!slug) {
+          setAuthed(true);
+          return;
+        }
+        const [g, gr, w, s, set] = await Promise.all([
+          adminApi.guests(slug),
+          adminApi.groups(slug),
+          adminApi.wishes(),
+          adminApi.stats(slug),
+          adminApi.settings(),
+        ]);
+        setGuests(g.items);
+        setGroups(gr.items.map((x) => x.name));
+        setWishes(w.items);
+        setStats(s);
+        setSettings(set);
+        setAuthed(true);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) setAuthed(false);
+        else flash(t('toasts.apiError'), true);
+      }
+    },
+    [flash, t, selectedEvent],
+  );
 
+  // deliberately run once on mount only — reload reads selectedEvent via
+  // closure but switching tabs calls reload(slug) explicitly.
+  const initialLoad = useRef(false);
   useEffect(() => {
+    if (initialLoad.current) return;
+    initialLoad.current = true;
     void reload();
   }, [reload]);
 
@@ -206,6 +234,75 @@ export function AdminDashboard() {
         </button>
       </div>
 
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={kicker}>{t('events.heading')}</span>
+        {events.map((ev) => (
+          <button
+            key={ev.slug}
+            type="button"
+            onClick={() => {
+              if (ev.slug === selectedEvent) return;
+              setSelectedEvent(ev.slug);
+              void reload(ev.slug);
+            }}
+            style={chipStyle(ev.slug === selectedEvent)}
+          >
+            {ev.name}
+          </button>
+        ))}
+        {newEventOpen ? (
+          <input
+            value={newEventName}
+            onChange={(e) => setNewEventName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setNewEventOpen(false);
+                setNewEventName('');
+              }
+              if (e.key !== 'Enter') return;
+              const name = newEventName.trim();
+              setNewEventOpen(false);
+              setNewEventName('');
+              if (!name) return;
+              void run(
+                () => adminApi.createEvent(name),
+                () => flash(t('toasts.saved')),
+              );
+            }}
+            placeholder={t('events.addPlaceholder')}
+            aria-label={t('events.addPlaceholder')}
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- appears on explicit "+ Thêm đám cưới" click
+            autoFocus
+            style={{
+              ...inputBase,
+              width: 200,
+              borderRadius: 20,
+              boxShadow: `0 0 0 0.5px ${INK}`,
+              padding: '5px 14px',
+              fontSize: 12,
+            }}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setNewEventOpen(true)}
+            style={{
+              padding: '5px 14px',
+              borderRadius: 20,
+              border: `1px dashed ${TAN}`,
+              background: 'transparent',
+              fontSize: 12,
+              color: INK,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              fontFamily: 'inherit',
+            }}
+          >
+            {t('events.add')}
+          </button>
+        )}
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14 }}>
         {(
           [
@@ -255,8 +352,9 @@ export function AdminDashboard() {
         selectedGroup={quickGroup}
         onSelectGroup={setQuickGroup}
         onAdd={(label) =>
+          selectedEvent &&
           void run(
-            () => adminApi.createGuest({ label, group: quickGroup }),
+            () => adminApi.createGuest({ label, group: quickGroup, eventSlug: selectedEvent }),
             () => {
               sessionCount.current += 1;
               flash(t('toasts.added', { label, count: sessionCount.current }));
@@ -264,9 +362,10 @@ export function AdminDashboard() {
           )
         }
         onBulkAdd={(lines) =>
+          selectedEvent &&
           void run(
             async () => {
-              for (const l of lines) await adminApi.createGuest(l);
+              for (const l of lines) await adminApi.createGuest({ ...l, eventSlug: selectedEvent });
             },
             () => {
               sessionCount.current += lines.length;
@@ -275,28 +374,42 @@ export function AdminDashboard() {
           )
         }
         onCreateGroup={(name) =>
+          selectedEvent &&
           void run(
-            () => adminApi.createGroup(name),
+            () => adminApi.createGroup(name, selectedEvent),
             () => setQuickGroup(name),
           )
         }
         onRenameGroup={(from, to) =>
+          selectedEvent &&
           void run(
-            () => adminApi.renameGroup(from, to),
+            () => adminApi.renameGroup(selectedEvent, from, to),
             () => {
               if (quickGroup === from) setQuickGroup(to);
             },
           )
         }
         onDeleteGroup={(name) =>
+          selectedEvent &&
           void run(
-            () => adminApi.deleteGroup(name),
+            () => adminApi.deleteGroup(selectedEvent, name),
             () => {
               if (quickGroup === name) setQuickGroup('Khác');
             },
           )
         }
       />
+
+      {(() => {
+        const current = events.find((e) => e.slug === selectedEvent);
+        return current ? (
+          <EventPanel
+            event={current}
+            onSaved={() => void reload()}
+            onError={(msg) => flash(msg, true)}
+          />
+        ) : null;
+      })()}
 
       <SettingsPanel
         settings={settings}

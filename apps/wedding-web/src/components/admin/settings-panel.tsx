@@ -137,7 +137,7 @@ export function SettingsPanel({
             paddingTop: 16,
           }}
         >
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <span style={kicker}>{t('hero')}</span>
               <div style={previewBox(val<string | null>('heroUrl', null), 110)} />
@@ -147,19 +147,6 @@ export function SettingsPanel({
                   type="file"
                   accept="image/*"
                   onChange={filePick('hero', (url) => patch({ heroUrl: url }))}
-                  style={{ display: 'none' }}
-                />
-              </label>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <span style={kicker}>{t('map')}</span>
-              <div style={previewBox(val<string | null>('mapUrl', null), 110)} />
-              <label style={uploadLabel}>
-                {t('changeImage')}
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={filePick('map', (url) => patch({ mapUrl: url }))}
                   style={{ display: 'none' }}
                 />
               </label>
@@ -312,25 +299,14 @@ export function SettingsPanel({
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <span style={kicker}>{t('mapsUrl')}</span>
-              <input
-                value={val<string>('mapsUrl', '')}
-                onChange={(e) => patch({ mapsUrl: e.target.value })}
-                aria-label={t('mapsUrl')}
-                style={{ ...inputBase, borderRadius: 8, padding: '9px 14px' }}
-              />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <span style={kicker}>{t('siteTitle')}</span>
-              <input
-                value={val<string>('siteTitle', '')}
-                onChange={(e) => patch({ siteTitle: e.target.value })}
-                aria-label={t('siteTitle')}
-                style={{ ...inputBase, borderRadius: 8, padding: '9px 14px' }}
-              />
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={kicker}>{t('siteTitle')}</span>
+            <input
+              value={val<string>('siteTitle', '')}
+              onChange={(e) => patch({ siteTitle: e.target.value })}
+              aria-label={t('siteTitle')}
+              style={{ ...inputBase, borderRadius: 8, padding: '9px 14px' }}
+            />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={kicker}>{t('siteDesc')}</span>

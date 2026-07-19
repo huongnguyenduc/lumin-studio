@@ -1,5 +1,5 @@
-import { getInvite, getSettings, getWishes } from '@/lib/api';
-import { asSiteSettings } from '@/lib/site-settings';
+import { getActiveEvent, getInvite, getSettings, getWishes } from '@/lib/api';
+import { asEventData, asSiteSettings } from '@/lib/site-settings';
 import { InvitationCard } from '@/components/invitation/invitation-card';
 import { MarkOpened } from '@/components/invitation/mark-opened';
 
@@ -11,15 +11,21 @@ export const dynamic = 'force-dynamic';
 
 export default async function InvitePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const [guest, wishes, settings] = await Promise.all([
+  const [guest, wishes, settings, event] = await Promise.all([
     getInvite(slug),
     getWishes(),
     getSettings(),
+    getActiveEvent(),
   ]);
   return (
     <>
       {guest ? <MarkOpened slug={slug} /> : null}
-      <InvitationCard guest={guest} wishes={wishes.items} settings={asSiteSettings(settings)} />
+      <InvitationCard
+        guest={guest}
+        wishes={wishes.items}
+        settings={asSiteSettings(settings)}
+        event={asEventData(event?.data ?? {})}
+      />
     </>
   );
 }

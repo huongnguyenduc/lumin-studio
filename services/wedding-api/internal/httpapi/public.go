@@ -182,6 +182,29 @@ func (s *server) getWishes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
 }
 
+// getEvents lists events (public, unauthenticated): each wedding-web deployment
+// resolves its "active" event from this list (WEDDING_EVENT_SLUG, or the first
+// by sort_order when unset).
+func (s *server) getEvents(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.pool.Query(r.Context(),
+		`SELECT slug, name, sort_order, data FROM events ORDER BY sort_order, slug`)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB", err.Error())
+		return
+	}
+	defer rows.Close()
+	items := []eventRow{}
+	for rows.Next() {
+		var e eventRow
+		if err := rows.Scan(&e.Slug, &e.Name, &e.SortOrder, &e.Data); err != nil {
+			writeError(w, http.StatusInternalServerError, "DB", err.Error())
+			return
+		}
+		items = append(items, e)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
 func queryInt(r *http.Request, key string, def, max int) int {
 	v := r.URL.Query().Get(key)
 	if v == "" {

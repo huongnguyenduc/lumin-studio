@@ -64,6 +64,9 @@ func New(pool *pgxpool.Pool, a *auth.Auth, uploads *uploadstore.Store) http.Hand
 		// Site settings are public page content (hero/gallery/map/music/meta) —
 		// the invitation SSR reads them without a session (HANDOFF §3.5).
 		r.Get("/api/settings", s.getSettings)
+		// Events (venue/timeline per wedding) — each wedding-web deployment
+		// resolves its active event from this list.
+		r.Get("/api/events", s.getEvents)
 	})
 
 	// Login is rate-limited MUCH tighter (shared password → brute-force surface).
@@ -86,8 +89,12 @@ func New(pool *pgxpool.Pool, a *auth.Auth, uploads *uploadstore.Store) http.Hand
 
 		r.Get("/groups", s.listGroups)
 		r.Post("/groups", s.createGroup)
-		r.Patch("/groups/{name}", s.renameGroup)
-		r.Delete("/groups/{name}", s.deleteGroup)
+		r.Patch("/groups/{event}/{name}", s.renameGroup)
+		r.Delete("/groups/{event}/{name}", s.deleteGroup)
+
+		r.Get("/events", s.listEvents)
+		r.Post("/events", s.createEvent)
+		r.Patch("/events/{slug}", s.patchEvent)
 
 		r.Get("/stats", s.adminStats)
 		r.Get("/settings", s.getSettings)

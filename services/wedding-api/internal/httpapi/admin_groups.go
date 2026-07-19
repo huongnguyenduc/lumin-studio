@@ -13,8 +13,13 @@ import (
 const fallbackGroup = "Khác"
 
 func (s *server) listGroups(w http.ResponseWriter, r *http.Request) {
+	event := r.URL.Query().Get("event")
+	if event == "" {
+		writeError(w, http.StatusBadRequest, "NO_EVENT", "thiếu tham số event")
+		return
+	}
 	rows, err := s.pool.Query(r.Context(),
-		`SELECT name, sort_order FROM groups ORDER BY sort_order, name`)
+		`SELECT name, sort_order FROM groups WHERE event_slug = $1 ORDER BY sort_order, name`, event)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
@@ -35,7 +40,8 @@ func (s *server) listGroups(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) createGroup(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name string `json:"name"`
+		Name      string `json:"name"`
+		EventSlug string `json:"eventSlug"`
 	}
 	if !readJSON(w, r, &body) {
 		return
@@ -45,9 +51,15 @@ func (s *server) createGroup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_NAME", "tên nhóm không được để trống")
 		return
 	}
+	eventSlug := strings.TrimSpace(body.EventSlug)
+	if eventSlug == "" {
+		writeError(w, http.StatusBadRequest, "NO_EVENT", "thiếu eventSlug")
+		return
+	}
 	_, err := s.pool.Exec(r.Context(),
-		`INSERT INTO groups (name, sort_order)
-		 VALUES ($1, (SELECT coalesce(max(sort_order), 0) + 1 FROM groups))`, name)
+		`INSERT INTO groups (event_slug, name, sort_order)
+		 VALUES ($1, $2, (SELECT coalesce(max(sort_order), 0) + 1 FROM groups WHERE event_slug = $1))`,
+		eventSlug, name)
 	if isUniqueViolation(err) {
 		writeError(w, http.StatusConflict, "GROUP_EXISTS", "nhóm đã tồn tại")
 		return
@@ -59,8 +71,10 @@ func (s *server) createGroup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"name": name})
 }
 
-// renameGroup cascades to members in one tx (HANDOFF §4: renaming cascades).
+// renameGroup cascades to members of the same event in one tx (HANDOFF §4:
+// renaming cascades).
 func (s *server) renameGroup(w http.ResponseWriter, r *http.Request) {
+	eventSlug := chi.URLParam(r, "event")
 	oldName := chi.URLParam(r, "name")
 	var body struct {
 		Name string `json:"name"`
@@ -81,7 +95,8 @@ func (s *server) renameGroup(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(r.Context()) //nolint:errcheck // no-op after commit
 
 	tag, err := tx.Exec(r.Context(),
-		`UPDATE groups SET name = $2 WHERE name = $1`, oldName, newName)
+		`UPDATE groups SET name = $3 WHERE event_slug = $1 AND name = $2`,
+		eventSlug, oldName, newName)
 	if isUniqueViolation(err) {
 		writeError(w, http.StatusConflict, "GROUP_EXISTS", "nhóm đã tồn tại")
 		return
@@ -95,7 +110,8 @@ func (s *server) renameGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := tx.Exec(r.Context(),
-		`UPDATE guests SET "group" = $2 WHERE "group" = $1`, oldName, newName); err != nil {
+		`UPDATE guests SET "group" = $3 WHERE event_slug = $1 AND "group" = $2`,
+		eventSlug, oldName, newName); err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
 	}
@@ -108,6 +124,7 @@ func (s *server) renameGroup(w http.ResponseWriter, r *http.Request) {
 
 // deleteGroup reassigns members to "Khác" (created on demand) in one tx.
 func (s *server) deleteGroup(w http.ResponseWriter, r *http.Request) {
+	eventSlug := chi.URLParam(r, "event")
 	name := chi.URLParam(r, "name")
 	if name == fallbackGroup {
 		writeError(w, http.StatusBadRequest, "PROTECTED_GROUP", `không thể xoá nhóm "Khác"`)
@@ -120,7 +137,8 @@ func (s *server) deleteGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context()) //nolint:errcheck // no-op after commit
 
-	tag, err := tx.Exec(r.Context(), `DELETE FROM groups WHERE name = $1`, name)
+	tag, err := tx.Exec(r.Context(),
+		`DELETE FROM groups WHERE event_slug = $1 AND name = $2`, eventSlug, name)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
@@ -130,14 +148,15 @@ func (s *server) deleteGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := tx.Exec(r.Context(),
-		`INSERT INTO groups (name, sort_order)
-		 VALUES ($1, (SELECT coalesce(max(sort_order), 0) + 1 FROM groups))
-		 ON CONFLICT (name) DO NOTHING`, fallbackGroup); err != nil {
+		`INSERT INTO groups (event_slug, name, sort_order)
+		 VALUES ($1, $2, (SELECT coalesce(max(sort_order), 0) + 1 FROM groups WHERE event_slug = $1))
+		 ON CONFLICT (event_slug, name) DO NOTHING`, eventSlug, fallbackGroup); err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
 	}
 	if _, err := tx.Exec(r.Context(),
-		`UPDATE guests SET "group" = $2 WHERE "group" = $1`, name, fallbackGroup); err != nil {
+		`UPDATE guests SET "group" = $3 WHERE event_slug = $1 AND "group" = $2`,
+		eventSlug, name, fallbackGroup); err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
 	}

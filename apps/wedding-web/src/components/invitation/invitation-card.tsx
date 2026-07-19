@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import type { Invite, Wish } from '@/lib/types';
-import type { SiteSettings } from '@/lib/site-settings';
+import type { EventData, SiteSettings } from '@/lib/site-settings';
 import { CREAM, TAN_LIGHT, SCRIPT, SERIF } from './theme';
 import { useMusic } from './use-music';
 import { Reveal } from './reveal';
@@ -24,10 +24,12 @@ export function InvitationCard({
   guest,
   wishes,
   settings = {},
+  event = {},
 }: {
   guest: Invite | null;
   wishes: Wish[];
   settings?: SiteSettings;
+  event?: EventData;
 }) {
   const t = useTranslations('footer');
   const music = useMusic(settings.musicUrl);
@@ -150,13 +152,9 @@ export function InvitationCard({
           {/* marginBottom 80: khoảng thở giữa thư mời và section cards (Figma 2143→2222). */}
           <div style={{ padding: '0 6.75px', marginBottom: 80 }}>
             <Envelope />
-            <Letter
-              guestLabel={guest?.label ?? null}
-              mapUrl={settings.mapUrl}
-              mapsUrl={settings.mapsUrl}
-            />
+            <Letter guestLabel={guest?.label ?? null} event={event} />
           </div>
-          <Events />
+          <Events event={event} />
           <Gallery images={settings.gallery} />
           {/* RSVP only for a valid guest link — recommended §9 anonymous behavior. */}
           {guest ? <Rsvp guestId={guest.id} initial={guest.rsvp} /> : null}

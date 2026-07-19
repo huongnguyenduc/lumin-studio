@@ -29,10 +29,17 @@ const guestSelect = `
 	       (SELECT w.text FROM wishes w WHERE w.guest_id = g.id ORDER BY w.created_at LIMIT 1)
 	FROM guests g`
 
-// listGuests returns the whole list — filters/sort/pagination are client-side in
-// the admin app (prototype behavior; a wedding list is a few hundred rows).
+// listGuests returns the whole list for one event — filters/sort/pagination
+// are client-side in the admin app (prototype behavior; a wedding list is a
+// few hundred rows).
 func (s *server) listGuests(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.pool.Query(r.Context(), guestSelect+` ORDER BY g.created_at DESC`)
+	event := r.URL.Query().Get("event")
+	if event == "" {
+		writeError(w, http.StatusBadRequest, "NO_EVENT", "thiếu tham số event")
+		return
+	}
+	rows, err := s.pool.Query(r.Context(),
+		guestSelect+` WHERE g.event_slug = $1 ORDER BY g.created_at DESC`, event)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
@@ -56,9 +63,10 @@ func (s *server) listGuests(w http.ResponseWriter, r *http.Request) {
 // racing to the same slug can 500 one of them; one host typing labels can't.
 func (s *server) createGuest(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Label string  `json:"label"`
-		Group string  `json:"group"`
-		Note  *string `json:"note"`
+		Label     string  `json:"label"`
+		Group     string  `json:"group"`
+		Note      *string `json:"note"`
+		EventSlug string  `json:"eventSlug"`
 	}
 	if !readJSON(w, r, &body) {
 		return
@@ -66,6 +74,11 @@ func (s *server) createGuest(w http.ResponseWriter, r *http.Request) {
 	label := strings.TrimSpace(body.Label)
 	if label == "" {
 		writeError(w, http.StatusBadRequest, "BAD_LABEL", "xưng hô không được để trống")
+		return
+	}
+	eventSlug := strings.TrimSpace(body.EventSlug)
+	if eventSlug == "" {
+		writeError(w, http.StatusBadRequest, "NO_EVENT", "thiếu eventSlug")
 		return
 	}
 	group := strings.TrimSpace(body.Group)
@@ -83,9 +96,9 @@ func (s *server) createGuest(w http.ResponseWriter, r *http.Request) {
 
 	var g guestRow
 	err := s.pool.QueryRow(r.Context(),
-		`INSERT INTO guests (id, label, "group", note) VALUES ($1, $2, $3, $4)
+		`INSERT INTO guests (id, label, "group", note, event_slug) VALUES ($1, $2, $3, $4, $5)
 		 RETURNING id, label, "group", note, opened_at, rsvp, rsvp_at, created_at`,
-		id, label, group, body.Note).
+		id, label, group, body.Note, eventSlug).
 		Scan(&g.ID, &g.Label, &g.Group, &g.Note, &g.OpenedAt, &g.RSVP, &g.RSVPAt, &g.CreatedAt)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())

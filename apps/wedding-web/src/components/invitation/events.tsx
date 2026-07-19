@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
+import type { EventData } from '@/lib/site-settings';
 import { CREAM, CREAM_2, INK, TAN, TAN_LIGHT } from './theme';
 import { Reveal, GrowLine } from './reveal';
 
@@ -167,8 +168,9 @@ function Ticket({
 
 // Events (§2.4 rev): embossed floral ground, "together" rule on top, two arch
 // tickets staggered — the dark one dropped 65px below the light one.
-export function Events() {
+export function Events({ event = {} }: { event?: EventData }) {
   const t = useTranslations('events');
+  const v = (key: keyof EventData, fallbackKey: string) => event[key] || t(fallbackKey);
   return (
     <div
       style={{
@@ -236,11 +238,11 @@ export function Events() {
         <Ticket
           variant="light"
           title={t('vuQuy')}
-          time={t('vuQuyTime')}
-          date={t('date')}
-          lunarDate={t('lunarDate')}
-          place={t('vuQuyPlace')}
-          address={t('vuQuyAddress')}
+          time={v('vuQuyTime', 'vuQuyTime')}
+          date={v('ceremonyDate', 'date')}
+          lunarDate={v('ceremonyLunarDate', 'lunarDate')}
+          place={v('vuQuyPlace', 'vuQuyPlace')}
+          address={v('vuQuyAddress', 'vuQuyAddress')}
           atTime={t('atTime')}
         />
         <div style={{ marginTop: 65.27 }}>
@@ -248,11 +250,11 @@ export function Events() {
             delay={150}
             variant="dark"
             title={t('thanhHon')}
-            time={t('thanhHonTime')}
-            date={t('date')}
-            lunarDate={t('lunarDate')}
-            place={t('thanhHonPlace')}
-            address={t('thanhHonAddress')}
+            time={v('thanhHonTime', 'thanhHonTime')}
+            date={v('ceremonyDate', 'date')}
+            lunarDate={v('ceremonyLunarDate', 'lunarDate')}
+            place={v('thanhHonPlace', 'thanhHonPlace')}
+            address={v('thanhHonAddress', 'thanhHonAddress')}
             atTime={t('atTime')}
           />
         </div>
