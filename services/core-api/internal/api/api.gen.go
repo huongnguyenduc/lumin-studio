@@ -2375,6 +2375,9 @@ type ServerInterface interface {
 	// Edit a product's colour (owner-only).
 	// (PATCH /admin/products/{id}/colors/{colorId})
 	UpdateProductColor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, colorId openapi_types.UUID)
+	// Clear a product's engrave anchor (owner-only) — back to the storefront's front-centre heuristic.
+	// (DELETE /admin/products/{id}/engrave-anchor)
+	DeleteProductEngraveAnchor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// Save a product's engrave anchor — where engraving text sits on the 3D model (owner-only).
 	// (PATCH /admin/products/{id}/engrave-anchor)
 	UpdateProductEngraveAnchor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -2807,6 +2810,12 @@ func (_ Unimplemented) DeleteProductColor(w http.ResponseWriter, r *http.Request
 // Edit a product's colour (owner-only).
 // (PATCH /admin/products/{id}/colors/{colorId})
 func (_ Unimplemented) UpdateProductColor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, colorId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Clear a product's engrave anchor (owner-only) — back to the storefront's front-centre heuristic.
+// (DELETE /admin/products/{id}/engrave-anchor)
+func (_ Unimplemented) DeleteProductEngraveAnchor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4392,6 +4401,37 @@ func (siw *ServerInterfaceWrapper) UpdateProductColor(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateProductColor(w, r, id, colorId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteProductEngraveAnchor operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProductEngraveAnchor(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProductEngraveAnchor(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6109,6 +6149,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/admin/products/{id}/colors/{colorId}", wrapper.UpdateProductColor)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/admin/products/{id}/engrave-anchor", wrapper.DeleteProductEngraveAnchor)
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/admin/products/{id}/engrave-anchor", wrapper.UpdateProductEngraveAnchor)
@@ -8263,6 +8306,49 @@ func (response UpdateProductColor403JSONResponse) VisitUpdateProductColorRespons
 type UpdateProductColor404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateProductColor404JSONResponse) VisitUpdateProductColorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteProductEngraveAnchorRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type DeleteProductEngraveAnchorResponseObject interface {
+	VisitDeleteProductEngraveAnchorResponse(w http.ResponseWriter) error
+}
+
+type DeleteProductEngraveAnchor204Response struct {
+}
+
+func (response DeleteProductEngraveAnchor204Response) VisitDeleteProductEngraveAnchorResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteProductEngraveAnchor401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteProductEngraveAnchor401JSONResponse) VisitDeleteProductEngraveAnchorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteProductEngraveAnchor403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteProductEngraveAnchor403JSONResponse) VisitDeleteProductEngraveAnchorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteProductEngraveAnchor404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteProductEngraveAnchor404JSONResponse) VisitDeleteProductEngraveAnchorResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
 
@@ -10595,6 +10681,9 @@ type StrictServerInterface interface {
 	// Edit a product's colour (owner-only).
 	// (PATCH /admin/products/{id}/colors/{colorId})
 	UpdateProductColor(ctx context.Context, request UpdateProductColorRequestObject) (UpdateProductColorResponseObject, error)
+	// Clear a product's engrave anchor (owner-only) — back to the storefront's front-centre heuristic.
+	// (DELETE /admin/products/{id}/engrave-anchor)
+	DeleteProductEngraveAnchor(ctx context.Context, request DeleteProductEngraveAnchorRequestObject) (DeleteProductEngraveAnchorResponseObject, error)
 	// Save a product's engrave anchor — where engraving text sits on the 3D model (owner-only).
 	// (PATCH /admin/products/{id}/engrave-anchor)
 	UpdateProductEngraveAnchor(ctx context.Context, request UpdateProductEngraveAnchorRequestObject) (UpdateProductEngraveAnchorResponseObject, error)
@@ -12092,6 +12181,32 @@ func (sh *strictHandler) UpdateProductColor(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateProductColorResponseObject); ok {
 		if err := validResponse.VisitUpdateProductColorResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteProductEngraveAnchor operation middleware
+func (sh *strictHandler) DeleteProductEngraveAnchor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request DeleteProductEngraveAnchorRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteProductEngraveAnchor(ctx, request.(DeleteProductEngraveAnchorRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteProductEngraveAnchor")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteProductEngraveAnchorResponseObject); ok {
+		if err := validResponse.VisitDeleteProductEngraveAnchorResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

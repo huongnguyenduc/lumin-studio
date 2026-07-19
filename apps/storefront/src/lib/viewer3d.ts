@@ -106,7 +106,12 @@ export class Viewer3d {
     draco.setDecoderPath('/draco/');
     loader.setDRACOLoader(draco);
     try {
-      const gltf = await loader.loadAsync(src);
+      // A browser that cached an error response for the glb (e.g. a 503 kept from an assets outage —
+      // bit prod 2026-07-19) fails the plain URL forever until a hard reload; one retry with a
+      // cache-busting query sidesteps the poisoned entry. ponytail: single retry, no backoff.
+      const gltf = await loader
+        .loadAsync(src)
+        .catch(() => loader.loadAsync(src + (src.includes('?') ? '&' : '?') + 'cb=1'));
       if (this.disposed) return;
       const root = gltf.scene;
       root.traverse((o) => {

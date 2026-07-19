@@ -344,6 +344,7 @@ export const vi = {
         // The tiny marker glyph pinned at the picked spot (decorative, aria-hidden).
         marker: 'Aa',
         save: 'Lưu vị trí khắc',
+        clear: 'Xoá vị trí',
         saving: 'Đang lưu…',
         saved: 'Đã lưu vị trí khắc 🧡',
         savedExisting: 'Đang dùng vị trí đã lưu.',

@@ -11,7 +11,7 @@ import {
   pickedObjectName,
   pickedAnchor,
 } from '@/lib/model-view';
-import { saveModelView, saveEngraveAnchor } from '@/lib/product-actions';
+import { saveModelView, saveEngraveAnchor, deleteEngraveAnchor } from '@/lib/product-actions';
 
 type Model3dView = components['schemas']['Model3dView'];
 type EngraveAnchor = components['schemas']['EngraveAnchor'];
@@ -385,6 +385,23 @@ export function EngraveAnchorPicker({
     });
   }
 
+  // Clear: wipes both the preview marker and (if one was saved) the server anchor — the storefront
+  // then falls back to its front-centre heuristic.
+  function onClear() {
+    setSaved(false);
+    setSaveError(null);
+    start(async () => {
+      const res = await deleteEngraveAnchor(productId);
+      if (res.ok) {
+        setAnchor(undefined);
+        setDirty(false);
+        router.refresh();
+      } else {
+        setSaveError(res.code);
+      }
+    });
+  }
+
   if (!model3dUrl) {
     return <p className="text-sm text-text-muted">{t('noModel')}</p>;
   }
@@ -445,6 +462,9 @@ export function EngraveAnchorPicker({
         <div className="flex flex-wrap items-center gap-3">
           <Button variant="outline" onClick={onSave} disabled={pending || !anchor || !dirty}>
             {pending ? t('saving') : t('save')}
+          </Button>
+          <Button variant="secondary" onClick={onClear} disabled={pending || !anchor}>
+            {t('clear')}
           </Button>
           <span role="status" className="text-sm text-text-muted">
             {saved ? (

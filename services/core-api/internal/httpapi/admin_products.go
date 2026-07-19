@@ -289,6 +289,18 @@ func (s *Server) UpdateProductEngraveAnchor(ctx context.Context, request api.Upd
 	return api.UpdateProductEngraveAnchor204Response{}, nil
 }
 
+// DeleteProductEngraveAnchor handles DELETE /admin/products/{id}/engrave-anchor (owner-only): clears the
+// anchor (column back to NULL) so the storefront falls back to its front-centre heuristic. Unknown id → 404.
+func (s *Server) DeleteProductEngraveAnchor(ctx context.Context, request api.DeleteProductEngraveAnchorRequestObject) (api.DeleteProductEngraveAnchorResponseObject, error) {
+	if err := assertOwner(ctx); err != nil {
+		return nil, err
+	}
+	if err := db.NewCatalog(s.pool).UpdateProductEngraveAnchor(ctx, request.Id, nil); err != nil {
+		return nil, err // db.ErrNotFound → 404
+	}
+	return api.DeleteProductEngraveAnchor204Response{}, nil
+}
+
 // cleanEngraveAnchor validates an engrave anchor: per-field error map (empty = ok). Position must sit in
 // the same [-100, 100] metre envelope as the camera target (a real model is centimetres-scale); each
 // normal component in [-1, 1] and the normal vector must be non-zero (a zero normal cannot orient the

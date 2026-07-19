@@ -2067,6 +2067,18 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [admin]
+      operationId: deleteProductEngraveAnchor
+      summary: Clear a product's engrave anchor (owner-only) — back to the storefront's front-centre heuristic.
+      security:
+        - cookieAuth: []
+      responses:
+        '204':
+          description: Cleared.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /admin/products/{id}/colors:
     parameters:

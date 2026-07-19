@@ -297,6 +297,20 @@ export async function saveEngraveAnchor(
   }
 }
 
+// Clear the engrave anchor — the storefront falls back to its front-centre heuristic.
+export async function deleteEngraveAnchor(productId: string): Promise<SubWriteResult> {
+  try {
+    const client = await authedClient();
+    const { error, response } = await client.DELETE('/admin/products/{id}/engrave-anchor', {
+      params: { path: { id: productId } },
+    });
+    if (!error) return { ok: true };
+    return { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
 // Save the default 3D camera pose (P3-l l-5, ADR-038). Owner-only; 204 no body. The pose is display
 // metadata (degrees/percent/metres floats), not money — the storefront viewer opens at it.
 export async function saveModelView(productId: string, view: Model3dView): Promise<SubWriteResult> {
