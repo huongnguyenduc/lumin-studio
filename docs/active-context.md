@@ -6,7 +6,11 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
-**➡️ NOW (2026-07-19, nhánh `fix/asset-worker-disk-leak` off `main`): C: đầy trên box WSL2 ("Luca"/ADMIN-PC) làm WSL chết → giangvahieu.luminstudio.vn lỗi Cloudflare 1033 (tunnel không reach được).** Audit repo tìm nguồn ghi disk không kiểm soát (agent Explore) → 2 chỗ code + 1 chỗ ops đã fix, **đang tạo PR**:
+**➡️ NOW (2026-07-19, storefront PDP, trên nhánh `fix/wedding-hero-dvh-gap` — CHƯA commit): khắc chữ hiện realtime trên model 3D.** 2 file: `apps/storefront/src/components/model-3d-viewer.tsx` (prop `engraveText` → hotspot `<model-viewer>` ghim tâm mặt trước bounding box, đo 1 lần khi `load`; billboard, không khắc chìm — cần engrave-zone UV Blender nếu muốn thật hơn) + `product-detail.tsx` (truyền text option khắc đầu tiên). Nameplate preview trong `EngraveField` giữ nguyên (fallback no-WebGL). **Verify xanh:** storefront typecheck + lint + 240 test. **NEXT: tách nhánh riêng khỏi wedding-branch + commit (đợi user), smoke browser nếu user muốn.**
+
+---
+
+**Trước đó (2026-07-19, nhánh `fix/asset-worker-disk-leak` off `main`): C: đầy trên box WSL2 ("Luca"/ADMIN-PC) làm WSL chết → giangvahieu.luminstudio.vn lỗi Cloudflare 1033 (tunnel không reach được).** Audit repo tìm nguồn ghi disk không kiểm soát (agent Explore) → 2 chỗ code + 1 chỗ ops đã fix, **đang tạo PR**:
 1. `services/asset-worker/src/model_ingest.rs` — thêm `TempJobDir` (RAII, `Drop` xoá dir) thay `let _ = remove_dir_all` chỉ chạy khi thành công → trước đó mỗi job lỗi/timeout (fetch/ingest/read fail) rò `/tmp/lumin-ingest-{job_id}` vĩnh viễn trong container `docker run --gpus all` chạy thẳng trên host (ADR-048) → ăn thẳng vào WSL2 vhdx = C:.
 2. `services/asset-worker/src/sprite_render.rs` — cùng pattern, dùng lại `TempJobDir` từ model_ingest (`lumin-sprite-{job_id}`), job Blender render nặng hơn nên dễ leak hơn.
 3. `.github/workflows/deploy.yml` — thêm step "Prune old image tags + build cache" (luôn chạy kể cả deploy fail): giữ 5 tag gần nhất/repo qua `docker rmi`, rồi `docker image prune -f` + `docker builder prune -f --filter until=168h`. Trước đó mỗi deploy build image SHA-tag MỚI, không bao giờ xoá.
