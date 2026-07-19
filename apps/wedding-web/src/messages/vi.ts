@@ -19,7 +19,6 @@ export const vi = {
     toAttend: 'Đến tham dự tiệc vu quy',
     bride: 'Châu Giang',
     groom: 'Trung Hiếu',
-    ringsAlt: 'Nhẫn cưới',
     time: '17:30',
     weekday: 'Thứ bảy',
     date: '12.09.2026',
@@ -50,8 +49,13 @@ export const vi = {
     together: 'together',
   },
   gallery: {
-    heading: 'Giang & Hiếu',
-    kicker: 'Đà Lạt 2026',
+    // Cặp đôi quen nhau qua một buổi phỏng vấn — copy tiếng Anh là chủ ý design.
+    line1: 'Offer accepted.',
+    line2: 'Forever.',
+    caption1:
+      'What started as an ordinary interview turned out to be the most meaningful offer of our lives.',
+    caption2: 'It began with scheduling an interview and accepting a job offer.',
+    caption3: 'Now, we’re scheduling our September wedding and saying “yes” to our forever.',
     photoAlt: 'Ảnh cưới {index}',
     close: 'Đóng',
     prev: 'Ảnh trước',

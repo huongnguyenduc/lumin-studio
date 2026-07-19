@@ -59,18 +59,36 @@
   background: rgb(249, 241, 232) !important;
 }
 
-/* Scroll hint (§2.1): centered + 2.2s bob. */
+/* Scroll hint (§2.1): centered mouse-pill below "save the date", dot travels
+ * bottom-to-top and fades — reads as "swipe up" without a caption. */
 .invite-hint {
   transform: translateX(-50%);
-  animation: hintBob 2.2s ease-in-out infinite;
 }
-@keyframes hintBob {
-  0%,
-  100% {
+.invite-hint-dot {
+  position: absolute;
+  left: 50%;
+  top: 13px;
+  width: 2.5px;
+  height: 2.5px;
+  border-radius: 50%;
+  background: rgba(255, 251, 248, 0.7);
+  transform: translateX(-50%);
+  animation: hintDot 1.8s ease-in-out infinite;
+}
+@keyframes hintDot {
+  0% {
+    opacity: 0;
     transform: translate(-50%, 0);
   }
-  50% {
-    transform: translate(-50%, 7px);
+  30% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -9px);
   }
 }
 
