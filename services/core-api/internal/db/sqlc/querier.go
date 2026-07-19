@@ -653,6 +653,11 @@ type Querier interface {
 	// product editor form can never blank it. slug stays mutable — a changed slug that collides trips the
 	// UNIQUE(slug) constraint, which the handler maps to a 400 field error (never a 500).
 	UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error)
+	// UpdateProductEngraveAnchor persists the owner-picked engrave anchor (atomic jsonb blob
+	// {posX,posY,posZ,normX,normY,normZ}) -- the surface point where the storefront projects the customer's
+	// engraving text. Same shape as UpdateProductModelView: a separate write from UpdateProduct, never
+	// pricing; :execrows so an unknown id (0 rows) surfaces as 404.
+	UpdateProductEngraveAnchor(ctx context.Context, arg UpdateProductEngraveAnchorParams) (int64, error)
 	// UpdateProductModelView persists the owner's saved default 3D-viewer camera pose (ADR-038) as the whole
 	// atomic model3d_view jsonb blob ({orbitTheta,orbitPhi,orbitRadius,targetX,targetY,targetZ}). It is a
 	// separate write from UpdateProduct (the design's "Lưu góc mặc định" is its own button) and touches no

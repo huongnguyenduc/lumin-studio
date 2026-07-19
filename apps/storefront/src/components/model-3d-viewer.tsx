@@ -35,6 +35,7 @@ export function Model3dViewer({
   partColors,
   flatColorHex,
   engraveText,
+  engraveAnchor,
   fallback,
 }: {
   src: string;
@@ -46,9 +47,19 @@ export function Model3dViewer({
    *  the printer does). Undefined for a parts product (partColors drives those) or before any pick. */
   flatColorHex?: string;
   /** Live engraving preview (P1-j rev 2): the typed text, projected onto the model's surface as a
-   *  decal so it hugs curvature like a real engraving; a tap on the model re-anchors it there (vị
-   *  trí). Client-side only per the storefront rule (no server render per keystroke). Empty → none. */
+   *  decal so it hugs curvature like a real engraving. Client-side only per the storefront rule (no
+   *  server render per keystroke). Empty → none. */
   engraveText?: string;
+  /** The admin-picked spot where that text sits (position + normal, model space, from the product).
+   *  Undefined → the viewer's front-centre heuristic places it. */
+  engraveAnchor?: {
+    posX: number;
+    posY: number;
+    posZ: number;
+    normX: number;
+    normY: number;
+    normZ: number;
+  };
   /** Rendered while loading, on failure, and when the browser has neither WebGL nor a sprite —
    *  typically the parent's static cover image. */
   fallback?: React.ReactNode;
@@ -92,7 +103,10 @@ export function Model3dViewer({
     if (ready) viewerRef.current?.setColors(partColors, flatColorHex);
   }, [ready, partColors, flatColorHex]);
 
-  // Live engraving: retype → redraw the decal texture; the anchor (position) survives retyping.
+  // Live engraving: retype → redraw the decal texture at the admin-picked anchor (or the heuristic).
+  useEffect(() => {
+    if (ready) viewerRef.current?.setServerAnchor(engraveAnchor ?? null);
+  }, [ready, engraveAnchor]);
   useEffect(() => {
     if (ready) viewerRef.current?.setEngraveText(engraveText ?? '');
   }, [ready, engraveText]);
@@ -150,13 +164,13 @@ export function Model3dViewer({
         </div>
       ) : (
         <>
-          {/* Hi-fi drag hint, bottom-left of the running viewer; swaps to the pick-position hint
-              while an engraving is typed. Decorative — the canvas is announced via its img role. */}
+          {/* Hi-fi drag hint, bottom-left of the running viewer. Decorative — the canvas is
+              announced via its img role. */}
           <span
             aria-hidden="true"
             className="pointer-events-none absolute bottom-3 left-3 font-mono text-[11px] text-text-muted"
           >
-            {engraveText?.trim() ? t('engravePickHint') : t('viewer3dCaption')}
+            {t('viewer3dCaption')}
           </span>
         </>
       )}

@@ -152,6 +152,10 @@ export type ProductDetailView = {
   /** 360° sprite-sheet URL (ADR-049) — the model-viewer's no-WebGL fallback. Undefined until a
    *  `sprite_render` job has produced one; the viewer then just hides on a WebGL-less browser (as before). */
   spriteSheetUrl?: string;
+  /** Owner-picked surface point where a customer's engraving text is projected onto the 3D model
+   *  (position + outward normal, model space). Undefined = no anchor picked in admin → the viewer falls
+   *  back to its front-centre heuristic. */
+  engraveAnchor?: components['schemas']['EngraveAnchor'];
   /** Bounding size in mm, shown "w × d × h mm" (spec §02). */
   dimensions: { w: number; d: number; h: number };
   /** Gallery: cover (images[0]) first, then the rest. Empty-string entries dropped; `[]` when the
@@ -187,6 +191,7 @@ export function toProductDetailView(product: components['schemas']['Product']): 
     model3dStructuredUrl: product.model3dStructuredUrl || undefined,
     // Empty-string / absent ⇒ no sprite yet → undefined (the viewer then has no no-WebGL fallback).
     spriteSheetUrl: product.spriteSheetUrl || undefined,
+    engraveAnchor: product.engraveAnchor,
     dimensions: { w: product.dimensions.w, d: product.dimensions.d, h: product.dimensions.h },
     // Drop empty-string URLs (broken src never reaches <img>) AND de-duplicate — the contract makes no
     // uniqueness guarantee, and a repeated photo would produce a duplicate React key / doubled thumbnail

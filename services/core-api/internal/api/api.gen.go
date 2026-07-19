@@ -749,6 +749,27 @@ type DomainTargetUpdate struct {
 	TargetService string  `json:"targetService"`
 }
 
+// EngraveAnchor Owner-picked surface point on the product's 3D model where a customer's engraving text is projected (storefront decal). Position in model-space metres (matches the glb the viewer loads); normal is the outward surface direction at that point (unit-ish vector, must be non-zero). Absent on a Product = no anchor picked → the storefront falls back to its front-centre heuristic. Display metadata, not money — plain floats (not int-VND).
+type EngraveAnchor struct {
+	// NormX Surface-normal x, [-1, 1]; the (normX, normY, normZ) vector must be non-zero.
+	NormX float64 `json:"normX"`
+
+	// NormY Surface-normal y, [-1, 1].
+	NormY float64 `json:"normY"`
+
+	// NormZ Surface-normal z, [-1, 1].
+	NormZ float64 `json:"normZ"`
+
+	// PosX Anchor x in model-space metres, [-100, 100].
+	PosX float64 `json:"posX"`
+
+	// PosY Anchor y in model-space metres, [-100, 100].
+	PosY float64 `json:"posY"`
+
+	// PosZ Anchor z in model-space metres, [-100, 100].
+	PosZ float64 `json:"posZ"`
+}
+
 // ErrorEnvelope The one error shape every endpoint returns (ADR-032). `code` is a stable machine code (e.g. NOT_FOUND, INVALID_EDGE, RBAC, REASON_REQUIRED, VALIDATION); `messageKey` is a next-intl key (the domain's Vietnamese prose is NEVER forwarded). `fields` maps a field path → messageKey for per-field validation errors.
 type ErrorEnvelope struct {
 	Code       string             `json:"code"`
@@ -1558,6 +1579,9 @@ type Product struct {
 	// Dimensions Product bounding size in millimetres (spec §02; displayed "180 × 180 × 240 mm").
 	Dimensions Dimensions `json:"dimensions"`
 
+	// EngraveAnchor Owner-picked surface point on the product's 3D model where a customer's engraving text is projected (storefront decal). Position in model-space metres (matches the glb the viewer loads); normal is the outward surface direction at that point (unit-ish vector, must be non-zero). Absent on a Product = no anchor picked → the storefront falls back to its front-centre heuristic. Display metadata, not money — plain floats (not int-VND).
+	EngraveAnchor *EngraveAnchor `json:"engraveAnchor,omitempty"`
+
 	// EstFilamentQty Internal print standard (ADR-039): estimated filament per unit for a FLAT product (a product with parts estimates per-part instead), in the linked material's unit (gram|ml). Drives deduct-on-print and the admin editor; 0 = no estimate (the draw is skipped). Not shown to customers.
 	EstFilamentQty *int64 `json:"estFilamentQty,omitempty"`
 
@@ -2029,6 +2053,9 @@ type CreateProductColorJSONRequestBody = ColorInput
 // UpdateProductColorJSONRequestBody defines body for UpdateProductColor for application/json ContentType.
 type UpdateProductColorJSONRequestBody = ColorInput
 
+// UpdateProductEngraveAnchorJSONRequestBody defines body for UpdateProductEngraveAnchor for application/json ContentType.
+type UpdateProductEngraveAnchorJSONRequestBody = EngraveAnchor
+
 // CreateProductModelUploadJSONRequestBody defines body for CreateProductModelUpload for application/json ContentType.
 type CreateProductModelUploadJSONRequestBody = ModelUploadInput
 
@@ -2348,6 +2375,9 @@ type ServerInterface interface {
 	// Edit a product's colour (owner-only).
 	// (PATCH /admin/products/{id}/colors/{colorId})
 	UpdateProductColor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, colorId openapi_types.UUID)
+	// Save a product's engrave anchor — where engraving text sits on the 3D model (owner-only).
+	// (PATCH /admin/products/{id}/engrave-anchor)
+	UpdateProductEngraveAnchor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// Create a presigned POST form for one source-model upload (owner-only).
 	// (POST /admin/products/{id}/model-upload)
 	CreateProductModelUpload(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -2777,6 +2807,12 @@ func (_ Unimplemented) DeleteProductColor(w http.ResponseWriter, r *http.Request
 // Edit a product's colour (owner-only).
 // (PATCH /admin/products/{id}/colors/{colorId})
 func (_ Unimplemented) UpdateProductColor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, colorId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Save a product's engrave anchor — where engraving text sits on the 3D model (owner-only).
+// (PATCH /admin/products/{id}/engrave-anchor)
+func (_ Unimplemented) UpdateProductEngraveAnchor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4356,6 +4392,37 @@ func (siw *ServerInterfaceWrapper) UpdateProductColor(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateProductColor(w, r, id, colorId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateProductEngraveAnchor operation middleware
+func (siw *ServerInterfaceWrapper) UpdateProductEngraveAnchor(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateProductEngraveAnchor(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6042,6 +6109,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/admin/products/{id}/colors/{colorId}", wrapper.UpdateProductColor)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/admin/products/{id}/engrave-anchor", wrapper.UpdateProductEngraveAnchor)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/admin/products/{id}/model-upload", wrapper.CreateProductModelUpload)
@@ -8193,6 +8263,59 @@ func (response UpdateProductColor403JSONResponse) VisitUpdateProductColorRespons
 type UpdateProductColor404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateProductColor404JSONResponse) VisitUpdateProductColorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProductEngraveAnchorRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *UpdateProductEngraveAnchorJSONRequestBody
+}
+
+type UpdateProductEngraveAnchorResponseObject interface {
+	VisitUpdateProductEngraveAnchorResponse(w http.ResponseWriter) error
+}
+
+type UpdateProductEngraveAnchor204Response struct {
+}
+
+func (response UpdateProductEngraveAnchor204Response) VisitUpdateProductEngraveAnchorResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type UpdateProductEngraveAnchor400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateProductEngraveAnchor400JSONResponse) VisitUpdateProductEngraveAnchorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProductEngraveAnchor401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateProductEngraveAnchor401JSONResponse) VisitUpdateProductEngraveAnchorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProductEngraveAnchor403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateProductEngraveAnchor403JSONResponse) VisitUpdateProductEngraveAnchorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProductEngraveAnchor404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateProductEngraveAnchor404JSONResponse) VisitUpdateProductEngraveAnchorResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
 
@@ -10472,6 +10595,9 @@ type StrictServerInterface interface {
 	// Edit a product's colour (owner-only).
 	// (PATCH /admin/products/{id}/colors/{colorId})
 	UpdateProductColor(ctx context.Context, request UpdateProductColorRequestObject) (UpdateProductColorResponseObject, error)
+	// Save a product's engrave anchor — where engraving text sits on the 3D model (owner-only).
+	// (PATCH /admin/products/{id}/engrave-anchor)
+	UpdateProductEngraveAnchor(ctx context.Context, request UpdateProductEngraveAnchorRequestObject) (UpdateProductEngraveAnchorResponseObject, error)
 	// Create a presigned POST form for one source-model upload (owner-only).
 	// (POST /admin/products/{id}/model-upload)
 	CreateProductModelUpload(ctx context.Context, request CreateProductModelUploadRequestObject) (CreateProductModelUploadResponseObject, error)
@@ -11966,6 +12092,39 @@ func (sh *strictHandler) UpdateProductColor(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateProductColorResponseObject); ok {
 		if err := validResponse.VisitUpdateProductColorResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateProductEngraveAnchor operation middleware
+func (sh *strictHandler) UpdateProductEngraveAnchor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request UpdateProductEngraveAnchorRequestObject
+
+	request.Id = id
+
+	var body UpdateProductEngraveAnchorJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateProductEngraveAnchor(ctx, request.(UpdateProductEngraveAnchorRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateProductEngraveAnchor")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateProductEngraveAnchorResponseObject); ok {
+		if err := validResponse.VisitUpdateProductEngraveAnchorResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

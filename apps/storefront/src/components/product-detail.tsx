@@ -307,6 +307,7 @@ export function ProductDetail({
                   partColors={viewerPartColors}
                   flatColorHex={flatColorHex}
                   engraveText={textOptions[0] ? engraveTexts[textOptions[0].id] : undefined}
+                  engraveAnchor={product.engraveAnchor}
                   fallback={
                     cover ? (
                       <img src={cover} alt={product.name} className="h-full w-full object-cover" />
