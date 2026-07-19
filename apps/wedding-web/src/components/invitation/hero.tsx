@@ -53,7 +53,7 @@ export function Hero({ bgUrl }: { bgUrl?: string }) {
       <Reveal
         style={{
           position: 'absolute',
-          top: 59,
+          top: 'calc(59px + env(safe-area-inset-top))',
           left: '50%',
           transform: 'translateX(-50%)',
           width: 116,
