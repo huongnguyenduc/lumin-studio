@@ -19,6 +19,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -41,17 +42,26 @@ func setupIntegration(t *testing.T) (*httptest.Server, *http.Cookie) {
 	}
 	t.Cleanup(pool.Close)
 
-	// Fresh schema: down (ignore errors on a virgin DB) then up.
-	for _, f := range []struct {
-		name        string
-		mustSucceed bool
-	}{{"000001_init.down.sql", false}, {"000001_init.up.sql", true}} {
-		sql, err := os.ReadFile(filepath.Join("..", "..", "db", "migrations", f.name))
+	// Fresh schema: reset to an empty public schema (simpler and more robust
+	// than replaying every *.down.sql — this test owns the target DB) then
+	// apply every *.up.sql in order.
+	if _, err := pool.Exec(context.Background(),
+		`DROP SCHEMA public CASCADE; CREATE SCHEMA public;`); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join("..", "..", "db", "migrations")
+	ups, err := filepath.Glob(filepath.Join(dir, "*.up.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(ups)
+	for _, path := range ups {
+		sql, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := pool.Exec(context.Background(), string(sql)); err != nil && f.mustSucceed {
-			t.Fatalf("apply %s: %v", f.name, err)
+		if _, err := pool.Exec(context.Background(), string(sql)); err != nil {
+			t.Fatalf("apply %s: %v", filepath.Base(path), err)
 		}
 	}
 
@@ -92,6 +102,9 @@ func call(t *testing.T, method, url string, cookie *http.Cookie, body any, out a
 	return resp.StatusCode
 }
 
+// dam-cuoi-1 is the event seeded by 000003_events.up.sql for pre-existing data.
+const evt = "dam-cuoi-1"
+
 func TestEndToEndFlows(t *testing.T) {
 	srv, admin := setupIntegration(t)
 	u := srv.URL
@@ -99,13 +112,14 @@ func TestEndToEndFlows(t *testing.T) {
 	// --- guests: create, slug collision, immutable id on rename ---
 	var g1, g2 struct{ ID, Label string }
 	if code := call(t, "POST", u+"/api/admin/guests", admin,
-		map[string]string{"label": "Cô Lan & Chú Minh", "group": "Nhà gái"}, &g1); code != 201 {
+		map[string]string{"label": "Cô Lan & Chú Minh", "group": "Nhà gái", "eventSlug": evt}, &g1); code != 201 {
 		t.Fatalf("create guest = %d", code)
 	}
 	if g1.ID != "co-lan-chu-minh" {
 		t.Fatalf("slug = %q", g1.ID)
 	}
-	call(t, "POST", u+"/api/admin/guests", admin, map[string]string{"label": "Cô Lan & Chú Minh"}, &g2)
+	call(t, "POST", u+"/api/admin/guests", admin,
+		map[string]string{"label": "Cô Lan & Chú Minh", "eventSlug": evt}, &g2)
 	if g2.ID != "co-lan-chu-minh-2" {
 		t.Fatalf("collision slug = %q", g2.ID)
 	}
@@ -132,7 +146,7 @@ func TestEndToEndFlows(t *testing.T) {
 		} `json:"items"`
 	}
 	openedAt := func() *time.Time {
-		call(t, "GET", u+"/api/admin/guests", admin, nil, &guests)
+		call(t, "GET", u+"/api/admin/guests?event="+evt, admin, nil, &guests)
 		for _, it := range guests.Items {
 			if it.ID == g1.ID {
 				return it.OpenedAt
@@ -205,26 +219,26 @@ func TestEndToEndFlows(t *testing.T) {
 
 	// --- groups: rename cascades, delete reassigns to Khác ---
 	if code := call(t, "POST", u+"/api/admin/groups", admin,
-		map[string]string{"name": "Nhà gái"}, nil); code != 409 {
+		map[string]string{"name": "Nhà gái", "eventSlug": evt}, nil); code != 409 {
 		t.Fatalf("dup group = %d, want 409", code)
 	}
-	if code := call(t, "PATCH", u+"/api/admin/groups/Nhà gái", admin,
+	if code := call(t, "PATCH", u+"/api/admin/groups/"+evt+"/Nhà gái", admin,
 		map[string]string{"name": "Họ nhà gái"}, nil); code != 200 {
 		t.Fatalf("rename group = %d", code)
 	}
 	var afterRename struct {
 		Items []struct{ ID, Group string } `json:"items"`
 	}
-	call(t, "GET", u+"/api/admin/guests", admin, nil, &afterRename)
+	call(t, "GET", u+"/api/admin/guests?event="+evt, admin, nil, &afterRename)
 	for _, it := range afterRename.Items {
 		if it.ID == g1.ID && it.Group != "Họ nhà gái" {
 			t.Fatalf("rename did not cascade: %q", it.Group)
 		}
 	}
-	if code := call(t, "DELETE", u+"/api/admin/groups/Họ nhà gái", admin, nil, nil); code != 204 {
+	if code := call(t, "DELETE", u+"/api/admin/groups/"+evt+"/Họ nhà gái", admin, nil, nil); code != 204 {
 		t.Fatalf("delete group = %d", code)
 	}
-	call(t, "GET", u+"/api/admin/guests", admin, nil, &afterRename)
+	call(t, "GET", u+"/api/admin/guests?event="+evt, admin, nil, &afterRename)
 	for _, it := range afterRename.Items {
 		if it.ID == g1.ID && it.Group != "Khác" {
 			t.Fatalf("delete did not reassign to Khác: %q", it.Group)
@@ -261,5 +275,66 @@ func TestEndToEndFlows(t *testing.T) {
 	call(t, "GET", u+"/api/wishes", nil, nil, &wall)
 	if wall.Total != 2 {
 		t.Fatalf("wishes lost on guest delete = total %d, want 2 (SET NULL)", wall.Total)
+	}
+}
+
+// TestEventScoping: a second event gets its own groups/guests, invisible from
+// the first event's admin lists — the point of this feature (second wedding,
+// separate venue/schedule/guests).
+func TestEventScoping(t *testing.T) {
+	srv, admin := setupIntegration(t)
+	u := srv.URL
+
+	var ev2 struct{ Slug, Name string }
+	if code := call(t, "POST", u+"/api/admin/events", admin,
+		map[string]string{"name": "Đám cưới 2"}, &ev2); code != 201 {
+		t.Fatalf("create event = %d", code)
+	}
+	if ev2.Slug != "dam-cuoi-2" {
+		t.Fatalf("event slug = %q", ev2.Slug)
+	}
+
+	// New event ships with its own default groups.
+	var groups struct {
+		Items []struct{ Name string } `json:"items"`
+	}
+	call(t, "GET", u+"/api/admin/groups?event="+ev2.Slug, admin, nil, &groups)
+	if len(groups.Items) == 0 {
+		t.Fatal("new event has no default groups")
+	}
+
+	// Guest created under event 2 must not show up when listing event 1.
+	var g struct{ ID string }
+	if code := call(t, "POST", u+"/api/admin/guests", admin,
+		map[string]string{"label": "Khách sự kiện 2", "eventSlug": ev2.Slug}, &g); code != 201 {
+		t.Fatalf("create guest in event 2 = %d", code)
+	}
+	var evt1Guests struct {
+		Items []struct{ ID string } `json:"items"`
+	}
+	call(t, "GET", u+"/api/admin/guests?event="+evt, admin, nil, &evt1Guests)
+	for _, it := range evt1Guests.Items {
+		if it.ID == g.ID {
+			t.Fatal("event-2 guest leaked into event-1 list")
+		}
+	}
+
+	// Venue/timeline PATCH round-trips through the shallow-merge data column.
+	var patched struct {
+		Data map[string]any `json:"data"`
+	}
+	call(t, "PATCH", u+"/api/admin/events/"+ev2.Slug, admin,
+		map[string]any{"data": map[string]any{"venueHall": "Sảnh A", "time": "18:00"}}, &patched)
+	if patched.Data["venueHall"] != "Sảnh A" || patched.Data["time"] != "18:00" {
+		t.Fatalf("event data patch = %v", patched.Data)
+	}
+
+	// Public /api/events lists both, unauthenticated.
+	var pub struct {
+		Items []struct{ Slug string } `json:"items"`
+	}
+	call(t, "GET", u+"/api/events", nil, nil, &pub)
+	if len(pub.Items) != 2 {
+		t.Fatalf("public events = %v, want 2", pub.Items)
 	}
 }

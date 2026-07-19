@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
+import type { EventData } from '@/lib/site-settings';
 import { INK, TAN, TERRACOTTA_SOFT, CREAM, SCRIPT } from './theme';
 import { Reveal } from './reveal';
 
@@ -69,14 +70,13 @@ function Medallion({ src, inset }: { src: string; inset: { l: number; t: number;
 // salutation (SSR). Names run bigger with no rings mark; timeline is horizontal.
 export function Letter({
   guestLabel,
-  mapUrl,
-  mapsUrl,
+  event = {},
 }: {
   guestLabel: string | null;
-  mapUrl?: string;
-  mapsUrl?: string;
+  event?: EventData;
 }) {
   const t = useTranslations('letter');
+  const v = (key: keyof EventData, fallbackKey: string) => event[key] || t(fallbackKey);
   return (
     // 33.5px: giữ content 313px như Figma sau khi frame thu còn ~380 (canvas trừ 6.75 mỗi bên).
     <div style={{ position: 'relative', padding: '42px 33.5px 0' }}>
@@ -121,7 +121,9 @@ export function Letter({
           </span>
         </Reveal>
         <Reveal style={{ marginTop: 24, display: 'flex', alignItems: 'center' }}>
-          <span style={{ ...dateCell, borderRight: `0.5px solid ${TAN}` }}>{t('time')}</span>
+          <span style={{ ...dateCell, borderRight: `0.5px solid ${TAN}` }}>
+            {v('time', 'time')}
+          </span>
           <span
             style={{
               ...dateCell,
@@ -129,9 +131,9 @@ export function Letter({
               borderRight: `0.5px solid ${TAN}`,
             }}
           >
-            {t('weekday')}
+            {v('weekday', 'weekday')}
           </span>
-          <span style={{ ...dateCell, borderLeft: `0.5px solid ${TAN}` }}>{t('date')}</span>
+          <span style={{ ...dateCell, borderLeft: `0.5px solid ${TAN}` }}>{v('date', 'date')}</span>
         </Reveal>
         <Reveal
           style={{
@@ -142,7 +144,7 @@ export function Letter({
             textAlign: 'center',
           }}
         >
-          {t('lunarDate')}
+          {v('lunarDate', 'lunarDate')}
         </Reveal>
         <Reveal style={{ marginTop: 48 }}>
           <img alt="" aria-hidden src="/invite/icon-map.svg" style={{ width: 16, height: 14 }} />
@@ -156,9 +158,11 @@ export function Letter({
             gap: 2,
           }}
         >
-          <span style={{ ...label600, fontSize: 16, lineHeight: 1.5 }}>{t('venue')}</span>
+          <span style={{ ...label600, fontSize: 16, lineHeight: 1.5 }}>
+            {v('venueName', 'venue')}
+          </span>
           <span style={{ ...label600, fontSize: 16, fontWeight: 400, lineHeight: 1.5 }}>
-            {t('venueHall')}
+            {v('venueHall', 'venueHall')}
           </span>
           <span
             style={{
@@ -171,7 +175,7 @@ export function Letter({
               textAlign: 'center',
             }}
           >
-            {t('venueAddress')}
+            {v('venueAddress', 'venueAddress')}
           </span>
         </Reveal>
         <Reveal
@@ -187,7 +191,7 @@ export function Letter({
           }}
         >
           <img
-            src={mapUrl ?? '/invite/map.png'}
+            src={event.mapUrl ?? '/invite/map.png'}
             alt={t('mapAlt')}
             style={{
               position: 'absolute',
@@ -201,7 +205,7 @@ export function Letter({
         </Reveal>
         <Reveal style={{ marginTop: 16 }}>
           <a
-            href={mapsUrl ?? 'https://maps.google.com/?q=The+Mira+Central+Park+Bien+Hoa'}
+            href={event.mapsUrl ?? 'https://maps.google.com/?q=The+Mira+Central+Park+Bien+Hoa'}
             target="_blank"
             rel="noreferrer"
             className="invite-pill-solid"
@@ -260,8 +264,10 @@ export function Letter({
               inset={{ l: -18.12, t: -15.28, s: 136.24 }}
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <span style={{ ...timelineLabel, fontWeight: 600 }}>{t('timelineWelcomeTime')}</span>
-              <span style={timelineLabel}>{t('timelineWelcome')}</span>
+              <span style={{ ...timelineLabel, fontWeight: 600 }}>
+                {v('timelineWelcomeTime', 'timelineWelcomeTime')}
+              </span>
+              <span style={timelineLabel}>{v('timelineWelcome', 'timelineWelcome')}</span>
             </div>
           </div>
           {/* Dotted connector between the two moments; the icons sit at row centre
@@ -292,8 +298,10 @@ export function Letter({
               inset={{ l: -29.01, t: -15.35, s: 146.35 }}
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <span style={{ ...timelineLabel, fontWeight: 600 }}>{t('timelinePartyTime')}</span>
-              <span style={timelineLabel}>{t('timelineParty')}</span>
+              <span style={{ ...timelineLabel, fontWeight: 600 }}>
+                {v('timelinePartyTime', 'timelinePartyTime')}
+              </span>
+              <span style={timelineLabel}>{v('timelineParty', 'timelineParty')}</span>
             </div>
           </div>
         </Reveal>

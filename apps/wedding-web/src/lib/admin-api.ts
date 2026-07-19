@@ -63,12 +63,25 @@ export type AdminStats = {
 
 export type Settings = Record<string, unknown>;
 
+export type AdminEvent = {
+  slug: string;
+  name: string;
+  sortOrder: number;
+  data: Record<string, unknown>;
+};
+
 export const adminApi = {
   login: (password: string) => call<void>('POST', '/api/admin/login', { password }),
   logout: () => call<void>('POST', '/api/admin/logout'),
 
-  guests: () => call<{ items: AdminGuest[] }>('GET', '/api/admin/guests'),
-  createGuest: (g: { label: string; group?: string; note?: string }) =>
+  events: () => call<{ items: AdminEvent[] }>('GET', '/api/admin/events'),
+  createEvent: (name: string) => call<AdminEvent>('POST', '/api/admin/events', { name }),
+  patchEvent: (slug: string, patch: { name?: string; data?: Record<string, unknown> }) =>
+    call<AdminEvent>('PATCH', `/api/admin/events/${encodeURIComponent(slug)}`, patch),
+
+  guests: (event: string) =>
+    call<{ items: AdminGuest[] }>('GET', `/api/admin/guests?event=${encodeURIComponent(event)}`),
+  createGuest: (g: { label: string; group?: string; note?: string; eventSlug: string }) =>
     call<AdminGuest>('POST', '/api/admin/guests', g),
   patchGuest: (id: string, patch: { label?: string; group?: string; note?: string }) =>
     call<void>('PATCH', `/api/admin/guests/${encodeURIComponent(id)}`, patch),
@@ -76,12 +89,24 @@ export const adminApi = {
   bulkDeleteGuests: (ids: string[]) =>
     call<{ deleted: number }>('POST', '/api/admin/guests/bulk-delete', { ids }),
 
-  groups: () => call<{ items: { name: string; sortOrder: number }[] }>('GET', '/api/admin/groups'),
-  createGroup: (name: string) => call<void>('POST', '/api/admin/groups', { name }),
-  renameGroup: (from: string, to: string) =>
-    call<void>('PATCH', `/api/admin/groups/${encodeURIComponent(from)}`, { name: to }),
-  deleteGroup: (name: string) =>
-    call<void>('DELETE', `/api/admin/groups/${encodeURIComponent(name)}`),
+  groups: (event: string) =>
+    call<{ items: { name: string; sortOrder: number }[] }>(
+      'GET',
+      `/api/admin/groups?event=${encodeURIComponent(event)}`,
+    ),
+  createGroup: (name: string, eventSlug: string) =>
+    call<void>('POST', '/api/admin/groups', { name, eventSlug }),
+  renameGroup: (event: string, from: string, to: string) =>
+    call<void>(
+      'PATCH',
+      `/api/admin/groups/${encodeURIComponent(event)}/${encodeURIComponent(from)}`,
+      { name: to },
+    ),
+  deleteGroup: (event: string, name: string) =>
+    call<void>(
+      'DELETE',
+      `/api/admin/groups/${encodeURIComponent(event)}/${encodeURIComponent(name)}`,
+    ),
 
   wishes: (limit = 500) =>
     call<{ items: AdminWish[]; total: number }>('GET', `/api/admin/wishes?limit=${limit}`),
@@ -89,7 +114,8 @@ export const adminApi = {
   bulkDeleteWishes: (ids: string[]) =>
     call<{ deleted: number }>('POST', '/api/admin/wishes/bulk-delete', { ids }),
 
-  stats: () => call<AdminStats>('GET', '/api/admin/stats'),
+  stats: (event: string) =>
+    call<AdminStats>('GET', `/api/admin/stats?event=${encodeURIComponent(event)}`),
   settings: () => call<Settings>('GET', '/api/admin/settings'),
   patchSettings: (patch: Settings) => call<Settings>('PATCH', '/api/admin/settings', patch),
 

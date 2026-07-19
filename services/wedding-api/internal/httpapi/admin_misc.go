@@ -80,14 +80,21 @@ func (s *server) bulkDeleteWishes(w http.ResponseWriter, r *http.Request) {
 
 // --- stats (HANDOFF §3.1) ---
 
+// adminStats scopes guest counts to one event (?event=) — wishes stay a
+// shared wall across events, so that count is global.
 func (s *server) adminStats(w http.ResponseWriter, r *http.Request) {
+	event := r.URL.Query().Get("event")
+	if event == "" {
+		writeError(w, http.StatusBadRequest, "NO_EVENT", "thiếu tham số event")
+		return
+	}
 	var total, opened, yes, no, wishes int
 	err := s.pool.QueryRow(r.Context(), `
-		SELECT (SELECT count(*) FROM guests),
-		       (SELECT count(*) FROM guests WHERE opened_at IS NOT NULL),
-		       (SELECT count(*) FROM guests WHERE rsvp = 'yes'),
-		       (SELECT count(*) FROM guests WHERE rsvp = 'no'),
-		       (SELECT count(*) FROM wishes)`).
+		SELECT (SELECT count(*) FROM guests WHERE event_slug = $1),
+		       (SELECT count(*) FROM guests WHERE event_slug = $1 AND opened_at IS NOT NULL),
+		       (SELECT count(*) FROM guests WHERE event_slug = $1 AND rsvp = 'yes'),
+		       (SELECT count(*) FROM guests WHERE event_slug = $1 AND rsvp = 'no'),
+		       (SELECT count(*) FROM wishes)`, event).
 		Scan(&total, &opened, &yes, &no, &wishes)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
