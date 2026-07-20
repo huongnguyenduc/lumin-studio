@@ -212,7 +212,7 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
     setErrors({});
     setFormError(false);
     // Carry the acks only for an engraved cart (both true, since acksMet just passed); the server
-    // ignores them otherwise, so a non-engraved order omits them like a blank email/note.
+    // ignores them otherwise, so a non-engraved order omits them like a blank note.
     setValidated(
       hasPersonalization
         ? { ...result.value, personalizationAck, engraveEchoConfirmed }
@@ -573,10 +573,11 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
               {t('contactHeading')}
             </legend>
             <Input
-              label={`${t('emailLabel')} ${t('optional')}`}
+              label={t('emailLabel')}
               type="email"
               inputMode="email"
               autoComplete="email"
+              required
               placeholder={t('emailPlaceholder')}
               value={form.email}
               onChange={(e) => setField('email', e.target.value)}

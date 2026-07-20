@@ -227,7 +227,7 @@ vào `statusHistory {from, to, at, byUser, reason?}`.
 |---|---|---|
 | Tên | bắt buộc, 2–60 ký tự | "Bạn cho mình xin tên nhé." |
 | SĐT | bắt buộc, regex VN `(0\|+84)…` 10 số | "Số điện thoại chưa đúng định dạng." |
-| Email | tuỳ chọn, định dạng email | "Email này nhìn chưa hợp lệ." |
+| Email | bắt buộc (user override 2026-07-20, trước là tuỳ chọn), định dạng email | "Email này nhìn chưa hợp lệ." / "Nhập email giúp mình nhé." |
 | Địa chỉ | bắt buộc đủ tỉnh/phường + đường | "Vui lòng chọn đủ tỉnh, phường và đường." |
 | Khắc tên | ≤ giới hạn ký tự theo vùng khắc (`maxChars`) | "Tên hơi dài so với vị trí khắc này." |
 | Mã giảm giá | kiểm tra tồn tại + hạn dùng | "Mã này đã hết hạn rồi." |
