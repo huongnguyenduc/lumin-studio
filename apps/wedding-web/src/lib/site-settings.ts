@@ -1,8 +1,9 @@
 // Typed view over the settings JSONB for the invitation page (HANDOFF §3.5).
 // mapUrl/mapsUrl live on EventData instead — venue is per-event.
+export type GalleryImage = { url: string; x?: number; y?: number };
 export type SiteSettings = {
   heroUrl?: string;
-  gallery?: string[];
+  gallery?: GalleryImage[];
   musicUrl?: string;
   siteTitle?: string;
   siteDesc?: string;
@@ -74,7 +75,24 @@ export function asSiteSettings(raw: Record<string, unknown>): SiteSettings {
   const s = (k: string) =>
     typeof raw[k] === 'string' && raw[k] !== '' ? (raw[k] as string) : undefined;
   const gallery = Array.isArray(raw.gallery)
-    ? (raw.gallery as unknown[]).filter((x): x is string => typeof x === 'string')
+    ? (raw.gallery as unknown[])
+        .map((item): GalleryImage | undefined => {
+          if (typeof item === 'string') return { url: item };
+          if (
+            item &&
+            typeof item === 'object' &&
+            typeof (item as { url?: unknown }).url === 'string'
+          ) {
+            const { url, x, y } = item as { url: string; x?: unknown; y?: unknown };
+            return {
+              url,
+              x: typeof x === 'number' ? x : undefined,
+              y: typeof y === 'number' ? y : undefined,
+            };
+          }
+          return undefined;
+        })
+        .filter((x): x is GalleryImage => x !== undefined)
     : undefined;
   return {
     heroUrl: s('heroUrl'),

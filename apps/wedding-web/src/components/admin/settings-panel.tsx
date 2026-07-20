@@ -3,6 +3,7 @@
 import { useState, type CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 import { adminApi, type Settings } from '@/lib/admin-api';
+import type { GalleryImage } from '@/lib/site-settings';
 import {
   card,
   inputBase,
@@ -52,7 +53,7 @@ export function SettingsPanel({
   };
   const patch = (p: Settings) => setDraft((d) => ({ ...d, ...p }));
 
-  const gallery = val<string[]>('gallery', []);
+  const gallery = val<GalleryImage[]>('gallery', []);
 
   const uploadFile = async (kind: string, file: File, apply: (url: string) => void) => {
     setUploading(kind);
@@ -197,9 +198,41 @@ export function SettingsPanel({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <span style={kicker}>{t('gallery', { count: gallery.length })}</span>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              {gallery.map((src, i) => (
+              {gallery.map((img, i) => (
                 <div
-                  key={src + i}
+                  key={img.url + i}
+                  role="button"
+                  tabIndex={0}
+                  title={t('setFocalPoint')}
+                  aria-label={t('setFocalPoint')}
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = Math.round(((e.clientX - rect.left) / rect.width) * 100);
+                    const y = Math.round(((e.clientY - rect.top) / rect.height) * 100);
+                    const g = gallery.slice();
+                    g[i] = { ...g[i], x, y };
+                    patch({ gallery: g });
+                  }}
+                  onKeyDown={(e) => {
+                    const step = 5;
+                    const delta: Record<string, [number, number]> = {
+                      ArrowLeft: [-step, 0],
+                      ArrowRight: [step, 0],
+                      ArrowUp: [0, -step],
+                      ArrowDown: [0, step],
+                    };
+                    const d = delta[e.key];
+                    if (!d) return;
+                    e.preventDefault();
+                    const g = gallery.slice();
+                    const cur = g[i];
+                    g[i] = {
+                      ...cur,
+                      x: Math.min(100, Math.max(0, (cur.x ?? 50) + d[0])),
+                      y: Math.min(100, Math.max(0, (cur.y ?? 50) + d[1])),
+                    };
+                    patch({ gallery: g });
+                  }}
                   style={{
                     position: 'relative',
                     width: 84,
@@ -207,14 +240,33 @@ export function SettingsPanel({
                     borderRadius: 8,
                     overflow: 'hidden',
                     boxShadow: RING,
-                    background: `url(${src}) center / cover no-repeat`,
+                    cursor: 'crosshair',
+                    background: `url(${img.url}) ${img.x ?? 50}% ${img.y ?? 50}% / cover no-repeat`,
                   }}
                 >
+                  <span
+                    aria-hidden
+                    style={{
+                      position: 'absolute',
+                      left: `${img.x ?? 50}%`,
+                      top: `${img.y ?? 50}%`,
+                      width: 10,
+                      height: 10,
+                      borderRadius: 5,
+                      transform: 'translate(-50%, -50%)',
+                      background: 'rgba(255,251,248,0.9)',
+                      boxShadow: '0 0 0 1.5px rgba(59,47,39,0.65)',
+                      pointerEvents: 'none',
+                    }}
+                  />
                   <button
                     type="button"
                     title={t('removePhoto')}
                     aria-label={t('removePhoto')}
-                    onClick={() => patch({ gallery: gallery.filter((_, j) => j !== i) })}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      patch({ gallery: gallery.filter((_, j) => j !== i) });
+                    }}
                     style={galleryBtn('rgba(59,47,39,0.65)', { top: 4, right: 4 })}
                   >
                     {'×'}
@@ -284,7 +336,7 @@ export function SettingsPanel({
                       let g = gallery.slice();
                       for (const f of files) {
                         try {
-                          g = [...g, await adminApi.upload('gallery', f)];
+                          g = [...g, { url: await adminApi.upload('gallery', f) }];
                           patch({ gallery: g });
                         } catch {
                           onError(t('uploadFailed'));
