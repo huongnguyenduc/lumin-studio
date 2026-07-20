@@ -72,7 +72,15 @@ export function Reveal({
 // GrowLine: same scroll-trigger as Reveal, but draws the line top-to-bottom
 // (scaleY from a fixed transformOrigin) instead of fading — for a connector
 // line that should feel like it flows down into what follows (events §2.4).
-export function GrowLine({ style, background }: { style?: CSSProperties; background: string }) {
+export function GrowLine({
+  style,
+  background,
+  delay = 0,
+}: {
+  style?: CSSProperties;
+  background: string;
+  delay?: number;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [shown, setShown] = useState(false);
   const [animate, setAnimate] = useState(false);
@@ -116,7 +124,8 @@ export function GrowLine({ style, background }: { style?: CSSProperties; backgro
           ...(animate
             ? {
                 transform: shown ? 'scaleY(1)' : 'scaleY(0)',
-                transition: 'transform 1.7s cubic-bezier(0.22,0.61,0.36,1)',
+                transition: 'transform 2.3s cubic-bezier(0.22,0.61,0.36,1)',
+                transitionDelay: `${delay}ms`,
               }
             : { transform: 'scaleY(1)' }),
         }}

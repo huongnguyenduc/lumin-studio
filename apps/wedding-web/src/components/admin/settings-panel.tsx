@@ -4,7 +4,9 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 import { adminApi, type Settings } from '@/lib/admin-api';
 import type { GalleryImage } from '@/lib/site-settings';
-import { card, inputBase, kicker, pillSolid, CREAM_2, GREEN, HAIRLINE, INK, TAN, RING } from './ui';
+import { card, inputBase, kicker, CREAM_2, GREEN, HAIRLINE, INK, TAN, RING } from './ui';
+import { StickySaveBar } from './sticky-save-bar';
+import { useUnsavedGuard } from './use-unsaved-guard';
 
 // Mirrors the public Gallery's BLOCKS (components/invitation/gallery.tsx) so the
 // editor reads as the same three-block layout the guest actually sees, with the
@@ -49,12 +51,35 @@ export function SettingsPanel({
   const [uploading, setUploading] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [previewPlaying, setPreviewPlaying] = useState(false);
+  const previewRef = useRef<HTMLAudioElement | null>(null);
 
   const val = <T,>(key: string, fallback: T): T => {
     if (key in draft) return draft[key] as T;
     return (settings[key] as T) ?? fallback;
   };
   const patch = (p: Settings) => setDraft((d) => ({ ...d, ...p }));
+  const dirty = Object.keys(draft).length > 0;
+  useUnsavedGuard(dirty);
+
+  const togglePreview = () => {
+    if (previewPlaying) {
+      previewRef.current?.pause();
+      setPreviewPlaying(false);
+      return;
+    }
+    const url = val<string>('musicUrl', '');
+    if (!url) return;
+    if (!previewRef.current) previewRef.current = new Audio();
+    const audio = previewRef.current;
+    audio.src = url;
+    audio.volume = val<number>('musicVolume', 0.6);
+    audio.loop = true;
+    audio.onended = () => setPreviewPlaying(false);
+    void audio.play().then(() => setPreviewPlaying(true));
+  };
+
+  useEffect(() => () => previewRef.current?.pause(), []);
 
   const gallery = val<GalleryImage[]>('gallery', []);
 
@@ -220,17 +245,47 @@ export function SettingsPanel({
                   {val<string>('musicName', '') || t('noMusic')}
                 </span>
               </div>
-              <label style={uploadLabel}>
-                {t('uploadMusic')}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <label style={uploadLabel}>
+                  {t('uploadMusic')}
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    onChange={filePick('music', (url, name) =>
+                      patch({ musicUrl: url, musicName: name }),
+                    )}
+                    style={{ display: 'none' }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={togglePreview}
+                  disabled={!val<string>('musicUrl', '')}
+                  style={{
+                    ...uploadLabel,
+                    cursor: val<string>('musicUrl', '') ? 'pointer' : 'default',
+                    opacity: val<string>('musicUrl', '') ? 1 : 0.5,
+                  }}
+                >
+                  {previewPlaying ? t('stopPreview') : t('playPreview')}
+                </button>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, color: INK }}>{t('defaultVolume')}</span>
                 <input
-                  type="file"
-                  accept="audio/*"
-                  onChange={filePick('music', (url, name) =>
-                    patch({ musicUrl: url, musicName: name }),
-                  )}
-                  style={{ display: 'none' }}
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={Math.round(val<number>('musicVolume', 0.6) * 100)}
+                  onChange={(e) => {
+                    const v = Number(e.target.value) / 100;
+                    patch({ musicVolume: v });
+                    if (previewRef.current) previewRef.current.volume = v;
+                  }}
+                  aria-label={t('defaultVolume')}
+                  style={{ flexGrow: 1, cursor: 'pointer' }}
                 />
-              </label>
+              </div>
             </div>
           </div>
 
@@ -259,7 +314,15 @@ export function SettingsPanel({
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <span style={kicker}>{t('gallery', { count: gallery.length })}</span>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 480 }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 20,
+                maxWidth: 480,
+                margin: '0 auto',
+              }}
+            >
               {galleryBlocks.map((block, bi) => (
                 <div key={bi} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div
@@ -323,6 +386,28 @@ export function SettingsPanel({
                           >
                             {'⠿'}
                           </span>
+                          <label
+                            title={t('replacePhoto')}
+                            aria-label={t('replacePhoto')}
+                            style={galleryBtn('rgba(59,47,39,0.65)', { bottom: 6, right: 6 }, 24)}
+                          >
+                            {'⟳'}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                e.target.value = '';
+                                if (!file) return;
+                                void uploadFile('gallery', file, (url) => {
+                                  const g = gallery.slice();
+                                  g[i] = { ...g[i], url };
+                                  patch({ gallery: g });
+                                });
+                              }}
+                              style={{ display: 'none' }}
+                            />
+                          </label>
                           <button
                             type="button"
                             title={t('removePhoto')}
@@ -477,23 +562,11 @@ export function SettingsPanel({
                 </label>
               </div>
             </div>
-            <div style={{ flexGrow: 1 }} />
-            <button
-              type="button"
-              onClick={() => void save()}
-              disabled={saving}
-              style={{
-                ...pillSolid,
-                padding: '9px 22px',
-                letterSpacing: '0.08em',
-                opacity: saving ? 0.6 : 1,
-                cursor: saving ? 'default' : 'pointer',
-              }}
-            >
-              {saving ? t('saving') : t('save')}
-            </button>
           </div>
         </div>
+      ) : null}
+      {dirty ? (
+        <StickySaveBar saving={saving} onSave={() => void save()} onCancel={() => setDraft({})} />
       ) : null}
     </div>
   );
@@ -631,7 +704,7 @@ function FocalPicker({
 function galleryBtn(bg: string, pos: CSSProperties = {}, size = 18): CSSProperties {
   return {
     ...pos,
-    position: pos.top !== undefined ? 'absolute' : 'static',
+    position: Object.keys(pos).length > 0 ? 'absolute' : 'static',
     width: size,
     height: size,
     borderRadius: size / 2,

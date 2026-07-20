@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 
@@ -160,6 +161,14 @@ func (s *server) patchEvent(w http.ResponseWriter, r *http.Request) {
 		if isUniqueViolation(err) {
 			writeError(w, http.StatusConflict, "SUBDOMAIN_TAKEN", "subdomain đã được dùng cho đám cưới khác")
 			return
+		}
+		// New subdomain → its origin needs its own bucket CORS rule before browser
+		// uploads from it will work (§EnsureOriginAllowed). Best-effort: a failure
+		// here only means uploads on that subdomain need the old manual step.
+		if err == nil && sub != nil && s.uploads != nil {
+			if cerr := s.uploads.EnsureOriginAllowed(r.Context(), "https://"+*sub); cerr != nil {
+				log.Printf("wedding-api: cors allow %s: %v", *sub, cerr)
+			}
 		}
 	}
 	if err == pgx.ErrNoRows {

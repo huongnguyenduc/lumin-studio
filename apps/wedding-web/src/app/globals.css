@@ -5,6 +5,13 @@
 @layer base {
   body {
     font-family: var(--font-serif), ui-serif, Georgia, serif;
+    /* Playfair Display defaults to old-style figures — digits sit smaller/
+     * lower than the surrounding caps. Lining + proportional figures make
+     * numerals match cap height everywhere by default (letter.tsx used to
+     * apply this per-spot; root-caused here so new digit spots don't need it). */
+    font-feature-settings:
+      'lnum' 1,
+      'pnum' 1;
     color: rgb(120, 105, 93);
     /* Cream frames the card on desktop. Below 1024px the canvas is full-bleed
      * so this is never seen as page background — but iOS Safari tints the

@@ -156,7 +156,7 @@ function Ticket({
             <span style={muted}>{lunarDate}</span>
           </div>
           <div style={row}>
-            <span style={{ ...value, whiteSpace: 'nowrap' }}>{place}</span>
+            <span style={{ ...value, textAlign: 'center' }}>{place}</span>
             <span style={muted}>{address}</span>
           </div>
         </div>
@@ -208,7 +208,7 @@ export function Events({ event = {} }: { event?: EventData }) {
           gap: 18,
         }}
       >
-        <GrowLine style={{ flex: '1 0 0', width: 0.5 }} background={TAN} />
+        <GrowLine style={{ flex: '1 0 0', width: 0.5 }} background={TAN} delay={250} />
         <Reveal
           style={{
             fontStyle: 'italic',

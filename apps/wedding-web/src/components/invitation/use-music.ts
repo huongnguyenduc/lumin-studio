@@ -14,31 +14,42 @@ import { useEffect, useRef, useState } from 'react';
 // plain <audio> playback needs no CORS at all.
 const DEFAULT_SRC = '/invite/music.mp3';
 
-export function useMusic(srcOverride?: string) {
+export function useMusic(srcOverride?: string, defaultVolume = 0.6) {
   const SRC = srcOverride ?? DEFAULT_SRC;
+  const target = Math.min(1, Math.max(0, defaultVolume));
   const [playing, setPlaying] = useState(false);
+  const [volume, setVolumeState] = useState(target);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fadeTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const triedRef = useRef(false);
   const retryRef = useRef<(() => void) | null>(null);
   const playingRef = useRef(false);
+  const volumeRef = useRef(target);
   playingRef.current = playing;
+  volumeRef.current = volume;
 
-  const fadeVolume = (target: number, ms: number) => {
+  const fadeVolume = (targetVol: number, ms: number) => {
     const audio = audioRef.current;
     if (!audio) return;
     if (fadeTimer.current) clearInterval(fadeTimer.current);
     const steps = 20;
-    const step = (target - audio.volume) / steps;
+    const step = (targetVol - audio.volume) / steps;
     let i = 0;
     fadeTimer.current = setInterval(() => {
       i++;
       audio.volume = Math.min(1, Math.max(0, audio.volume + step));
       if (i >= steps) {
         if (fadeTimer.current) clearInterval(fadeTimer.current);
-        if (target === 0) audio.pause();
+        if (targetVol === 0) audio.pause();
       }
     }, ms / steps);
+  };
+
+  // Live slider drag while already playing — no fade, just set it.
+  const setVolume = (v: number) => {
+    const clamped = Math.min(1, Math.max(0, v));
+    setVolumeState(clamped);
+    if (audioRef.current && playingRef.current) audioRef.current.volume = clamped;
   };
 
   const start = () => {
@@ -50,7 +61,7 @@ export function useMusic(srcOverride?: string) {
       audio.play().then(
         () => {
           setPlaying(true);
-          fadeVolume(0.6, 2400);
+          fadeVolume(volumeRef.current, 2400);
         },
         () => {
           if (retryRef.current) return;
@@ -104,5 +115,5 @@ export function useMusic(srcOverride?: string) {
     };
   }, []);
 
-  return { playing, start, toggle };
+  return { playing, start, toggle, volume, setVolume };
 }

@@ -458,6 +458,7 @@ export function AdminDashboard() {
         guests={guests}
         groups={groups}
         search={search}
+        eventName={events.find((e) => e.slug === selectedEvent)?.name ?? ''}
         onEdit={(g) => setEditing({ id: g.id, label: g.label, group: g.group, note: g.note ?? '' })}
         onDelete={(g) => void run(() => adminApi.deleteGuest(g.id))}
         onBulkDelete={(ids) => void run(() => adminApi.bulkDeleteGuests(ids))}

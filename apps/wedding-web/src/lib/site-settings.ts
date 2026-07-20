@@ -7,6 +7,7 @@ export type SiteSettings = {
   heroY?: number;
   gallery?: GalleryImage[];
   musicUrl?: string;
+  musicVolume?: number;
   siteTitle?: string;
   siteDesc?: string;
   ogUrl?: string;
@@ -108,6 +109,7 @@ export function asSiteSettings(raw: Record<string, unknown>): SiteSettings {
     heroY: n('heroY'),
     gallery: gallery && gallery.length ? gallery : undefined,
     musicUrl: s('musicUrl'),
+    musicVolume: n('musicVolume'),
     siteTitle: s('siteTitle'),
     siteDesc: s('siteDesc'),
     ogUrl: s('ogUrl'),
