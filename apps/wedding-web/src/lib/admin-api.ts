@@ -114,8 +114,10 @@ export const adminApi = {
   bulkDeleteWishes: (ids: string[]) =>
     call<{ deleted: number }>('POST', '/api/admin/wishes/bulk-delete', { ids }),
 
+  // "overview", not "stats" — generic ad-blockers (EasyPrivacy-style filter lists)
+  // block URLs containing "stats" as presumed analytics.
   stats: (event: string) =>
-    call<AdminStats>('GET', `/api/admin/stats?event=${encodeURIComponent(event)}`),
+    call<AdminStats>('GET', `/api/admin/overview?event=${encodeURIComponent(event)}`),
   settings: () => call<Settings>('GET', '/api/admin/settings'),
   patchSettings: (patch: Settings) => call<Settings>('PATCH', '/api/admin/settings', patch),
 

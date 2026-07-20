@@ -96,7 +96,9 @@ func New(pool *pgxpool.Pool, a *auth.Auth, uploads *uploadstore.Store) http.Hand
 		r.Post("/events", s.createEvent)
 		r.Patch("/events/{slug}", s.patchEvent)
 
-		r.Get("/stats", s.adminStats)
+		// "overview", not "stats" — generic ad-blocker filter lists (EasyPrivacy-style)
+		// block URLs containing "stats" as presumed analytics, breaking this in-browser.
+		r.Get("/overview", s.adminStats)
 		r.Get("/settings", s.getSettings)
 		r.Patch("/settings", s.patchSettings)
 		r.Post("/uploads/presign", s.presignUpload)
