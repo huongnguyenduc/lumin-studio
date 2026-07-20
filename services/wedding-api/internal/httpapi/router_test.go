@@ -26,7 +26,7 @@ func TestHealthz(t *testing.T) {
 
 func TestAdminRoutesRequireAuth(t *testing.T) {
 	h := newTestRouter()
-	for _, path := range []string{"/api/admin/guests", "/api/admin/stats", "/api/admin/settings"} {
+	for _, path := range []string{"/api/admin/guests", "/api/admin/overview", "/api/admin/settings"} {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
 		if rec.Code != http.StatusUnauthorized {

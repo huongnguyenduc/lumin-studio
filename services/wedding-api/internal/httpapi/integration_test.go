@@ -247,7 +247,7 @@ func TestEndToEndFlows(t *testing.T) {
 
 	// --- stats ---
 	var stats map[string]int
-	call(t, "GET", u+"/api/admin/stats", admin, nil, &stats)
+	call(t, "GET", u+"/api/admin/overview?event="+evt, admin, nil, &stats)
 	if stats["guests"] != 2 || stats["opened"] != 1 || stats["rsvpNo"] != 1 || stats["wishes"] != 2 {
 		t.Fatalf("stats = %v", stats)
 	}
