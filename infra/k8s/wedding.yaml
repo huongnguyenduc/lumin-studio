@@ -17,6 +17,24 @@ spec:
     metadata:
       labels: { app: wedding-api }
     spec:
+      # Home k3s node (WSL2) has intermittent clock-drift blips that flip it
+      # NodeNotReady for a few seconds; the default 5min toleration was too
+      # short and every blip cascaded into a full pod eviction/restart across
+      # the whole namespace. 10min rides out the observed flaps without
+      # masking a real node outage for long.
+      tolerations:
+        - {
+            key: node.kubernetes.io/not-ready,
+            operator: Exists,
+            effect: NoExecute,
+            tolerationSeconds: 600,
+          }
+        - {
+            key: node.kubernetes.io/unreachable,
+            operator: Exists,
+            effect: NoExecute,
+            tolerationSeconds: 600,
+          }
       containers:
         - name: wedding-api
           image: lumin-wedding-api:prod
@@ -86,6 +104,20 @@ spec:
     metadata:
       labels: { app: wedding-web }
     spec:
+      # See wedding-api toleration above — same node-flap mitigation.
+      tolerations:
+        - {
+            key: node.kubernetes.io/not-ready,
+            operator: Exists,
+            effect: NoExecute,
+            tolerationSeconds: 600,
+          }
+        - {
+            key: node.kubernetes.io/unreachable,
+            operator: Exists,
+            effect: NoExecute,
+            tolerationSeconds: 600,
+          }
       containers:
         - name: wedding-web
           image: lumin-wedding-web:prod
