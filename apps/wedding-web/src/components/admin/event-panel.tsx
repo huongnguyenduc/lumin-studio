@@ -2,7 +2,7 @@
 
 import { useState, type CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
-import { adminApi, type AdminEvent } from '@/lib/admin-api';
+import { adminApi, ApiError, type AdminEvent } from '@/lib/admin-api';
 import {
   card,
   inputBase,
@@ -53,7 +53,8 @@ type DataField =
 // Venue/schedule editor for one event (§ multi-event admin). Collapsible,
 // draft/save pattern lifted from SettingsPanel — same shallow-merge PATCH
 // semantics, just scoped to one event's `data` column instead of the global
-// settings row.
+// settings row. name/subdomain are separate columns (not in `data`) so they
+// get their own draft state, submitted on the same "Lưu" button.
 export function EventPanel({
   event,
   onSaved,
@@ -66,6 +67,8 @@ export function EventPanel({
   const t = useTranslations('admin.eventPanel');
   const tSaved = useTranslations('admin.toasts')('saved');
   const [open, setOpen] = useState(false);
+  const [nameDraft, setNameDraft] = useState<string | undefined>(undefined);
+  const [subdomainDraft, setSubdomainDraft] = useState<string | undefined>(undefined);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [savedToast, setSavedToast] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -77,16 +80,28 @@ export function EventPanel({
   };
   const patch = (key: string, value: string) => setDraft((d) => ({ ...d, [key]: value }));
 
+  const subdomainLabel = event.subdomain ? event.subdomain.replace(/\.luminstudio\.vn$/, '') : '';
+
   const save = async () => {
-    if (Object.keys(draft).length === 0) return;
+    const body: { name?: string; subdomain?: string; data?: Record<string, string> } = {};
+    if (nameDraft !== undefined) body.name = nameDraft;
+    if (subdomainDraft !== undefined) body.subdomain = subdomainDraft;
+    if (Object.keys(draft).length > 0) body.data = draft;
+    if (Object.keys(body).length === 0) return;
     try {
-      const next = await adminApi.patchEvent(event.slug, { data: draft });
+      const next = await adminApi.patchEvent(event.slug, body);
       setDraft({});
+      setNameDraft(undefined);
+      setSubdomainDraft(undefined);
       onSaved(next);
       setSavedToast(true);
       setTimeout(() => setSavedToast(false), 2600);
-    } catch {
-      onError(t('saveFailed'));
+    } catch (err) {
+      onError(
+        err instanceof ApiError && err.code === 'SUBDOMAIN_TAKEN'
+          ? t('subdomainTaken')
+          : t('saveFailed'),
+      );
     }
   };
 
@@ -158,6 +173,43 @@ export function EventPanel({
             paddingTop: 16,
           }}
         >
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={kicker}>{t('field.name')}</span>
+              <input
+                value={nameDraft ?? event.name}
+                onChange={(e) => setNameDraft(e.target.value)}
+                placeholder={t('placeholder.name')}
+                aria-label={t('field.name')}
+                style={{ ...inputBase, borderRadius: 8, padding: '9px 14px' }}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={kicker}>{t('field.subdomain')}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  value={subdomainDraft ?? subdomainLabel}
+                  onChange={(e) => setSubdomainDraft(e.target.value)}
+                  placeholder={t('placeholder.subdomain')}
+                  aria-label={t('field.subdomain')}
+                  style={{ ...inputBase, flexGrow: 1, borderRadius: 8, padding: '9px 14px' }}
+                />
+                <span style={{ fontSize: 12, color: TAN_LIGHT, whiteSpace: 'nowrap' }}>
+                  {t('domainSuffix')}
+                </span>
+              </div>
+              {event.subdomain ? (
+                <a
+                  href={`https://${event.subdomain}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ fontSize: 11, color: TAN_LIGHT }}
+                >
+                  {`https://${event.subdomain}`}
+                </a>
+              ) : null}
+            </div>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
             {(['date', 'weekday', 'lunarDate'] as const).map(field)}
           </div>

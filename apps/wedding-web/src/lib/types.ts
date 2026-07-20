@@ -5,6 +5,7 @@ export type EventSummary = {
   slug: string;
   name: string;
   sortOrder: number;
+  subdomain: string | null;
   data: Record<string, unknown>;
 };
 

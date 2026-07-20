@@ -190,8 +190,12 @@ export const vi = {
       uploading: 'Đang tải lên…',
       uploadFailed: 'Tải lên thất bại — kho ảnh chưa cấu hình?',
       saveFailed: 'Lưu thất bại — thử lại nhé',
+      subdomainTaken: 'Subdomain này đã được dùng cho đám cưới khác — thử tên khác nhé',
+      domainSuffix: '.luminstudio.vn',
       save: 'Lưu đám cưới này',
       field: {
+        name: 'Tên đám cưới',
+        subdomain: 'Subdomain (địa chỉ web riêng)',
         date: 'Ngày (VD: 12.09.2026)',
         weekday: 'Thứ',
         lunarDate: 'Ngày âm lịch',
@@ -215,6 +219,8 @@ export const vi = {
         thanhHonAddress: 'Địa chỉ thành hôn',
       },
       placeholder: {
+        name: 'VD: Đám cưới tại Sài Gòn',
+        subdomain: 'damcuoisg',
         date: '12.09.2026',
         weekday: 'Thứ bảy',
         lunarDate: '(Nhằm ngày 02 tháng 08 năm Bính Ngọ)',
