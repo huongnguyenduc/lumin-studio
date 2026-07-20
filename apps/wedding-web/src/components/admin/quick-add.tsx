@@ -2,18 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import {
-  card,
-  chipStyle,
-  inputBase,
-  kicker,
-  pillSolid,
-  pillGhost,
-  INK,
-  TAN,
-  TAN_LIGHT,
-  HAIRLINE,
-} from './ui';
+import { card, chipStyle, inputBase, kicker, pillSolid, pillGhost, INK, TAN, HAIRLINE } from './ui';
 
 // Quick add + group chips + bulk add (§3.2). Groups are user-managed: + Nhóm
 // inline input, "Sửa nhóm" manage mode (click chip → rename prompt, × → delete
@@ -146,7 +135,7 @@ export function QuickAdd({
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: 11,
-                  color: TAN,
+                  color: INK,
                   cursor: 'pointer',
                   lineHeight: 1,
                   fontFamily: 'inherit',
@@ -215,7 +204,7 @@ export function QuickAdd({
             border: 'none',
             background: 'transparent',
             fontSize: 11,
-            color: TAN_LIGHT,
+            color: INK,
             cursor: 'pointer',
             textDecoration: 'underline',
             textUnderlineOffset: 3,
@@ -225,9 +214,7 @@ export function QuickAdd({
           {manage ? t('manageDone') : t('manage')}
         </button>
         {manage ? (
-          <span style={{ fontSize: 11, fontStyle: 'italic', color: TAN_LIGHT }}>
-            {t('manageHint')}
-          </span>
+          <span style={{ fontSize: 11, fontStyle: 'italic', color: INK }}>{t('manageHint')}</span>
         ) : null}
       </div>
       {bulkOpen ? (
@@ -240,7 +227,7 @@ export function QuickAdd({
             paddingTop: 12,
           }}
         >
-          <span style={{ fontSize: 12, color: TAN }}>{t('bulkHint')}</span>
+          <span style={{ fontSize: 12, color: INK }}>{t('bulkHint')}</span>
           <textarea
             value={bulkText}
             onChange={(e) => setBulkText(e.target.value)}

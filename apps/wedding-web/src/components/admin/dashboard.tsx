@@ -28,7 +28,6 @@ import {
   INK,
   RED,
   TAN,
-  TAN_LIGHT,
   SCRIPT,
 } from './ui';
 
@@ -49,6 +48,7 @@ export function AdminDashboard() {
   const [search, setSearch] = useState('');
   const [quickGroup, setQuickGroup] = useState('Bạn bè');
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
+  const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<EditState>(null);
   const sessionCount = useRef(0);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -105,15 +105,24 @@ export function AdminDashboard() {
   }, [reload]);
 
   // Every mutation: call API then reload (one wedding, small data — no cache dance).
+  // Flashes a success toast by default (override via successMsg, or suppress via
+  // silent when the caller already flashes its own message from onDone).
   const run = useCallback(
-    async (fn: () => Promise<unknown>, onDone?: () => void) => {
+    async (
+      fn: () => Promise<unknown>,
+      opts?: { onDone?: () => void; successMsg?: string; silent?: boolean },
+    ) => {
+      setSaving(true);
       try {
         await fn();
-        onDone?.();
+        opts?.onDone?.();
         await reload();
+        if (!opts?.silent) flash(opts?.successMsg ?? t('toasts.updated'));
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) setAuthed(false);
         else flash(t('toasts.apiError'), true);
+      } finally {
+        setSaving(false);
       }
     },
     [reload, flash, t],
@@ -225,7 +234,7 @@ export function AdminDashboard() {
             background: 'transparent',
             borderRadius: 22,
             fontSize: 12,
-            color: TAN_LIGHT,
+            color: INK,
             cursor: 'pointer',
             fontFamily: 'inherit',
           }}
@@ -264,10 +273,7 @@ export function AdminDashboard() {
               setNewEventOpen(false);
               setNewEventName('');
               if (!name) return;
-              void run(
-                () => adminApi.createEvent(name),
-                () => flash(t('toasts.saved')),
-              );
+              void run(() => adminApi.createEvent(name), { successMsg: t('toasts.saved') });
             }}
             placeholder={t('events.addPlaceholder')}
             aria-label={t('events.addPlaceholder')}
@@ -340,7 +346,11 @@ export function AdminDashboard() {
           style={{ ...inputBase, width: 260, borderRadius: 22, padding: '9px 16px' }}
         />
         <div style={{ flexGrow: 1 }} />
-        {toast ? (
+        {saving ? (
+          <span style={{ fontStyle: 'italic', fontSize: 12, color: INK }}>
+            {t('toasts.saving')}
+          </span>
+        ) : toast ? (
           <span style={{ fontStyle: 'italic', fontSize: 12, color: toast.error ? RED : GREEN }}>
             {toast.text}
           </span>
@@ -351,52 +361,54 @@ export function AdminDashboard() {
         groups={groups}
         selectedGroup={quickGroup}
         onSelectGroup={setQuickGroup}
-        onAdd={(label) =>
-          selectedEvent &&
+        onAdd={(label) => {
+          if (!selectedEvent) return;
+          const count = sessionCount.current + 1;
           void run(
             () => adminApi.createGuest({ label, group: quickGroup, eventSlug: selectedEvent }),
-            () => {
-              sessionCount.current += 1;
-              flash(t('toasts.added', { label, count: sessionCount.current }));
+            {
+              onDone: () => {
+                sessionCount.current = count;
+              },
+              successMsg: t('toasts.added', { label, count }),
             },
-          )
-        }
-        onBulkAdd={(lines) =>
-          selectedEvent &&
+          );
+        }}
+        onBulkAdd={(lines) => {
+          if (!selectedEvent) return;
           void run(
             async () => {
               for (const l of lines) await adminApi.createGuest({ ...l, eventSlug: selectedEvent });
             },
-            () => {
-              sessionCount.current += lines.length;
-              flash(t('toasts.addedBulk', { count: lines.length }));
+            {
+              onDone: () => {
+                sessionCount.current += lines.length;
+              },
+              successMsg: t('toasts.addedBulk', { count: lines.length }),
             },
-          )
-        }
+          );
+        }}
         onCreateGroup={(name) =>
           selectedEvent &&
-          void run(
-            () => adminApi.createGroup(name, selectedEvent),
-            () => setQuickGroup(name),
-          )
+          void run(() => adminApi.createGroup(name, selectedEvent), {
+            onDone: () => setQuickGroup(name),
+          })
         }
         onRenameGroup={(from, to) =>
           selectedEvent &&
-          void run(
-            () => adminApi.renameGroup(selectedEvent, from, to),
-            () => {
+          void run(() => adminApi.renameGroup(selectedEvent, from, to), {
+            onDone: () => {
               if (quickGroup === from) setQuickGroup(to);
             },
-          )
+          })
         }
         onDeleteGroup={(name) =>
           selectedEvent &&
-          void run(
-            () => adminApi.deleteGroup(selectedEvent, name),
-            () => {
+          void run(() => adminApi.deleteGroup(selectedEvent, name), {
+            onDone: () => {
               if (quickGroup === name) setQuickGroup('Khác');
             },
-          )
+          })
         }
       />
 
@@ -435,7 +447,7 @@ export function AdminDashboard() {
                   group: editing.group,
                   note: editing.note.trim(),
                 }),
-              () => setEditing(null),
+              { onDone: () => setEditing(null) },
             );
           }}
           onCancel={() => setEditing(null)}

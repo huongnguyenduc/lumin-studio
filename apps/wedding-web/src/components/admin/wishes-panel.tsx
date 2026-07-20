@@ -4,18 +4,7 @@ import { useState, type CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 import type { AdminWish } from '@/lib/admin-api';
 import { timeAgo } from '@/lib/time';
-import {
-  checkbox,
-  chipStyle,
-  kicker,
-  CREAM,
-  INK,
-  TAN,
-  TAN_LIGHT,
-  TERRACOTTA,
-  SCRIPT,
-  RING,
-} from './ui';
+import { checkbox, chipStyle, kicker, CREAM, INK, TAN, TERRACOTTA, SCRIPT, RING } from './ui';
 
 const pagerBtn: CSSProperties = {
   width: 26,
@@ -194,7 +183,7 @@ export function WishesPanel({
                 style={{
                   fontStyle: 'italic',
                   fontSize: 10,
-                  color: TAN_LIGHT,
+                  color: INK,
                   whiteSpace: 'nowrap',
                 }}
               >
@@ -211,7 +200,7 @@ export function WishesPanel({
                 border: 'none',
                 background: 'transparent',
                 fontSize: 10,
-                color: TAN_LIGHT,
+                color: INK,
                 cursor: 'pointer',
                 textDecoration: 'underline',
                 textUnderlineOffset: 3,

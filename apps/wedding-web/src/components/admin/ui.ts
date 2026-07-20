@@ -6,7 +6,7 @@ export const TAN = 'rgb(176,157,144)';
 export const TAN_LIGHT = 'rgb(186,170,159)';
 export const CREAM = 'rgb(255,251,248)';
 export const CREAM_2 = 'rgb(249,241,232)';
-export const TERRACOTTA = 'rgb(203,77,28)';
+export const TERRACOTTA = 'rgb(196,72,25)'; // darkened slightly for AA text contrast on CREAM
 export const GREEN = 'oklch(0.52 0.09 155)';
 export const RED = 'oklch(0.52 0.09 30)';
 export const HAIRLINE = 'rgb(235,226,217)';
@@ -20,11 +20,14 @@ export const card: CSSProperties = {
   boxShadow: RING,
 };
 
+// Uppercase label — kept readable via INK (TAN/TAN_LIGHT read as ~2.3:1 on the
+// cream backgrounds here, well under WCAG AA 4.5:1 for text); de-emphasis comes
+// from size/letter-spacing/case instead of a lighter, harder-to-read color.
 export const kicker: CSSProperties = {
   fontSize: 11,
   letterSpacing: '0.14em',
   textTransform: 'uppercase',
-  color: TAN,
+  color: INK,
 };
 
 export const pillSolid: CSSProperties = {
