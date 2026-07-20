@@ -17,7 +17,6 @@ import {
   INK,
   RED,
   TAN,
-  TAN_LIGHT,
   TERRACOTTA,
 } from './ui';
 
@@ -338,7 +337,7 @@ export function GuestTable({
               />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                 <span style={{ fontWeight: 600, fontSize: 15 }}>{g.label}</span>
-                <span style={{ fontSize: 11, color: TAN_LIGHT }}>
+                <span style={{ fontSize: 11, color: INK }}>
                   {g.group} · {g.id}
                 </span>
                 {noteEditId === g.id ? (
@@ -398,7 +397,7 @@ export function GuestTable({
                       border: 'none',
                       background: 'transparent',
                       fontSize: 10,
-                      color: TAN_LIGHT,
+                      color: INK,
                       cursor: 'pointer',
                       textDecoration: 'underline dotted',
                       textUnderlineOffset: 3,
@@ -453,7 +452,7 @@ export function GuestTable({
                   borderRadius: 20,
                   fontSize: 11,
                   boxShadow: `0 0 0 0.5px ${g.rsvp === 'yes' ? GREEN : g.rsvp === 'no' ? RED : TAN}`,
-                  color: g.rsvp === 'yes' ? GREEN : g.rsvp === 'no' ? RED : TAN_LIGHT,
+                  color: g.rsvp === 'yes' ? GREEN : g.rsvp === 'no' ? RED : INK,
                   whiteSpace: 'nowrap',
                 }}
               >
@@ -510,7 +509,7 @@ export function GuestTable({
               textAlign: 'center',
               fontStyle: 'italic',
               fontSize: 13,
-              color: TAN_LIGHT,
+              color: INK,
             }}
           >
             {t('empty')}
@@ -527,7 +526,7 @@ export function GuestTable({
             borderTop: `0.5px solid ${TAN}`,
           }}
         >
-          <span style={{ fontSize: 12, color: TAN }}>
+          <span style={{ fontSize: 12, color: INK }}>
             {filtered.length
               ? t('pageInfo', {
                   from: start + 1,
@@ -603,7 +602,7 @@ const rowGhost: CSSProperties = {
   border: 'none',
   background: 'transparent',
   fontSize: 11,
-  color: TAN_LIGHT,
+  color: INK,
   cursor: 'pointer',
   fontFamily: 'inherit',
 };

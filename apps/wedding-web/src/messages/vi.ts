@@ -130,6 +130,8 @@ export const vi = {
       added: 'Đã thêm "{label}" · {count} khách trong phiên này',
       addedBulk: 'Đã thêm {count} khách',
       saved: 'Đã lưu cài đặt',
+      updated: 'Đã cập nhật',
+      saving: 'Đang cập nhật…',
       apiError: 'Có lỗi — thử lại nhé',
     },
     quick: {
@@ -182,6 +184,7 @@ export const vi = {
       uploading: 'Đang tải lên…',
       uploadFailed: 'Tải lên thất bại — kho ảnh chưa cấu hình?',
       imageLoadFailed: 'Ảnh chưa hiện được — thử bấm Lưu rồi tải lại trang',
+      saving: 'Đang lưu…',
     },
     events: {
       heading: 'Đám cưới',
@@ -196,6 +199,7 @@ export const vi = {
       changeMap: 'Đổi ảnh bản đồ',
       uploading: 'Đang tải lên…',
       uploadFailed: 'Tải lên thất bại — kho ảnh chưa cấu hình?',
+      saving: 'Đang lưu…',
       saveFailed: 'Lưu thất bại — thử lại nhé',
       subdomainTaken: 'Subdomain này đã được dùng cho đám cưới khác — thử tên khác nhé',
       domainSuffix: '.luminstudio.vn',

@@ -4,19 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 import { adminApi, type Settings } from '@/lib/admin-api';
 import type { GalleryImage } from '@/lib/site-settings';
-import {
-  card,
-  inputBase,
-  kicker,
-  pillSolid,
-  CREAM_2,
-  GREEN,
-  HAIRLINE,
-  INK,
-  TAN,
-  TAN_LIGHT,
-  RING,
-} from './ui';
+import { card, inputBase, kicker, pillSolid, CREAM_2, GREEN, HAIRLINE, INK, TAN, RING } from './ui';
 
 const uploadLabel: CSSProperties = {
   alignSelf: 'flex-start',
@@ -46,6 +34,7 @@ export function SettingsPanel({
   const [draft, setDraft] = useState<Settings>({});
   const [savedToast, setSavedToast] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const val = <T,>(key: string, fallback: T): T => {
     if (key in draft) return draft[key] as T;
@@ -78,6 +67,7 @@ export function SettingsPanel({
 
   const save = async () => {
     if (Object.keys(draft).length === 0) return;
+    setSaving(true);
     try {
       const next = await adminApi.patchSettings(draft);
       setDraft({});
@@ -86,6 +76,8 @@ export function SettingsPanel({
       setTimeout(() => setSavedToast(false), 2600);
     } catch {
       onError(t('uploadFailed'));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -117,13 +109,13 @@ export function SettingsPanel({
         }}
       >
         <span style={{ fontWeight: 600, fontSize: 13 }}>{t('heading')}</span>
-        <span style={{ fontSize: 11, color: TAN_LIGHT }}>{t('subtitle')}</span>
+        <span style={{ fontSize: 11, color: INK }}>{t('subtitle')}</span>
         <span style={{ flexGrow: 1 }} />
         {savedToast ? (
           <span style={{ fontStyle: 'italic', fontSize: 12, color: GREEN }}>{tSaved}</span>
         ) : null}
         {uploading ? (
-          <span style={{ fontStyle: 'italic', fontSize: 12, color: TAN }}>{t('uploading')}</span>
+          <span style={{ fontStyle: 'italic', fontSize: 12, color: INK }}>{t('uploading')}</span>
         ) : null}
         <span style={{ fontSize: 12 }}>{open ? t('collapse') : t('expand')}</span>
       </button>
@@ -270,7 +262,7 @@ export function SettingsPanel({
                   justifyContent: 'center',
                   gap: 4,
                   fontSize: 22,
-                  color: TAN,
+                  color: INK,
                   cursor: 'pointer',
                 }}
               >
@@ -402,9 +394,16 @@ export function SettingsPanel({
             <button
               type="button"
               onClick={() => void save()}
-              style={{ ...pillSolid, padding: '9px 22px', letterSpacing: '0.08em' }}
+              disabled={saving}
+              style={{
+                ...pillSolid,
+                padding: '9px 22px',
+                letterSpacing: '0.08em',
+                opacity: saving ? 0.6 : 1,
+                cursor: saving ? 'default' : 'pointer',
+              }}
             >
-              {t('save')}
+              {saving ? t('saving') : t('save')}
             </button>
           </div>
         </div>

@@ -3,18 +3,7 @@
 import { useState, type CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 import { adminApi, ApiError, type AdminEvent } from '@/lib/admin-api';
-import {
-  card,
-  inputBase,
-  kicker,
-  pillSolid,
-  CREAM_2,
-  GREEN,
-  HAIRLINE,
-  INK,
-  TAN_LIGHT,
-  RING,
-} from './ui';
+import { card, inputBase, kicker, pillSolid, CREAM_2, GREEN, HAIRLINE, INK, RING } from './ui';
 
 const uploadLabel: CSSProperties = {
   alignSelf: 'flex-start',
@@ -72,6 +61,7 @@ export function EventPanel({
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [savedToast, setSavedToast] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const val = (key: string): string => {
     if (key in draft) return draft[key];
@@ -88,6 +78,7 @@ export function EventPanel({
     if (subdomainDraft !== undefined) body.subdomain = subdomainDraft;
     if (Object.keys(draft).length > 0) body.data = draft;
     if (Object.keys(body).length === 0) return;
+    setSaving(true);
     try {
       const next = await adminApi.patchEvent(event.slug, body);
       setDraft({});
@@ -102,6 +93,8 @@ export function EventPanel({
           ? t('subdomainTaken')
           : t('saveFailed'),
       );
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -150,15 +143,13 @@ export function EventPanel({
         }}
       >
         <span style={{ fontWeight: 600, fontSize: 13 }}>{t('heading')}</span>
-        <span style={{ fontSize: 11, color: TAN_LIGHT }}>{t('subtitle')}</span>
+        <span style={{ fontSize: 11, color: INK }}>{t('subtitle')}</span>
         <span style={{ flexGrow: 1 }} />
         {savedToast ? (
           <span style={{ fontStyle: 'italic', fontSize: 12, color: GREEN }}>{tSaved}</span>
         ) : null}
         {uploading ? (
-          <span style={{ fontStyle: 'italic', fontSize: 12, color: TAN_LIGHT }}>
-            {t('uploading')}
-          </span>
+          <span style={{ fontStyle: 'italic', fontSize: 12, color: INK }}>{t('uploading')}</span>
         ) : null}
         <span style={{ fontSize: 12 }}>{open ? t('collapse') : t('expand')}</span>
       </button>
@@ -194,7 +185,7 @@ export function EventPanel({
                   aria-label={t('field.subdomain')}
                   style={{ ...inputBase, flexGrow: 1, borderRadius: 8, padding: '9px 14px' }}
                 />
-                <span style={{ fontSize: 12, color: TAN_LIGHT, whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: 12, color: INK, whiteSpace: 'nowrap' }}>
                   {t('domainSuffix')}
                 </span>
               </div>
@@ -203,7 +194,7 @@ export function EventPanel({
                   href={`https://${event.subdomain}`}
                   target="_blank"
                   rel="noreferrer"
-                  style={{ fontSize: 11, color: TAN_LIGHT }}
+                  style={{ fontSize: 11, color: INK }}
                 >
                   {`https://${event.subdomain}`}
                 </a>
@@ -266,9 +257,16 @@ export function EventPanel({
             <button
               type="button"
               onClick={() => void save()}
-              style={{ ...pillSolid, padding: '9px 22px', letterSpacing: '0.08em' }}
+              disabled={saving}
+              style={{
+                ...pillSolid,
+                padding: '9px 22px',
+                letterSpacing: '0.08em',
+                opacity: saving ? 0.6 : 1,
+                cursor: saving ? 'default' : 'pointer',
+              }}
             >
-              {t('save')}
+              {saving ? t('saving') : t('save')}
             </button>
           </div>
         </div>
