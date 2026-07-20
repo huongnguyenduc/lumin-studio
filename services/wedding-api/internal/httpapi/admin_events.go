@@ -19,12 +19,13 @@ type eventRow struct {
 	Slug      string          `json:"slug"`
 	Name      string          `json:"name"`
 	SortOrder int             `json:"sortOrder"`
+	Subdomain *string         `json:"subdomain"`
 	Data      json.RawMessage `json:"data"`
 }
 
 func (s *server) listEvents(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.pool.Query(r.Context(),
-		`SELECT slug, name, sort_order, data FROM events ORDER BY sort_order, slug`)
+		`SELECT slug, name, sort_order, subdomain, data FROM events ORDER BY sort_order, slug`)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
@@ -33,7 +34,7 @@ func (s *server) listEvents(w http.ResponseWriter, r *http.Request) {
 	items := []eventRow{}
 	for rows.Next() {
 		var e eventRow
-		if err := rows.Scan(&e.Slug, &e.Name, &e.SortOrder, &e.Data); err != nil {
+		if err := rows.Scan(&e.Slug, &e.Name, &e.SortOrder, &e.Subdomain, &e.Data); err != nil {
 			writeError(w, http.StatusInternalServerError, "DB", err.Error())
 			return
 		}
@@ -75,8 +76,8 @@ func (s *server) createEvent(w http.ResponseWriter, r *http.Request) {
 	err = tx.QueryRow(r.Context(),
 		`INSERT INTO events (slug, name, sort_order)
 		 VALUES ($1, $2, (SELECT coalesce(max(sort_order), 0) + 1 FROM events))
-		 RETURNING slug, name, sort_order, data`,
-		id, name).Scan(&e.Slug, &e.Name, &e.SortOrder, &e.Data)
+		 RETURNING slug, name, sort_order, subdomain, data`,
+		id, name).Scan(&e.Slug, &e.Name, &e.SortOrder, &e.Subdomain, &e.Data)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
@@ -101,8 +102,9 @@ func (s *server) createEvent(w http.ResponseWriter, r *http.Request) {
 func (s *server) patchEvent(w http.ResponseWriter, r *http.Request) {
 	eventSlug := chi.URLParam(r, "slug")
 	var body struct {
-		Name *string                    `json:"name"`
-		Data map[string]json.RawMessage `json:"data"`
+		Name      *string                    `json:"name"`
+		Subdomain *string                    `json:"subdomain"` // absent = unchanged; "" = clear; else label, normalized below
+		Data      map[string]json.RawMessage `json:"data"`
 	}
 	if !readJSON(w, r, &body) {
 		return
@@ -110,6 +112,13 @@ func (s *server) patchEvent(w http.ResponseWriter, r *http.Request) {
 	if body.Name != nil && strings.TrimSpace(*body.Name) == "" {
 		writeError(w, http.StatusBadRequest, "BAD_NAME", "tên đám cưới không được để trống")
 		return
+	}
+	// A patch that only touches name/subdomain omits "data" entirely, which
+	// decodes to a nil map — json.Marshal(nil map) is the literal `null`, and
+	// jsonb `data || null` corrupts the column into a 2-element array instead
+	// of leaving it alone. Force it to an empty object so `||` is a no-op.
+	if body.Data == nil {
+		body.Data = map[string]json.RawMessage{}
 	}
 	nullKeys := []string{}
 	for k, v := range body.Data {
@@ -123,13 +132,36 @@ func (s *server) patchEvent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_JSON", err.Error())
 		return
 	}
+
 	var e eventRow
-	err = s.pool.QueryRow(r.Context(),
-		`UPDATE events SET name = coalesce($2, name), data = (data || $3::jsonb) - $4::text[]
-		 WHERE slug = $1
-		 RETURNING slug, name, sort_order, data`,
-		eventSlug, body.Name, merged, nullKeys).
-		Scan(&e.Slug, &e.Name, &e.SortOrder, &e.Data)
+	if body.Subdomain == nil {
+		// Column untouched — coalesce($2,...) already leaves name alone too when absent.
+		err = s.pool.QueryRow(r.Context(),
+			`UPDATE events SET name = coalesce($2, name), data = (data || $3::jsonb) - $4::text[]
+			 WHERE slug = $1
+			 RETURNING slug, name, sort_order, subdomain, data`,
+			eventSlug, body.Name, merged, nullKeys).
+			Scan(&e.Slug, &e.Name, &e.SortOrder, &e.Subdomain, &e.Data)
+	} else {
+		// Admin types the label only (e.g. "damcuoisg"); we own the domain suffix so the
+		// site can start serving it immediately via the wildcard Ingress (no redeploy).
+		var sub *string
+		if label := strings.TrimSpace(*body.Subdomain); label != "" {
+			full := slug.Make(label) + ".luminstudio.vn"
+			sub = &full
+		}
+		err = s.pool.QueryRow(r.Context(),
+			`UPDATE events SET name = coalesce($2, name), subdomain = $3,
+			                    data = (data || $4::jsonb) - $5::text[]
+			 WHERE slug = $1
+			 RETURNING slug, name, sort_order, subdomain, data`,
+			eventSlug, body.Name, sub, merged, nullKeys).
+			Scan(&e.Slug, &e.Name, &e.SortOrder, &e.Subdomain, &e.Data)
+		if isUniqueViolation(err) {
+			writeError(w, http.StatusConflict, "SUBDOMAIN_TAKEN", "subdomain đã được dùng cho đám cưới khác")
+			return
+		}
+	}
 	if err == pgx.ErrNoRows {
 		writeError(w, http.StatusNotFound, "EVENT_NOT_FOUND", "không tìm thấy đám cưới")
 		return

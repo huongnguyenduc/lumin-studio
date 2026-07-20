@@ -148,6 +148,15 @@ spec:
 # wedding-assets.luminstudio.vn = Garage WEBSITE mode for the public bucket
 # (anon read; bucket resolved by Host — needs the bucket website+alias bootstrap
 # on the box, same as assets.luminstudio.vn. See infra/k8s/README).
+#
+# wedding-web itself resolves WHICH event to serve from the Host header
+# (matched against events.subdomain, see internal/httpapi/admin_events.go) —
+# so a single wildcard host rule here covers giangvahieu.luminstudio.vn AND
+# every future wedding subdomain the admin sets, with no new Ingress rule or
+# redeploy needed. Kubernetes Ingress wildcard hosts match exactly one label
+# and Traefik prefers the more-specific exact-host rules below (and the ones
+# in infra/k8s/ingress.yaml for www/admin/api/assets/s3), so this can't
+# shadow another service.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -158,7 +167,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: giangvahieu.luminstudio.vn
+    - host: '*.luminstudio.vn'
       http:
         paths:
           - path: /

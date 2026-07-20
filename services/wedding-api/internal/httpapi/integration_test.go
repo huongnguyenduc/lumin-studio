@@ -337,4 +337,43 @@ func TestEventScoping(t *testing.T) {
 	if len(pub.Items) != 2 {
 		t.Fatalf("public events = %v, want 2", pub.Items)
 	}
+
+	// Subdomain: admin types a bare label, API owns the domain suffix, and it
+	// round-trips through the public list — this is what wedding-web matches
+	// the request Host against to pick the active event (no redeploy).
+	var withSub struct {
+		Subdomain *string        `json:"subdomain"`
+		Data      map[string]any `json:"data"`
+	}
+	// Body omits "data" entirely (only subdomain) — regression check: this
+	// used to decode to a nil map, which json.Marshal turns into `null`, and
+	// `existing_data || null` in Postgres corrupts an object into a 2-element
+	// array instead of leaving it untouched.
+	if code := call(t, "PATCH", u+"/api/admin/events/"+ev2.Slug, admin,
+		map[string]string{"subdomain": "Dam Cuoi SG!!"}, &withSub); code != 200 {
+		t.Fatalf("patch subdomain = %d", code)
+	}
+	if withSub.Subdomain == nil || *withSub.Subdomain != "dam-cuoi-sg.luminstudio.vn" {
+		t.Fatalf("subdomain = %v, want normalized dam-cuoi-sg.luminstudio.vn", withSub.Subdomain)
+	}
+	if withSub.Data["venueHall"] != "Sảnh A" || withSub.Data["time"] != "18:00" {
+		t.Fatalf("data corrupted by data-omitted patch: %#v", withSub.Data)
+	}
+
+	// A second event can't steal an already-claimed subdomain.
+	var ev3 struct{ Slug string }
+	call(t, "POST", u+"/api/admin/events", admin, map[string]string{"name": "Đám cưới 3"}, &ev3)
+	if code := call(t, "PATCH", u+"/api/admin/events/"+ev3.Slug, admin,
+		map[string]string{"subdomain": "Dam Cuoi SG!!"}, nil); code != 409 {
+		t.Fatalf("duplicate subdomain = %d, want 409", code)
+	}
+
+	// Empty string clears it back to unconfigured.
+	if code := call(t, "PATCH", u+"/api/admin/events/"+ev2.Slug, admin,
+		map[string]string{"subdomain": ""}, &withSub); code != 200 {
+		t.Fatalf("clear subdomain = %d", code)
+	}
+	if withSub.Subdomain != nil {
+		t.Fatalf("subdomain not cleared: %v", withSub.Subdomain)
+	}
 }

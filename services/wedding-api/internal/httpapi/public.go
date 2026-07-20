@@ -182,12 +182,12 @@ func (s *server) getWishes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
 }
 
-// getEvents lists events (public, unauthenticated): each wedding-web deployment
-// resolves its "active" event from this list (WEDDING_EVENT_SLUG, or the first
-// by sort_order when unset).
+// getEvents lists events (public, unauthenticated): wedding-web resolves its
+// "active" event from this list, matching the request Host against `subdomain`
+// first, falling back to WEDDING_EVENT_SLUG or the first by sort_order.
 func (s *server) getEvents(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.pool.Query(r.Context(),
-		`SELECT slug, name, sort_order, data FROM events ORDER BY sort_order, slug`)
+		`SELECT slug, name, sort_order, subdomain, data FROM events ORDER BY sort_order, slug`)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
@@ -196,7 +196,7 @@ func (s *server) getEvents(w http.ResponseWriter, r *http.Request) {
 	items := []eventRow{}
 	for rows.Next() {
 		var e eventRow
-		if err := rows.Scan(&e.Slug, &e.Name, &e.SortOrder, &e.Data); err != nil {
+		if err := rows.Scan(&e.Slug, &e.Name, &e.SortOrder, &e.Subdomain, &e.Data); err != nil {
 			writeError(w, http.StatusInternalServerError, "DB", err.Error())
 			return
 		}

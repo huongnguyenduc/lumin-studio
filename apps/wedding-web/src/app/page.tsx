@@ -1,3 +1,4 @@
+import { headers } from 'next/headers';
 import { getActiveEvent, getSettings, getWishes } from '@/lib/api';
 import { asEventData, asSiteSettings } from '@/lib/site-settings';
 import { InvitationCard } from '@/components/invitation/invitation-card';
@@ -7,10 +8,11 @@ import { InvitationCard } from '@/components/invitation/invitation-card';
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
+  const host = (await headers()).get('host') ?? undefined;
   const [wishes, settings, event] = await Promise.all([
     getWishes(),
     getSettings(),
-    getActiveEvent(),
+    getActiveEvent(host),
   ]);
   return (
     <InvitationCard

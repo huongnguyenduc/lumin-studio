@@ -48,9 +48,16 @@ export async function getEvents(): Promise<EventSummary[]> {
   }
 }
 
-export async function getActiveEvent(): Promise<EventSummary | null> {
+// Resolves by the request's Host header first (admin-set `subdomain`, live
+// with no redeploy via the wildcard Ingress) — falls back to
+// WEDDING_EVENT_SLUG then the first event, so local dev (host = localhost)
+// and a not-yet-configured event both still work.
+export async function getActiveEvent(host?: string): Promise<EventSummary | null> {
   const events = await getEvents();
   if (events.length === 0) return null;
+  const hostname = host?.split(':')[0].toLowerCase();
+  const byHost = hostname && events.find((e) => e.subdomain?.toLowerCase() === hostname);
+  if (byHost) return byHost;
   const wanted = process.env.WEDDING_EVENT_SLUG;
   return (wanted && events.find((e) => e.slug === wanted)) || events[0];
 }

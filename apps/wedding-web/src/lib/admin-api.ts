@@ -67,6 +67,7 @@ export type AdminEvent = {
   slug: string;
   name: string;
   sortOrder: number;
+  subdomain: string | null;
   data: Record<string, unknown>;
 };
 
@@ -76,8 +77,11 @@ export const adminApi = {
 
   events: () => call<{ items: AdminEvent[] }>('GET', '/api/admin/events'),
   createEvent: (name: string) => call<AdminEvent>('POST', '/api/admin/events', { name }),
-  patchEvent: (slug: string, patch: { name?: string; data?: Record<string, unknown> }) =>
-    call<AdminEvent>('PATCH', `/api/admin/events/${encodeURIComponent(slug)}`, patch),
+  // subdomain: label only (e.g. "damcuoisg") — the API owns the ".luminstudio.vn" suffix.
+  patchEvent: (
+    slug: string,
+    patch: { name?: string; subdomain?: string; data?: Record<string, unknown> },
+  ) => call<AdminEvent>('PATCH', `/api/admin/events/${encodeURIComponent(slug)}`, patch),
 
   guests: (event: string) =>
     call<{ items: AdminGuest[] }>('GET', `/api/admin/guests?event=${encodeURIComponent(event)}`),
