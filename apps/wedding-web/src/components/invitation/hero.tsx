@@ -8,7 +8,7 @@ import { Reveal } from './reveal';
 // Hero (§2.1): full-bleed photo, logo mark + rotated ellipse borders, gradient,
 // script "save the date", one-time scroll hint (localStorage). Music toggle
 // lives in <MusicButton> — floats over the whole page, not just the hero.
-export function Hero({ bgUrl }: { bgUrl?: string }) {
+export function Hero({ bgUrl, x, y }: { bgUrl?: string; x?: number; y?: number }) {
   const t = useTranslations('hero');
   const [hint, setHint] = useState(false);
   const [hintOpacity, setHintOpacity] = useState(0);
@@ -72,7 +72,7 @@ export function Hero({ bgUrl }: { bgUrl?: string }) {
         style={{
           position: 'absolute',
           inset: 0,
-          background: `url(${bgUrl ?? '/invite/hero.jpg'}) 50% 0 / cover no-repeat`,
+          background: `url(${bgUrl ?? '/invite/hero.jpg'}) ${x ?? 50}% ${y ?? 0}% / cover no-repeat`,
         }}
       />
       {/* Figma node 32:834 — oval stamp logo exported as one asset. */}

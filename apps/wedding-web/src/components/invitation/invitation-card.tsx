@@ -146,7 +146,7 @@ export function InvitationCard({
             boxShadow: '0 0 60px rgba(101,101,101,0.25)',
           }}
         >
-          <Hero bgUrl={settings.heroUrl} />
+          <Hero bgUrl={settings.heroUrl} x={settings.heroX} y={settings.heroY} />
           {/* Figma 107:240: thư mời là frame 380px đặt ở x≈7 trong canvas 393 —
               chừa nền hở hai bên thay vì tràn mép. */}
           {/* marginBottom 80: khoảng thở giữa thư mời và section cards (Figma 2143→2222). */}

@@ -176,6 +176,7 @@ export const vi = {
       save: 'Lưu cài đặt',
       uploading: 'Đang tải lên…',
       uploadFailed: 'Tải lên thất bại — kho ảnh chưa cấu hình?',
+      imageLoadFailed: 'Ảnh chưa hiện được — thử bấm Lưu rồi tải lại trang',
     },
     events: {
       heading: 'Đám cưới',

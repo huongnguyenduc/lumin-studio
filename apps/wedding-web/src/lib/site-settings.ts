@@ -3,6 +3,8 @@
 export type GalleryImage = { url: string; x?: number; y?: number };
 export type SiteSettings = {
   heroUrl?: string;
+  heroX?: number;
+  heroY?: number;
   gallery?: GalleryImage[];
   musicUrl?: string;
   siteTitle?: string;
@@ -94,8 +96,11 @@ export function asSiteSettings(raw: Record<string, unknown>): SiteSettings {
         })
         .filter((x): x is GalleryImage => x !== undefined)
     : undefined;
+  const n = (k: string) => (typeof raw[k] === 'number' ? (raw[k] as number) : undefined);
   return {
     heroUrl: s('heroUrl'),
+    heroX: n('heroX'),
+    heroY: n('heroY'),
     gallery: gallery && gallery.length ? gallery : undefined,
     musicUrl: s('musicUrl'),
     siteTitle: s('siteTitle'),
