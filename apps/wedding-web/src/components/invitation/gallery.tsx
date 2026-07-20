@@ -4,6 +4,7 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 import { INK, SCRIPT } from './theme';
 import { Reveal } from './reveal';
+import type { GalleryImage } from '@/lib/site-settings';
 
 // Gallery (§2.5 rev, Figma 132:212): script two-line heading, then three photo
 // blocks with a caption under each. 12 slots (3+5+4); extra host photos flow into the
@@ -60,13 +61,14 @@ function ChevronIcon() {
   );
 }
 
-export function Gallery({ images }: { images?: string[] }) {
+export function Gallery({ images }: { images?: GalleryImage[] }) {
   const t = useTranslations('gallery');
   const [index, setIndex] = useState(-1);
   // Host-configured list (§3.5) or the built-in 12. The span pattern covers the
   // first 12 cells; extra images continue as 1×1 (CELLS lookup falls through).
-  const srcs = images ?? IMAGES.map((img) => `/invite/${img}.jpg`);
+  const srcs: GalleryImage[] = images ?? IMAGES.map((img) => ({ url: `/invite/${img}.jpg` }));
   const n = srcs.length;
+  const pos = (img: GalleryImage) => `${img.x ?? 50}% ${img.y ?? 50}%`;
 
   // Deal srcs into the 3 fixed blocks; anything past the 11 patterned slots
   // joins the last block as 1×1 cells. Short lists just leave trailing blocks empty.
@@ -149,7 +151,7 @@ export function Gallery({ images }: { images?: string[] }) {
                 const i = block.offset + ci;
                 return (
                   <Reveal
-                    key={srcs[i] + i}
+                    key={srcs[i].url + i}
                     delay={cell.delay}
                     style={{
                       gridColumn: cell.col ? `span ${cell.col}` : undefined,
@@ -165,7 +167,7 @@ export function Gallery({ images }: { images?: string[] }) {
                         height: '100%',
                         border: 'none',
                         padding: 0,
-                        background: `url(${srcs[i]}) center / cover no-repeat`,
+                        background: `url(${srcs[i].url}) ${pos(srcs[i])} / cover no-repeat`,
                         cursor: 'pointer',
                       }}
                     />
@@ -236,7 +238,7 @@ export function Gallery({ images }: { images?: string[] }) {
             <CrossIcon />
           </button>
           <img
-            src={srcs[index]}
+            src={srcs[index].url}
             alt={t('photoAlt', { index: index + 1 })}
             style={{
               position: 'relative',
