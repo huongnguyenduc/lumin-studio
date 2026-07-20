@@ -373,6 +373,10 @@ kubectl -n prod exec deploy/garage -- /garage bucket alias wedding-assets weddin
 # CORS for the browser presigned POST from the site origin — ONE RULE PER ORIGIN (v1.0.1 gotcha, §CORS
 # above; re-run after any bucket rebuild — CORS is prod-only state, not in a manifest):
 #   AllowedOrigins=["https://giangvahieu.luminstudio.vn"], AllowedMethods=["POST","GET"] via aws s3api put-bucket-cors
+# Every EVENT/CUSTOMER SUBDOMAIN AFTER THIS FIRST ONE no longer needs this step by hand: saving a
+# subdomain in admin (PATCH /api/admin/events/:slug) now calls uploadstore.EnsureOriginAllowed, which
+# appends a one-origin CORS rule for it automatically (best-effort, logs on failure). Only the very
+# first bootstrap above and a from-scratch bucket rebuild still need the manual aws-cli step.
 kubectl -n prod patch secret wedding-secrets -p \
   '{"stringData":{"UPLOAD_S3_ACCESS_KEY_ID":"<key id>","UPLOAD_S3_SECRET_ACCESS_KEY":"<secret>"}}'
 

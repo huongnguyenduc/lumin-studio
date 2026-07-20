@@ -205,7 +205,7 @@ export function Letter({
         </Reveal>
         <Reveal style={{ marginTop: 16 }}>
           <a
-            href={event.mapsUrl ?? 'https://maps.google.com/?q=The+Mira+Central+Park+Bien+Hoa'}
+            href={event.mapsUrl ?? 'https://maps.google.com'}
             target="_blank"
             rel="noreferrer"
             className="invite-pill-solid"

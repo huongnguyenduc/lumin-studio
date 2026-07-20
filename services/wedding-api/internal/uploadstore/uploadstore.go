@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
+	miniocors "github.com/minio/minio-go/v7/pkg/cors"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 
 	"github.com/huongnguyenduc/lumin-studio/services/wedding-api/internal/config"
@@ -122,4 +123,46 @@ func (s *Store) Presign(kind, mimeType string, size int64) (Presigned, error) {
 		ExpiresAt: expires,
 		MaxBytes:  MaxUploadSize,
 	}, nil
+}
+
+// EnsureOriginAllowed adds a browser-upload CORS rule for origin to the bucket
+// if one isn't already there. Every event/customer subdomain that uploads
+// straight to Garage from the browser needs its own rule — Garage v1.0.1 has
+// no `garage bucket cors` CLI, only the S3 PutBucketCors API, and (its gotcha)
+// a single rule with multiple AllowedOrigins collapses into one comma-joined
+// Access-Control-Allow-Origin header that browsers reject, so this appends a
+// new one-origin rule instead of widening an existing one. Runs automatically
+// on subdomain save so hosts never have to run the old manual aws-cli step
+// per wedding; best-effort (logs, never fails the save) since a missing rule
+// only degrades image uploads on that one subdomain.
+func (s *Store) EnsureOriginAllowed(ctx context.Context, origin string) error {
+	cfg, err := s.client.GetBucketCors(ctx, s.cfg.Bucket)
+	if err != nil {
+		// No CORS config yet on the bucket at all — start a fresh one.
+		cfg = nil
+	}
+	if cfg == nil {
+		cfg = miniocors.NewConfig(nil)
+	}
+	if corsHasOrigin(cfg, origin) {
+		return nil
+	}
+	cfg.CORSRules = append(cfg.CORSRules, miniocors.Rule{
+		AllowedOrigin: []string{origin},
+		AllowedMethod: []string{"POST", "GET"},
+		AllowedHeader: []string{"*"},
+		MaxAgeSeconds: 3600,
+	})
+	return s.client.SetBucketCors(ctx, s.cfg.Bucket, cfg)
+}
+
+func corsHasOrigin(cfg *miniocors.Config, origin string) bool {
+	for _, rule := range cfg.CORSRules {
+		for _, o := range rule.AllowedOrigin {
+			if o == origin {
+				return true
+			}
+		}
+	}
+	return false
 }

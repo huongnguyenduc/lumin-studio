@@ -32,7 +32,7 @@ export function InvitationCard({
   event?: EventData;
 }) {
   const t = useTranslations('footer');
-  const music = useMusic(settings.musicUrl);
+  const music = useMusic(settings.musicUrl, settings.musicVolume);
   const scaleRef = useRef<HTMLDivElement>(null);
 
   // Music starts on first scroll (§2.10) — autoplay usually rejects, then the
@@ -125,7 +125,12 @@ export function InvitationCard({
 
   return (
     <>
-      <MusicButton playing={music.playing} onToggle={music.toggle} />
+      <MusicButton
+        playing={music.playing}
+        onToggle={music.toggle}
+        volume={music.volume}
+        onVolumeChange={music.setVolume}
+      />
       <div
         ref={scaleRef}
         className="invite-scale"

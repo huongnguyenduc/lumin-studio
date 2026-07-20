@@ -3,7 +3,9 @@
 import { useState, type CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 import { adminApi, ApiError, type AdminEvent } from '@/lib/admin-api';
-import { card, inputBase, kicker, pillSolid, CREAM_2, GREEN, HAIRLINE, INK, RING } from './ui';
+import { card, inputBase, kicker, CREAM_2, GREEN, HAIRLINE, INK, RING } from './ui';
+import { StickySaveBar } from './sticky-save-bar';
+import { useUnsavedGuard } from './use-unsaved-guard';
 
 const uploadLabel: CSSProperties = {
   alignSelf: 'flex-start',
@@ -69,6 +71,9 @@ export function EventPanel({
     return typeof v === 'string' ? v : '';
   };
   const patch = (key: string, value: string) => setDraft((d) => ({ ...d, [key]: value }));
+  const dirty =
+    Object.keys(draft).length > 0 || nameDraft !== undefined || subdomainDraft !== undefined;
+  useUnsavedGuard(dirty);
 
   const subdomainLabel = event.subdomain ? event.subdomain.replace(/\.luminstudio\.vn$/, '') : '';
 
@@ -253,23 +258,18 @@ export function EventPanel({
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
             {(['thanhHonTime', 'thanhHonPlace', 'thanhHonAddress'] as const).map(field)}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button
-              type="button"
-              onClick={() => void save()}
-              disabled={saving}
-              style={{
-                ...pillSolid,
-                padding: '9px 22px',
-                letterSpacing: '0.08em',
-                opacity: saving ? 0.6 : 1,
-                cursor: saving ? 'default' : 'pointer',
-              }}
-            >
-              {saving ? t('saving') : t('save')}
-            </button>
-          </div>
         </div>
+      ) : null}
+      {dirty ? (
+        <StickySaveBar
+          saving={saving}
+          onSave={() => void save()}
+          onCancel={() => {
+            setDraft({});
+            setNameDraft(undefined);
+            setSubdomainDraft(undefined);
+          }}
+        />
       ) : null}
     </div>
   );

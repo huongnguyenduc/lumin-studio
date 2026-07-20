@@ -11,6 +11,7 @@ export const vi = {
     saveTheDate: 'save the date',
     scrollHint: 'Cuộn xuống để mở thiệp',
     musicToggle: 'Nhạc nền',
+    volumeLabel: 'Âm lượng',
     stampAlt: 'Con dấu sáp HG',
   },
   letter: {
@@ -155,6 +156,12 @@ export const vi = {
       bulkPlaceholder: 'Cô Lan & Chú Minh, Nhà gái\nAnh Tuấn, Đồng nghiệp\nBạn Minh Anh',
       bulkAdd: 'Thêm {count} khách',
     },
+    unsaved: {
+      message: 'Có thay đổi chưa lưu',
+      save: 'Lưu cài đặt',
+      saving: 'Đang lưu...',
+      cancel: 'Huỷ bỏ',
+    },
     settings: {
       heading: 'Cài đặt trang',
       subtitle: 'Ảnh nền · thư viện ảnh · nhạc · thông tin website',
@@ -165,11 +172,15 @@ export const vi = {
       noMusic: 'Chưa có nhạc nền',
       changeImage: 'Đổi ảnh',
       uploadMusic: 'Tải nhạc lên (mp3/m4a)',
+      playPreview: 'Nghe thử',
+      stopPreview: 'Dừng nghe thử',
+      defaultVolume: 'Âm lượng mặc định',
       gallery:
         'Thư viện ảnh ({count} ảnh) — kéo thả để đổi thứ tự, bấm vào ảnh để chỉnh khung nhìn',
       setFocalPoint: 'Bấm vào vị trí muốn làm tâm khung nhìn (dùng phím mũi tên để chỉnh)',
       addPhotos: 'Thêm ảnh',
       removePhoto: 'Xoá ảnh',
+      replacePhoto: 'Thay ảnh khác',
       reorderPhoto: 'Kéo để đổi thứ tự',
       storyHeading: 'Câu chuyện tình yêu',
       storyLine1: 'Dòng tiêu đề 1',
@@ -286,6 +297,7 @@ export const vi = {
     },
     table: {
       guest: 'Khách mời',
+      guestForEvent: 'Khách mời ({eventName})',
       opened: 'Mở thiệp',
       rsvp: 'Phản hồi',
       wish: 'Lời chúc',

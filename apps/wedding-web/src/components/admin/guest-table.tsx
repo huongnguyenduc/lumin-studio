@@ -48,6 +48,7 @@ export function GuestTable({
   guests,
   groups,
   search,
+  eventName,
   onEdit,
   onDelete,
   onBulkDelete,
@@ -57,6 +58,7 @@ export function GuestTable({
   guests: AdminGuest[];
   groups: string[];
   search: string;
+  eventName: string;
   onEdit: (g: AdminGuest) => void;
   onDelete: (g: AdminGuest) => void;
   onBulkDelete: (ids: string[]) => void;
@@ -287,7 +289,7 @@ export function GuestTable({
             title={t('sortTitle')}
             style={headerBtn}
           >
-            {t('guest')}
+            {eventName ? t('guestForEvent', { eventName }) : t('guest')}
             {arrow('name')}
           </button>
           <button
