@@ -153,10 +153,17 @@ spec:
 # (matched against events.subdomain, see internal/httpapi/admin_events.go) —
 # so a single wildcard host rule here covers giangvahieu.luminstudio.vn AND
 # every future wedding subdomain the admin sets, with no new Ingress rule or
-# redeploy needed. Kubernetes Ingress wildcard hosts match exactly one label
-# and Traefik prefers the more-specific exact-host rules below (and the ones
-# in infra/k8s/ingress.yaml for www/admin/api/assets/s3), so this can't
-# shadow another service.
+# redeploy needed.
+#
+# INCIDENT (2026-07-20): the comment here used to claim Traefik always prefers
+# the more-specific exact-host rules (lumin ingress: www/admin/api/assets/s3)
+# over this wildcard, so it "can't shadow another service" — that's false.
+# Traefik's default router priority is the RULE STRING LENGTH, and the k8s
+# wildcard host is translated to a HostRegexp(...) rule whose string is
+# LONGER than a plain Host(`s3.luminstudio.vn`), so it silently outranked and
+# hijacked ALL s3.luminstudio.vn (and every other *.luminstudio.vn) traffic to
+# wedding-web. Explicit low priority here pins this rule below every exact
+# host, regardless of string length.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -164,6 +171,7 @@ metadata:
   namespace: prod
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.priority: '1'
 spec:
   ingressClassName: traefik
   rules:
