@@ -181,6 +181,26 @@ spec:
           - path: /
             pathType: Prefix
             backend: { service: { name: wedding-web, port: { number: 3000 } } }
+---
+# INCIDENT #2 (2026-07-20): wedding-assets.luminstudio.vn used to be a second
+# rule on the SAME Ingress object above — sharing that object's annotations
+# means it shared the SAME explicit priority ('1') as the wildcard rule, so
+# the two tied instead of the exact host winning, and Traefik's tie-break
+# landed on the wildcard (every wedding-assets.* request 404'd through
+# wedding-web instead of hitting Garage — hero/gallery/music all broken on
+# the live site, not just admin). A separate Ingress object gets its own
+# priority so this exact host can outrank the wildcard unambiguously.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wedding-assets
+  namespace: prod
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.priority: '10'
+spec:
+  ingressClassName: traefik
+  rules:
     - host: wedding-assets.luminstudio.vn
       http:
         paths:

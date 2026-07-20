@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 import { adminApi, type Settings } from '@/lib/admin-api';
 import type { GalleryImage } from '@/lib/site-settings';
@@ -141,13 +141,24 @@ export function SettingsPanel({
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <span style={kicker}>{t('hero')}</span>
-              <div style={previewBox(val<string | null>('heroUrl', null), 110)} />
+              {/* 140×304 = the public hero's own 393×852 design canvas, scaled down —
+                  same crop box the visitor sees, not a generic wide preview strip. */}
+              <FocalPicker
+                url={val<string | null>('heroUrl', null)}
+                x={val<number>('heroX', 50)}
+                y={val<number>('heroY', 0)}
+                width={140}
+                height={304}
+                label={t('setFocalPoint')}
+                errorLabel={t('imageLoadFailed')}
+                onChange={(x, y) => patch({ heroX: x, heroY: y })}
+              />
               <label style={uploadLabel}>
                 {t('changeImage')}
                 <input
                   type="file"
                   accept="image/*"
-                  onChange={filePick('hero', (url) => patch({ heroUrl: url }))}
+                  onChange={filePick('hero', (url) => patch({ heroUrl: url, heroX: 50, heroY: 0 }))}
                   style={{ display: 'none' }}
                 />
               </label>
@@ -199,64 +210,19 @@ export function SettingsPanel({
             <span style={kicker}>{t('gallery', { count: gallery.length })}</span>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               {gallery.map((img, i) => (
-                <div
-                  key={img.url + i}
-                  role="button"
-                  tabIndex={0}
-                  title={t('setFocalPoint')}
-                  aria-label={t('setFocalPoint')}
-                  onClick={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const x = Math.round(((e.clientX - rect.left) / rect.width) * 100);
-                    const y = Math.round(((e.clientY - rect.top) / rect.height) * 100);
-                    const g = gallery.slice();
-                    g[i] = { ...g[i], x, y };
-                    patch({ gallery: g });
-                  }}
-                  onKeyDown={(e) => {
-                    const step = 5;
-                    const delta: Record<string, [number, number]> = {
-                      ArrowLeft: [-step, 0],
-                      ArrowRight: [step, 0],
-                      ArrowUp: [0, -step],
-                      ArrowDown: [0, step],
-                    };
-                    const d = delta[e.key];
-                    if (!d) return;
-                    e.preventDefault();
-                    const g = gallery.slice();
-                    const cur = g[i];
-                    g[i] = {
-                      ...cur,
-                      x: Math.min(100, Math.max(0, (cur.x ?? 50) + d[0])),
-                      y: Math.min(100, Math.max(0, (cur.y ?? 50) + d[1])),
-                    };
-                    patch({ gallery: g });
-                  }}
-                  style={{
-                    position: 'relative',
-                    width: 84,
-                    height: 84,
-                    borderRadius: 8,
-                    overflow: 'hidden',
-                    boxShadow: RING,
-                    cursor: 'crosshair',
-                    background: `url(${img.url}) ${img.x ?? 50}% ${img.y ?? 50}% / cover no-repeat`,
-                  }}
-                >
-                  <span
-                    aria-hidden
-                    style={{
-                      position: 'absolute',
-                      left: `${img.x ?? 50}%`,
-                      top: `${img.y ?? 50}%`,
-                      width: 10,
-                      height: 10,
-                      borderRadius: 5,
-                      transform: 'translate(-50%, -50%)',
-                      background: 'rgba(255,251,248,0.9)',
-                      boxShadow: '0 0 0 1.5px rgba(59,47,39,0.65)',
-                      pointerEvents: 'none',
+                <div key={img.url + i} style={{ position: 'relative', width: 84, height: 84 }}>
+                  <FocalPicker
+                    url={img.url}
+                    x={img.x ?? 50}
+                    y={img.y ?? 50}
+                    width={84}
+                    height={84}
+                    label={t('setFocalPoint')}
+                    errorLabel={t('imageLoadFailed')}
+                    onChange={(x, y) => {
+                      const g = gallery.slice();
+                      g[i] = { ...g[i], x, y };
+                      patch({ gallery: g });
                     }}
                   />
                   <button
@@ -418,6 +384,135 @@ export function SettingsPanel({
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+// Click-or-drag focal-point picker: shows the image at its real crop (object-fit:
+// cover, positioned at x/y%) so what you see here is what the public site renders.
+// Pointer capture makes it a genuine drag ("nắm kéo"), not just click-to-jump.
+function FocalPicker({
+  url,
+  x,
+  y,
+  width,
+  height,
+  label,
+  onChange,
+  errorLabel,
+}: {
+  url: string | null;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label: string;
+  onChange: (x: number, y: number) => void;
+  errorLabel: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [url]);
+
+  const setFromPoint = (clientX: number, clientY: number) => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect) return;
+    onChange(
+      Math.round(Math.min(100, Math.max(0, ((clientX - rect.left) / rect.width) * 100))),
+      Math.round(Math.min(100, Math.max(0, ((clientY - rect.top) / rect.height) * 100))),
+    );
+  };
+
+  return (
+    <div
+      ref={ref}
+      role="button"
+      tabIndex={0}
+      title={label}
+      aria-label={label}
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        setFromPoint(e.clientX, e.clientY);
+      }}
+      onPointerMove={(e) => {
+        if (e.buttons !== 1) return;
+        setFromPoint(e.clientX, e.clientY);
+      }}
+      onKeyDown={(e) => {
+        const step = 5;
+        const delta: Record<string, [number, number]> = {
+          ArrowLeft: [-step, 0],
+          ArrowRight: [step, 0],
+          ArrowUp: [0, -step],
+          ArrowDown: [0, step],
+        };
+        const d = delta[e.key];
+        if (!d) return;
+        e.preventDefault();
+        onChange(Math.min(100, Math.max(0, x + d[0])), Math.min(100, Math.max(0, y + d[1])));
+      }}
+      style={{
+        position: 'relative',
+        width,
+        height,
+        borderRadius: 8,
+        overflow: 'hidden',
+        boxShadow: RING,
+        cursor: 'grab',
+        touchAction: 'none',
+        background: CREAM_2,
+      }}
+    >
+      {url ? (
+        <img
+          src={url}
+          alt=""
+          draggable={false}
+          onError={() => setBroken(true)}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            objectPosition: `${x}% ${y}%`,
+            pointerEvents: 'none',
+          }}
+        />
+      ) : null}
+      {broken ? (
+        <span
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            textAlign: 'center',
+            fontSize: 10,
+            padding: 6,
+            color: 'rgb(185,58,26)',
+            background: 'rgba(255,251,248,0.92)',
+          }}
+        >
+          {errorLabel}
+        </span>
+      ) : null}
+      <span
+        aria-hidden
+        style={{
+          position: 'absolute',
+          left: `${x}%`,
+          top: `${y}%`,
+          width: 12,
+          height: 12,
+          borderRadius: 6,
+          transform: 'translate(-50%, -50%)',
+          background: 'rgba(255,251,248,0.9)',
+          boxShadow: '0 0 0 1.5px rgba(59,47,39,0.65)',
+          pointerEvents: 'none',
+        }}
+      />
     </div>
   );
 }
