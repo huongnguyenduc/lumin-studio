@@ -321,6 +321,9 @@ export class Viewer3d {
     this.controls.dispose();
     this.decalTexture.dispose();
     this.renderer.dispose();
+    // Chrome caps concurrent WebGL contexts (~16); repeated mount/unmount (photo ↔ 3D toggle) without
+    // this can exhaust the cap, so a later remount silently fails to get a context.
+    this.renderer.forceContextLoss();
     this.renderer.domElement.remove();
   }
 }

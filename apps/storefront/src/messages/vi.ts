@@ -46,6 +46,7 @@ export const vi = {
   },
   product: {
     add: 'Thêm vào giỏ',
+    buyNow: 'Mua ngay',
     favLabel: 'Lưu {name} vào yêu thích',
     ratingLabel: '{value} trên 5 sao',
     // Compact tile rating (hi-fi 02 "★ 4.8"). {value} is PRE-FORMATTED by formatVnRating (@lumin/core).
@@ -338,6 +339,7 @@ export const vi = {
     errors: {
       nameInvalid: 'Họ tên cần từ 2 đến 60 ký tự.',
       phoneInvalid: 'Số điện thoại chưa đúng — dùng số di động Việt Nam nhé.',
+      emailRequired: 'Nhập email giúp mình nhé.',
       emailInvalid: 'Email chưa đúng — kiểm tra lại giúp mình nhé.',
       provinceRequired: 'Chọn tỉnh/thành giúp mình nhé.',
       wardRequired: 'Nhập phường/xã giúp mình nhé.',

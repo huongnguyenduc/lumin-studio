@@ -14,7 +14,7 @@ import { cartQuoteItems, type CartItem } from '../src/lib/cart';
 // validate() (checkout.go intake.validate) — these assertions are the client half of that contract.
 function form(partial: Partial<CheckoutFormState> = {}): CheckoutFormState {
   return {
-    email: '',
+    email: 'an@lumin.vn',
     name: 'Nguyễn An',
     phone: '0901234567',
     province: 'TP.HCM',
@@ -54,11 +54,11 @@ describe('validateCheckoutForm — happy path', () => {
     });
   });
 
-  it('omits email and note when blank (both optional)', () => {
-    const result = validateCheckoutForm(form({ email: '   ', note: '' }));
+  it('omits note when blank (optional); email always present', () => {
+    const result = validateCheckoutForm(form({ note: '' }));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect('email' in result.value.customer).toBe(false);
+    expect(result.value.customer.email).toBe('an@lumin.vn');
     expect('note' in result.value).toBe(false);
   });
 });
@@ -95,10 +95,10 @@ describe('validateCheckoutForm — phone (^(0|+84)\\d{9}$, whitespace-tolerant)'
   });
 });
 
-describe('validateCheckoutForm — email (optional, "contains @")', () => {
-  it('rejects a present-but-malformed email, accepts blank', () => {
+describe('validateCheckoutForm — email (required, "contains @")', () => {
+  it('rejects a malformed email and a blank one (required since 2026-07-20)', () => {
     expectError(form({ email: 'notanemail' }), 'email', 'emailInvalid');
-    expect(validateCheckoutForm(form({ email: '' })).ok).toBe(true);
+    expectError(form({ email: '   ' }), 'email', 'emailRequired');
   });
 });
 
@@ -114,6 +114,7 @@ describe('validateCheckoutForm — required address fields (trimmed non-empty)',
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(Object.keys(result.errors).sort()).toEqual([
+      'email',
       'name',
       'phone',
       'province',

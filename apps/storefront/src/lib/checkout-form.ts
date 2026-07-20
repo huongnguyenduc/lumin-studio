@@ -36,6 +36,7 @@ export const EMPTY_CHECKOUT_FORM: CheckoutFormState = {
 export type CheckoutFieldError =
   | 'nameInvalid'
   | 'phoneInvalid'
+  | 'emailRequired'
   | 'emailInvalid'
   | 'provinceRequired'
   | 'wardRequired'
@@ -75,7 +76,7 @@ export function normalizePhone(raw: string): string {
 
 /**
  * Validate the info form. On success returns the normalized, server-shaped payload the payment step
- * submits (email/note omitted when blank — both are optional). Province membership is NOT checked here:
+ * submits (note omitted when blank; email always present — required). Province membership is NOT checked here:
  * the dropdown only offers shippable provinces, and an unshippable one surfaces as the quote's
  * `no_shipping_rule` (the view gates "continue" on a settled quote), matching the server, which checks
  * only non-emptiness at validate() and resolves shippability at fee time.
@@ -95,9 +96,10 @@ export function validateCheckoutForm(
   if (!VN_PHONE_RE.test(phone)) errors.phone = 'phoneInvalid';
 
   const email = form.email.trim();
-  // Server's only explicit email rule is "contains @" (checkout.go); the native type="email" input adds
-  // a format hint. Empty is valid — email is optional (no auto-account, plan D-P2/§P2-d note).
-  if (email !== '' && !email.includes('@')) errors.email = 'emailInvalid';
+  // Now required (was optional per plan D-P2/§P2-d note — user overrode 2026-07-20). Server's only
+  // explicit format rule is "contains @" (checkout.go); the native type="email" input adds a format hint.
+  if (email === '') errors.email = 'emailRequired';
+  else if (!email.includes('@')) errors.email = 'emailInvalid';
 
   const province = form.province.trim();
   if (province === '') errors.province = 'provinceRequired';
@@ -114,7 +116,7 @@ export function validateCheckoutForm(
   return {
     ok: true,
     value: {
-      customer: { name, phone, ...(email !== '' ? { email } : {}) },
+      customer: { name, phone, email },
       shippingAddress: { province, ward, street },
       ...(note !== '' ? { note } : {}),
     },

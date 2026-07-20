@@ -237,13 +237,14 @@ export function ProductDetail({
   const toggleChoice = (id: string) =>
     setSelectedChoiceIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
 
-  // Add the current selection to the cart, then send the shopper to /gio-hang. The Selection is
+  // Add the current selection to the cart and stay on the PDP (the cart badge/qty reflects the add —
+  // no reason to interrupt a shopper who may want to keep configuring or add more). The Selection is
   // snapshot-shaped by buildCartItem (no price — the cart re-prices via POST /price/quote); the button is
   // disabled unless `canAdd`, so this only fires on a valid selection. A parts product sends colorId=null
   // (its colours ride on partColors — sending both 422s the server). The guard is belt-and-braces against
   // a programmatic click.
-  const handleAddToCart = () => {
-    if (!canAdd) return;
+  const addCurrentSelectionToCart = () => {
+    if (!canAdd) return false;
     add({
       ...buildCartItem(product, {
         colorId: hasParts ? null : selectedColorId,
@@ -255,7 +256,14 @@ export function ProductDetail({
       // The stepper's qty rides the snapshot; the store clamps it into 1..MAX_QUANTITY on merge.
       quantity,
     });
-    router.push('/gio-hang');
+    return true;
+  };
+  const handleAddToCart = () => {
+    addCurrentSelectionToCart();
+  };
+  // Buy now: same add, then straight to checkout instead of staying on the PDP.
+  const handleBuyNow = () => {
+    if (addCurrentSelectionToCart()) router.push('/thanh-toan');
   };
 
   return (
@@ -588,7 +596,8 @@ export function ProductDetail({
 
           {/* Add-to-cart: qty stepper + the pop CTA (hi-fi: "Thêm vào giỏ · 290.000₫"). Locked until the
               whole selection is valid (colour/parts + enumerated choices + every engraving in-limit). On
-              click it snapshots the selection into the cart and navigates to /gio-hang. The hint names the
+              click it snapshots the selection into the cart and stays on the PDP ("Mua ngay" adds then
+              goes straight to /thanh-toan). The hint names the
               first unmet axis (engrave errors surface on the field itself). Sticky above the mobile tab
               bar (storefront rule: add-to-cart dính đáy trên mobile). The CTA shows the UNIT base price
               only while qty = 1 — the client never multiplies money (conventions §Tiền); the real total
@@ -604,7 +613,7 @@ export function ProductDetail({
                 incrementLabel={t('qtyIncrement')}
               />
               <Button
-                variant="pop"
+                variant="outline"
                 size="lg"
                 disabled={!canAdd}
                 onClick={handleAddToCart}
@@ -619,6 +628,15 @@ export function ProductDetail({
                 ) : (
                   tp('add')
                 )}
+              </Button>
+              <Button
+                variant="pop"
+                size="lg"
+                disabled={!canAdd}
+                onClick={handleBuyNow}
+                className="flex-1 md:flex-none"
+              >
+                {tp('buyNow')}
               </Button>
             </div>
             {!canAdd && !colorOk && (hasColors || hasParts) ? (
