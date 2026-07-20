@@ -61,9 +61,20 @@ function ChevronIcon() {
   );
 }
 
-export function Gallery({ images }: { images?: GalleryImage[] }) {
+export function Gallery({
+  images,
+  line1,
+  line2,
+  captions,
+}: {
+  images?: GalleryImage[];
+  line1?: string;
+  line2?: string;
+  captions?: [string?, string?, string?];
+}) {
   const t = useTranslations('gallery');
   const [index, setIndex] = useState(-1);
+  const captionText = (key: string, i: number) => captions?.[i] || t(key);
   // Host-configured list (§3.5) or the built-in 12. The span pattern covers the
   // first 12 cells; extra images continue as 1×1 (CELLS lookup falls through).
   const srcs: GalleryImage[] = images ?? IMAGES.map((img) => ({ url: `/invite/${img}.jpg` }));
@@ -117,8 +128,8 @@ export function Gallery({ images }: { images?: GalleryImage[] }) {
           color: INK,
         }}
       >
-        <span>{t('line1')}</span>
-        <span style={{ textAlign: 'right' }}>{t('line2')}</span>
+        <span>{line1 || t('line1')}</span>
+        <span style={{ textAlign: 'right' }}>{line2 || t('line2')}</span>
         {/* Con dấu HG (asset chung với envelope) — nhỏ, đứng tách bên trái "Forever.",
             không đè lên chữ (design để hở một khoảng trước chữ F). */}
         <img
@@ -185,7 +196,7 @@ export function Gallery({ images }: { images?: GalleryImage[] }) {
                 textAlign: 'center',
               }}
             >
-              {t(block.captionKey)}
+              {captionText(block.captionKey, bi)}
             </p>
           </div>
         ))}

@@ -11,6 +11,11 @@ export type SiteSettings = {
   siteDesc?: string;
   ogUrl?: string;
   iconUrl?: string;
+  storyLine1?: string;
+  storyLine2?: string;
+  storyCaption1?: string;
+  storyCaption2?: string;
+  storyCaption3?: string;
 };
 
 // Venue/timeline/ceremony fields for one event (fixed shape — Letter renders
@@ -107,5 +112,10 @@ export function asSiteSettings(raw: Record<string, unknown>): SiteSettings {
     siteDesc: s('siteDesc'),
     ogUrl: s('ogUrl'),
     iconUrl: s('iconUrl'),
+    storyLine1: s('storyLine1'),
+    storyLine2: s('storyLine2'),
+    storyCaption1: s('storyCaption1'),
+    storyCaption2: s('storyCaption2'),
+    storyCaption3: s('storyCaption3'),
   };
 }

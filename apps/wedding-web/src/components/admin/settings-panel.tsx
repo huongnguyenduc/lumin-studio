@@ -210,7 +210,25 @@ export function SettingsPanel({
             <span style={kicker}>{t('gallery', { count: gallery.length })}</span>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               {gallery.map((img, i) => (
-                <div key={img.url + i} style={{ position: 'relative', width: 84, height: 84 }}>
+                <div
+                  key={img.url + i}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', String(i));
+                  }}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const from = Number(e.dataTransfer.getData('text/plain'));
+                    if (Number.isNaN(from) || from === i) return;
+                    const g = gallery.slice();
+                    const [moved] = g.splice(from, 1);
+                    g.splice(i, 0, moved);
+                    patch({ gallery: g });
+                  }}
+                  style={{ position: 'relative', width: 84, height: 84, cursor: 'grab' }}
+                >
                   <FocalPicker
                     url={img.url}
                     x={img.x ?? 50}
@@ -237,36 +255,6 @@ export function SettingsPanel({
                   >
                     {'×'}
                   </button>
-                  <div
-                    style={{ position: 'absolute', bottom: 4, left: 4, display: 'flex', gap: 3 }}
-                  >
-                    <button
-                      type="button"
-                      aria-label={t('moveLeft')}
-                      onClick={() => {
-                        if (i === 0) return;
-                        const g = gallery.slice();
-                        [g[i - 1], g[i]] = [g[i], g[i - 1]];
-                        patch({ gallery: g });
-                      }}
-                      style={galleryBtn('rgba(59,47,39,0.55)')}
-                    >
-                      {'‹'}
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={t('moveRight')}
-                      onClick={() => {
-                        if (i === gallery.length - 1) return;
-                        const g = gallery.slice();
-                        [g[i + 1], g[i]] = [g[i], g[i + 1]];
-                        patch({ gallery: g });
-                      }}
-                      style={galleryBtn('rgba(59,47,39,0.55)')}
-                    >
-                      {'›'}
-                    </button>
-                  </div>
                 </div>
               ))}
               <label
@@ -315,6 +303,43 @@ export function SettingsPanel({
                 />
               </label>
             </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <span style={kicker}>{t('storyHeading')}</span>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+              <input
+                value={val<string>('storyLine1', '')}
+                onChange={(e) => patch({ storyLine1: e.target.value })}
+                aria-label={t('storyLine1')}
+                placeholder={t('storyLine1')}
+                style={{ ...inputBase, borderRadius: 8, padding: '9px 14px' }}
+              />
+              <input
+                value={val<string>('storyLine2', '')}
+                onChange={(e) => patch({ storyLine2: e.target.value })}
+                aria-label={t('storyLine2')}
+                placeholder={t('storyLine2')}
+                style={{ ...inputBase, borderRadius: 8, padding: '9px 14px' }}
+              />
+            </div>
+            {(['storyCaption1', 'storyCaption2', 'storyCaption3'] as const).map((key) => (
+              <textarea
+                key={key}
+                value={val<string>(key, '')}
+                onChange={(e) => patch({ [key]: e.target.value })}
+                aria-label={t(key)}
+                placeholder={t(key)}
+                style={{
+                  ...inputBase,
+                  height: 44,
+                  borderRadius: 8,
+                  padding: '9px 14px',
+                  lineHeight: 1.5,
+                  resize: 'vertical',
+                }}
+              />
+            ))}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

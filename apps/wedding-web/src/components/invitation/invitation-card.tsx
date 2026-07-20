@@ -155,7 +155,12 @@ export function InvitationCard({
             <Letter guestLabel={guest?.label ?? null} event={event} />
           </div>
           <Events event={event} />
-          <Gallery images={settings.gallery} />
+          <Gallery
+            images={settings.gallery}
+            line1={settings.storyLine1}
+            line2={settings.storyLine2}
+            captions={[settings.storyCaption1, settings.storyCaption2, settings.storyCaption3]}
+          />
           {/* RSVP only for a valid guest link — recommended §9 anonymous behavior. */}
           {guest ? <Rsvp guestId={guest.id} initial={guest.rsvp} /> : null}
           <Wishes
