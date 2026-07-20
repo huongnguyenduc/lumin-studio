@@ -1,25 +1,36 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { formatVnd } from '@lumin/core';
+import { IconButton } from '@lumin/ui';
+import { ChevronLeftIcon, ChevronRightIcon } from './icons';
 import type { ProductCardView } from '@/lib/product-view';
 
 const SLIDE_MS = 5000;
+const SWIPE_FRACTION = 0.15; // fraction of the tile width a drag must cross to change slide
+const DRAG_CLICK_THRESHOLD = 8; // px moved before a pointer gesture counts as a drag, not a click
 
 /**
  * Home hero, rebuilt to the hi-fi: a featured-product carousel on the signature buttercream +
  * dotgrid banner — coral "✦ Nổi bật" pill top-left, the product shot centered, a white mini-card
- * bottom-left with the name + mono-coral price line, and the carousel dots. Auto-advances every 5s
- * but NEVER under prefers-reduced-motion (a11y rule: no autonomous motion), and pauses on
- * hover/focus. Each slide navigates to its product page; dots are real buttons.
+ * bottom-left with the name + mono-coral price line, prev/next arrows, and the carousel dots.
+ * Auto-advances every 5s but NEVER under prefers-reduced-motion (a11y rule: no autonomous motion),
+ * and pauses on hover/focus/drag. Each slide navigates to its product page (a drag past the click
+ * threshold suppresses that click so a swipe never also fires a navigation); dots and arrows are
+ * real buttons.
  */
 export function HeroCarousel({ products }: { products: ProductCardView[] }) {
   const t = useTranslations('hero');
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const reducedMotion = useRef(false);
+
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const pointerIdRef = useRef<number | null>(null);
+  const startXRef = useRef(0);
+  const draggedRef = useRef(false);
 
   useEffect(() => {
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -41,6 +52,31 @@ export function HeroCarousel({ products }: { products: ProductCardView[] }) {
     return () => clearInterval(id);
   }, [paused, products.length]);
 
+  const count = products.length;
+  const goTo = (next: number) => setIndex(((next % count) + count) % count);
+
+  function onPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    if (count <= 1) return;
+    pointerIdRef.current = e.pointerId;
+    startXRef.current = e.clientX;
+    draggedRef.current = false;
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+
+  function onPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+    if (pointerIdRef.current !== e.pointerId) return;
+    if (Math.abs(e.clientX - startXRef.current) > DRAG_CLICK_THRESHOLD) draggedRef.current = true;
+  }
+
+  function endDrag(e: ReactPointerEvent<HTMLDivElement>) {
+    if (pointerIdRef.current !== e.pointerId) return;
+    pointerIdRef.current = null;
+    const delta = e.clientX - startXRef.current;
+    const width = wrapRef.current?.offsetWidth || 1;
+    if (delta > width * SWIPE_FRACTION) goTo(index - 1);
+    else if (delta < -width * SWIPE_FRACTION) goTo(index + 1);
+  }
+
   const active = products[Math.min(index, products.length - 1)];
   if (!active) return null;
 
@@ -54,13 +90,28 @@ export function HeroCarousel({ products }: { products: ProductCardView[] }) {
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={() => setPaused(false)}
     >
-      <div className="relative h-[260px] overflow-hidden rounded-[20px] bg-surface-cream md:h-[280px]">
+      <div
+        ref={wrapRef}
+        className="relative h-[260px] touch-pan-y select-none overflow-hidden rounded-[20px] bg-surface-cream md:h-[280px]"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      >
         <div className="lumin-dotgrid absolute inset-0 opacity-50" aria-hidden="true" />
 
         <Link
           href={`/san-pham/${active.slug}`}
           className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
           aria-label={active.name}
+          onClickCapture={(e) => {
+            // A swipe that crossed the click threshold shouldn't ALSO navigate — the pointerup that
+            // ends the drag is immediately followed by a click event on this same link.
+            if (draggedRef.current) {
+              e.preventDefault();
+              draggedRef.current = false;
+            }
+          }}
         >
           <span className="flex h-full items-center justify-center">
             {active.imageSrc ? (
@@ -91,21 +142,42 @@ export function HeroCarousel({ products }: { products: ProductCardView[] }) {
           </p>
         </div>
 
-        {products.length > 1 ? (
-          <div className="absolute bottom-5 right-5 flex items-center gap-1.5 md:left-1/2 md:right-auto md:-translate-x-1/2">
-            {products.map((product, dotIndex) => (
-              <button
-                key={product.id}
-                type="button"
-                aria-label={t('dotLabel', { name: product.name })}
-                aria-current={dotIndex === index || undefined}
-                onClick={() => setIndex(dotIndex)}
-                className={`h-2.5 rounded-pill border border-border-strong transition-all duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky ${
-                  dotIndex === index ? 'w-6 bg-border-strong' : 'w-2.5 bg-surface-card/80'
-                }`}
-              />
-            ))}
-          </div>
+        {count > 1 ? (
+          <>
+            <IconButton
+              variant="soft"
+              size="sm"
+              label={t('prevSlideLabel')}
+              onClick={() => goTo(index - 1)}
+              className="absolute left-3 top-1/2 -translate-y-1/2 bg-surface-card/80 backdrop-blur-sm"
+            >
+              <ChevronLeftIcon className="h-5 w-5" />
+            </IconButton>
+            <IconButton
+              variant="soft"
+              size="sm"
+              label={t('nextSlideLabel')}
+              onClick={() => goTo(index + 1)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 bg-surface-card/80 backdrop-blur-sm"
+            >
+              <ChevronRightIcon className="h-5 w-5" />
+            </IconButton>
+
+            <div className="absolute bottom-5 right-5 flex items-center gap-1.5 md:left-1/2 md:right-auto md:-translate-x-1/2">
+              {products.map((product, dotIndex) => (
+                <button
+                  key={product.id}
+                  type="button"
+                  aria-label={t('dotLabel', { name: product.name })}
+                  aria-current={dotIndex === index || undefined}
+                  onClick={() => setIndex(dotIndex)}
+                  className={`h-2.5 rounded-pill border border-border-strong transition-all duration-150 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky ${
+                    dotIndex === index ? 'w-6 bg-border-strong' : 'w-2.5 bg-surface-card/80'
+                  }`}
+                />
+              ))}
+            </div>
+          </>
         ) : null}
       </div>
     </section>

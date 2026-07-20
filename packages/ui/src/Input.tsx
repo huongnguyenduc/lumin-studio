@@ -7,7 +7,8 @@ import { cn } from './lib/cn';
 //  - forwardRef to the real <input>; `className` passes through cn() last so callers override.
 //  - semantic token utilities only (border-border-default, bg-surface-card, text-danger …) — no hex.
 //  - a11y: label wired via htmlFor/id (useId fallback), error → aria-invalid + aria-describedby +
-//    role=alert; hint also wired via aria-describedby; focus-visible ring on the control.
+//    role=alert; hint also wired via aria-describedby; focus ring on the whole field (focus-within),
+//    so it hugs the rounded card instead of boxing just the bare <input>.
 //  - NO hard-coded UI copy: label/hint/error all come from props (i18n at the call site).
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -44,15 +45,15 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
 
       <div
         className={cn(
-          'flex h-11 items-center gap-2 rounded-md border bg-surface-card px-3',
-          'transition-colors duration-150 ease-out motion-reduce:transition-none',
-          'focus-within:border-primary',
+          'group flex h-11 items-center gap-2 rounded-md border bg-surface-card px-3',
+          'transition-[border-color,box-shadow] duration-150 ease-out motion-reduce:transition-none',
+          'focus-within:border-primary focus-within:ring-2 focus-within:ring-accent-sky/35',
           hasError ? 'border-danger' : 'border-border-default',
           disabled ? 'cursor-not-allowed opacity-60' : '',
         )}
       >
         {leadingIcon ? (
-          <span className="pointer-events-none flex shrink-0 items-center text-text-muted">
+          <span className="pointer-events-none flex shrink-0 items-center text-text-muted transition-colors duration-150 group-focus-within:text-primary">
             {leadingIcon}
           </span>
         ) : null}
@@ -66,7 +67,6 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           className={cn(
             'h-full w-full bg-transparent text-base text-text-body outline-none',
             'placeholder:text-text-subtle disabled:cursor-not-allowed',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2',
             className,
           )}
           {...props}

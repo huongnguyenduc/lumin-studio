@@ -1,21 +1,20 @@
 import { useTranslations } from 'next-intl';
 import { Card } from '@lumin/ui';
-import { LeafIcon, PrinterIcon, RefreshIcon } from './icons';
+import { PrinterIcon, RefreshIcon } from './icons';
 
-/** Three reassurance cards (made-to-order · recycled · free reprint). Static → server component. */
+/** Two reassurance cards (made-to-order · free reprint). Static → server component. */
 export function Trust() {
   const t = useTranslations('trust');
 
   const items = [
     { Icon: PrinterIcon, title: t('madeToOrderTitle'), body: t('madeToOrderBody') },
-    { Icon: LeafIcon, title: t('recycledTitle'), body: t('recycledBody') },
     { Icon: RefreshIcon, title: t('reprintTitle'), body: t('reprintBody') },
   ];
 
   return (
     <section className="mx-auto w-full max-w-[1200px] px-4 py-8 md:px-6">
       <h2 className="mb-5 text-2xl md:text-3xl">{t('heading')}</h2>
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         {items.map((item) => (
           <Card key={item.title} elevation="md" className="flex flex-col gap-3 p-6">
             <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-accent-teal-soft text-accent-teal">

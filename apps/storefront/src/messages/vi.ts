@@ -6,7 +6,7 @@
 export const vi = {
   meta: {
     title: 'Lumin Studio — đèn & đồ trang trí in 3D theo đơn',
-    description: 'Thiết kế và in 3D đèn, đồ trang trí theo đơn. Ấm, tái chế, làm riêng cho bạn.',
+    description: 'Thiết kế và in 3D đèn, đồ trang trí theo đơn, làm riêng cho bạn.',
   },
   nav: {
     brand: 'lumin',
@@ -25,7 +25,7 @@ export const vi = {
   hero: {
     eyebrow: '✦ In theo đơn · không tồn kho',
     heading: 'Đèn & đồ trang trí in 3D, làm riêng cho bạn.',
-    body: 'Thiết kế ấm, vật liệu tái chế, in theo đơn — không đại trà. Chọn mẫu, khắc tên và chọn màu của riêng bạn.',
+    body: 'Thiết kế và in theo đơn — không đại trà. Chọn mẫu, khắc tên và chọn màu của riêng bạn.',
     primaryCta: 'Khám phá bộ sưu tập',
     secondaryCta: 'Cách chúng mình làm',
     note: 'Giao trong 3–5 ngày · in lại miễn phí nếu lỗi do shop',
@@ -34,6 +34,8 @@ export const vi = {
     featuredBadge: '✦ Nổi bật',
     slideMeta: '{price} · tùy chỉnh màu & khắc tên',
     dotLabel: 'Xem {name}',
+    prevSlideLabel: 'Sản phẩm trước',
+    nextSlideLabel: 'Sản phẩm tiếp theo',
   },
   featured: {
     heading: 'Mới về',
@@ -358,13 +360,11 @@ export const vi = {
     heading: 'Vì sao chọn Lumin?',
     madeToOrderTitle: 'In theo đơn',
     madeToOrderBody: 'Mỗi món in riêng khi bạn đặt — chọn màu, khắc tên, không đại trà.',
-    recycledTitle: 'Vật liệu tái chế',
-    recycledBody: 'Nhựa sinh học rPLA tái chế, ấm tay và thân thiện môi trường.',
     reprintTitle: 'In lại miễn phí',
     reprintBody: 'Lỡ lỗi do shop? Chúng mình in lại cho bạn, miễn phí.',
   },
   footer: {
-    tagline: 'Đèn & đồ in 3D theo đơn — ấm, tái chế, không đại trà.',
+    tagline: 'Đèn & đồ in 3D theo đơn — làm riêng cho bạn, không đại trà.',
     shopHeading: 'Mua sắm',
     shopCategories: 'Danh mục',
     shopNew: 'Mới về',

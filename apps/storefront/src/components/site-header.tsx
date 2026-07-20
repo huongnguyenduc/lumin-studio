@@ -1,8 +1,30 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { BagIcon, BellIcon, SearchIcon, UserIcon } from './icons';
+
+/** Client-only "am I logged in" probe (see app/api/session-status). Starts false so a guest never
+ *  sees the notification bell flash before the check resolves. */
+function useIsLoggedIn(): boolean {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/session-status', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { loggedIn?: boolean } | null) => {
+        if (!cancelled && data?.loggedIn) setIsLoggedIn(true);
+      })
+      .catch(() => {
+        // network hiccup → stay logged-out-looking; nothing to notify without a confirmed session
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return isLoggedIn;
+}
 
 function SearchField({ className }: { className?: string }) {
   const t = useTranslations('nav');
@@ -63,6 +85,7 @@ function HeaderAction({
  */
 export function SiteHeader() {
   const t = useTranslations('nav');
+  const isLoggedIn = useIsLoggedIn();
   const links = [
     { href: '/danh-muc', label: t('categories') },
     { href: '/bo-suu-tap', label: t('collection') },
@@ -97,13 +120,15 @@ export function SiteHeader() {
           </nav>
 
           <div className="ml-auto flex items-center gap-2.5 md:ml-0">
-            <HeaderAction label={t('notificationsLabel')}>
-              <BellIcon className="h-[18px] w-[18px]" />
-              <span
-                aria-hidden="true"
-                className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-accent-flame ring-2 ring-surface-card"
-              />
-            </HeaderAction>
+            {isLoggedIn ? (
+              <HeaderAction label={t('notificationsLabel')}>
+                <BellIcon className="h-[18px] w-[18px]" />
+                <span
+                  aria-hidden="true"
+                  className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-accent-flame ring-2 ring-surface-card"
+                />
+              </HeaderAction>
+            ) : null}
 
             <HeaderAction href="/gio-hang" label={t('cart')} className="hidden md:inline-flex">
               <BagIcon className="h-[18px] w-[18px]" />

@@ -2,25 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { SPRITE_COLS, SPRITE_FRAMES, SPRITE_ROWS, spriteFrameCss } from '@/lib/product-view';
+import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 
 // Per-frame dwell for the turntable cycle. 65ms × 46 ping-pong steps ≈ 3s — one full gentle
 // there-and-back that lands on frame 0 right as CardCover's 3s play window hands back to the photo.
 // ponytail: tuned blind — the feel needs real sprites on the box; calibration knob.
 const FRAME_MS = 65;
-
-/** True when the OS asks for reduced motion — gates the JS frame loop (the global CSS rule can't stop a
- *  setInterval). Client-only; starts false so SSR/first paint match, then syncs after mount. */
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const sync = () => setReduced(mq.matches);
-    sync();
-    mq.addEventListener('change', sync);
-    return () => mq.removeEventListener('change', sync);
-  }, []);
-  return reduced;
-}
 
 /**
  * The 360° sprite-sheet turntable (ADR-049 / ADR-007 "lắc trái-phải"). Renders one frame of the sheet as a
