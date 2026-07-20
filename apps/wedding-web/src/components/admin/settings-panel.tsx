@@ -204,11 +204,6 @@ export function SettingsPanel({
               {gallery.map((img, i) => (
                 <div
                   key={img.url + i}
-                  draggable
-                  onDragStart={(e) => {
-                    e.dataTransfer.effectAllowed = 'move';
-                    e.dataTransfer.setData('text/plain', String(i));
-                  }}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => {
                     e.preventDefault();
@@ -219,7 +214,7 @@ export function SettingsPanel({
                     g.splice(i, 0, moved);
                     patch({ gallery: g });
                   }}
-                  style={{ position: 'relative', width: 84, height: 84, cursor: 'grab' }}
+                  style={{ position: 'relative', width: 84, height: 84 }}
                 >
                   <FocalPicker
                     url={img.url}
@@ -235,6 +230,21 @@ export function SettingsPanel({
                       patch({ gallery: g });
                     }}
                   />
+                  {/* Separate drag handle: the tile itself just picks the focal point
+                      (pointerdown/drag), so reorder needs its own draggable target —
+                      sharing one gesture made click-to-focus fight click-to-reorder. */}
+                  <span
+                    draggable
+                    title={t('reorderPhoto')}
+                    aria-label={t('reorderPhoto')}
+                    onDragStart={(e) => {
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', String(i));
+                    }}
+                    style={galleryBtn('rgba(59,47,39,0.65)', { top: 4, left: 4 })}
+                  >
+                    {'⠿'}
+                  </span>
                   <button
                     type="button"
                     title={t('removePhoto')}
@@ -278,17 +288,21 @@ export function SettingsPanel({
                     const files = Array.from(e.target.files ?? []);
                     e.target.value = '';
                     // Sequential so order matches the picker; each lands in the draft.
+                    // One failing file doesn't stop the rest — they'd otherwise be
+                    // silently skipped with no indication which ones didn't make it.
                     void (async () => {
                       let g = gallery.slice();
+                      let failed = 0;
                       for (const f of files) {
                         try {
                           g = [...g, { url: await adminApi.upload('gallery', f) }];
                           patch({ gallery: g });
                         } catch {
-                          onError(t('uploadFailed'));
-                          break;
+                          failed += 1;
                         }
                       }
+                      if (failed > 0)
+                        onError(t('uploadFailedCount', { failed, total: files.length }));
                     })();
                   }}
                   style={{ display: 'none' }}

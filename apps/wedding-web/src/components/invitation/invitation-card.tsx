@@ -96,13 +96,14 @@ export function InvitationCard({
         el.style.setProperty('--invite-envelope-clip', '178px');
       } else {
         // Phones: fit the hero to the visible height so it's exactly one screen
-        // whatever Safari's toolbar is doing. This lands on ~852px on its own
-        // (phone aspect ≈ the 393×852 Figma canvas), so the overlap sits where
-        // the design put it and the lace stays tucked into the bottom gradient.
+        // whatever Safari's toolbar is doing. Real device aspects don't always
+        // match the 393×852 Figma canvas closely enough to keep the envelope's
+        // 178px overlap tucked inside the bottom gradient — clip it like desktop
+        // so the invitation section never bleeds onto the photo.
         const zoom = vw / 393;
         el.style.zoom = String(zoom);
         el.style.setProperty('--invite-hero-h', `${vh / zoom}px`);
-        el.style.removeProperty('--invite-envelope-clip');
+        el.style.setProperty('--invite-envelope-clip', '178px');
       }
       // Reveal only once the real zoom is applied — SSR/pre-hydration paints
       // with the static @media fallback (visually wrong) before any JS runs
