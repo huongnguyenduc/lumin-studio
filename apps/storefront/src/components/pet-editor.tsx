@@ -370,10 +370,10 @@ function TextField({
         inputMode={inputMode}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={`min-h-[44px] rounded-xl border-2 px-3 text-sm ${
+        className={`min-h-[44px] rounded-xl border-2 px-3 text-sm outline-none transition-[border-color,box-shadow] duration-150 ease-out motion-reduce:transition-none focus-visible:ring-2 ${
           onDark
-            ? 'border-on-dark/30 bg-black/20 text-on-dark'
-            : 'border-border-subtle bg-surface-card text-text-strong'
+            ? 'border-on-dark/30 bg-black/20 text-on-dark focus-visible:border-on-dark focus-visible:ring-on-dark/30'
+            : 'border-border-subtle bg-surface-card text-text-strong focus-visible:border-primary focus-visible:ring-accent-sky/35'
         }`}
       />
     </div>

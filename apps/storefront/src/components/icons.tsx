@@ -90,11 +90,18 @@ export function CheckIcon(props: IconProps) {
   );
 }
 
-export function LeafIcon(props: IconProps) {
+export function ChevronLeftIcon(props: IconProps) {
   return (
     <Svg {...props}>
-      <path d="M11 20A7 7 0 0 1 4 13c0-6 5-9 16-9 0 9-4 13-9 13Z" />
-      <path d="M4 20c2-5 6-8 12-9" />
+      <path d="m15 6-6 6 6 6" />
+    </Svg>
+  );
+}
+
+export function ChevronRightIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="m9 6 6 6-6 6" />
     </Svg>
   );
 }
