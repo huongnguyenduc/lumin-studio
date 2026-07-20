@@ -13,6 +13,10 @@ export default function AdminPage() {
         color: 'rgb(120,105,93)',
         padding: '36px 32px 64px',
         boxSizing: 'border-box',
+        // Every admin component hardcodes small inline px font-sizes (11-13px,
+        // desktop-first) — a single zoom bump reads as "everything a bit bigger"
+        // without touching dozens of files (same trick as .invite-scale).
+        zoom: 1.15,
       }}
     >
       <AdminDashboard />
