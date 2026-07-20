@@ -309,6 +309,26 @@ export function AdminDashboard() {
         )}
       </div>
 
+      {(() => {
+        const current = events.find((e) => e.slug === selectedEvent);
+        return current ? (
+          <EventPanel
+            event={current}
+            onSaved={() => void reload()}
+            onError={(msg) => flash(msg, true)}
+          />
+        ) : null;
+      })()}
+
+      <SettingsPanel
+        settings={settings}
+        onSaved={(next) => {
+          setSettings(next);
+          flash(t('toasts.saved'));
+        }}
+        onError={(msg) => flash(msg, true)}
+      />
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14 }}>
         {(
           [
@@ -410,26 +430,6 @@ export function AdminDashboard() {
             },
           })
         }
-      />
-
-      {(() => {
-        const current = events.find((e) => e.slug === selectedEvent);
-        return current ? (
-          <EventPanel
-            event={current}
-            onSaved={() => void reload()}
-            onError={(msg) => flash(msg, true)}
-          />
-        ) : null;
-      })()}
-
-      <SettingsPanel
-        settings={settings}
-        onSaved={(next) => {
-          setSettings(next);
-          flash(t('toasts.saved'));
-        }}
-        onError={(msg) => flash(msg, true)}
       />
 
       {editing ? (

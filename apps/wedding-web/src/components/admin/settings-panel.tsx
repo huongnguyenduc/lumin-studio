@@ -6,6 +6,19 @@ import { adminApi, type Settings } from '@/lib/admin-api';
 import type { GalleryImage } from '@/lib/site-settings';
 import { card, inputBase, kicker, pillSolid, CREAM_2, GREEN, HAIRLINE, INK, TAN, RING } from './ui';
 
+// Mirrors the public Gallery's BLOCKS (components/invitation/gallery.tsx) so the
+// editor reads as the same three-block layout the guest actually sees, with the
+// matching caption directly under each block instead of split out separately.
+type GalleryCell = { col?: number; row?: number };
+const GALLERY_BLOCKS: {
+  cells: GalleryCell[];
+  captionKey: 'storyCaption1' | 'storyCaption2' | 'storyCaption3';
+}[] = [
+  { cells: [{ col: 2, row: 2 }, {}, {}], captionKey: 'storyCaption1' },
+  { cells: [{}, {}, {}, {}, { col: 2 }], captionKey: 'storyCaption2' },
+  { cells: [{ col: 3, row: 2 }, {}, {}, {}], captionKey: 'storyCaption3' },
+];
+
 const uploadLabel: CSSProperties = {
   alignSelf: 'flex-start',
   padding: '6px 14px',
@@ -35,6 +48,7 @@ export function SettingsPanel({
   const [savedToast, setSavedToast] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const val = <T,>(key: string, fallback: T): T => {
     if (key in draft) return draft[key] as T;
@@ -43,6 +57,28 @@ export function SettingsPanel({
   const patch = (p: Settings) => setDraft((d) => ({ ...d, ...p }));
 
   const gallery = val<GalleryImage[]>('gallery', []);
+
+  const reorderGallery = (from: number, to: number) => {
+    if (Number.isNaN(from) || from === to) return;
+    const g = gallery.slice();
+    const [moved] = g.splice(from, 1);
+    g.splice(to, 0, moved);
+    patch({ gallery: g });
+  };
+
+  // Deals the flat gallery array into the same 3 blocks the public Gallery
+  // renders (only the last block grows past its pattern when there are more
+  // than 11 photos) — see GALLERY_BLOCKS above.
+  let galleryOffset = 0;
+  const galleryBlocks = GALLERY_BLOCKS.map((b, bi) => {
+    const isLast = bi === GALLERY_BLOCKS.length - 1;
+    const want = isLast ? Math.max(b.cells.length, gallery.length - galleryOffset) : b.cells.length;
+    const count = Math.min(want, Math.max(0, gallery.length - galleryOffset));
+    const cells = Array.from({ length: count }, (_, ci) => b.cells[ci] ?? {});
+    const out = { ...b, cells, offset: galleryOffset };
+    galleryOffset += count;
+    return out;
+  }).filter((b) => b.cells.length > 0);
 
   const uploadFile = async (kind: string, file: File, apply: (url: string) => void) => {
     setUploading(kind);
@@ -198,71 +234,145 @@ export function SettingsPanel({
             </div>
           </div>
 
+          {/* Same shape as the public Gallery (invitation/gallery.tsx): script heading,
+              then 3 blocks with a caption under each — laid out here the way the guest
+              actually sees it, instead of a flat photo grid + captions listed apart. */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <span style={kicker}>{t('storyHeading')}</span>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+              <input
+                value={val<string>('storyLine1', '')}
+                onChange={(e) => patch({ storyLine1: e.target.value })}
+                aria-label={t('storyLine1')}
+                placeholder={t('storyLine1')}
+                style={{ ...inputBase, borderRadius: 8, padding: '9px 14px' }}
+              />
+              <input
+                value={val<string>('storyLine2', '')}
+                onChange={(e) => patch({ storyLine2: e.target.value })}
+                aria-label={t('storyLine2')}
+                placeholder={t('storyLine2')}
+                style={{ ...inputBase, borderRadius: 8, padding: '9px 14px' }}
+              />
+            </div>
+          </div>
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <span style={kicker}>{t('gallery', { count: gallery.length })}</span>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              {gallery.map((img, i) => (
-                <div
-                  key={img.url + i}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const from = Number(e.dataTransfer.getData('text/plain'));
-                    if (Number.isNaN(from) || from === i) return;
-                    const g = gallery.slice();
-                    const [moved] = g.splice(from, 1);
-                    g.splice(i, 0, moved);
-                    patch({ gallery: g });
-                  }}
-                  style={{ position: 'relative', width: 84, height: 84 }}
-                >
-                  <FocalPicker
-                    url={img.url}
-                    x={img.x ?? 50}
-                    y={img.y ?? 50}
-                    width={84}
-                    height={84}
-                    label={t('setFocalPoint')}
-                    errorLabel={t('imageLoadFailed')}
-                    onChange={(x, y) => {
-                      const g = gallery.slice();
-                      g[i] = { ...g[i], x, y };
-                      patch({ gallery: g });
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 480 }}>
+              {galleryBlocks.map((block, bi) => (
+                <div key={bi} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, 1fr)',
+                      gridAutoRows: 130,
+                      gap: 12,
+                      gridAutoFlow: 'dense',
+                    }}
+                  >
+                    {block.cells.map((cell, ci) => {
+                      const i = block.offset + ci;
+                      const img = gallery[i];
+                      return (
+                        <div
+                          key={img.url + i}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            if (dragOverIndex !== i) setDragOverIndex(i);
+                          }}
+                          onDragLeave={() => setDragOverIndex((cur) => (cur === i ? null : cur))}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            setDragOverIndex(null);
+                            reorderGallery(Number(e.dataTransfer.getData('text/plain')), i);
+                          }}
+                          style={{
+                            position: 'relative',
+                            gridColumn: cell.col ? `span ${cell.col}` : undefined,
+                            gridRow: cell.row ? `span ${cell.row}` : undefined,
+                          }}
+                        >
+                          <FocalPicker
+                            url={img.url}
+                            x={img.x ?? 50}
+                            y={img.y ?? 50}
+                            width="100%"
+                            height="100%"
+                            label={t('setFocalPoint')}
+                            errorLabel={t('imageLoadFailed')}
+                            onChange={(x, y) => {
+                              const g = gallery.slice();
+                              g[i] = { ...g[i], x, y };
+                              patch({ gallery: g });
+                            }}
+                          />
+                          {/* Separate drag handle: the tile itself just picks the focal
+                              point (pointerdown/drag), so reorder needs its own draggable
+                              target — sharing one gesture made click-to-focus fight
+                              click-to-reorder. */}
+                          <span
+                            draggable
+                            title={t('reorderPhoto')}
+                            aria-label={t('reorderPhoto')}
+                            onDragStart={(e) => {
+                              e.dataTransfer.effectAllowed = 'move';
+                              e.dataTransfer.setData('text/plain', String(i));
+                            }}
+                            style={galleryBtn('rgba(59,47,39,0.65)', { top: 6, left: 6 }, 24)}
+                          >
+                            {'⠿'}
+                          </span>
+                          <button
+                            type="button"
+                            title={t('removePhoto')}
+                            aria-label={t('removePhoto')}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              patch({ gallery: gallery.filter((_, j) => j !== i) });
+                            }}
+                            style={galleryBtn('rgba(59,47,39,0.65)', { top: 6, right: 6 }, 24)}
+                          >
+                            {'×'}
+                          </button>
+                          {dragOverIndex === i ? (
+                            <div
+                              aria-hidden
+                              style={{
+                                position: 'absolute',
+                                inset: 0,
+                                borderRadius: 8,
+                                boxShadow: `0 0 0 3px ${GREEN}`,
+                                background: 'rgba(76,140,90,0.18)',
+                                pointerEvents: 'none',
+                              }}
+                            />
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <textarea
+                    value={val<string>(block.captionKey, '')}
+                    onChange={(e) => patch({ [block.captionKey]: e.target.value })}
+                    aria-label={t(block.captionKey)}
+                    placeholder={t(block.captionKey)}
+                    style={{
+                      ...inputBase,
+                      height: 40,
+                      borderRadius: 8,
+                      padding: '8px 12px',
+                      fontSize: 12,
+                      lineHeight: 1.5,
+                      resize: 'vertical',
                     }}
                   />
-                  {/* Separate drag handle: the tile itself just picks the focal point
-                      (pointerdown/drag), so reorder needs its own draggable target —
-                      sharing one gesture made click-to-focus fight click-to-reorder. */}
-                  <span
-                    draggable
-                    title={t('reorderPhoto')}
-                    aria-label={t('reorderPhoto')}
-                    onDragStart={(e) => {
-                      e.dataTransfer.effectAllowed = 'move';
-                      e.dataTransfer.setData('text/plain', String(i));
-                    }}
-                    style={galleryBtn('rgba(59,47,39,0.65)', { top: 4, left: 4 })}
-                  >
-                    {'⠿'}
-                  </span>
-                  <button
-                    type="button"
-                    title={t('removePhoto')}
-                    aria-label={t('removePhoto')}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      patch({ gallery: gallery.filter((_, j) => j !== i) });
-                    }}
-                    style={galleryBtn('rgba(59,47,39,0.65)', { top: 4, right: 4 })}
-                  >
-                    {'×'}
-                  </button>
                 </div>
               ))}
               <label
                 style={{
-                  width: 84,
-                  height: 84,
+                  width: 130,
+                  height: 130,
                   borderRadius: 8,
                   border: `1px dashed ${TAN}`,
                   boxSizing: 'border-box',
@@ -271,13 +381,13 @@ export function SettingsPanel({
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: 4,
-                  fontSize: 22,
+                  fontSize: 26,
                   color: INK,
                   cursor: 'pointer',
                 }}
               >
                 {'+'}
-                <span style={{ fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                <span style={{ fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
                   {t('addPhotos')}
                 </span>
                 <input
@@ -309,43 +419,6 @@ export function SettingsPanel({
                 />
               </label>
             </div>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <span style={kicker}>{t('storyHeading')}</span>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
-              <input
-                value={val<string>('storyLine1', '')}
-                onChange={(e) => patch({ storyLine1: e.target.value })}
-                aria-label={t('storyLine1')}
-                placeholder={t('storyLine1')}
-                style={{ ...inputBase, borderRadius: 8, padding: '9px 14px' }}
-              />
-              <input
-                value={val<string>('storyLine2', '')}
-                onChange={(e) => patch({ storyLine2: e.target.value })}
-                aria-label={t('storyLine2')}
-                placeholder={t('storyLine2')}
-                style={{ ...inputBase, borderRadius: 8, padding: '9px 14px' }}
-              />
-            </div>
-            {(['storyCaption1', 'storyCaption2', 'storyCaption3'] as const).map((key) => (
-              <textarea
-                key={key}
-                value={val<string>(key, '')}
-                onChange={(e) => patch({ [key]: e.target.value })}
-                aria-label={t(key)}
-                placeholder={t(key)}
-                style={{
-                  ...inputBase,
-                  height: 44,
-                  borderRadius: 8,
-                  padding: '9px 14px',
-                  lineHeight: 1.5,
-                  resize: 'vertical',
-                }}
-              />
-            ))}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -442,8 +515,8 @@ function FocalPicker({
   url: string | null;
   x: number;
   y: number;
-  width: number;
-  height: number;
+  width: number | string;
+  height: number | string;
   label: string;
   onChange: (x: number, y: number) => void;
   errorLabel: string;
@@ -555,17 +628,17 @@ function FocalPicker({
   );
 }
 
-function galleryBtn(bg: string, pos: CSSProperties = {}): CSSProperties {
+function galleryBtn(bg: string, pos: CSSProperties = {}, size = 18): CSSProperties {
   return {
     ...pos,
     position: pos.top !== undefined ? 'absolute' : 'static',
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: size,
+    height: size,
+    borderRadius: size / 2,
     border: 'none',
     background: bg,
     color: 'rgb(255,251,248)',
-    fontSize: 11,
+    fontSize: Math.round(size * 0.6),
     lineHeight: 1,
     display: 'flex',
     alignItems: 'center',
