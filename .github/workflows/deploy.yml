@@ -169,15 +169,46 @@ jobs:
 
       # Rollout status only proves pods are Ready in-cluster; this proves the apps answer from the
       # public edge (ingress + tunnel + TLS) — the thing users actually hit.
+      #
+      # RETRIES, because a single-shot curl here is a false-red generator: `rollout status` returns
+      # the moment the new pod is Ready, while the ingress controller and the tunnel are still
+      # re-pointing at it and the old pod is still terminating. A deploy where every build/rollout
+      # step succeeded has failed this step on a blip more than once (run 29844417194) — and a gate
+      # that cries wolf is worse than no gate, because the next real edge outage reads as "probably
+      # transient again". Retrying keeps the assertion exactly as strict (the URL must answer 2xx/3xx
+      # before we call the deploy good) while giving the edge a bounded window to catch up.
+      #
+      # Deliberately NOT fail-fast: every URL is probed even after one fails, so a red run shows the
+      # full picture (one app down vs the whole edge down) instead of stopping at the first.
       - name: Smoke check (public ingress)
         run: |
-          set -euo pipefail
-          curl -sfm 15 https://api.luminstudio.vn/healthz >/dev/null
-          curl -sfm 15 -o /dev/null https://www.luminstudio.vn/
-          curl -sfm 15 -o /dev/null https://admin.luminstudio.vn/
+          set -uo pipefail
+          probe() {
+            local url="$1" code deadline=$((SECONDS + 90))
+            while :; do
+              # curl prints its own "000" and exits non-zero when it can't connect at all —
+              # `|| true` keeps that value instead of appending a second 000 to it.
+              code=$(curl -s -o /dev/null -m 15 -w '%{http_code}' "$url" 2>/dev/null) || true
+              code=${code:-000}
+              case "$code" in
+                2??|3??) echo "ok    $code  $url"; return 0 ;;
+              esac
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "FAIL  $code  $url  (never answered within 90s)"
+                return 1
+              fi
+              echo "wait  $code  $url  — retrying in 5s"
+              sleep 5
+            done
+          }
+          rc=0
+          probe https://api.luminstudio.vn/healthz || rc=1
+          probe https://www.luminstudio.vn/ || rc=1
+          probe https://admin.luminstudio.vn/ || rc=1
           if kubectl -n "$NS" get secret wedding-secrets >/dev/null 2>&1; then
-            curl -sfm 15 -o /dev/null https://giangvahieu.luminstudio.vn/
+            probe https://giangvahieu.luminstudio.vn/ || rc=1
           fi
+          exit $rc
 
       - name: Deployed state
         if: always()
