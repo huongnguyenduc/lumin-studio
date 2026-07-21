@@ -54,11 +54,7 @@ pub fn run_render(
         // ADR-038 follow-up: same INHERITED-env path as LUMIN_PART_COLORS — _bl_render.py reads
         // LUMIN_CAMERA_THETA as the frame-0 azimuth offset (degrees). Absent → the render's own default
         // (frame-0 at azimuth 0, the pre-existing behaviour).
-        .envs(
-            camera_theta_deg
-                .map(|t| ("LUMIN_CAMERA_THETA", t.to_string()))
-                .into_iter(),
-        )
+        .envs(camera_theta_deg.map(|t| ("LUMIN_CAMERA_THETA", t.to_string())))
         .output()
         .map_err(|e| ProcessError::Transient(format!("spawn {python}: {e}")))?;
 
