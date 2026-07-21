@@ -43,9 +43,42 @@ env:
   DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
+  # `harness-selftest` runs can take very different amounts of time depending on what a commit
+  # touches (e.g. services-gates only runs when services/ changed — see harness.yml's `changes`
+  # job), so its `workflow_run` completions don't arrive in commit order. Two pushes close
+  # together can have the OLDER commit's CI finish LAST and trigger a deploy AFTER the newer
+  # commit's deploy already landed — silently overwriting it with older code (this actually
+  # happened: 2026-07-21, PR #200's fix got clobbered by PR #201's slower, earlier-queued run).
+  # `cancel-in-progress: false` on the deploy-prod concurrency group only serialises execution,
+  # it doesn't fix the ordering — this check does: bail out before doing any work unless the SHA
+  # this run was asked to deploy is STILL main's actual tip. A GitHub-hosted runner (not the
+  # self-hosted prod box) so a superseded run costs a few seconds, not a slot on the box.
+  check-latest:
+    runs-on: ubuntu-latest
+    outputs:
+      is_latest: ${{ steps.check.outputs.is_latest }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          LATEST="$(gh api "repos/${{ github.repository }}/git/refs/heads/main" --jq .object.sha)"
+          echo "deploy_sha=${{ env.DEPLOY_SHA }} latest_main=$LATEST"
+          if [ "$LATEST" = "${{ env.DEPLOY_SHA }}" ]; then
+            echo "is_latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_latest=false" >> "$GITHUB_OUTPUT"
+            echo "main has moved to $LATEST since this run's CI validated ${{ env.DEPLOY_SHA }} — skipping, the deploy for the newer commit covers it (or already has)."
+          fi
+
   deploy:
-    # Gate: only deploy when the triggering CI run succeeded (manual dispatch bypasses by intent).
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    needs: check-latest
+    # Gate: only deploy when the triggering CI run succeeded (manual dispatch bypasses by intent)
+    # AND this SHA is still main's tip (see check-latest above).
+    if: |
+      needs.check-latest.outputs.is_latest == 'true' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
     runs-on: self-hosted
     timeout-minutes: 45
     steps:
