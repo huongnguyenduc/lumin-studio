@@ -216,15 +216,16 @@ kubectl -n prod rollout restart deploy/imgproxy deploy/wedding-web
 kubectl -n prod rollout status  deploy/imgproxy --timeout=120s
 ```
 
-5. **DNS/tunnel:** add `img.luminstudio.vn` exactly like `assets.luminstudio.vn` (CF DNS → cloudflared
-   tunnel → traefik `:80`; the Ingress routes Host → `imgproxy:8080`). The wildcard `*.luminstudio.vn`
-   rule can't shadow it — that rule is pinned to `router.priority: 1`, below every exact host.
+5. **DNS/tunnel — nothing to do (verified 2026-07-21).** `img.luminstudio.vn` already resolves through the
+   existing wildcard `*.luminstudio.vn` CNAME + the tunnel's catch-all, and the Ingress routes Host →
+   `imgproxy:8080`. The wildcard _wedding_ Ingress rule can't shadow it — that rule is pinned to
+   `router.priority: 1`, below every exact host.
 
-6. **Cloudflare cache (do not skip).** Without it every invitation view makes the home box decode the
-   originals again. Add a Cache Rule on `img.luminstudio.vn`: **Cache eligibility = Eligible for cache**,
-   Edge TTL "Respect origin" (imgproxy sends `Cache-Control: max-age=31536000` via `IMGPROXY_TTL`; upload
-   keys are UUIDs so a variant is immutable). Do **not** enable Polish/Mirage on this host — imgproxy has
-   already produced the final bytes.
+6. **Cloudflare cache — nothing to do either (verified 2026-07-21).** Signed URLs end in `.webp`, so
+   Cloudflare's default static-extension caching already picks them up: a second request returns
+   `cf-cache-status: HIT` with `cache-control: public, max-age=31536000` (from `IMGPROXY_TTL`; upload
+   keys are UUIDs so a variant is immutable). An explicit Cache Rule is only worth adding if that default
+   ever changes. Do **not** enable Polish/Mirage on this host — imgproxy already produced the final bytes.
 
 Verify (a URL is only obtainable from a rendered page — signing is server-side by design):
 
