@@ -1,6 +1,7 @@
 import { headers } from 'next/headers';
 import { getActiveEvent, getInvite, getSettings, getWishes } from '@/lib/api';
 import { asEventData, asSiteSettings } from '@/lib/site-settings';
+import { optimizeEvent, optimizeSettings } from '@/lib/img';
 import { InvitationCard } from '@/components/invitation/invitation-card';
 import { MarkOpened } from '@/components/invitation/mark-opened';
 
@@ -19,14 +20,16 @@ export default async function InvitePage({ params }: { params: Promise<{ slug: s
     getSettings(),
     getActiveEvent(host),
   ]);
+  const eventData = asEventData(event?.data ?? {});
   return (
     <>
       {guest ? <MarkOpened slug={slug} /> : null}
       <InvitationCard
         guest={guest}
         wishes={wishes.items}
-        settings={asSiteSettings(settings)}
-        event={asEventData(event?.data ?? {})}
+        settings={optimizeSettings(asSiteSettings(settings))}
+        event={eventData}
+        eventImages={optimizeEvent(eventData)}
       />
     </>
   );

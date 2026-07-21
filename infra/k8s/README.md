@@ -180,6 +180,65 @@ kubectl -n prod exec deploy/garage -- /garage bucket info lumin-assets   # verif
 
 The order/proof data path does **not** depend on any of this.
 
+### imgproxy — optimised images (ADR-055) · bootstrap (once)
+
+`imgproxy.yaml` serves resized WebP variants of images that already live in Garage, at
+`https://img.luminstudio.vn`. It reads sources over the **internal** S3 API (`http://garage:3900`,
+path-style — Garage does not do virtual-host style), so nothing hairpins back out through the tunnel.
+Originals keep serving unchanged from `assets.`/`wedding-assets.`; this host only answers **signed** URLs.
+
+Everything is **fail-open**: with no Secret the imgproxy pod stays in `CreateContainerConfigError` (the
+key/salt refs are deliberately **not** `optional` — an imgproxy without a key silently stops verifying
+signatures, i.e. becomes the open proxy we're avoiding), `wedding-web` emits original URLs, and
+`<OptimizedImg>` drops back to the original if an already-signed URL ever 403s. Images still render,
+just unoptimised. `deploy.yml` applies the manifest but deliberately does **not** wait for its rollout,
+so a not-yet-bootstrapped imgproxy can never turn the whole deploy red.
+
+```sh
+# 1. Signing key/salt — imgproxy hex-decodes both, so they must be valid hex.
+KEY=$(openssl rand -hex 32); SALT=$(openssl rand -hex 32)
+
+# 2. A READ-ONLY Garage key scoped to the two image buckets. Do NOT reuse wedding-api's upload key
+#    (that one can write), and never grant lumin-payment-proofs — receipts must stay private.
+kubectl -n prod exec deploy/garage -- /garage key create imgproxy-ro     # copy Key ID + Secret key
+kubectl -n prod exec deploy/garage -- /garage bucket allow --read wedding-assets --key imgproxy-ro
+kubectl -n prod exec deploy/garage -- /garage bucket allow --read lumin-assets   --key imgproxy-ro
+
+# 3. One Secret, shared: imgproxy VERIFIES the signature, wedding-web GENERATES it — same KEY/SALT.
+kubectl -n prod create secret generic imgproxy-secrets \
+  --from-literal=IMGPROXY_KEY="$KEY" \
+  --from-literal=IMGPROXY_SALT="$SALT" \
+  --from-literal=AWS_ACCESS_KEY_ID="<Key ID from step 2>" \
+  --from-literal=AWS_SECRET_ACCESS_KEY="<Secret key from step 2>"
+
+# 4. Both read the values at startup → both must restart.
+kubectl -n prod rollout restart deploy/imgproxy deploy/wedding-web
+kubectl -n prod rollout status  deploy/imgproxy --timeout=120s
+```
+
+5. **DNS/tunnel:** add `img.luminstudio.vn` exactly like `assets.luminstudio.vn` (CF DNS → cloudflared
+   tunnel → traefik `:80`; the Ingress routes Host → `imgproxy:8080`). The wildcard `*.luminstudio.vn`
+   rule can't shadow it — that rule is pinned to `router.priority: 1`, below every exact host.
+
+6. **Cloudflare cache (do not skip).** Without it every invitation view makes the home box decode the
+   originals again. Add a Cache Rule on `img.luminstudio.vn`: **Cache eligibility = Eligible for cache**,
+   Edge TTL "Respect origin" (imgproxy sends `Cache-Control: max-age=31536000` via `IMGPROXY_TTL`; upload
+   keys are UUIDs so a variant is immutable). Do **not** enable Polish/Mirage on this host — imgproxy has
+   already produced the final bytes.
+
+Verify (a URL is only obtainable from a rendered page — signing is server-side by design):
+
+```sh
+# open an invitation, then check that a gallery image really goes through imgproxy as webp
+curl -sI "https://img.luminstudio.vn/<sig>/<opts>/<b64>.webp" | grep -iE 'HTTP/|content-type|cf-cache-status'
+# want: 200 · content-type: image/webp · cf-cache-status HIT on the second request
+```
+
+> **The read-only Garage key is prod state NOT in a manifest** — recreate it after any Garage/bucket
+> rebuild (same as the CORS/website bootstrap), then patch the Secret and restart both deployments.
+> Rotating KEY/SALT invalidates every signed URL already in the wild; Cloudflare keeps serving cached
+> variants until their TTL expires, so restart `wedding-web` immediately after patching.
+
 ### Go-live app config (not k8s, but the deploy needs it)
 
 A freshly-deployed shop rejects every order until the owner configures, in Admin → Settings:

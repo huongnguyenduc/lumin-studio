@@ -49,3 +49,13 @@ spec:
           - path: /
             pathType: Prefix
             backend: { service: { name: garage, port: { number: 3902 } } }
+    # Ảnh đã resize + WebP (ADR-055). imgproxy đọc nguồn từ Garage qua S3 nội bộ, nên host
+    # này KHÔNG serve object gốc — chỉ nhận URL đã ký. Ảnh gốc vẫn ở assets./wedding-assets.
+    # Cloudflare cần cache-everything + Edge TTL dài trên host này (README §imgproxy), nếu
+    # không mọi lần xem thiệp đều bắt con box decode lại từ đầu.
+    - host: img.luminstudio.vn
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: imgproxy, port: { number: 8080 } } }

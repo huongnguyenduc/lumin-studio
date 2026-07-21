@@ -1,0 +1,129 @@
+# imgproxy — resize + WebP/AVIF on-the-fly cho ảnh đã nằm trong Garage (ADR-055).
+#
+# Vì sao on-the-fly thay vì pre-gen lúc upload: (a) ảnh CŨ đã upload được tối ưu ngay,
+# không cần viết backfill; (b) đổi breakpoint không phải re-render lại kho ảnh; (c) giữ
+# đúng tinh thần tự-host của ADR-044/046 — imgproxy là 1 binary Go + libvips, không phải
+# dịch vụ vendor. Đánh đổi: thêm 1 service phải sống, và chi phí CPU dồn vào lần MISS đầu.
+#
+# Đọc nguồn qua S3 API NỘI BỘ (http://garage:3900) — KHÔNG đi vòng ra
+# wedding-assets.luminstudio.vn rồi quay lại (hairpin qua Cloudflare tunnel). Garage bắt
+# buộc path-style; virtual-host style (bucket.endpoint) sẽ 404.
+#
+# URL PHẢI KÝ (IMGPROXY_KEY/SALT). Không ký = open proxy: bất kỳ ai cũng bơm được
+# ?width=1..2000 sinh vô số biến thể, mỗi cái là một cache MISS phải decode/encode →
+# thừa sức giết con box ở nhà (ADR-009). Chữ ký sinh SERVER-SIDE trong wedding-web
+# (`apps/wedding-web/src/lib/img.ts`), key không bao giờ xuống browser.
+#
+# Bucket/key riêng cho imgproxy là state bootstrap ngoài manifest (cần garage CLI) —
+# xem README §imgproxy. CHƯA bootstrap `imgproxy-secrets` thì pod kẹt
+# `CreateContainerConfigError` (KEY/SALT cố ý KHÔNG `optional: true` — imgproxy thiếu
+# khoá sẽ chạy ở chế độ KHÔNG kiểm chữ ký, tức đúng cái open proxy ta đang tránh; thà
+# không boot). Đó là trạng thái hợp lệ trước bootstrap: `deploy.yml` không chờ rollout,
+# wedding-web fail-open trả URL gốc, và <OptimizedImg> lùi về ảnh gốc nếu lỡ có URL đã
+# ký nào 403 ⇒ trang KHÔNG vỡ.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: imgproxy
+  namespace: prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: imgproxy }
+  template:
+    metadata:
+      labels: { app: imgproxy }
+    spec:
+      # Cùng lý do như wedding-api/core-api: node WSL2 hay clock-drift chớp
+      # NodeNotReady vài giây; 5min mặc định quá ngắn → evict dây chuyền.
+      tolerations:
+        - {
+            key: node.kubernetes.io/not-ready,
+            operator: Exists,
+            effect: NoExecute,
+            tolerationSeconds: 600,
+          }
+        - {
+            key: node.kubernetes.io/unreachable,
+            operator: Exists,
+            effect: NoExecute,
+            tolerationSeconds: 600,
+          }
+      containers:
+        - name: imgproxy
+          image: darthsim/imgproxy:v4.0.11
+          ports:
+            - { containerPort: 8080 }
+          env:
+            - { name: IMGPROXY_BIND, value: ':8080' }
+
+            # --- Nguồn ảnh: Garage qua S3 API nội bộ ---
+            - { name: IMGPROXY_USE_S3, value: 'true' }
+            - { name: IMGPROXY_S3_ENDPOINT, value: 'http://garage:3900' }
+            # Garage CHỈ hiểu path-style (endpoint/bucket/key). Mặc định của imgproxy là
+            # virtual-host → phải bật tường minh, không dựa vào default.
+            - { name: IMGPROXY_S3_ENDPOINT_USE_PATH_STYLE, value: 'true' }
+            # Khớp `s3_region` trong garage.toml.
+            - { name: IMGPROXY_S3_REGION, value: 'garage' }
+            # Chặn tầng thứ hai (sau chữ ký): kể cả chữ ký hợp lệ cũng không đọc được
+            # bucket khác — `lumin-payment-proofs` (biên lai, private) nằm ngoài danh sách.
+            - { name: IMGPROXY_S3_ALLOWED_BUCKETS, value: 'wedding-assets,lumin-assets' }
+            - { name: IMGPROXY_ALLOWED_SOURCES, value: 's3://wedding-assets/,s3://lumin-assets/' }
+            # Key Garage chỉ-đọc, scope 2 bucket trên. optional:true — vắng cho tới khi
+            # bootstrap tạo key; imgproxy vẫn boot (mọi request 500), wedding-web fail-open.
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: { name: imgproxy-secrets, key: AWS_ACCESS_KEY_ID, optional: true }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: { name: imgproxy-secrets, key: AWS_SECRET_ACCESS_KEY, optional: true }
+
+            # --- Chữ ký URL (bắt buộc, xem đầu file) ---
+            - name: IMGPROXY_KEY
+              valueFrom: { secretKeyRef: { name: imgproxy-secrets, key: IMGPROXY_KEY } }
+            - name: IMGPROXY_SALT
+              valueFrom: { secretKeyRef: { name: imgproxy-secrets, key: IMGPROXY_SALT } }
+
+            # --- Định dạng ---
+            # KHÔNG bật AUTO_WEBP/AUTO_AVIF: chúng chọn format theo `Accept` request, nên
+            # response phải `Vary: Accept` — Cloudflare không vary theo Accept cho ảnh, sẽ
+            # phát AVIF cho browser không đỡ được. Thay vào đó wedding-web ghi thẳng `f:webp`
+            # vào URL đã ký → 1 URL = 1 format, cache an toàn tuyệt đối. WebP đủ phủ (~97%);
+            # muốn AVIF thì thêm <source> + URL `f:avif` riêng, đừng bật negotiation.
+            - { name: IMGPROXY_AUTO_WEBP, value: 'false' }
+            - { name: IMGPROXY_AUTO_AVIF, value: 'false' }
+
+            # --- Giới hạn cho con box ở nhà (ADR-009) ---
+            # Ảnh nguồn > 50MP bị từ chối thay vì nuốt hết RAM. Upload cap 10MB
+            # (uploadstore.go) nên ảnh điện thoại thật luôn lọt.
+            - { name: IMGPROXY_MAX_SRC_RESOLUTION, value: '50' }
+            # Mặc định là (số core × 2) / 2048 — quá tay cho máy dùng chung với Postgres +
+            # Blender GPU worker. libvips ăn RAM theo số ảnh xử lý ĐỒNG THỜI, nên chặn ở 2.
+            - { name: IMGPROXY_WORKERS, value: '2' }
+            - { name: IMGPROXY_MAX_CLIENTS, value: '32' }
+            # Key upload là UUID (uploadstore.go) → object không bao giờ bị ghi đè ⇒ biến thể
+            # bất biến ⇒ cache 1 năm ở Cloudflare, origin gần như không bị đụng lại.
+            - { name: IMGPROXY_TTL, value: '31536000' }
+          readinessProbe:
+            httpGet: { path: /health, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: 8080 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            # libvips nhả bộ nhớ theo đợt; 768Mi ôm được vài ảnh 50MP song song mà vẫn
+            # để dành RAM cho Postgres/NATS trên cùng node.
+            limits: { cpu: '1', memory: 768Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: imgproxy
+  namespace: prod
+spec:
+  selector: { app: imgproxy }
+  ports:
+    - { name: http, port: 8080, targetPort: 8080 }

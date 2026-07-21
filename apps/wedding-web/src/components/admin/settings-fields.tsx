@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 import { adminApi, type Settings } from '@/lib/admin-api';
 import type { GalleryImage } from '@/lib/site-settings';
+import { proxied } from '@/lib/img-client';
 import { inputBase, kicker, CREAM_2, GREEN, INK, TAN, RING } from './ui';
 
 // Presentational body of the site-settings tab (hero/music/gallery/story/meta).
@@ -125,7 +126,10 @@ export function SettingsFields({
     borderRadius: 8,
     overflow: 'hidden',
     boxShadow: RING,
-    background: url ? `${CREAM_2} url(${url}) center / cover no-repeat` : CREAM_2,
+    // Ô 34px cao nhưng trước đây tải nguyên ảnh gốc chủ tiệc vừa upload; giờ qua
+    // cầu ký để lấy bản 160px (ADR-055). Vẫn là background nên không có srcSet —
+    // chấp nhận được vì đây là ô cố định, không co giãn theo màn.
+    background: url ? `${CREAM_2} url(${proxied(url, 160)}) center / cover no-repeat` : CREAM_2,
   });
 
   return (
@@ -525,7 +529,17 @@ function FocalPicker({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [broken, setBroken] = useState(false);
-  useEffect(() => setBroken(false), [url]);
+  // Lùi hai bước (ADR-055): bản tối ưu hỏng (imgproxy 403/404/chưa lên) thì quay về ảnh
+  // gốc TRƯỚC, chỉ khi ảnh gốc cũng hỏng mới báo "không tải được" — nếu không, chủ tiệc
+  // bị doạ là ảnh mình vừa upload lỗi trong khi nó hoàn toàn ổn.
+  const [degraded, setDegraded] = useState(false);
+  useEffect(() => {
+    setBroken(false);
+    setDegraded(false);
+  }, [url]);
+  const optimizedSrc = url ? proxied(url, 320) : null;
+  // Ảnh mẫu tương đối không đi qua cầu ký ⇒ không có bước lùi nào để thử, lỗi là hỏng thật.
+  const hasFallbackStep = Boolean(url) && optimizedSrc !== url;
 
   const setFromPoint = (clientX: number, clientY: number) => {
     const rect = ref.current?.getBoundingClientRect();
@@ -578,10 +592,14 @@ function FocalPicker({
     >
       {url ? (
         <img
-          src={url}
+          // Khung chọn điểm nhấn rộng nhất là 140px ⇒ bản 320px thừa nét cho cả
+          // màn retina, thay vì kéo nguyên ảnh máy ảnh về (ADR-055).
+          src={degraded ? url : (optimizedSrc ?? url)}
           alt=""
           draggable={false}
-          onError={() => setBroken(true)}
+          loading="lazy"
+          decoding="async"
+          onError={() => (hasFallbackStep && !degraded ? setDegraded(true) : setBroken(true))}
           style={{
             position: 'absolute',
             inset: 0,

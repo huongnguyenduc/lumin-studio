@@ -18,7 +18,7 @@ Nguyên tắc xuyên suốt: **OrderStatus state machine + tính tiền là củ
    │  Caddy ─┬─ Next storefront      Next admin (+ responsive Admin Mobile)                       │
    │         └─ Core API (Go + Chi) ──┬─ PostgreSQL (app)        Postgres (umami, DB riêng)        │
    │            OpenAPI · SSE · RBAC  ├─ NATS JetStream ───────── Rust Worker ── Blender (Cycles)  │
-   │            outbox · tính tiền    │   (WorkQueue, DLQ,          trimesh · gltf-transform · sharp│
+   │            outbox · tính tiền    │   (WorkQueue, DLQ,          trimesh · gltf-transform      │
    │                                  │    concurrency=1)                                          │
    │                                  └─ Garage (S3, replication=1) ◄── model multipart PUT / receipt POST │
    │  Observability: OTel Collector → OpenObserve/Victoria · Uptime Kuma · GlitchTip               │
@@ -78,8 +78,8 @@ Admin upload (presigned multipart PUT → Garage) → Core API tạo AssetJob (p
       trimesh: chuẩn hoá + trích dims/material  → prefill Product NGAY
       gltf-transform: LOD .glb + nén meshopt/KTX2
       Blender (Cycles+CUDA): render 360° sprite   (KHÔNG poster; concurrency=1, off-peak)
-      sharp: derivative ảnh shop chụp (AVIF/WebP/JPEG)
       → upload Garage → callback Core API → AssetJob ready
+  (ảnh shop chụp KHÔNG qua worker: resize/WebP làm on-the-fly bởi imgproxy — ADR-055)
   (failed → retry; job idempotent, tái tạo được từ model gốc)
 ```
 

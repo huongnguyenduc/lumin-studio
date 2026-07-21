@@ -108,6 +108,12 @@ jobs:
           kubectl apply -f infra/k8s/postgres.yaml -f infra/k8s/nats.yaml
           kubectl -n "$NS" rollout status deploy/postgres --timeout=180s
           kubectl -n "$NS" rollout status deploy/nats --timeout=120s
+          # imgproxy (ADR-055) — ảnh đã resize/WebP. Ảnh thứ ba (không build ở đây), không
+          # phụ thuộc SHA, nên apply thẳng. KHÔNG chờ rollout: thiếu `imgproxy-secrets` thì
+          # pod CrashLoop vì vắng IMGPROXY_KEY, mà đó là trạng thái hợp lệ trước khi bootstrap
+          # — wedding-web fail-open trả ảnh gốc. Chặn ở đây là biến một service phụ chưa dựng
+          # thành deploy đỏ cho cả hệ.
+          kubectl apply -f infra/k8s/imgproxy.yaml
           # Migrations: one-shot, idempotent (golang-migrate `up` no-ops when current, ADR-028). A Job's
           # pod template is immutable → delete + recreate.
           kubectl -n "$NS" delete job migrate --ignore-not-found

@@ -1,6 +1,7 @@
 import { headers } from 'next/headers';
 import { getActiveEvent, getSettings, getWishes } from '@/lib/api';
 import { asEventData, asSiteSettings } from '@/lib/site-settings';
+import { optimizeEvent, optimizeSettings } from '@/lib/img';
 import { InvitationCard } from '@/components/invitation/invitation-card';
 
 // Anonymous card ("Xem thiệp mẫu" from Admin, or a shared bare link): generic
@@ -14,12 +15,14 @@ export default async function HomePage() {
     getSettings(),
     getActiveEvent(host),
   ]);
+  const eventData = asEventData(event?.data ?? {});
   return (
     <InvitationCard
       guest={null}
       wishes={wishes.items}
-      settings={asSiteSettings(settings)}
-      event={asEventData(event?.data ?? {})}
+      settings={optimizeSettings(asSiteSettings(settings))}
+      event={eventData}
+      eventImages={optimizeEvent(eventData)}
     />
   );
 }
