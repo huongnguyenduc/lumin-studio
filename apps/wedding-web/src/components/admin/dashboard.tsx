@@ -15,8 +15,7 @@ import { Login } from './login';
 import { QuickAdd } from './quick-add';
 import { GuestTable } from './guest-table';
 import { WishesPanel } from './wishes-panel';
-import { SettingsPanel } from './settings-panel';
-import { EventPanel } from './event-panel';
+import { SettingsDrawer } from './settings-drawer';
 import {
   card,
   chipStyle,
@@ -33,7 +32,7 @@ import {
 
 type EditState = { id: string | null; label: string; group: string; note: string } | null;
 
-export function AdminDashboard() {
+export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
   const t = useTranslations('admin');
   const [authed, setAuthed] = useState<boolean | null>(null); // null = probing
   const [events, setEvents] = useState<AdminEvent[]>([]);
@@ -59,16 +58,18 @@ export function AdminDashboard() {
     toastTimer.current = setTimeout(() => setToast(null), 2600);
   }, []);
 
-  // Every event has its own guests/groups/wishes-adjacent stats — reload keeps
-  // whatever event tab is selected (falling back to the first one on initial
-  // load) and re-fetches that event's scoped data alongside the shared bits
-  // (wishes/stats/settings stay global — not split per event).
+  // Every event has its own guests/groups/stats — reload keeps whatever event
+  // tab is selected, falling back on initial load to THIS subdomain's event
+  // (WEDDING_EVENT_SLUG) so the admin opens on the right wedding's guests, then
+  // to the first event. Wishes/settings stay global (one wall / site-level).
   const reload = useCallback(
     async (forEvent?: string) => {
       try {
         const ev = await adminApi.events();
         setEvents(ev.items);
-        const slug = forEvent ?? selectedEvent ?? ev.items[0]?.slug ?? null;
+        const envSlug =
+          activeSlug && ev.items.some((e) => e.slug === activeSlug) ? activeSlug : null;
+        const slug = forEvent ?? selectedEvent ?? envSlug ?? ev.items[0]?.slug ?? null;
         setSelectedEvent(slug);
         if (!slug) {
           setAuthed(true);
@@ -92,7 +93,7 @@ export function AdminDashboard() {
         else flash(t('toasts.apiError'), true);
       }
     },
-    [flash, t, selectedEvent],
+    [flash, t, selectedEvent, activeSlug],
   );
 
   // deliberately run once on mount only — reload reads selectedEvent via
@@ -204,6 +205,16 @@ export function AdminDashboard() {
           <span style={{ ...kicker, letterSpacing: '0.26em' }}>{t('title')}</span>
         </div>
         <div style={{ flexGrow: 1 }} />
+        <SettingsDrawer
+          event={events.find((e) => e.slug === selectedEvent) ?? null}
+          settings={settings}
+          onEventSaved={() => void reload()}
+          onSettingsSaved={(next) => {
+            setSettings(next);
+            flash(t('toasts.saved'));
+          }}
+          onError={(msg) => flash(msg, true)}
+        />
         <button
           type="button"
           onClick={() => void exportXlsx()}
@@ -308,26 +319,6 @@ export function AdminDashboard() {
           </button>
         )}
       </div>
-
-      {(() => {
-        const current = events.find((e) => e.slug === selectedEvent);
-        return current ? (
-          <EventPanel
-            event={current}
-            onSaved={() => void reload()}
-            onError={(msg) => flash(msg, true)}
-          />
-        ) : null;
-      })()}
-
-      <SettingsPanel
-        settings={settings}
-        onSaved={(next) => {
-          setSettings(next);
-          flash(t('toasts.saved'));
-        }}
-        onError={(msg) => flash(msg, true)}
-      />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14 }}>
         {(

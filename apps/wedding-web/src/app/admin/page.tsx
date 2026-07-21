@@ -4,7 +4,15 @@ import { AdminDashboard } from '@/components/admin/dashboard';
 // Private host dashboard (HANDOFF §3) — desktop-first, admin bg, never indexed.
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 
+// Each wedding runs on its own subdomain with WEDDING_EVENT_SLUG set per
+// deployment (same env that picks the active event for the public page). Read it
+// server-side and hand it to the dashboard so the admin lands on THIS
+// subdomain's event — not always the first — and shows that wedding's guest
+// list. Read at request time (env may be injected per pod), so keep dynamic.
+export const dynamic = 'force-dynamic';
+
 export default function AdminPage() {
+  const activeSlug = process.env.WEDDING_EVENT_SLUG ?? null;
   return (
     <div
       style={{
@@ -19,7 +27,7 @@ export default function AdminPage() {
         zoom: 1.15,
       }}
     >
-      <AdminDashboard />
+      <AdminDashboard activeSlug={activeSlug} />
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { useTranslations } from 'next-intl';
 import type { EventData } from '@/lib/site-settings';
 import { INK, TAN, TERRACOTTA_SOFT, CREAM, SCRIPT } from './theme';
 import { Reveal } from './reveal';
+import { MapView } from './map-view';
 
 const laceV: CSSProperties = {
   position: 'absolute',
@@ -178,31 +179,11 @@ export function Letter({
             {v('venueAddress', 'venueAddress')}
           </span>
         </Reveal>
-        <Reveal
-          style={{
-            position: 'relative',
-            marginTop: 16,
-            width: 313,
-            height: 196,
-            borderRadius: 12,
-            border: `0.5px solid ${INK}`,
-            boxSizing: 'border-box',
-            overflow: 'hidden',
-          }}
-        >
-          <img
-            src={event.mapUrl ?? '/invite/map.png'}
-            alt={t('mapAlt')}
-            style={{
-              position: 'absolute',
-              left: 3,
-              top: 34,
-              width: 305,
-              height: 145,
-              objectFit: 'cover',
-            }}
-          />
-        </Reveal>
+        <MapView
+          mapUrl={event.mapUrl ?? '/invite/map.png'}
+          mapsUrl={event.mapsUrl}
+          alt={t('mapAlt')}
+        />
         <Reveal style={{ marginTop: 16 }}>
           <a
             href={event.mapsUrl ?? 'https://maps.google.com'}
