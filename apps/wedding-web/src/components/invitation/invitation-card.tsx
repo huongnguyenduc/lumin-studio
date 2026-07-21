@@ -130,6 +130,7 @@ export function InvitationCard({
         onToggle={music.toggle}
         volume={music.volume}
         onVolumeChange={music.setVolume}
+        volumeSupported={music.volumeSupported}
       />
       <div
         ref={scaleRef}

@@ -19,20 +19,26 @@ import { CREAM, INK } from './theme';
 //     Now the slider is centered on the container/puck.
 //  3. It didn't announce itself when music began. Now it auto-shows for a few
 //     seconds the moment playback starts.
-// Touch devices (no hover) get the plain toggle only.
+// Touch devices (no hover) get the plain toggle only — and so does iOS Safari
+// even on an iPad with a trackpad: `audio.volume` is read-only there
+// (useMusic probes for it and reports `volumeSupported: false`), so a slider
+// would move without changing anything.
 export function MusicButton({
   playing,
   onToggle,
   volume,
   onVolumeChange,
+  volumeSupported = true,
 }: {
   playing: boolean;
   onToggle: () => void;
   volume: number;
   onVolumeChange: (v: number) => void;
+  volumeSupported?: boolean;
 }) {
   const t = useTranslations('hero');
-  const [canHover, setCanHover] = useState(false);
+  const [hoverCapable, setHoverCapable] = useState(false);
+  const canHover = hoverCapable && volumeSupported;
   const [hovering, setHovering] = useState(false);
   const [autoShow, setAutoShow] = useState(false);
   const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -40,7 +46,7 @@ export function MusicButton({
 
   useEffect(() => {
     const mq = window.matchMedia('(hover: hover) and (pointer: fine)');
-    const sync = () => setCanHover(mq.matches);
+    const sync = () => setHoverCapable(mq.matches);
     sync();
     mq.addEventListener('change', sync);
     return () => mq.removeEventListener('change', sync);
