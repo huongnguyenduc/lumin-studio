@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { formatVnd, formatVnNumber, formatVnRating } from '@lumin/core';
-import { Button, PriceTag, QuantityStepper, cn } from '@lumin/ui';
+import { Button, IconButton, PriceTag, QuantityStepper, cn } from '@lumin/ui';
 import { buildCartItem, MAX_QUANTITY } from '@/lib/cart';
 import { useCart } from '@/lib/cart-store';
 import {
@@ -23,6 +23,7 @@ import {
   type ProductDetailView,
 } from '@/lib/product-view';
 import { EngraveField } from './engrave-field';
+import { BagIcon } from './icons';
 import { Model3dViewer } from './model-3d-viewer';
 
 /**
@@ -603,7 +604,7 @@ export function ProductDetail({
               only while qty = 1 — the client never multiplies money (conventions §Tiền); the real total
               lands with the cart's server quote. */}
           <div className="sticky bottom-[76px] z-30 -mx-4 bg-surface-page/95 px-4 py-3 backdrop-blur-sm md:static md:z-auto md:m-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <QuantityStepper
                 value={quantity}
                 onChange={setQuantity}
@@ -611,13 +612,26 @@ export function ProductDetail({
                 max={MAX_QUANTITY}
                 decrementLabel={t('qtyDecrement')}
                 incrementLabel={t('qtyIncrement')}
+                className="shrink-0"
               />
+              {/* Mobile: icon-only add-to-cart (BagIcon) so it never competes for width against "Mua ngay" —
+                  the full label + price returns from sm: up where there's room. */}
+              <IconButton
+                variant="soft"
+                size="lg"
+                label={tp('add')}
+                disabled={!canAdd}
+                onClick={handleAddToCart}
+                className="shrink-0 sm:hidden"
+              >
+                <BagIcon aria-hidden="true" />
+              </IconButton>
               <Button
                 variant="outline"
                 size="lg"
                 disabled={!canAdd}
                 onClick={handleAddToCart}
-                className="flex-1 md:flex-none"
+                className="hidden min-w-0 sm:flex sm:flex-none"
               >
                 {quantity === 1 ? (
                   <>
@@ -634,7 +648,7 @@ export function ProductDetail({
                 size="lg"
                 disabled={!canAdd}
                 onClick={handleBuyNow}
-                className="flex-1 md:flex-none"
+                className="min-w-0 flex-1 sm:flex-none"
               >
                 {tp('buyNow')}
               </Button>
