@@ -1568,7 +1568,7 @@ type PrintTagEncodeResult struct {
 	Tag PetTagRef `json:"tag"`
 }
 
-// Product Storefront product detail (spec §02). Money fields (basePrice, colors[].priceDelta, options[].priceDelta) are raw int-VND — the client formats via @lumin/core (always-must #2). images[0] is the card cover (sprite-first, ADR-007). No productType in Phase 1 (D-P1-1).
+// Product Storefront product detail (spec §02). Money fields (basePrice, colors[].priceDelta, options[].priceDelta) are raw int-VND — the client formats via @lumin/core (always-must #2). images[0] is the card cover (sprite-first, ADR-007). productType (D-P1-1 follow-up) is an internal/admin-only field like estFilamentQty/estPrintHours below — present on the wire but not read by the storefront app.
 type Product struct {
 	// BasePrice Starting price in int-VND (>= 0); options may add to it.
 	BasePrice  int64              `json:"basePrice"`
@@ -1614,6 +1614,9 @@ type Product struct {
 
 	// Parts Named parts (ADR-037), each grouping a subset of colors[] via Color.partId. Empty = a single-piece product (flat colours). The customer picks one colour per part.
 	Parts []Part `json:"parts"`
+
+	// ProductType Pet Tag marking (ADR-040): `nfc_tag` routes this product's print jobs through the NFC-encode stage (spec §10). Admin editor field; the storefront app never reads it. Always present (DB default `standard`).
+	ProductType *ProductType `json:"productType,omitempty"`
 
 	// RatingAvg Denormalized average rating; null until the first review.
 	RatingAvg *float32 `json:"ratingAvg"`
@@ -1682,6 +1685,9 @@ type ProductInput struct {
 	// Material Print material (spec §02; open-ended TEXT+CHECK — PLA · PETG · recycled-PLA).
 	Material string `json:"material"`
 	Name     string `json:"name"`
+
+	// ProductType Pet Tag marking (ADR-040): `nfc_tag` routes this product's print jobs through the NFC-encode stage. Admin-only — never exposed on the storefront-facing read (D-P1-1). Optional; the admin editor always sends it explicitly, so omitting it only matters for a bypassed client, where it defaults to `standard`.
+	ProductType *ProductType `json:"productType,omitempty"`
 
 	// Slug Unique URL slug (spec §02); a duplicate → 400 with a `slug` field error.
 	Slug string `json:"slug"`

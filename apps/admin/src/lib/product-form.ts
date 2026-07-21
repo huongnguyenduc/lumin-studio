@@ -31,6 +31,9 @@ export interface ProductDraft {
   // Gallery photos (ADR-007: images[0] is the shop-taken cover — the worker never renders it). Held as
   // final object URLs from the presigned upload (l-2); saved with the product via the main PATCH.
   images: string[];
+  // Pet Tag marking (ADR-040): 'nfc_tag' routes this product's print jobs through the NFC-encode stage
+  // (spec §10). Internal/admin-only — never surfaced on the storefront.
+  productType: 'standard' | 'nfc_tag';
 }
 
 /** One error code per invalid draft field; the view maps it to an i18n message. Empty object = valid. */
@@ -64,6 +67,7 @@ export function emptyDraft(categoryId = ''): ProductDraft {
     material: MATERIALS[0],
     status: 'draft',
     images: [],
+    productType: 'standard',
   };
 }
 
@@ -81,6 +85,7 @@ export function draftFromProduct(p: Product): ProductDraft {
     material: p.material,
     status: p.status,
     images: p.images,
+    productType: p.productType ?? 'standard',
   };
 }
 
@@ -126,6 +131,7 @@ export function draftToInput(d: ProductDraft): ProductInput {
     material: d.material,
     status: d.status,
     images: d.images,
+    productType: d.productType,
   };
 }
 

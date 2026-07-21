@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/api"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
 )
 
@@ -125,7 +126,7 @@ func TestCleanProductInput(t *testing.T) {
 		Slug: " den-de-ban ", Name: " Đèn để bàn ", Description: &desc, CategoryId: uuid.New(),
 		BasePrice: 390_000, Dimensions: api.Dimensions{W: 180, D: 180, H: 240}, Material: "PLA",
 		Images: &imgs, Status: api.ProductStatus("active"), EstPrintHours: &estHours,
-	})
+	}, sqlc.ProductTypeStandard)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
@@ -137,6 +138,9 @@ func TestCleanProductInput(t *testing.T) {
 	}
 	if c.EstPrintMinutes != 390 { // 6.5h → exact 390 minutes
 		t.Fatalf("estPrintHours 6.5 → %d minutes, want 390", c.EstPrintMinutes)
+	}
+	if c.ProductType != sqlc.ProductTypeStandard {
+		t.Fatalf("productType omitted → want fallback 'standard', got %q", c.ProductType)
 	}
 	var gotDims api.Dimensions // jsonb key order is irrelevant (Postgres normalizes; readback is key-based)
 	if err := json.Unmarshal(c.Dimensions, &gotDims); err != nil || gotDims != (api.Dimensions{W: 180, D: 180, H: 240}) {
@@ -165,12 +169,16 @@ func TestCleanProductInput(t *testing.T) {
 		"negative hours":   {func(p *api.ProductInput) { h := -1.0; p.EstPrintHours = &h }, "estPrintHours"},
 		"NaN hours":        {func(p *api.ProductInput) { h := math.NaN(); p.EstPrintHours = &h }, "estPrintHours"},
 		"over-cap hours":   {func(p *api.ProductInput) { h := 2000.0; p.EstPrintHours = &h }, "estPrintHours"},
+		"bad productType": {
+			func(p *api.ProductInput) { pt := api.ProductType("sold"); p.ProductType = &pt },
+			"productType",
+		},
 	}
 	for name, tc := range bad {
 		t.Run(name, func(t *testing.T) {
 			in := base()
 			tc.mut(&in)
-			_, f, err := cleanProductInput(in)
+			_, f, err := cleanProductInput(in, sqlc.ProductTypeStandard)
 			if err != nil {
 				t.Fatalf("unexpected marshal error: %v", err)
 			}
@@ -179,6 +187,35 @@ func TestCleanProductInput(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("productType omitted on update keeps the existing value", func(t *testing.T) {
+		c, fields, err := cleanProductInput(base(), sqlc.ProductTypeNfcTag)
+		if err != nil {
+			t.Fatalf("unexpected marshal error: %v", err)
+		}
+		if len(fields) != 0 {
+			t.Fatalf("valid product rejected: %v", fields)
+		}
+		if c.ProductType != sqlc.ProductTypeNfcTag {
+			t.Fatalf("productType omitted on update → want fallback preserved 'nfc_tag', got %q", c.ProductType)
+		}
+	})
+
+	t.Run("explicit productType overrides the fallback", func(t *testing.T) {
+		in := base()
+		pt := api.ProductType("nfc_tag")
+		in.ProductType = &pt
+		c, fields, err := cleanProductInput(in, sqlc.ProductTypeStandard)
+		if err != nil {
+			t.Fatalf("unexpected marshal error: %v", err)
+		}
+		if len(fields) != 0 {
+			t.Fatalf("valid product rejected: %v", fields)
+		}
+		if c.ProductType != sqlc.ProductTypeNfcTag {
+			t.Fatalf("explicit productType 'nfc_tag' → got %q", c.ProductType)
+		}
+	})
 }
 
 // cleanModelView validates a saved camera pose (ADR-038): out-of-range or non-finite values become per-field

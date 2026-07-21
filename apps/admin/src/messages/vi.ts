@@ -146,6 +146,9 @@ export const vi = {
       categoryPlaceholder: 'Chọn danh mục…',
       currentCategory: '(danh mục hiện tại)',
       statusLabel: 'Trạng thái',
+      petTagLabel: 'Pet Tag (thẻ NFC)',
+      petTagHint:
+        'Sản phẩm là vòng cổ/thẻ NFC cho thú cưng — thêm bước "Ghi chip NFC" vào hàng đợi in.',
       priceLabel: 'Giá bán (₫)',
       vndHint: 'Nhập số nguyên, ví dụ 290000.',
       dimsLabel: 'Kích thước (mm)',

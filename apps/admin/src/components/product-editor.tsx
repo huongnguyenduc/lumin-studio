@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { formatVnd } from '@lumin/core';
-import { Button, Card, Input, cn } from '@lumin/ui';
+import { Button, Card, Input, Switch, cn } from '@lumin/ui';
 import type { components } from '@lumin/api-client';
 import {
   MATERIALS,
@@ -214,6 +214,19 @@ export function ProductEditor({
               </option>
             ))}
           </Select>
+        </div>
+        <div className="flex items-center justify-between gap-3 border-t border-border-subtle pt-4">
+          <div>
+            <p className="font-display text-sm font-medium text-text-strong">
+              {t('edit.petTagLabel')}
+            </p>
+            <p className="text-sm text-text-muted">{t('edit.petTagHint')}</p>
+          </div>
+          <Switch
+            label={t('edit.petTagLabel')}
+            checked={draft.productType === 'nfc_tag'}
+            onCheckedChange={(on) => set('productType', on ? 'nfc_tag' : 'standard')}
+          />
         </div>
       </Card>
 
