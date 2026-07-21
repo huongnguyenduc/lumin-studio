@@ -201,11 +201,11 @@ export function SettingsDrawer({
   // hardcoded small px sizes read a bit bigger) — but Chromium treats `zoom`
   // as a containing block for `position: fixed` descendants, so a fixed
   // drawer left nested inside it doesn't stay pinned to the real viewport: it
-  // scrolls (and sizes) relative to that zoomed ancestor instead. That's what
-  // was making the drawer's own scroll area fight the page's scroll, and the
-  // sticky Huỷ/Lưu bar land off-screen instead of pinned to the bottom. Same
-  // root cause the floating music button dodges by rendering outside
-  // `.invite-scale` — here we portal the overlay straight to `document.body`.
+  // scrolls (and sizes) relative to that zoomed ancestor instead. Same root
+  // cause the floating music button dodges by rendering outside
+  // `.invite-scale` — here we portal the overlay straight to `document.body`
+  // so it's genuinely pinned. (The drawer's own internal scroll not working
+  // was a separate bug — see the `minHeight: 0` note below.)
   // Losing the inherited 1.15 zoom means the drawer's own text needs slightly
   // bigger literal sizes/weights to stay as readable as the rest of admin.
   const overlay = open ? (
@@ -235,7 +235,7 @@ export function SettingsDrawer({
           top: 0,
           right: 0,
           height: '100dvh',
-          width: 560,
+          width: 680,
           maxWidth: '100vw',
           zIndex: 50,
           background: CREAM,
@@ -317,6 +317,14 @@ export function SettingsDrawer({
         <div
           style={{
             flex: 1,
+            // A flex item's default min-height is `auto`, which stops it from
+            // ever shrinking below its own content's natural height — so
+            // without this, the "flex:1 + overflow:auto" combo never actually
+            // triggers an internal scrollbar; the content just grows past the
+            // drawer's fixed height instead. This is what silently broke the
+            // drawer's own scrolling even after it was correctly pinned to
+            // the viewport.
+            minHeight: 0,
             overflowY: 'auto',
             overscrollBehavior: 'contain',
             padding: '20px 22px 24px',
