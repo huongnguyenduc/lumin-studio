@@ -8,6 +8,13 @@ name: harness-selftest
 
 on:
   push:
+    # PR branches already get this exact job matrix from the `pull_request` trigger below
+    # (same paths) — without this filter every commit on a PR branch ran the whole matrix
+    # TWICE (once for `push`, once for `pull_request`), doubling runner-minutes for zero
+    # benefit. `main` still needs its own `push` trigger: deploy.yml fires off THIS
+    # workflow via `workflow_run` gated on `branches: [main]`, so a merge to main has to
+    # produce its own harness-selftest run for that to have anything to react to.
+    branches: [main]
     paths:
       - '.claude/**'
       - 'tests/harness/**'
@@ -51,6 +58,52 @@ on:
       - '.github/workflows/deploy.yml'
 
 jobs:
+  # Cheap up-front git-diff check so services-gates (the slowest job — Go+Rust
+  # toolchain install + golangci-lint + sqlc + clippy + cargo test, ~4-5min) can
+  # skip itself on a diff that never touches services/ code — e.g. a pure
+  # TS/React PR. Deliberately conservative: the allowlist only covers what
+  # `make verify-go`/`make verify-rs` actually depend on, and any failure to
+  # compute the diff (new branch, missing before-SHA, unrecognised event) falls
+  # back to services=true — a silently-skipped gate is exactly the failure
+  # mode this harness is built to catch (ADR-023/024 "gate no-op trông y hệt
+  # gate pass"), so uncertainty always runs the gate, never skips it.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.filter.outputs.services }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: filter
+        run: |
+          set -euo pipefail
+          case "${{ github.event_name }}" in
+            pull_request)
+              RANGE="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+              ;;
+            push)
+              BEFORE="${{ github.event.before }}"
+              if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+                echo "services=true" >> "$GITHUB_OUTPUT"
+                echo "no usable 'before' SHA (new branch/force-push) — running services-gates to be safe"
+                exit 0
+              fi
+              RANGE="$BEFORE..${{ github.sha }}"
+              ;;
+            *)
+              echo "services=true" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+          CHANGED="$(git diff --name-only "$RANGE")"
+          echo "$CHANGED"
+          if echo "$CHANGED" | grep -qE '^(services/|Makefile$|\.github/workflows/harness\.yml$)'; then
+            echo "services=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "services=false" >> "$GITHUB_OUTPUT"
+          fi
+
   selftest:
     runs-on: ubuntu-latest
     steps:
@@ -72,6 +125,18 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Turborepo's own incremental cache (ADR-001 "Turborepo cache + build
+      # affected-only") — persisted across CI runs so `turbo run typecheck`/
+      # `turbo run test` (inside `pnpm verify`) can skip packages whose inputs
+      # match a prior run instead of always executing cold. Turbo hashes task
+      # inputs itself, so a stale/foreign cache entry just means more misses,
+      # never a wrong result — safe to restore optimistically via prefix match.
+      - uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-
       - name: pnpm verify (lint + typecheck + test + format:check)
         run: pnpm verify
       - name: osm-mutation real-arm (có node_modules ⇒ mutant trên source thật phải bị KILL)
@@ -82,7 +147,11 @@ jobs:
   # this job makes them actually RUN in CI so an armed gate can't sit vacuous —
   # same reason app-gates runs pnpm verify. First-party actions + pinned installs
   # only. Triggers on the services/** · Makefile paths already listed above.
+  # Skipped entirely when `changes` finds no services/-relevant diff (see that
+  # job's comment for the safety reasoning).
   services-gates:
+    needs: changes
+    if: needs.changes.outputs.services == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
