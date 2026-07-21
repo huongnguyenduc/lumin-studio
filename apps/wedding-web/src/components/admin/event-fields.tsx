@@ -37,8 +37,21 @@ const uploadLabel: CSSProperties = {
   padding: '6px 14px',
   borderRadius: 20,
   boxShadow: RING,
-  fontSize: 11,
+  fontSize: 12,
+  fontWeight: 600,
   cursor: 'pointer',
+};
+
+// The drawer renders outside the admin page's `zoom: 1.15` ancestor (see
+// settings-drawer.tsx), so it doesn't inherit that ambient magnification —
+// these local overrides of the shared `kicker`/`inputBase` tokens keep field
+// labels and input text a touch bigger/bolder so they stay just as readable.
+const fieldLabel: CSSProperties = { ...kicker, fontSize: 12, fontWeight: 600 };
+const fieldInput: CSSProperties = {
+  ...inputBase,
+  fontSize: 14,
+  borderRadius: 8,
+  padding: '9px 14px',
 };
 
 export function EventFields({
@@ -64,13 +77,13 @@ export function EventFields({
 
   const field = (key: DataField) => (
     <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span style={kicker}>{t(`field.${key}`)}</span>
+      <span style={fieldLabel}>{t(`field.${key}`)}</span>
       <input
         value={val(key)}
         onChange={(e) => patch(key, e.target.value)}
         placeholder={t(`placeholder.${key}`)}
         aria-label={t(`field.${key}`)}
-        style={{ ...inputBase, borderRadius: 8, padding: '9px 14px' }}
+        style={fieldInput}
       />
     </div>
   );
@@ -81,26 +94,26 @@ export function EventFields({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={kicker}>{t('field.name')}</span>
+          <span style={fieldLabel}>{t('field.name')}</span>
           <input
             value={nameValue}
             onChange={(e) => onNameChange(e.target.value)}
             placeholder={t('placeholder.name')}
             aria-label={t('field.name')}
-            style={{ ...inputBase, borderRadius: 8, padding: '9px 14px' }}
+            style={fieldInput}
           />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={kicker}>{t('field.subdomain')}</span>
+          <span style={fieldLabel}>{t('field.subdomain')}</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input
               value={subdomainValue}
               onChange={(e) => onSubdomainChange(e.target.value)}
               placeholder={t('placeholder.subdomain')}
               aria-label={t('field.subdomain')}
-              style={{ ...inputBase, flexGrow: 1, borderRadius: 8, padding: '9px 14px' }}
+              style={{ ...fieldInput, flexGrow: 1 }}
             />
-            <span style={{ fontSize: 12, color: INK, whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 13, fontWeight: 500, color: INK, whiteSpace: 'nowrap' }}>
               {t('domainSuffix')}
             </span>
           </div>
@@ -109,7 +122,7 @@ export function EventFields({
               href={`https://${event.subdomain}`}
               target="_blank"
               rel="noreferrer"
-              style={{ fontSize: 11, color: INK }}
+              style={{ fontSize: 12, color: INK }}
             >
               {`https://${event.subdomain}`}
             </a>
@@ -126,7 +139,7 @@ export function EventFields({
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end' }}>
         <div style={{ flexGrow: 1 }}>{field('mapsUrl')}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <span style={kicker}>{t('field.mapUrl')}</span>
+          <span style={fieldLabel}>{t('field.mapUrl')}</span>
           <div
             style={{
               width: 84,
