@@ -4,6 +4,7 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 import { INK, SCRIPT } from './theme';
 import { Reveal } from './reveal';
+import { OptimizedImg } from './optimized-img';
 import type { GalleryImage } from '@/lib/site-settings';
 
 // Gallery (§2.5 rev, Figma 132:212): script two-line heading, then three photo
@@ -28,6 +29,14 @@ const BLOCKS: { cells: Cell[]; captionKey: string; captionPad: number }[] = [
     captionPad: 36,
   },
 ];
+
+// Bề rộng thật của một ô theo số cột nó chiếm, trong lưới 313px / 3 cột / gap 16.
+// Dùng cho `sizes` để browser không kéo bản 640px về vẽ ô 94px.
+function cellSizes(cell: Cell): string {
+  if (cell.col === 3) return '313px';
+  if (cell.col === 2) return '203px';
+  return '94px';
+}
 
 const navBtn: CSSProperties = {
   width: 40,
@@ -174,14 +183,36 @@ export function Gallery({
                       onClick={() => setIndex(i)}
                       aria-label={t('photoAlt', { index: i + 1 })}
                       style={{
+                        display: 'block',
                         width: '100%',
                         height: '100%',
                         border: 'none',
                         padding: 0,
-                        background: `url(${srcs[i].url}) ${pos(srcs[i])} / cover no-repeat`,
+                        overflow: 'hidden',
+                        background: 'none',
                         cursor: 'pointer',
                       }}
-                    />
+                    >
+                      {/* Trước đây ô lưới là `background: url(...)` với ảnh GỐC: mỗi ô
+                          118px cao vẫn tải nguyên file máy ảnh, và background-image thì
+                          không dùng được srcSet lẫn lazy-load. Đổi sang <img> để browser
+                          chọn khổ theo `sizes` + DPR và hoãn ảnh dưới màn (ADR-055).
+                          `pos()` chuyển thành object-position — khung hình giữ y nguyên. */}
+                      <OptimizedImg
+                        img={srcs[i].thumb}
+                        fallback={srcs[i].url}
+                        sizes={cellSizes(cell)}
+                        alt=""
+                        hidden
+                        lazy
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          objectPosition: pos(srcs[i]),
+                        }}
+                      />
+                    </button>
                   </Reveal>
                 );
               })}
@@ -248,8 +279,10 @@ export function Gallery({
           >
             <CrossIcon />
           </button>
-          <img
-            src={srcs[index].url}
+          <OptimizedImg
+            img={srcs[index].full}
+            fallback={srcs[index].url}
+            sizes="86vw"
             alt={t('photoAlt', { index: index + 1 })}
             style={{
               position: 'relative',

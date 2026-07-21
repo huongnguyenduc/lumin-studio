@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
-import type { EventData } from '@/lib/site-settings';
+import type { EventData, EventImages } from '@/lib/site-settings';
 import { INK, TAN, TERRACOTTA_SOFT, CREAM, SCRIPT } from './theme';
 import { Reveal } from './reveal';
 import { MapView } from './map-view';
@@ -72,9 +72,11 @@ function Medallion({ src, inset }: { src: string; inset: { l: number; t: number;
 export function Letter({
   guestLabel,
   event = {},
+  images = {},
 }: {
   guestLabel: string | null;
   event?: EventData;
+  images?: EventImages;
 }) {
   const t = useTranslations('letter');
   const v = (key: keyof EventData, fallbackKey: string) => event[key] || t(fallbackKey);
@@ -181,6 +183,8 @@ export function Letter({
         </Reveal>
         <MapView
           mapUrl={event.mapUrl ?? '/invite/map.png'}
+          img={images.map}
+          imgFull={images.mapFull}
           mapsUrl={event.mapsUrl}
           alt={t('mapAlt')}
         />

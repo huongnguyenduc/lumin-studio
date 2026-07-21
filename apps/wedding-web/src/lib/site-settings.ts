@@ -1,10 +1,22 @@
 // Typed view over the settings JSONB for the invitation page (HANDOFF §3.5).
 // mapUrl/mapsUrl live on EventData instead — venue is per-event.
-export type GalleryImage = { url: string; x?: number; y?: number };
+// Biến thể ảnh đã tối ưu (ADR-055). Điền ở SERVER bởi `optimizeSettings`/`optimizeEvent`
+// trong `lib/img.ts`; luôn optional vì khi imgproxy chưa bootstrap thì fail-open về URL gốc.
+export type ImgVariants = { src: string; srcSet: string };
+export type GalleryImage = {
+  url: string;
+  x?: number;
+  y?: number;
+  /** Khổ nhỏ cho ô lưới. */
+  thumb?: ImgVariants;
+  /** Khổ lớn cho lightbox. */
+  full?: ImgVariants;
+};
 export type SiteSettings = {
   heroUrl?: string;
   heroX?: number;
   heroY?: number;
+  hero?: ImgVariants;
   gallery?: GalleryImage[];
   musicUrl?: string;
   musicVolume?: number;
@@ -45,6 +57,13 @@ export type EventData = {
   ceremonyDate?: string;
   ceremonyLunarDate?: string;
 };
+
+/**
+ * Biến thể của ảnh bản đồ. CỐ Ý để ngoài `EventData`: mọi field của EventData đều là
+ * string và `letter.tsx` render chúng thẳng qua helper `v()` — nhét object vào đó là
+ * `EventData[keyof EventData]` hết còn gán được vào ReactNode.
+ */
+export type EventImages = { map?: ImgVariants; mapFull?: ImgVariants };
 
 const eventDataKeys: (keyof EventData)[] = [
   'date',

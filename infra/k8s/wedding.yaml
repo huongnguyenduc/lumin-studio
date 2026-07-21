@@ -128,6 +128,23 @@ spec:
             - { name: PORT, value: '3000' }
             # SSR + the /api/* rewrite reach wedding-api by internal DNS.
             - { name: WEDDING_API_URL, value: http://wedding-api:8081 }
+            # --- Ảnh tối ưu qua imgproxy (ADR-055) ---
+            # wedding-web KÝ url lúc SSR (src/lib/img.ts) rồi mới nhả xuống browser —
+            # KEY/SALT là bí mật server, KHÔNG được prefix NEXT_PUBLIC_ (làm vậy là nhúng
+            # thẳng khoá ký vào bundle JS và biến imgproxy thành open proxy).
+            - { name: IMGPROXY_BASE_URL, value: 'https://img.luminstudio.vn' }
+            # Bucket chứa ảnh chủ tiệc upload; ghép thành nguồn s3://<bucket>/<key>. Key lấy
+            # bằng cách bóc prefix UPLOAD_PUBLIC_BASE_URL khỏi URL đã lưu trong settings.
+            - { name: IMGPROXY_S3_BUCKET, value: 'wedding-assets' }
+            - { name: IMGPROXY_SOURCE_BASE_URL, value: 'https://wedding-assets.luminstudio.vn' }
+            # optional:true — vắng secret thì img.ts fail-open (trả URL gốc, ảnh vẫn hiện,
+            # chỉ là không được tối ưu). Trang KHÔNG bao giờ vỡ vì imgproxy chưa bootstrap.
+            - name: IMGPROXY_KEY
+              valueFrom:
+                secretKeyRef: { name: imgproxy-secrets, key: IMGPROXY_KEY, optional: true }
+            - name: IMGPROXY_SALT
+              valueFrom:
+                secretKeyRef: { name: imgproxy-secrets, key: IMGPROXY_SALT, optional: true }
           readinessProbe:
             httpGet: { path: /, port: 3000 }
             initialDelaySeconds: 10

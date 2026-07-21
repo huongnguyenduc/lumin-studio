@@ -5,6 +5,8 @@ import { useTranslations } from 'next-intl';
 import { INK } from './theme';
 import { Reveal } from './reveal';
 import { MapLightbox } from './map-lightbox';
+import { OptimizedImg } from './optimized-img';
+import type { ImgVariants } from '@/lib/site-settings';
 
 // The venue map on the invitation is a tiny 305×145 thumbnail — too small to
 // read street names. Tapping it opens a full-screen zoomable/pannable view
@@ -13,10 +15,14 @@ export function MapView({
   mapUrl,
   mapsUrl,
   alt,
+  img,
+  imgFull,
 }: {
   mapUrl: string;
   mapsUrl?: string;
   alt: string;
+  img?: ImgVariants;
+  imgFull?: ImgVariants;
 }) {
   const t = useTranslations('letter');
   const [open, setOpen] = useState(false);
@@ -47,9 +53,12 @@ export function MapView({
             cursor: 'zoom-in',
           }}
         >
-          <img
-            src={mapUrl}
+          <OptimizedImg
+            img={img}
+            fallback={mapUrl}
+            sizes="305px"
             alt={alt}
+            lazy
             style={{
               position: 'absolute',
               left: 3,
@@ -88,7 +97,13 @@ export function MapView({
         </button>
       </Reveal>
       {open ? (
-        <MapLightbox src={mapUrl} alt={alt} mapsUrl={mapsUrl} onClose={() => setOpen(false)} />
+        <MapLightbox
+          src={mapUrl}
+          img={imgFull}
+          alt={alt}
+          mapsUrl={mapsUrl}
+          onClose={() => setOpen(false)}
+        />
       ) : null}
     </>
   );

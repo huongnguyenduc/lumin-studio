@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useDialogFocus } from '@/lib/use-dialog-focus';
+import { OptimizedImg } from './optimized-img';
+import type { ImgVariants } from '@/lib/site-settings';
 import { CREAM, INK } from './theme';
 
 // Full-screen zoomable/pannable view of the venue map image. Opened by tapping
@@ -35,11 +37,14 @@ const btn = {
 
 export function MapLightbox({
   src,
+  img,
   alt,
   mapsUrl,
   onClose,
 }: {
   src: string;
+  /** Khổ lớn (≤1600px) — đủ nét ở mức zoom tối đa 5× của khung này. */
+  img?: ImgVariants;
   alt: string;
   mapsUrl?: string;
   onClose: () => void;
@@ -174,8 +179,10 @@ export function MapLightbox({
           cursor: view.scale > MIN ? 'grab' : 'zoom-in',
         }}
       >
-        <img
-          src={src}
+        <OptimizedImg
+          img={img}
+          fallback={src}
+          sizes="92vw"
           alt={alt}
           draggable={false}
           style={{

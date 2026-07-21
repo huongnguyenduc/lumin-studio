@@ -4,11 +4,23 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { DARK, SCRIPT, TAN_LIGHT } from './theme';
 import { Reveal } from './reveal';
+import { OptimizedImg } from './optimized-img';
+import type { ImgVariants } from '@/lib/site-settings';
 
 // Hero (§2.1): full-bleed photo, logo mark + rotated ellipse borders, gradient,
 // script "save the date", one-time scroll hint (localStorage). Music toggle
 // lives in <MusicButton> — floats over the whole page, not just the hero.
-export function Hero({ bgUrl, x, y }: { bgUrl?: string; x?: number; y?: number }) {
+export function Hero({
+  bgUrl,
+  x,
+  y,
+  img,
+}: {
+  bgUrl?: string;
+  x?: number;
+  y?: number;
+  img?: ImgVariants;
+}) {
   const t = useTranslations('hero');
   const [hint, setHint] = useState(false);
   const [hintOpacity, setHintOpacity] = useState(0);
@@ -68,11 +80,24 @@ export function Hero({ bgUrl, x, y }: { bgUrl?: string; x?: number; y?: number }
         overflow: 'hidden',
       }}
     >
-      <div
+      {/* Ảnh nền là phần tử LCP của trang ⇒ dùng <img> chứ không phải background:
+          background-image không nhận srcSet (browser luôn tải đúng 1 khổ, thường là
+          bản gốc) và trình duyệt cũng không ưu tiên tải sớm. Với <img> thì máy tự
+          chọn khổ theo bề rộng màn + DPR (ADR-055). Cắt vẫn do CSS cover +
+          object-position để đường fail-open (URL gốc) khung hình y hệt bản tối ưu. */}
+      <OptimizedImg
+        img={img}
+        fallback={bgUrl ?? '/invite/hero.jpg'}
+        sizes="100vw"
+        alt=""
+        hidden
         style={{
           position: 'absolute',
           inset: 0,
-          background: `url(${bgUrl ?? '/invite/hero.jpg'}) ${x ?? 50}% ${y ?? 0}% / cover no-repeat`,
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          objectPosition: `${x ?? 50}% ${y ?? 0}%`,
         }}
       />
       {/* Figma node 32:834 — oval stamp logo exported as one asset. */}
