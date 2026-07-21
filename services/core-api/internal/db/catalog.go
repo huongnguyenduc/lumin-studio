@@ -236,8 +236,14 @@ func (c *Catalog) DeleteCategory(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-// CreateProduct inserts a product and returns the persisted row.
+// CreateProduct inserts a product and returns the persisted row. ProductType (ADR-040) is a Postgres
+// enum with no valid zero value — a caller that leaves it unset (its Go zero value is "") would 22P02
+// rather than fall through to the column's DB default, so this defaults it to 'standard' the same way
+// the DB column would if the column were omitted from the INSERT entirely.
 func (c *Catalog) CreateProduct(ctx context.Context, arg sqlc.InsertProductParams) (sqlc.Product, error) {
+	if arg.ProductType == "" {
+		arg.ProductType = sqlc.ProductTypeStandard
+	}
 	return c.q.InsertProduct(ctx, arg)
 }
 

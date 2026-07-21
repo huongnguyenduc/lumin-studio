@@ -80,8 +80,8 @@ DELETE FROM categories WHERE id = $1 RETURNING id;
 
 -- name: InsertProduct :one
 INSERT INTO products (
-  id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, est_filament_qty, est_print_minutes
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+  id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, est_filament_qty, est_print_minutes, product_type
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 RETURNING *;
 
 -- name: GetProductBySlug :one
@@ -116,7 +116,8 @@ ORDER BY created_at DESC, id DESC;
 -- name: UpdateProduct :one
 UPDATE products
 SET slug = $2, name = $3, description = $4, category_id = $5, base_price = $6,
-    dimensions = $7, material = $8, images = $9, status = $10, est_filament_qty = $11, est_print_minutes = $12
+    dimensions = $7, material = $8, images = $9, status = $10, est_filament_qty = $11, est_print_minutes = $12,
+    product_type = $13
 WHERE id = $1
 RETURNING *;
 

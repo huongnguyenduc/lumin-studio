@@ -14,6 +14,7 @@ export const vi = {
     categories: 'Danh mục',
     collection: 'Bộ sưu tập',
     cart: 'Giỏ',
+    cartWithCount: 'Giỏ hàng, {count} món',
     account: 'Tài khoản',
     searchLabel: 'Tìm kiếm',
     searchPlaceholder: 'Tìm mô hình, gadget, quà tặng…',
@@ -46,6 +47,7 @@ export const vi = {
   },
   product: {
     add: 'Thêm vào giỏ',
+    added: 'Đã thêm',
     buyNow: 'Mua ngay',
     favLabel: 'Lưu {name} vào yêu thích',
     ratingLabel: '{value} trên 5 sao',

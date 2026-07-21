@@ -675,8 +675,8 @@ paths:
         print colors and customization options. A draft/archived product OR an unknown slug both return
         404 NOT_FOUND — the public surface must not distinguish a hidden product from a missing one (no
         catalog-existence leak). Money fields (basePrice, colors[].priceDelta, options[].priceDelta) are
-        raw int-VND; the client formats via @lumin/core (always-must #2). No productType in Phase 1
-        (D-P1-1; Pet Tag activation lands later with its own migration + parity update).
+        raw int-VND; the client formats via @lumin/core (always-must #2). productType (D-P1-1 follow-up,
+        ADR-040) is present on the wire but admin-only — this read never consults it.
       parameters:
         - name: slug
           in: path
@@ -3124,7 +3124,9 @@ components:
       description: >
         Storefront product detail (spec §02). Money fields (basePrice, colors[].priceDelta,
         options[].priceDelta) are raw int-VND — the client formats via @lumin/core (always-must #2).
-        images[0] is the card cover (sprite-first, ADR-007). No productType in Phase 1 (D-P1-1).
+        images[0] is the card cover (sprite-first, ADR-007). productType (D-P1-1 follow-up) is an
+        internal/admin-only field like estFilamentQty/estPrintHours below — present on the wire but
+        not read by the storefront app.
       required:
         - id
         - slug
@@ -3180,6 +3182,13 @@ components:
             Internal print standard (ADR-039 pt 3): estimated machine hours per unit (per-item — one job = one
             physical print). Drives the COGS snapshot's machineVnd = estPrintHours × the primary machine's
             ₫/hour; 0 = no estimate (machineVnd 0). Stored as exact minutes server-side. Not shown to customers.
+        productType:
+          allOf:
+            - $ref: '#/components/schemas/ProductType'
+          description: >
+            Pet Tag marking (ADR-040): `nfc_tag` routes this product's print jobs through the NFC-encode
+            stage (spec §10). Admin editor field; the storefront app never reads it. Always present
+            (DB default `standard`).
         model3dUrl:
           type: string
           description: .glb URL for the on-demand model viewer; empty string when none.
@@ -3779,6 +3788,14 @@ components:
             format: uri
         status:
           $ref: '#/components/schemas/ProductStatus'
+        productType:
+          allOf:
+            - $ref: '#/components/schemas/ProductType'
+          description: >
+            Pet Tag marking (ADR-040): `nfc_tag` routes this product's print jobs through the NFC-encode
+            stage. Admin-only — never exposed on the storefront-facing read (D-P1-1). Optional; the admin
+            editor always sends it explicitly, so omitting it only matters for a bypassed client, where it
+            defaults to `standard`.
 
     ColorInput:
       type: object

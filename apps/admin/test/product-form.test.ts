@@ -26,6 +26,7 @@ const valid: ProductDraft = {
   material: 'PLA',
   status: 'active',
   images: [],
+  productType: 'standard',
 };
 
 describe('validateDraft', () => {
@@ -86,7 +87,32 @@ describe('draft ⇄ wire round-trip', () => {
       material: 'PETG',
       status: 'active',
       images: ['https://cdn.example/a.jpg', 'https://cdn.example/b.jpg'],
+      productType: 'standard',
     });
+  });
+  it('preserves a Pet Tag (nfc_tag) product through the round-trip', () => {
+    const product = {
+      id: 'p1',
+      slug: 'the-nfc-pet',
+      name: 'Thẻ Pet Tag',
+      description: '',
+      categoryId: 'cat-1',
+      basePrice: 150000,
+      dimensions: { w: 30, d: 30, h: 5 },
+      material: 'PETG',
+      model3dUrl: '',
+      images: [],
+      colors: [],
+      options: [],
+      parts: [],
+      status: 'active',
+      reviewCount: 0,
+      createdAt: '2026-07-01T00:00:00Z',
+      productType: 'nfc_tag',
+    } as unknown as components['schemas']['Product'];
+
+    expect(draftFromProduct(product).productType).toBe('nfc_tag');
+    expect(draftToInput(draftFromProduct(product)).productType).toBe('nfc_tag');
   });
   it('a fresh draft defaults to a PLA draft product with no images', () => {
     expect(emptyDraft('cat-9')).toMatchObject({

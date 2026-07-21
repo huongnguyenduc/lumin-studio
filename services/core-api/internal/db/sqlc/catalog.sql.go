@@ -476,8 +476,8 @@ func (q *Queries) InsertPart(ctx context.Context, arg InsertPartParams) (Part, e
 
 const insertProduct = `-- name: InsertProduct :one
 INSERT INTO products (
-  id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, est_filament_qty, est_print_minutes
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+  id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, est_filament_qty, est_print_minutes, product_type
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names, model3d_structured_url, engrave_anchor
 `
 
@@ -495,6 +495,7 @@ type InsertProductParams struct {
 	Status          ProductStatus `json:"status"`
 	EstFilamentQty  int64         `json:"estFilamentQty"`
 	EstPrintMinutes int32         `json:"estPrintMinutes"`
+	ProductType     ProductType   `json:"productType"`
 }
 
 func (q *Queries) InsertProduct(ctx context.Context, arg InsertProductParams) (Product, error) {
@@ -512,6 +513,7 @@ func (q *Queries) InsertProduct(ctx context.Context, arg InsertProductParams) (P
 		arg.Status,
 		arg.EstFilamentQty,
 		arg.EstPrintMinutes,
+		arg.ProductType,
 	)
 	var i Product
 	err := row.Scan(
@@ -1494,7 +1496,8 @@ func (q *Queries) UpdatePart(ctx context.Context, arg UpdatePartParams) (Part, e
 const updateProduct = `-- name: UpdateProduct :one
 UPDATE products
 SET slug = $2, name = $3, description = $4, category_id = $5, base_price = $6,
-    dimensions = $7, material = $8, images = $9, status = $10, est_filament_qty = $11, est_print_minutes = $12
+    dimensions = $7, material = $8, images = $9, status = $10, est_filament_qty = $11, est_print_minutes = $12,
+    product_type = $13
 WHERE id = $1
 RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names, model3d_structured_url, engrave_anchor
 `
@@ -1512,6 +1515,7 @@ type UpdateProductParams struct {
 	Status          ProductStatus `json:"status"`
 	EstFilamentQty  int64         `json:"estFilamentQty"`
 	EstPrintMinutes int32         `json:"estPrintMinutes"`
+	ProductType     ProductType   `json:"productType"`
 }
 
 // UpdateProduct saves the editable fields of a product (P3-j). It deliberately does NOT touch model3d_url:
@@ -1532,6 +1536,7 @@ func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (P
 		arg.Status,
 		arg.EstFilamentQty,
 		arg.EstPrintMinutes,
+		arg.ProductType,
 	)
 	var i Product
 	err := row.Scan(

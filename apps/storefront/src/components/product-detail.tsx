@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -23,7 +23,7 @@ import {
   type ProductDetailView,
 } from '@/lib/product-view';
 import { EngraveField } from './engrave-field';
-import { BagIcon } from './icons';
+import { BagIcon, CheckIcon } from './icons';
 import { Model3dViewer } from './model-3d-viewer';
 
 /**
@@ -259,8 +259,17 @@ export function ProductDetail({
     });
     return true;
   };
+  // Brief "Đã thêm ✓" confirmation on the add-to-cart CTAs (the cart badge already reflects the add,
+  // but a shopper staring at the same PDP needs its own feedback). Purely a swapped label/icon — no
+  // motion beyond the existing hover/focus transitions, so prefers-reduced-motion needs no special case.
+  const [justAdded, setJustAdded] = useState(false);
+  useEffect(() => {
+    if (!justAdded) return;
+    const timer = setTimeout(() => setJustAdded(false), 1500);
+    return () => clearTimeout(timer);
+  }, [justAdded]);
   const handleAddToCart = () => {
-    addCurrentSelectionToCart();
+    if (addCurrentSelectionToCart()) setJustAdded(true);
   };
   // Buy now: same add, then straight to checkout instead of staying on the PDP.
   const handleBuyNow = () => {
@@ -619,12 +628,12 @@ export function ProductDetail({
               <IconButton
                 variant="soft"
                 size="lg"
-                label={tp('add')}
+                label={justAdded ? tp('added') : tp('add')}
                 disabled={!canAdd}
                 onClick={handleAddToCart}
                 className="shrink-0 sm:hidden"
               >
-                <BagIcon aria-hidden="true" />
+                {justAdded ? <CheckIcon aria-hidden="true" /> : <BagIcon aria-hidden="true" />}
               </IconButton>
               <Button
                 variant="outline"
@@ -633,7 +642,12 @@ export function ProductDetail({
                 onClick={handleAddToCart}
                 className="hidden min-w-0 sm:flex sm:flex-none"
               >
-                {quantity === 1 ? (
+                {justAdded ? (
+                  <>
+                    <CheckIcon aria-hidden="true" className="h-4 w-4" />
+                    {tp('added')}
+                  </>
+                ) : quantity === 1 ? (
                   <>
                     {tp('add')}
                     <span aria-hidden="true"> · </span>

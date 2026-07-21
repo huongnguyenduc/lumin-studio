@@ -346,7 +346,7 @@ export interface paths {
         };
         /**
          * Public storefront product detail (active-only) — product + colors + options.
-         * @description Public catalog read (no auth). Returns the ACTIVE product for the slug, bundled with its named print colors and customization options. A draft/archived product OR an unknown slug both return 404 NOT_FOUND — the public surface must not distinguish a hidden product from a missing one (no catalog-existence leak). Money fields (basePrice, colors[].priceDelta, options[].priceDelta) are raw int-VND; the client formats via @lumin/core (always-must #2). No productType in Phase 1 (D-P1-1; Pet Tag activation lands later with its own migration + parity update).
+         * @description Public catalog read (no auth). Returns the ACTIVE product for the slug, bundled with its named print colors and customization options. A draft/archived product OR an unknown slug both return 404 NOT_FOUND — the public surface must not distinguish a hidden product from a missing one (no catalog-existence leak). Money fields (basePrice, colors[].priceDelta, options[].priceDelta) are raw int-VND; the client formats via @lumin/core (always-must #2). productType (D-P1-1 follow-up, ADR-040) is present on the wire but admin-only — this read never consults it.
          */
         get: operations["getProductBySlug"];
         put?: never;
@@ -1660,7 +1660,7 @@ export interface components {
             /** @description Enumerated choices for a `choice` option (ADR-037), each with its own priceDelta. Empty = a legacy toggle priced by this option's priceDelta; non-empty = the customer picks exactly one. */
             choices: components["schemas"]["OptionChoice"][];
         };
-        /** @description Storefront product detail (spec §02). Money fields (basePrice, colors[].priceDelta, options[].priceDelta) are raw int-VND — the client formats via @lumin/core (always-must #2). images[0] is the card cover (sprite-first, ADR-007). No productType in Phase 1 (D-P1-1). */
+        /** @description Storefront product detail (spec §02). Money fields (basePrice, colors[].priceDelta, options[].priceDelta) are raw int-VND — the client formats via @lumin/core (always-must #2). images[0] is the card cover (sprite-first, ADR-007). productType (D-P1-1 follow-up) is an internal/admin-only field like estFilamentQty/estPrintHours below — present on the wire but not read by the storefront app. */
         Product: {
             /** Format: uuid */
             id: string;
@@ -1689,6 +1689,8 @@ export interface components {
              * @description Internal print standard (ADR-039 pt 3): estimated machine hours per unit (per-item — one job = one physical print). Drives the COGS snapshot's machineVnd = estPrintHours × the primary machine's ₫/hour; 0 = no estimate (machineVnd 0). Stored as exact minutes server-side. Not shown to customers.
              */
             estPrintHours?: number;
+            /** @description Pet Tag marking (ADR-040): `nfc_tag` routes this product's print jobs through the NFC-encode stage (spec §10). Admin editor field; the storefront app never reads it. Always present (DB default `standard`). */
+            productType?: components["schemas"]["ProductType"];
             /** @description .glb URL for the on-demand model viewer; empty string when none. */
             model3dUrl: string;
             /** @description .glb URL of the STRUCTURED derivative (f-4) — named objects/materials preserved (unlike the fused model3dUrl), same recenter as model3dUrl. The live viewer loads this when present to recolor each part by object name (f-3), else falls back to model3dUrl. Empty until a model_ingest has produced one. */
@@ -2148,6 +2150,8 @@ export interface components {
             /** @description Shop photos; images[0] is the card cover (ADR-007). Optional; defaults to []. */
             images?: string[];
             status: components["schemas"]["ProductStatus"];
+            /** @description Pet Tag marking (ADR-040): `nfc_tag` routes this product's print jobs through the NFC-encode stage. Admin-only — never exposed on the storefront-facing read (D-P1-1). Optional; the admin editor always sends it explicitly, so omitting it only matters for a bypassed client, where it defaults to `standard`. */
+            productType?: components["schemas"]["ProductType"];
         };
         /** @description Create/replace body for a product colour (P3-j; ADR-039 amendment f-1). The colour's display name + hex are SOURCED from the linked filament (copy-on-write) — the client no longer sends them. priceDelta is int-VND (default 0). */
         ColorInput: {

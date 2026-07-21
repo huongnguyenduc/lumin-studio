@@ -5,14 +5,26 @@ import { useTranslations } from 'next-intl';
 import { SpriteTurntable } from './sprite-turntable';
 import type { Viewer3d } from '@/lib/viewer3d';
 
-/** True when the browser can make a WebGL context (three.js needs it). One-shot, client-only. */
+/** Cached across calls — see hasWebGL. */
+let webglSupportCache: boolean | null = null;
+
+/** True when the browser can make a WebGL context (three.js needs it). Cached: every gallery↔3D
+ *  toggle remounts this component and re-checks, and creating+never-releasing a probe context on
+ *  each check burns into the browser's small concurrent-WebGL-context budget (mobile Safari's cap is
+ *  especially low) — that's what left the viewer permanently blank after a couple of toggles. Probe
+ *  once, explicitly release the test context, and reuse the result. */
 function hasWebGL(): boolean {
+  if (webglSupportCache !== null) return webglSupportCache;
   try {
     const canvas = document.createElement('canvas');
-    return !!(canvas.getContext('webgl') || canvas.getContext('experimental-webgl'));
+    const gl = (canvas.getContext('webgl') ||
+      canvas.getContext('experimental-webgl')) as WebGLRenderingContext | null;
+    webglSupportCache = !!gl;
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
   } catch {
-    return false;
+    webglSupportCache = false;
   }
+  return webglSupportCache;
 }
 
 /**

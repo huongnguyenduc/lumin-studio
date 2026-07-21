@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
+import { useCart } from '@/lib/cart-store';
 import { BagIcon, BellIcon, SearchIcon, UserIcon } from './icons';
 
 /** Client-only "am I logged in" probe (see app/api/session-status). Starts false so a guest never
@@ -86,6 +87,7 @@ function HeaderAction({
 export function SiteHeader() {
   const t = useTranslations('nav');
   const isLoggedIn = useIsLoggedIn();
+  const { count: cartCount } = useCart();
   const links = [
     { href: '/danh-muc', label: t('categories') },
     { href: '/bo-suu-tap', label: t('collection') },
@@ -130,8 +132,20 @@ export function SiteHeader() {
               </HeaderAction>
             ) : null}
 
-            <HeaderAction href="/gio-hang" label={t('cart')} className="hidden md:inline-flex">
+            <HeaderAction
+              href="/gio-hang"
+              label={cartCount > 0 ? t('cartWithCount', { count: cartCount }) : t('cart')}
+              className="hidden md:inline-flex"
+            >
               <BagIcon className="h-[18px] w-[18px]" />
+              {cartCount > 0 ? (
+                <span
+                  aria-hidden="true"
+                  className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-flame px-1 font-mono text-[9px] font-bold text-on-primary ring-2 ring-surface-card"
+                >
+                  {cartCount > 99 ? '99+' : cartCount}
+                </span>
+              ) : null}
             </HeaderAction>
 
             <HeaderAction href="/tai-khoan" label={t('account')} className="hidden md:inline-flex">

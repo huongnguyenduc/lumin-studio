@@ -139,7 +139,15 @@ func productDTO(p sqlc.Product, colors []sqlc.Color, options []sqlc.Option, part
 		CreatedAt:            p.CreatedAt.Time,
 		EstFilamentQty:       int64Ptr(p.EstFilamentQty),          // ADR-039: flat-product standard (admin editor; 0 omitted)
 		EstPrintHours:        estPrintHoursPtr(p.EstPrintMinutes), // ADR-039 pt 3: machine-time standard, minutes→hours (0 omitted)
+		ProductType:          productTypePtr(p.ProductType),       // ADR-040: Pet Tag marking (admin editor field)
 	}, nil
+}
+
+// productTypePtr maps the stored product_type to the wire ProductType. Always non-nil (the column has a
+// DB default) — a pointer only because the schema marks it optional (D-P1-1: storefront ignores it).
+func productTypePtr(t sqlc.ProductType) *api.ProductType {
+	pt := api.ProductType(t)
+	return &pt
 }
 
 // estPrintHoursPtr maps the stored exact minutes back to the wire's estPrintHours (hours), omitting a 0

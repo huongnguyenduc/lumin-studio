@@ -375,6 +375,24 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
       <p className="mt-1 font-mono text-xs text-text-muted">
         {t('summaryItemCount', { count: cartCount(items) })}
       </p>
+      {/* Itemized list so the shopper can double-check what's about to be ordered before paying. */}
+      <ul className="mt-3 flex flex-col gap-2 border-t border-dashed border-border-default pt-3">
+        {items.map((item) => (
+          <li key={item.key} className="flex items-center gap-2">
+            <span className="h-10 w-10 shrink-0 overflow-hidden rounded-sm bg-surface-card">
+              {item.imageSrc ? (
+                <img src={item.imageSrc} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <div className="lumin-dotgrid h-full w-full" aria-hidden="true" />
+              )}
+            </span>
+            <span className="min-w-0 flex-1 text-sm text-text-body">
+              <span className="block truncate">{item.name}</span>
+              <span className="font-mono text-xs text-text-muted">×{item.quantity}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
       <div className="mt-2 flex items-center justify-between gap-3">
         <span className="text-text-body">{t('subtotalLabel')}</span>
         {/* aria-live so assistive tech announces the recomputed total after a quote settles. */}

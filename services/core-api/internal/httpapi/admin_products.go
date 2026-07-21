@@ -108,7 +108,7 @@ func (s *Server) CreateAdminProduct(ctx context.Context, request api.CreateAdmin
 	if request.Body == nil {
 		return api.CreateAdminProduct400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
 	}
-	c, fields, err := cleanProductInput(*request.Body)
+	c, fields, err := cleanProductInput(*request.Body, sqlc.ProductTypeStandard)
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +129,7 @@ func (s *Server) CreateAdminProduct(ctx context.Context, request api.CreateAdmin
 		Status:          c.Status,
 		EstFilamentQty:  c.EstFilamentQty,  // ADR-039 flat-product deduct-on-print standard
 		EstPrintMinutes: c.EstPrintMinutes, // ADR-039 pt 3 machine-time standard (COGS machineVnd)
+		ProductType:     c.ProductType,     // ADR-040 Pet Tag marking
 	})
 	if fields, ok := productWriteConflict(err); ok {
 		return api.CreateAdminProduct400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
@@ -153,14 +154,18 @@ func (s *Server) UpdateAdminProduct(ctx context.Context, request api.UpdateAdmin
 	if request.Body == nil {
 		return api.UpdateAdminProduct400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
 	}
-	c, fields, err := cleanProductInput(*request.Body)
+	repo := db.NewCatalog(s.pool)
+	existing, err := repo.ProductByID(ctx, request.Id)
+	if err != nil {
+		return nil, err // db.ErrNotFound → 404
+	}
+	c, fields, err := cleanProductInput(*request.Body, existing.ProductType)
 	if err != nil {
 		return nil, err
 	}
 	if len(fields) > 0 {
 		return api.UpdateAdminProduct400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
 	}
-	repo := db.NewCatalog(s.pool)
 	p, err := repo.UpdateProduct(ctx, sqlc.UpdateProductParams{
 		ID:              request.Id,
 		Slug:            c.Slug,
@@ -174,6 +179,7 @@ func (s *Server) UpdateAdminProduct(ctx context.Context, request api.UpdateAdmin
 		Status:          c.Status,
 		EstFilamentQty:  c.EstFilamentQty,  // ADR-039 flat-product deduct-on-print standard
 		EstPrintMinutes: c.EstPrintMinutes, // ADR-039 pt 3 machine-time standard (COGS machineVnd)
+		ProductType:     c.ProductType,     // ADR-040 Pet Tag marking
 	})
 	if fields, ok := productWriteConflict(err); ok {
 		return api.UpdateAdminProduct400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
@@ -510,29 +516,37 @@ type cleanedProduct struct {
 	Material        string
 	Images          []byte
 	Status          sqlc.ProductStatus
-	EstFilamentQty  int64 // ADR-039: est filament per unit for a FLAT product (0 = no estimate)
-	EstPrintMinutes int32 // ADR-039 pt 3: est machine time per unit, exact minutes (0 = no estimate)
+	EstFilamentQty  int64            // ADR-039: est filament per unit for a FLAT product (0 = no estimate)
+	EstPrintMinutes int32            // ADR-039 pt 3: est machine time per unit, exact minutes (0 = no estimate)
+	ProductType     sqlc.ProductType // ADR-040: Pet Tag marking. Omitted in the wire body → 'standard'.
 }
 
 // cleanProductInput trims + validates a product create/replace body and marshals its jsonb columns
 // (dimensions, images). It returns the cleaned fields and a per-field error map (empty ⇒ valid). The
 // error return is a server fault (jsonb marshal), never a client error. Money (basePrice) is validated
-// ≥ 0 here so a negative price is a 400 field error, not a 23514 check-violation 500.
-func cleanProductInput(in api.ProductInput) (cleanedProduct, map[string]string, error) {
+// ≥ 0 here so a negative price is a 400 field error, not a 23514 check-violation 500. `currentType` is
+// what productType falls back to when the body omits it (sqlc.ProductTypeStandard on create; the
+// product's existing value on update — a PATCH from a client that doesn't know about Pet Tag marking
+// must never silently reset it back to standard).
+func cleanProductInput(in api.ProductInput, currentType sqlc.ProductType) (cleanedProduct, map[string]string, error) {
 	fields := map[string]string{}
 	c := cleanedProduct{
-		Slug:       strings.TrimSpace(in.Slug),
-		Name:       strings.TrimSpace(in.Name),
-		CategoryID: in.CategoryId,
-		BasePrice:  in.BasePrice,
-		Material:   strings.TrimSpace(in.Material),
-		Status:     sqlc.ProductStatus(in.Status),
+		Slug:        strings.TrimSpace(in.Slug),
+		Name:        strings.TrimSpace(in.Name),
+		CategoryID:  in.CategoryId,
+		BasePrice:   in.BasePrice,
+		Material:    strings.TrimSpace(in.Material),
+		Status:      sqlc.ProductStatus(in.Status),
+		ProductType: currentType, // ADR-040: omitted → keep whatever the caller passed as the fallback
 	}
 	if in.Description != nil {
 		c.Description = strings.TrimSpace(*in.Description)
 	}
 	if in.EstFilamentQty != nil {
 		c.EstFilamentQty = *in.EstFilamentQty // ADR-039 flat-product standard; nil → 0 (no estimate)
+	}
+	if in.ProductType != nil {
+		c.ProductType = sqlc.ProductType(*in.ProductType)
 	}
 
 	if c.Name == "" || utf8.RuneCountInString(c.Name) > maxProductNameChars {
@@ -566,6 +580,9 @@ func cleanProductInput(in api.ProductInput) (cleanedProduct, map[string]string, 
 	}
 	if !isValidProductStatus(c.Status) {
 		fields["status"] = msgKey(codeValidation)
+	}
+	if c.ProductType != sqlc.ProductTypeStandard && c.ProductType != sqlc.ProductTypeNfcTag {
+		fields["productType"] = msgKey(codeValidation)
 	}
 	if in.Dimensions.W <= 0 || in.Dimensions.D <= 0 || in.Dimensions.H <= 0 {
 		fields["dimensions"] = msgKey(codeValidation)
