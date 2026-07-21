@@ -5,6 +5,16 @@
 # REC-06: retry budget — sau 4 lần fail cùng target thì surface cho người thay vì loop vô hạn.
 # REC-02: nhắc cập nhật docs/active-context.md (non-blocking) khi đổi nhiều file source.
 INPUT="$(cat)"
+# Node/pnpm live under ~/.local on this WSL box and aren't on the hook's default
+# (system-only) PATH — without this the TS/JS verify below silently no-ops
+# (command -v pnpm fails), letting "done" through unverified. Prepend the known
+# dirs; harmless where they're already on PATH.
+if ! command -v pnpm >/dev/null 2>&1; then
+  for d in "$HOME/.local/node20/bin" "$HOME/.local/bin"; do
+    [ -x "$d/pnpm" ] && PATH="$d:$PATH"
+  done
+  export PATH
+fi
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 cd "$ROOT" 2>/dev/null || exit 0
 ATT="${VERIFY_ATTEMPTS_FILE:-$ROOT/.claude/.verify-attempts}"

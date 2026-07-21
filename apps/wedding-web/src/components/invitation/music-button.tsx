@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 import { CREAM, INK } from './theme';
 
@@ -9,6 +9,17 @@ import { CREAM, INK } from './theme';
 // rendered as a sibling of `.invite-scale` (not nested inside it) so its
 // `position: fixed` right/bottom offsets anchor to the real viewport corner
 // instead of being distorted by the desktop `zoom` scale on the card.
+//
+// Desktop volume slider — three bugs fixed vs the first pass:
+//  1. It used to vanish the instant you moved off the puck toward it (show was
+//     toggled by the puck's own pointer-enter/leave, with a gap between). Now
+//     puck + slider live in ONE hover container and the slider's padded box
+//     overlaps the puck's top edge, so the cursor never crosses a dead gap.
+//  2. It wasn't centered on the puck (32px slider vs 44px puck, both right:22).
+//     Now the slider is centered on the container/puck.
+//  3. It didn't announce itself when music began. Now it auto-shows for a few
+//     seconds the moment playback starts.
+// Touch devices (no hover) get the plain toggle only.
 export function MusicButton({
   playing,
   onToggle,
@@ -21,55 +32,107 @@ export function MusicButton({
   onVolumeChange: (v: number) => void;
 }) {
   const t = useTranslations('hero');
-  const [showVolume, setShowVolume] = useState(false);
-  const sliderStyle: CSSProperties = {
-    position: 'fixed',
-    right: 22,
-    // sits directly above the 44px puck (bottom 27px) with a small gap.
-    bottom: 'calc(27px + 44px + 10px + env(safe-area-inset-bottom))',
-    zIndex: 20,
-    width: 32,
-    height: 96,
-    borderRadius: 16,
-    background: INK,
-    boxShadow: '0 2px 12px rgba(59,47,39,0.35)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '10px 0',
-    boxSizing: 'border-box',
-    opacity: showVolume ? 1 : 0,
-    pointerEvents: showVolume ? 'auto' : 'none',
-    transition: 'opacity 0.25s ease',
+  const [canHover, setCanHover] = useState(false);
+  const [hovering, setHovering] = useState(false);
+  const [autoShow, setAutoShow] = useState(false);
+  const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wasPlaying = useRef(playing);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(hover: hover) and (pointer: fine)');
+    const sync = () => setCanHover(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+
+  // Music just started → reveal the slider briefly so the guest can dial it down.
+  useEffect(() => {
+    if (playing && !wasPlaying.current && canHover) {
+      setAutoShow(true);
+      if (autoTimer.current) clearTimeout(autoTimer.current);
+      autoTimer.current = setTimeout(() => setAutoShow(false), 3600);
+    }
+    wasPlaying.current = playing;
+  }, [playing, canHover]);
+
+  useEffect(
+    () => () => {
+      if (autoTimer.current) clearTimeout(autoTimer.current);
+    },
+    [],
+  );
+
+  const show = canHover && (hovering || autoShow);
+
+  const popoverStyle: CSSProperties = {
+    position: 'absolute',
+    left: '50%',
+    bottom: '100%',
+    transform: `translateX(-50%) ${show ? 'translateY(0)' : 'translateY(6px)'}`,
+    // Transparent bottom bridge overlaps the puck so moving the cursor from the
+    // puck up to the slider never leaves the hover container.
+    paddingBottom: 12,
+    opacity: show ? 1 : 0,
+    pointerEvents: show ? 'auto' : 'none',
+    transition: 'opacity 0.22s ease, transform 0.22s ease',
   };
+
   return (
-    <>
-      <div style={sliderStyle}>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={Math.round(volume * 100)}
-          onChange={(e) => onVolumeChange(Number(e.target.value) / 100)}
-          title={t('volumeLabel')}
-          aria-label={t('volumeLabel')}
-          style={{
-            // vertical range: rotate a horizontal slider — broadest cross-browser support.
-            writingMode: 'vertical-lr',
-            direction: 'rtl',
-            appearance: 'auto',
-            accentColor: CREAM,
-            width: 20,
-            height: 76,
-            cursor: 'pointer',
-          }}
-        />
-      </div>
+    <div
+      onPointerEnter={() => setHovering(true)}
+      onPointerLeave={() => setHovering(false)}
+      style={{
+        position: 'fixed',
+        right: 22,
+        bottom: 'calc(27px + env(safe-area-inset-bottom))',
+        zIndex: 20,
+        width: 44,
+        height: 44,
+      }}
+    >
+      {canHover ? (
+        <div aria-hidden={!show} style={popoverStyle}>
+          <div
+            style={{
+              width: 32,
+              height: 96,
+              borderRadius: 16,
+              background: INK,
+              boxShadow: '0 2px 12px rgba(59,47,39,0.35)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '10px 0',
+              boxSizing: 'border-box',
+            }}
+          >
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(volume * 100)}
+              onChange={(e) => onVolumeChange(Number(e.target.value) / 100)}
+              title={t('volumeLabel')}
+              aria-label={t('volumeLabel')}
+              style={{
+                // vertical range: rotate a horizontal slider — broadest cross-browser support.
+                writingMode: 'vertical-lr',
+                direction: 'rtl',
+                appearance: 'auto',
+                accentColor: CREAM,
+                width: 20,
+                height: 76,
+                cursor: 'pointer',
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
+
       <button
         type="button"
         onClick={onToggle}
-        onPointerEnter={() => setShowVolume(true)}
-        onPointerLeave={() => setShowVolume(false)}
         title={t('musicToggle')}
         aria-label={t('musicToggle')}
         aria-pressed={playing}
@@ -77,10 +140,8 @@ export function MusicButton({
         style={{
           // Visual puck is 32px (§2.1); border-box + transparent border pads the
           // TAP target to 44px (a11y rule ≥44px) without changing the rendered size.
-          position: 'fixed',
-          right: 22,
-          bottom: 'calc(27px + env(safe-area-inset-bottom))',
-          zIndex: 20,
+          position: 'absolute',
+          inset: 0,
           width: 44,
           height: 44,
           borderRadius: 22,
@@ -143,6 +204,6 @@ export function MusicButton({
           }}
         />
       </button>
-    </>
+    </div>
   );
 }

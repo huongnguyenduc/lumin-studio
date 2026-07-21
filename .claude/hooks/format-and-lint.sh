@@ -2,6 +2,15 @@
 # PostToolUse(Edit|Write) — format + lint file vừa đổi (nhanh, theo từng file).
 # Tự no-op khi tool chưa cài (an toàn trước Phase 0). Exit 2 = đẩy lỗi lint cho Claude tự sửa.
 INPUT="$(cat)"
+# Node lives under ~/.local on this WSL box and isn't on the hook's default
+# (system-only) PATH, so the npm .bin shims can't `exec node`. Prepend the known
+# install dirs so prettier/eslint resolve; harmless where node is already on PATH.
+if ! command -v node >/dev/null 2>&1; then
+  for d in "$HOME/.local/node20/bin" "$HOME/.local/bin"; do
+    [ -x "$d/node" ] && PATH="$d:$PATH"
+  done
+  export PATH
+fi
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 # cd về ROOT (như session-start/pre-compact/verify-before-stop) để `[ -f "$FILE" ]` và formatter (chạy trong
 # cd "$ROOT") cùng một base nếu file_path là tương đối — audit 2026-06 D1-5 (trước đây lệch base, no-op âm thầm).
