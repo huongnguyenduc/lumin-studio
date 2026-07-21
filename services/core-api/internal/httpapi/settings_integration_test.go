@@ -184,10 +184,10 @@ func TestUpdateShippingRulesEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get settings: %v", err)
 	}
-	if fee, err := pricing.ShippingFee(row.ShippingRules, "Nội thành TP.HCM"); err != nil || fee != 25000 {
+	if fee, err := pricing.ShippingFee(row.ShippingRules, "Nội thành TP.HCM", ""); err != nil || fee != 25000 {
 		t.Fatalf("resolver on persisted rules: fee=%d err=%v", fee, err)
 	}
-	if fee, err := pricing.ShippingFee(row.ShippingRules, "Đà Nẵng"); err != nil || fee != 40000 {
+	if fee, err := pricing.ShippingFee(row.ShippingRules, "Đà Nẵng", ""); err != nil || fee != 40000 {
 		t.Fatalf("wildcard fallback on persisted rules: fee=%d err=%v", fee, err)
 	}
 

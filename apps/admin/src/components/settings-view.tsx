@@ -164,8 +164,10 @@ function BankAccountSection({ settings }: { settings: Settings }) {
   );
 }
 
-/** One editable row of the shipping table: province + fee (fee kept as a string for the input). */
-type FeeRow = { province: string; fee: string };
+/** One editable row of the shipping table: province + optional ward + fee (fee kept as a string for
+ *  the input). `ward` narrows the rule to one ward within the province (e.g. the owner marking which
+ *  wards count as inner-city for a different fee) — blank = the whole province. */
+type FeeRow = { province: string; ward: string; fee: string };
 
 function ShippingRulesSection({ settings }: { settings: Settings }) {
   const t = useTranslations('settings');
@@ -173,7 +175,11 @@ function ShippingRulesSection({ settings }: { settings: Settings }) {
   const [pending, startTransition] = useTransition();
   const [status, setStatus] = useState<Status>('idle');
   const [rows, setRows] = useState<FeeRow[]>(() =>
-    shippingRulesOf(settings).map((r) => ({ province: r.province, fee: String(r.fee) })),
+    shippingRulesOf(settings).map((r) => ({
+      province: r.province,
+      ward: r.ward ?? '',
+      fee: String(r.fee),
+    })),
   );
 
   function setRow(i: number, patch: Partial<FeeRow>) {
@@ -181,7 +187,7 @@ function ShippingRulesSection({ settings }: { settings: Settings }) {
     setStatus('idle');
   }
   function addRow() {
-    setRows((prev) => [...prev, { province: '', fee: '' }]);
+    setRows((prev) => [...prev, { province: '', ward: '', fee: '' }]);
     setStatus('idle');
   }
   function removeRow(i: number) {
@@ -192,7 +198,11 @@ function ShippingRulesSection({ settings }: { settings: Settings }) {
   // Client-side gate mirrors the server: every province non-empty, every fee an EXPLICIT non-negative
   // integer. The `r.fee.trim() !== ''` guard matters — Number('') is 0, so a blank field would otherwise
   // silently save as free shipping. The server re-validates (it is the wall); this just stops a bad submit.
-  const parsed = rows.map((r) => ({ province: r.province.trim(), fee: Number(r.fee) }));
+  const parsed = rows.map((r) => ({
+    province: r.province.trim(),
+    ...(r.ward.trim() !== '' ? { ward: r.ward.trim() } : {}),
+    fee: Number(r.fee),
+  }));
   const allValid = rows.every((r, i) => {
     const { province, fee } = parsed[i];
     return province !== '' && r.fee.trim() !== '' && Number.isInteger(fee) && fee >= 0;
@@ -244,6 +254,21 @@ function ShippingRulesSection({ settings }: { settings: Settings }) {
                   {row.province.trim() === WILDCARD_PROVINCE && (
                     <span className="mt-1 block text-xs text-text-muted">
                       {t('shipping.wildcardHint')}
+                    </span>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <Input
+                    label={i === 0 ? t('shipping.colWard') : undefined}
+                    aria-label={i === 0 ? undefined : t('shipping.colWard')}
+                    value={row.ward}
+                    onChange={(e) => setRow(i, { ward: e.target.value })}
+                    placeholder={t('shipping.wardPlaceholder')}
+                    autoComplete="off"
+                  />
+                  {row.ward.trim() !== '' && (
+                    <span className="mt-1 block text-xs text-text-muted">
+                      {t('shipping.wardHint')}
                     </span>
                   )}
                 </div>

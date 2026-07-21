@@ -103,7 +103,7 @@ func (s *Server) CreateOrder(ctx context.Context, req api.CreateOrderRequestObje
 		}
 	}
 
-	fee, err := pricing.ShippingFee(settings.ShippingRules, in.address.Province)
+	fee, err := pricing.ShippingFee(settings.ShippingRules, in.address.Province, in.address.Ward)
 	if err != nil {
 		return nil, err
 	}

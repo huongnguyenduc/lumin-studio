@@ -230,6 +230,11 @@ func TestCreateInboxOrderStartsPaid(t *testing.T) {
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatalf("commit: %v", err)
 	}
+	// An inbox order never passes through ConfirmPaymentTx — CreateOrderTx is its ONLY chance to
+	// populate the fulfillment board (print queue). One item ⇒ one NEED_PRINT card.
+	if n := countRows(t, ctx, pool, `SELECT count(*) FROM print_jobs pj JOIN order_items oi ON oi.id = pj.order_item_id WHERE oi.order_id=$1 AND pj.stage='NEED_PRINT'`, row.ID); n != 1 {
+		t.Fatalf("print_jobs for inbox-born-PAID order = %d, want 1", n)
+	}
 }
 
 func TestCreateOrderRollbackIsAtomic(t *testing.T) {
@@ -281,6 +286,11 @@ func TestConfirmPaymentReconcile(t *testing.T) {
 	}
 	if n := countRows(t, ctx, pool, `SELECT count(*) FROM outbox WHERE aggregate_id=$1 AND event_type='order.paid'`, o.ID); n != 1 {
 		t.Fatalf("order.paid rows = %d, want 1", n)
+	}
+	// The reconcile is the web order's ONLY PAID transition — this is its one chance to populate the
+	// fulfillment board (print queue). One item ⇒ one NEED_PRINT card.
+	if n := countRows(t, ctx, pool, `SELECT count(*) FROM print_jobs pj JOIN order_items oi ON oi.id = pj.order_item_id WHERE oi.order_id=$1 AND pj.stage='NEED_PRINT'`, o.ID); n != 1 {
+		t.Fatalf("print_jobs after reconcile = %d, want 1", n)
 	}
 	back, _ := NewOrders(pool).ByID(ctx, o.ID)
 	if got, err := order.ReplayStatus(back.StatusHistory); err != nil || got != order.Paid {

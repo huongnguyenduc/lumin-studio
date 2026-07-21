@@ -37,6 +37,7 @@ pub fn run_render(
     input: &Path,
     out_dir: &Path,
     part_colors_json: &str,
+    camera_theta_deg: Option<f64>,
     timeout_secs: u64,
 ) -> Result<RenderManifest, ProcessError> {
     let output = Command::new(python)
@@ -50,6 +51,14 @@ pub fn run_render(
         // dodges shell-quoting Vietnamese object names. Empty map ("{}") → the render paints nothing (the
         // pre-f-5 behaviour), so uncoloured sprites and box tuning-runs are unaffected.
         .env("LUMIN_PART_COLORS", part_colors_json)
+        // ADR-038 follow-up: same INHERITED-env path as LUMIN_PART_COLORS — _bl_render.py reads
+        // LUMIN_CAMERA_THETA as the frame-0 azimuth offset (degrees). Absent → the render's own default
+        // (frame-0 at azimuth 0, the pre-existing behaviour).
+        .envs(
+            camera_theta_deg
+                .map(|t| ("LUMIN_CAMERA_THETA", t.to_string()))
+                .into_iter(),
+        )
         .output()
         .map_err(|e| ProcessError::Transient(format!("spawn {python}: {e}")))?;
 
@@ -113,6 +122,7 @@ mod tests {
             Path::new("in.glb"),
             Path::new("/tmp/out"),
             "{}",
+            None,
             900,
         )
         .unwrap_err();
@@ -129,6 +139,7 @@ mod tests {
             Path::new("in.glb"),
             Path::new("/tmp/out"),
             "{}",
+            None,
             900,
         )
         .unwrap_err();
@@ -148,6 +159,7 @@ mod tests {
             Path::new("in.glb"),
             Path::new("/tmp/out"),
             "{}",
+            None,
             1,
         )
         .unwrap_err();

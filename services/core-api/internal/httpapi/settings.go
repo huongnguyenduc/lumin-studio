@@ -300,21 +300,28 @@ const (
 func cleanShippingRules(in []api.ShippingRule) ([]pricing.ShippingRule, map[string]string) {
 	out := make([]pricing.ShippingRule, 0, len(in))
 	fields := map[string]string{}
+	// Uniqueness is per province+ward pair — a province may have one province-only rule (ward "")
+	// PLUS any number of distinct ward-narrowed rules (the owner's inner/outer-city split).
 	seen := make(map[string]struct{}, len(in))
 	for i, r := range in {
 		prov := strings.TrimSpace(r.Province)
+		ward := ""
+		if r.Ward != nil {
+			ward = strings.TrimSpace(*r.Ward)
+		}
 		if prov == "" {
 			fields[fmt.Sprintf("shippingRules.%d.province", i)] = msgKey(codeValidation)
 		} else {
-			if _, dup := seen[prov]; dup {
+			key := prov + "\x00" + ward
+			if _, dup := seen[key]; dup {
 				fields[fmt.Sprintf("shippingRules.%d.province", i)] = msgKey(codeValidation)
 			}
-			seen[prov] = struct{}{}
+			seen[key] = struct{}{}
 		}
 		if r.Fee < 0 {
 			fields[fmt.Sprintf("shippingRules.%d.fee", i)] = msgKey(codeValidation)
 		}
-		out = append(out, pricing.ShippingRule{Province: prov, Fee: r.Fee})
+		out = append(out, pricing.ShippingRule{Province: prov, Ward: ward, Fee: r.Fee})
 	}
 	if len(fields) > 0 {
 		return nil, fields

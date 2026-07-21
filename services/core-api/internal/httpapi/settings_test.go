@@ -194,10 +194,10 @@ func TestCleanShippingRules(t *testing.T) {
 		t.Fatalf("clean wrong: %+v", ok)
 	}
 	blob, _ := json.Marshal(ok)
-	if fee, err := pricing.ShippingFee(blob, "Nội thành TP.HCM"); err != nil || fee != 25000 {
+	if fee, err := pricing.ShippingFee(blob, "Nội thành TP.HCM", ""); err != nil || fee != 25000 {
 		t.Fatalf("resolver on cleaned rules: fee=%d err=%v", fee, err)
 	}
-	if fee, err := pricing.ShippingFee(blob, "Somewhere Else"); err != nil || fee != 40000 {
+	if fee, err := pricing.ShippingFee(blob, "Somewhere Else", ""); err != nil || fee != 40000 {
 		t.Fatalf("wildcard fallback: fee=%d err=%v", fee, err)
 	}
 	// An empty table is valid (owner clearing to rebuild).

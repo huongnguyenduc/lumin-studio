@@ -73,6 +73,10 @@ func (s *Server) QuotePrice(ctx context.Context, request api.QuotePriceRequestOb
 	if request.Body.Province != nil {
 		province = strings.TrimSpace(*request.Body.Province)
 	}
+	ward := ""
+	if request.Body.Ward != nil {
+		ward = strings.TrimSpace(*request.Body.Ward)
+	}
 	var fee int64
 	if province != "" {
 		settings, serr := db.NewSettings(s.pool).Get(ctx)
@@ -88,7 +92,7 @@ func (s *Server) QuotePrice(ctx context.Context, request api.QuotePriceRequestOb
 		// Same authority as the checkout charge path (checkout.go) → the quote's fee/total equal what
 		// POST /orders will charge for this cart+province. No matching rule → 422 NO_SHIPPING_RULE
 		// (errors.go), never a silent ₫0.
-		if fee, serr = pricing.ShippingFee(settings.ShippingRules, province); serr != nil {
+		if fee, serr = pricing.ShippingFee(settings.ShippingRules, province, ward); serr != nil {
 			return nil, serr
 		}
 	}

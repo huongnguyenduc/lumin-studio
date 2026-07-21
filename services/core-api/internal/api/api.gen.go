@@ -1498,6 +1498,9 @@ type PriceQuoteInput struct {
 
 	// Province Optional VN destination province (no district, ADR-017). When present, the response adds shippingFee (resolved server-side from settings.shipping_rules, same authority as checkout) and total (subtotal + shippingFee). Omitted or blank → line/subtotal only, byte-identical to the pre-P2-b response. An unshippable province → 422 NO_SHIPPING_RULE (never a silent ₫0).
 	Province *string `json:"province,omitempty"`
+
+	// Ward Optional VN destination ward, paired with `province`. Lets the resolver match a province+ward shipping rule (owner-configured, e.g. an inner-city ward fee) before falling back to the province-only rule.
+	Ward *string `json:"ward,omitempty"`
 }
 
 // PriceQuoteLine One priced line, positionally aligned with the request item at the same index. Carries the server-derived unit price, its quantity, and the line total — no product ref (map back by index).
@@ -1822,13 +1825,16 @@ type Settings struct {
 	UpdatedAt     time.Time               `json:"updatedAt"`
 }
 
-// ShippingRule One per-region shipping-fee row (settings.shipping_rules). VN address model, no district (ADR-017). Province "*" is the wildcard default fee (applied when no exact province matches).
+// ShippingRule One per-region shipping-fee row (settings.shipping_rules). VN address model, no district (ADR-017). Province "*" is the wildcard default fee (applied when no exact province matches). An optional `ward` narrows a rule to one ward within a province (e.g. the owner marking which wards of "Thành phố Hồ Chí Minh" count as inner-city for a different fee) — resolution tries the province+ward match first, then the province-only rule, then "*".
 type ShippingRule struct {
-	// Fee Shipping fee for this province, raw int VND (≥ 0). Server resolves shippingFee from this table.
+	// Fee Shipping fee for this province(+ward), raw int VND (≥ 0). Server resolves shippingFee from this table.
 	Fee int64 `json:"fee"`
 
 	// Province Destination province name, or "*" for the wildcard default.
 	Province string `json:"province"`
+
+	// Ward Optional — narrows this rule to one ward within `province`. The owner's own call on which wards count as "inner"/"outer" (no public dataset encodes this); absent = the whole province.
+	Ward *string `json:"ward,omitempty"`
 }
 
 // ShippingRulesUpdate Owner-only wholesale replace of the shipping-fee table (PATCH).

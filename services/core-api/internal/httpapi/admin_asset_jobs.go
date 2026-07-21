@@ -115,6 +115,7 @@ func (s *Server) CreateProductAssetJob(ctx context.Context, req api.CreateProduc
 	// owner re-renders after mapping/recolouring to refresh the sprite. model_ingest carries no colours. Reads
 	// before the tx; an unknown product yields empty slices here and still 404s on the insert's FK check below.
 	var partColors map[string]string
+	var cameraTheta *float64
 	if jobType == sqlc.AssetJobTypeSpriteRender {
 		cat := db.NewCatalog(s.pool)
 		parts, e := cat.PartsByProduct(ctx, req.Id)
@@ -132,6 +133,21 @@ func (s *Server) CreateProductAssetJob(ctx context.Context, req api.CreateProduc
 			return api.CreateProductAssetJob400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
 		}
 		partColors = pc
+
+		// ADR-038 follow-up: the sprite's frame-0 azimuth mirrors the owner-saved live-viewer angle, so the
+		// hover/no-WebGL turntable opens facing the same way. Product already read above for parts/colors —
+		// reuse that read for model3d_view instead of a second round-trip.
+		p, e := cat.ProductByID(ctx, req.Id)
+		if e != nil {
+			return nil, e
+		}
+		view, e := model3dViewFromJSON(p.Model3dView)
+		if e != nil {
+			return nil, fmt.Errorf("asset job: decode model3d_view for sprite render: %w", e)
+		}
+		if view != nil {
+			cameraTheta = &view.OrbitTheta
+		}
 	}
 
 	var row sqlc.AssetJob
@@ -143,6 +159,7 @@ func (s *Server) CreateProductAssetJob(ctx context.Context, req api.CreateProduc
 			SourceModelURL: src,
 			SourceVersion:  ver,
 			PartColors:     partColors,
+			CameraTheta:    cameraTheta,
 		})
 		row = created
 		return e

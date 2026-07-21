@@ -173,6 +173,7 @@ mod tests {
             source_model_url: url.into(),
             source_version: "cafebabe".into(),
             part_colors: Default::default(),
+            camera_theta: Default::default(),
         }
     }
 
@@ -234,6 +235,7 @@ mod tests {
             source_model_url: verify.output_url("test/box.obj"),
             source_version: "e2etest".into(),
             part_colors: Default::default(),
+            camera_theta: Default::default(),
         };
         let p = ModelIngestProcessor {
             store: Some(AssetStore::new(cfg()).unwrap()),

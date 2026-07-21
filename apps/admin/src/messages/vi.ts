@@ -619,9 +619,13 @@ export const vi = {
     shipping: {
       title: 'Khu vực giao hàng',
       subtitle: 'Phí ship theo khu vực — máy chủ tính phí từ bảng này khi khách đặt.',
-      colProvince: 'Khu vực',
+      colProvince: 'Tỉnh/thành',
+      colWard: 'Phường/xã (tuỳ chọn)',
       colFee: 'Phí ship',
-      provincePlaceholder: 'Ví dụ: Nội thành TP.HCM',
+      provincePlaceholder: 'Ví dụ: Tp Hồ Chí Minh',
+      wardPlaceholder: 'Để trống = áp dụng cả tỉnh/thành',
+      wardHint:
+        'Chỉ áp dụng cho phường/xã này — mức phí của cả tỉnh/thành (nếu có) dùng cho phần còn lại.',
       wildcardHint: 'Mức mặc định, áp dụng cho khu vực chưa có trong bảng.',
       add: '+ Thêm khu vực',
       remove: 'Xoá khu vực này',

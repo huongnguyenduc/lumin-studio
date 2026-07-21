@@ -294,37 +294,48 @@ func addChecked(a, b int64) (int64, bool) {
 
 // ShippingRule is one row of the settings.shipping_rules jsonb table: a province-keyed fee, VN
 // address model with NO district (ADR-017). Province "*" is the wildcard default (applied when no
-// exact province matches), letting the admin set one flat fallback fee.
+// exact province matches), letting the admin set one flat fallback fee. An optional Ward narrows a
+// rule to one ward within Province — the owner's own call on which wards get a different fee (e.g.
+// "inner" vs "outer" wards of a merged-in mega-city); no public dataset encodes that boundary.
 type ShippingRule struct {
 	Province string `json:"province"`
+	Ward     string `json:"ward,omitempty"`
 	Fee      int64  `json:"fee"`
 }
 
-// ShippingFee resolves the destination province to a fee over the raw settings.shipping_rules jsonb
-// (server computes shippingFee, spec §278). Exact province match wins; a "*" wildcard rule is the
-// fallback. Returns ErrNoShippingRule when neither matches (the admin configured no rule for this
-// province and no default) so an order can never land with a silently-zero shipping fee — the
-// handler surfaces it as 422. A negative or malformed fee is rejected (defense: jsonb has no CHECK).
-func ShippingFee(rulesJSON []byte, province string) (int64, error) {
+// ShippingFee resolves the destination province+ward to a fee over the raw settings.shipping_rules
+// jsonb (server computes shippingFee, spec §278). Resolution, most specific first: an exact
+// province+ward rule, then a province-only rule (empty Ward), then the "*" wildcard. Returns
+// ErrNoShippingRule when nothing matches (the admin configured no rule for this destination and no
+// default) so an order can never land with a silently-zero shipping fee — the handler surfaces it as
+// 422. A negative or malformed fee is rejected (defense: jsonb has no CHECK).
+func ShippingFee(rulesJSON []byte, province, ward string) (int64, error) {
 	var rules []ShippingRule
 	if len(rulesJSON) > 0 {
 		if err := json.Unmarshal(rulesJSON, &rules); err != nil {
 			return 0, fmt.Errorf("%w: %v", ErrMalformedShippingRules, err)
 		}
 	}
-	want := strings.TrimSpace(province)
-	fallback := int64(-1)
-	haveFallback := false
+	wantProvince := strings.TrimSpace(province)
+	wantWard := strings.TrimSpace(ward)
+	fallback, haveFallback := int64(-1), false
+	provinceOnly, haveProvinceOnly := int64(-1), false
 	for _, r := range rules {
 		if r.Fee < 0 {
 			return 0, fmt.Errorf("%w: negative fee for %q", ErrMalformedShippingRules, r.Province)
 		}
-		switch strings.TrimSpace(r.Province) {
-		case want:
+		rProvince, rWard := strings.TrimSpace(r.Province), strings.TrimSpace(r.Ward)
+		switch {
+		case rProvince == wantProvince && rWard != "" && rWard == wantWard:
 			return r.Fee, nil
-		case "*":
+		case rProvince == wantProvince && rWard == "":
+			provinceOnly, haveProvinceOnly = r.Fee, true
+		case rProvince == "*":
 			fallback, haveFallback = r.Fee, true
 		}
+	}
+	if haveProvinceOnly {
+		return provinceOnly, nil
 	}
 	if haveFallback {
 		return fallback, nil

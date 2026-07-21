@@ -282,6 +282,14 @@ func CreateOrderTx(ctx context.Context, tx pgx.Tx, in CreateOrderInput) (sqlc.Or
 		}
 	}
 
+	// An inbox order is born PAID (order.InitialStatusForChannel above) — it never passes through
+	// ConfirmPaymentTx, so THIS is its only chance to populate the fulfillment board.
+	if status == order.Paid {
+		if err := NewJobs(tx).CreatePrintJobsForOrder(ctx, row.ID); err != nil {
+			return sqlc.Order{}, err
+		}
+	}
+
 	payload, err := json.Marshal(orderCreatedPayload{
 		OrderID: row.ID, Code: row.Code, Channel: row.Channel,
 		Status: row.Status, CustomerID: row.CustomerID, Total: row.Total,
@@ -318,6 +326,12 @@ func ConfirmPaymentTx(ctx context.Context, tx pgx.Tx, in ConfirmPaymentInput) (s
 		Role: order.RoleOwner, ByUser: in.ByUser, At: in.At,
 	})
 	if err != nil {
+		return sqlc.Order{}, err
+	}
+
+	// The fulfillment board (P3-f/P3-h) has nothing to show for this order until now — this is the
+	// web reconcile's only PAID transition (mirrors the inbox-born-PAID seam in CreateOrderTx).
+	if err := NewJobs(tx).CreatePrintJobsForOrder(ctx, row.ID); err != nil {
 		return sqlc.Order{}, err
 	}
 

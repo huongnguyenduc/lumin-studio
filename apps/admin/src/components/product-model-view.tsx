@@ -10,6 +10,7 @@ import {
   model3dViewToAttrs,
   pickedObjectName,
   pickedAnchor,
+  loadModelViewer,
 } from '@/lib/model-view';
 import { saveModelView, saveEngraveAnchor } from '@/lib/product-actions';
 
@@ -113,7 +114,7 @@ export function ProductModelView({
   useEffect(() => {
     if (!webglOk || !model3dUrl) return;
     let alive = true;
-    import('@google/model-viewer')
+    loadModelViewer()
       .then(() => alive && setReady(true))
       .catch(() => alive && setFailed(true));
     return () => {
@@ -249,7 +250,7 @@ export function PartObjectPicker({
   useEffect(() => {
     if (!webglOk) return;
     let alive = true;
-    import('@google/model-viewer')
+    loadModelViewer()
       .then(() => alive && setReady(true))
       .catch(() => alive && setFailed(true));
     return () => {
@@ -348,7 +349,7 @@ export function EngraveAnchorPicker({
   useEffect(() => {
     if (!webglOk || !model3dUrl) return;
     let alive = true;
-    import('@google/model-viewer')
+    loadModelViewer()
       .then(() => alive && setReady(true))
       .catch(() => alive && setFailed(true));
     return () => {
