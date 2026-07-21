@@ -56,11 +56,12 @@ impl Processor for SpriteRenderProcessor {
 
         // Write source → run Blender turntable + tile → read the WebP on a BLOCKING thread, so the async
         // runtime (and the JetStream InProgress heartbeat on it) is not stalled during a long GPU render.
-        let (python, script, job_id, timeout_secs) = (
+        let (python, script, job_id, timeout_secs, camera_theta) = (
             self.python.clone(),
             self.script.clone(),
             job.asset_job_id.clone(),
             self.timeout_secs,
+            job.camera_theta,
         );
         let sprite = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, ProcessError> {
             let dir = TempJobDir::create("lumin-sprite", &job_id)
@@ -68,8 +69,15 @@ impl Processor for SpriteRenderProcessor {
             let input = dir.path().join(format!("input.{ext}"));
             std::fs::write(&input, &src)
                 .map_err(|e| ProcessError::Transient(format!("write source: {e}")))?;
-            let manifest =
-                run_render(&python, &script, &input, dir.path(), &part_colors_json, timeout_secs)?; // already-classified ProcessError
+            let manifest = run_render(
+                &python,
+                &script,
+                &input,
+                dir.path(),
+                &part_colors_json,
+                camera_theta,
+                timeout_secs,
+            )?; // already-classified ProcessError
             let sprite = std::fs::read(&manifest.sprite_path)
                 .map_err(|e| ProcessError::Transient(format!("read sprite: {e}")))?;
             tracing::info!(job = %job_id, frames = manifest.frames, cols = manifest.cols, "sprite rendered");
@@ -116,6 +124,7 @@ mod tests {
             source_model_url: "https://s3/lumin-assets/x.glb".into(),
             source_version: "cafebabe".into(),
             part_colors: Default::default(),
+            camera_theta: Default::default(),
         };
         let err = p.process(&job).await.unwrap_err();
         assert!(matches!(err, ProcessError::Transient(_)), "got {err:?}");

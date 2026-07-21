@@ -122,30 +122,52 @@ func TestPriceItemOverflow(t *testing.T) {
 
 func TestShippingFee(t *testing.T) {
 	rules := []byte(`[{"province":"Hà Nội","fee":25000},{"province":"*","fee":40000}]`)
-	if fee, err := ShippingFee(rules, "Hà Nội"); err != nil || fee != 25_000 {
+	if fee, err := ShippingFee(rules, "Hà Nội", ""); err != nil || fee != 25_000 {
 		t.Fatalf("exact: fee=%d err=%v, want 25000 nil", fee, err)
 	}
-	if fee, err := ShippingFee(rules, "Cà Mau"); err != nil || fee != 40_000 {
+	if fee, err := ShippingFee(rules, "Cà Mau", ""); err != nil || fee != 40_000 {
+		t.Fatalf("wildcard fallback: fee=%d err=%v, want 40000 nil", fee, err)
+	}
+}
+
+// A province+ward rule wins over the province-only rule, which wins over "*" — the owner's own call
+// on which wards (e.g. of a merged-in mega-city) get a different fee.
+func TestShippingFeeWardOverride(t *testing.T) {
+	rules := []byte(`[
+		{"province":"Thành phố Hồ Chí Minh","ward":"Phường Bến Nghé","fee":15000},
+		{"province":"Thành phố Hồ Chí Minh","fee":30000},
+		{"province":"*","fee":40000}
+	]`)
+	if fee, err := ShippingFee(rules, "Thành phố Hồ Chí Minh", "Phường Bến Nghé"); err != nil || fee != 15_000 {
+		t.Fatalf("ward match: fee=%d err=%v, want 15000 nil", fee, err)
+	}
+	if fee, err := ShippingFee(rules, "Thành phố Hồ Chí Minh", "Phường Khác"); err != nil || fee != 30_000 {
+		t.Fatalf("province-only fallback: fee=%d err=%v, want 30000 nil", fee, err)
+	}
+	if fee, err := ShippingFee(rules, "Thành phố Hồ Chí Minh", ""); err != nil || fee != 30_000 {
+		t.Fatalf("no ward given: fee=%d err=%v, want 30000 nil", fee, err)
+	}
+	if fee, err := ShippingFee(rules, "Cà Mau", ""); err != nil || fee != 40_000 {
 		t.Fatalf("wildcard fallback: fee=%d err=%v, want 40000 nil", fee, err)
 	}
 }
 
 func TestShippingFeeNoMatch(t *testing.T) {
 	rules := []byte(`[{"province":"Hà Nội","fee":25000}]`) // no "*" default
-	if _, err := ShippingFee(rules, "Cà Mau"); !errors.Is(err, ErrNoShippingRule) {
+	if _, err := ShippingFee(rules, "Cà Mau", ""); !errors.Is(err, ErrNoShippingRule) {
 		t.Fatalf("err = %v, want ErrNoShippingRule", err)
 	}
 	// The default-empty settings.shipping_rules jsonb (`[]`) also has no match.
-	if _, err := ShippingFee([]byte(`[]`), "Hà Nội"); !errors.Is(err, ErrNoShippingRule) {
+	if _, err := ShippingFee([]byte(`[]`), "Hà Nội", ""); !errors.Is(err, ErrNoShippingRule) {
 		t.Fatalf("empty rules err = %v, want ErrNoShippingRule", err)
 	}
 }
 
 func TestShippingFeeRejectsMalformed(t *testing.T) {
-	if _, err := ShippingFee([]byte(`{not json`), "Hà Nội"); !errors.Is(err, ErrMalformedShippingRules) {
+	if _, err := ShippingFee([]byte(`{not json`), "Hà Nội", ""); !errors.Is(err, ErrMalformedShippingRules) {
 		t.Fatalf("bad json err = %v, want ErrMalformedShippingRules", err)
 	}
-	if _, err := ShippingFee([]byte(`[{"province":"Hà Nội","fee":-1}]`), "Hà Nội"); !errors.Is(err, ErrMalformedShippingRules) {
+	if _, err := ShippingFee([]byte(`[{"province":"Hà Nội","fee":-1}]`), "Hà Nội", ""); !errors.Is(err, ErrMalformedShippingRules) {
 		t.Fatalf("negative fee err = %v, want ErrMalformedShippingRules", err)
 	}
 }

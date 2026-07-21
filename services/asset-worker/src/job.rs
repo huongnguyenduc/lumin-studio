@@ -18,8 +18,9 @@ pub enum JobType {
 /// manipulates them, so a uuid dep would be dead weight (ponytail).
 // allow(dead_code): every field is the deserialized WIRE CONTRACT (serde populates all of them and the
 // parse tests assert on them). asset_job_id is echoed on the callback path; job_type/source_model_url/
-// source_version drive dispatch + fetch in the processors; part_colors is read by sprite_render. product_id
-// is carried for completeness/logging and may be unread — the allow keeps that from warning.
+// source_version drive dispatch + fetch in the processors; part_colors/camera_theta are read by
+// sprite_render. product_id is carried for completeness/logging and may be unread — the allow keeps
+// that from warning.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,6 +35,12 @@ pub struct AssetJob {
     /// to an empty map — the wire contract only grows for a sprite that has per-part colours.
     #[serde(default)]
     pub part_colors: HashMap<String, String>,
+    /// ADR-038 follow-up: the owner-saved live-viewer azimuth (degrees) a sprite_render job starts its
+    /// frame-0 turntable angle from, so the sprite opens facing the same way as the aligned viewer.
+    /// `None` for model_ingest and for a product with no saved view yet — the worker keeps its own
+    /// default (frame-0 at azimuth 0).
+    #[serde(default)]
+    pub camera_theta: Option<f64>,
 }
 
 impl AssetJob {
@@ -99,5 +106,22 @@ mod tests {
         // what keeps the wire contract backward-compatible; the older CREATED const must still parse.
         let j = AssetJob::parse(CREATED.as_bytes()).unwrap();
         assert!(j.part_colors.is_empty());
+    }
+
+    #[test]
+    fn parses_sprite_render_with_camera_theta() {
+        // ADR-038 follow-up: the owner-saved live-viewer azimuth (camelCase `cameraTheta`). Pins against
+        // db/jobs.go `assetJobCreatedPayload`.
+        let body = r#"{"assetJobId":"a","productId":"b","jobType":"sprite_render","sourceModelUrl":"u","sourceVersion":"v","cameraTheta":42.5}"#;
+        let j = AssetJob::parse(body.as_bytes()).expect("parse sprite payload with cameraTheta");
+        assert_eq!(j.camera_theta, Some(42.5));
+    }
+
+    #[test]
+    fn camera_theta_defaults_none_when_absent() {
+        // No saved view yet (or a model_ingest payload) has NO cameraTheta key → serde default → None, and
+        // the older CREATED const must still parse (backward-compatible wire contract).
+        let j = AssetJob::parse(CREATED.as_bytes()).unwrap();
+        assert_eq!(j.camera_theta, None);
     }
 }

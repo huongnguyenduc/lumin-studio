@@ -2,6 +2,29 @@ import type { components } from '@lumin/api-client';
 
 type Model3dView = components['schemas']['Model3dView'];
 
+// A product edit page can render more than one <model-viewer> section at once (align-view, part-object
+// picker, engrave-anchor picker) — each used to run its own `import('@google/model-viewer')`. The
+// package registers the custom element via `customElements.define('model-viewer', ...)` as a load-time
+// side effect, which throws NotSupportedError on a second registration; in Next.js dev (Fast Refresh
+// re-runs module init) that throw lands in each call site's own `.catch()` and silently flips it to a
+// "failed to load" state — the model just doesn't render, with no visible reason why. One shared,
+// already-registered check fixes it for every call site at once instead of guarding three separately.
+let modelViewerLoad: Promise<void> | null = null;
+export function loadModelViewer(): Promise<void> {
+  if (typeof customElements !== 'undefined' && customElements.get('model-viewer')) {
+    return Promise.resolve();
+  }
+  if (!modelViewerLoad) {
+    modelViewerLoad = import('@google/model-viewer')
+      .then(() => undefined)
+      .catch((err) => {
+        modelViewerLoad = null; // let a real failure (bad chunk/network) be retried, not cached forever
+        throw err;
+      });
+  }
+  return modelViewerLoad;
+}
+
 // model-viewer's getCameraOrbit() returns theta/phi in RADIANS and radius in METRES, while the ADR-038
 // Model3dView (and the <model-viewer> camera-orbit attribute) uses degrees + percent-of-ideal, and
 // camera-target uses metres. These pure helpers convert both ways and clamp to the contract ranges — a

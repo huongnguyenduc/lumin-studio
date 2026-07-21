@@ -28,11 +28,16 @@ export type QuoteResult =
   | { ok: false; code: 'unavailable' | 'no_shipping_rule' | 'error' };
 
 /**
- * Price a cart server-side. `province` (optional, checkout only) folds in the shipping fee + total via
- * the SAME authority as order creation (POST /orders) — never client math. Omitted/blank → subtotal
- * only (byte-identical to the cart page's quote).
+ * Price a cart server-side. `province`/`ward` (optional, checkout only) fold in the shipping fee +
+ * total via the SAME authority as order creation (POST /orders) — never client math. `ward` lets the
+ * resolver match an owner-configured ward-narrowed shipping rule (e.g. inner-city fee) before falling
+ * back to the province-only rule. Omitted/blank → subtotal only (byte-identical to the cart page's quote).
  */
-export async function quoteCart(items: QuoteItem[], province?: string): Promise<QuoteResult> {
+export async function quoteCart(
+  items: QuoteItem[],
+  province?: string,
+  ward?: string,
+): Promise<QuoteResult> {
   // An empty cart has a zero subtotal without a round-trip (the endpoint rejects an empty items[]).
   if (items.length === 0) return { ok: true, lines: [], subtotal: 0 };
   // Defence in depth: the store caps the cart at MAX_LINES, but never send a payload the endpoint would
@@ -40,10 +45,15 @@ export async function quoteCart(items: QuoteItem[], province?: string): Promise<
   if (items.length > MAX_LINES) return { ok: false, code: 'error' };
 
   const trimmedProvince = province?.trim();
+  const trimmedWard = ward?.trim();
   try {
     const client = createApiClient({ baseUrl: coreApiBaseUrl() });
     const { data, error, response } = await client.POST('/price/quote', {
-      body: { items, ...(trimmedProvince ? { province: trimmedProvince } : {}) },
+      body: {
+        items,
+        ...(trimmedProvince ? { province: trimmedProvince } : {}),
+        ...(trimmedWard ? { ward: trimmedWard } : {}),
+      },
     });
     if (data) {
       return {

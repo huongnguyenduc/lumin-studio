@@ -115,6 +115,7 @@ mod tests {
             source_model_url: "https://s3/lumin-assets/src.glb".into(),
             source_version: "v1".into(),
             part_colors: Default::default(),
+            camera_theta: Default::default(),
         }
     }
 

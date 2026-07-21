@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Checkbox, Input, PriceTag, cn } from '@lumin/ui';
+import { provinces as vnProvinces, getWardsByProvince } from 'vietnam-address-data';
 import { cartCount, cartQuoteItems, cartSignature, selectedItems } from '@/lib/cart';
 import { useCart } from '@/lib/cart-store';
 import { quoteCart } from '@/lib/quote';
@@ -45,13 +46,15 @@ const QUOTE_DEBOUNCE_MS = 350;
 type QuoteState =
   | { status: 'idle' }
   | { status: 'loading' }
-  // A resolved quote records the cart `signature` + `province` it priced; it is applied only while BOTH
-  // still match the current form, so a superseded quote never paints a stale total. (Two fields, not one
-  // concatenated key: engrave text in the signature can contain spaces, so no separator is collision-free.)
+  // A resolved quote records the cart `signature` + `province` + `ward` it priced; it is applied only
+  // while ALL still match the current form, so a superseded quote never paints a stale total. (Separate
+  // fields, not one concatenated key: engrave text in the signature can contain spaces, so no separator
+  // is collision-free.)
   | {
       status: 'ok';
       signature: string;
       province: string;
+      ward: string;
       subtotal: number;
       shippingFee?: number;
       total?: number;
@@ -60,6 +63,7 @@ type QuoteState =
       status: 'error';
       signature: string;
       province: string;
+      ward: string;
       code: 'unavailable' | 'no_shipping_rule' | 'error';
     };
 
@@ -119,8 +123,12 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
   const refundHeadingId = useId();
   const engraveHeadingId = useId();
   const provinceFieldId = useId();
+  const wardFieldId = useId();
+  const selectedProvinceId = vnProvinces.find((p) => p.name === form.province)?.id;
+  const wardOptions = selectedProvinceId ? getWardsByProvince(selectedProvinceId) : [];
   const signature = cartSignature(items);
   const province = form.province.trim();
+  const ward = form.ward.trim();
 
   // A cart line is "personalized" iff it carries non-blank engraving — the exact predicate the server
   // uses (checkout.go personalizationFrom: a personalization whose TrimSpace(text) != ""). Mirroring the
@@ -146,7 +154,11 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
     let cancelled = false;
     setQuote({ status: 'loading' });
     const timer = setTimeout(async () => {
-      const result = await quoteCart(cartQuoteItems(items), province || undefined);
+      const result = await quoteCart(
+        cartQuoteItems(items),
+        province || undefined,
+        ward || undefined,
+      );
       if (cancelled) return;
       setQuote(
         result.ok
@@ -154,23 +166,24 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
               status: 'ok',
               signature,
               province,
+              ward,
               subtotal: result.subtotal,
               shippingFee: result.shippingFee,
               total: result.total,
             }
-          : { status: 'error', signature, province, code: result.code },
+          : { status: 'error', signature, province, ward, code: result.code },
       );
     }, QUOTE_DEBOUNCE_MS);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-    // Keyed on signature + province (both stable strings); the new-items/province closure is current
-    // because a change to either follows a re-render. retryNonce re-runs the same quote after a failure.
-  }, [signature, province, retryNonce]);
+    // Keyed on signature + province + ward (all stable strings); the new-items/province/ward closure is
+    // current because a change to any follows a re-render. retryNonce re-runs the same quote after a failure.
+  }, [signature, province, ward, retryNonce]);
 
-  const matches = (q: { signature: string; province: string }) =>
-    q.signature === signature && q.province === province;
+  const matches = (q: { signature: string; province: string; ward: string }) =>
+    q.signature === signature && q.province === province && q.ward === ward;
   const okQuote = quote.status === 'ok' && matches(quote) ? quote : null;
   const errQuote = quote.status === 'error' && matches(quote) ? quote : null;
 
@@ -342,7 +355,7 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
     );
   }
 
-  const { shippableProvinces, refundPolicy, bankAccount, vietqrUrl } = config.config;
+  const { refundPolicy, bankAccount, vietqrUrl } = config.config;
   const provinceChosen = province !== '';
   const total = okQuote?.total;
   const quotePending = provinceChosen && !okQuote && !errQuote;
@@ -617,7 +630,11 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
               <select
                 id={provinceFieldId}
                 value={form.province}
-                onChange={(e) => setField('province', e.target.value)}
+                onChange={(e) => {
+                  setField('province', e.target.value);
+                  // A ward belongs to exactly one province — switching province invalidates the old pick.
+                  setField('ward', '');
+                }}
                 aria-invalid={errors.province ? true : undefined}
                 aria-describedby={errors.province ? `${provinceFieldId}-desc` : undefined}
                 className={cn(
@@ -627,9 +644,9 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
                 )}
               >
                 <option value="">{t('provincePlaceholder')}</option>
-                {shippableProvinces.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
+                {vnProvinces.map((p) => (
+                  <option key={p.id} value={p.name}>
+                    {p.name}
                   </option>
                 ))}
               </select>
@@ -639,14 +656,40 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
                 </p>
               ) : null}
             </div>
-            <Input
-              label={t('wardLabel')}
-              autoComplete="address-level2"
-              placeholder={t('wardPlaceholder')}
-              value={form.ward}
-              onChange={(e) => setField('ward', e.target.value)}
-              error={fieldError('ward')}
-            />
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor={wardFieldId}
+                className="font-display text-sm font-medium text-text-strong"
+              >
+                {t('wardLabel')}
+              </label>
+              <select
+                id={wardFieldId}
+                value={form.ward}
+                onChange={(e) => setField('ward', e.target.value)}
+                disabled={!selectedProvinceId}
+                aria-invalid={errors.ward ? true : undefined}
+                aria-describedby={errors.ward ? `${wardFieldId}-desc` : undefined}
+                className={cn(
+                  'h-11 rounded-md border bg-surface-card px-3 font-body text-text-strong',
+                  'focus:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky',
+                  'disabled:cursor-not-allowed disabled:opacity-60',
+                  errors.ward ? 'border-danger' : 'border-border-default',
+                )}
+              >
+                <option value="">{t('wardPlaceholder')}</option>
+                {wardOptions.map((w) => (
+                  <option key={w.id} value={w.name}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+              {errors.ward ? (
+                <p id={`${wardFieldId}-desc`} role="alert" className="text-sm text-danger">
+                  {t(`errors.${errors.ward}`)}
+                </p>
+              ) : null}
+            </div>
             <Input
               label={t('streetLabel')}
               autoComplete="address-line1"

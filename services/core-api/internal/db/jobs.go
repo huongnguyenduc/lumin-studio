@@ -100,6 +100,32 @@ func (j *Jobs) CreatePrintJob(ctx context.Context, arg sqlc.InsertPrintJobParams
 	return j.q.InsertPrintJob(ctx, arg)
 }
 
+// CreatePrintJobsForOrder spawns one NEED_PRINT print-queue card per line item of an order that has
+// just become PAID — the fulfillment board (P3-f/P3-h) has nothing to show until this runs, so it
+// must fire on EVERY path an order can reach PAID: the web reconcile (ConfirmPaymentTx) and an inbox
+// order born already PAID (CreateOrderTx). Call it within the SAME tx as that transition, after the
+// order's items are committed — ListOrderItems reads them back (a tx sees its own writes) so
+// color_name is resolved the identical way the admin order-detail view already does, no separate
+// colour lookup to keep in sync. printer/eta are left unset (nil/zero); the owner fills those in from
+// the board once printing starts.
+func (j *Jobs) CreatePrintJobsForOrder(ctx context.Context, orderID uuid.UUID) error {
+	items, err := j.q.ListOrderItems(ctx, orderID)
+	if err != nil {
+		return fmt.Errorf("print jobs: list items for order %s: %w", orderID, err)
+	}
+	for _, it := range items {
+		if _, err := j.q.InsertPrintJob(ctx, sqlc.InsertPrintJobParams{
+			ID:          uuid.New(),
+			OrderItemID: it.ID,
+			Stage:       sqlc.PrintStageNEEDPRINT,
+			ColorName:   it.ColorName,
+		}); err != nil {
+			return fmt.Errorf("print jobs: insert for order item %s: %w", it.ID, err)
+		}
+	}
+	return nil
+}
+
 // AdvancePrintStage moves a print job to a new queue stage (staff drag-drop) and returns the row,
 // or ErrNotFound. The print queue's stages are intentionally finer-grained than order status (D6),
 // so there is no order-state guard here — staff drive the board directly.
@@ -179,6 +205,12 @@ const eventAssetJobCreated = "asset_job.created"
 // the SAME colours it was created with, never a fresh read of live catalog (idempotency; oracle D-E). It
 // is `omitempty`, so a model_ingest job (and a sprite with no mapped part-colours) emits the exact same
 // bytes as before — the wire contract only grows for a sprite that actually has per-part colours.
+// CameraTheta (ADR-038 follow-up) is the owner-saved model-viewer azimuth (degrees, same convention as
+// Model3dView.orbitTheta) the sprite_render worker starts its frame-0 turntable angle from, so the
+// hover/no-WebGL sprite opens facing the SAME way the owner aligned the live viewer to. Frozen at
+// enqueue from the product's CURRENT model3dView, same idempotency rationale as PartColors: a
+// redelivered/old job renders at the SAME angle it was created with, not a live re-read. Nil when the
+// owner hasn't saved a view yet — the worker keeps its own default (frame-0 at azimuth 0).
 type assetJobCreatedPayload struct {
 	AssetJobID     uuid.UUID         `json:"assetJobId"`
 	ProductID      uuid.UUID         `json:"productId"`
@@ -186,6 +218,7 @@ type assetJobCreatedPayload struct {
 	SourceModelURL string            `json:"sourceModelUrl"`
 	SourceVersion  string            `json:"sourceVersion"`
 	PartColors     map[string]string `json:"partColors,omitempty"`
+	CameraTheta    *float64          `json:"cameraTheta,omitempty"`
 }
 
 // CreateAssetJobInput is the server-authoritative input to enqueue a render/ingest job. SourceModelURL
@@ -201,6 +234,9 @@ type CreateAssetJobInput struct {
 	// model_ingest and for a sprite whose parts have no colours yet. The caller (the HTTP handler) builds
 	// and hex-validates it from the product's current parts+colours before the tx.
 	PartColors map[string]string
+	// CameraTheta is the product's saved model3dView.orbitTheta for a sprite_render job (ADR-038
+	// follow-up); nil for model_ingest and for a product with no saved view yet.
+	CameraTheta *float64
 }
 
 // CreateAssetJobTx inserts an asset_jobs row (status 'queued') AND enqueues an `asset_job.created`
@@ -235,7 +271,8 @@ func CreateAssetJobTx(ctx context.Context, tx pgx.Tx, in CreateAssetJobInput) (s
 		JobType:        row.JobType,
 		SourceModelURL: row.SourceModelUrl,
 		SourceVersion:  row.SourceVersion,
-		PartColors:     in.PartColors, // omitempty → absent for model_ingest / an uncoloured sprite
+		PartColors:     in.PartColors,  // omitempty → absent for model_ingest / an uncoloured sprite
+		CameraTheta:    in.CameraTheta, // omitempty → absent for model_ingest / no saved view yet
 	})
 	if err != nil {
 		return sqlc.AssetJob{}, fmt.Errorf("asset job: marshal created payload: %w", err)

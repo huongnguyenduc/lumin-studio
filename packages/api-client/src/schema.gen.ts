@@ -2545,6 +2545,8 @@ export interface components {
             items: components["schemas"]["OrderItemInput"][];
             /** @description Optional VN destination province (no district, ADR-017). When present, the response adds shippingFee (resolved server-side from settings.shipping_rules, same authority as checkout) and total (subtotal + shippingFee). Omitted or blank → line/subtotal only, byte-identical to the pre-P2-b response. An unshippable province → 422 NO_SHIPPING_RULE (never a silent ₫0). */
             province?: string;
+            /** @description Optional VN destination ward, paired with `province`. Lets the resolver match a province+ward shipping rule (owner-configured, e.g. an inner-city ward fee) before falling back to the province-only rule. */
+            ward?: string;
         };
         /** @description Server-computed line prices + subtotal (raw int-VND). `lines` is positionally aligned with the request `items` (same index) — a line carries no product reference, so a client maps a line back to its selection by array index. `shippingFee` and `total` are present ONLY when the request carried a province (P2-b); without one the response is line/subtotal only. */
         PriceQuote: {
@@ -2739,13 +2741,15 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
-        /** @description One per-region shipping-fee row (settings.shipping_rules). VN address model, no district (ADR-017). Province "*" is the wildcard default fee (applied when no exact province matches). */
+        /** @description One per-region shipping-fee row (settings.shipping_rules). VN address model, no district (ADR-017). Province "*" is the wildcard default fee (applied when no exact province matches). An optional `ward` narrows a rule to one ward within a province (e.g. the owner marking which wards of "Thành phố Hồ Chí Minh" count as inner-city for a different fee) — resolution tries the province+ward match first, then the province-only rule, then "*". */
         ShippingRule: {
             /** @description Destination province name, or "*" for the wildcard default. */
             province: string;
+            /** @description Optional — narrows this rule to one ward within `province`. The owner's own call on which wards count as "inner"/"outer" (no public dataset encodes this); absent = the whole province. */
+            ward?: string;
             /**
              * Format: int64
-             * @description Shipping fee for this province, raw int VND (≥ 0). Server resolves shippingFee from this table.
+             * @description Shipping fee for this province(+ward), raw int VND (≥ 0). Server resolves shippingFee from this table.
              */
             fee: number;
         };

@@ -161,11 +161,21 @@ scene.render.resolution_percentage = 100
 scene.render.image_settings.file_format = "PNG"
 scene.render.image_settings.color_mode = "RGBA"
 
+# --- ADR-038 follow-up: LUMIN_CAMERA_THETA (degrees, set on this process by render.rs) is the
+# owner-saved live-viewer azimuth — frame 0 starts there instead of always at 0, so the sprite opens
+# facing the same way the owner aligned the interactive viewer. Absent/blank/malformed → 0 (today's
+# behaviour, unchanged); never fails the render over a cosmetic starting angle. ---
+try:
+    camera_theta_deg = float(os.environ.get("LUMIN_CAMERA_THETA", "") or 0.0)
+except ValueError:
+    camera_theta_deg = 0.0
+camera_theta_offset = math.radians(camera_theta_deg)
+
 # --- render each orbit frame → frames_dir/frame_####.png (1-indexed, matches render.py's tiler) ---
 out = Path(frames_dir)
 out.mkdir(parents=True, exist_ok=True)
 for i in range(frames):
-    ang = 2 * math.pi * i / frames
+    ang = camera_theta_offset + 2 * math.pi * i / frames
     cam.location = (center[0] + radius * math.sin(ang), center[1] - radius * math.cos(ang), height)
     scene.render.filepath = str(out / f"frame_{i + 1:04d}")  # Blender appends .png
     bpy.ops.render.render(write_still=True)
