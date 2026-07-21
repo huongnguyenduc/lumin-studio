@@ -16,9 +16,34 @@ const uploadLabel: CSSProperties = {
   padding: '6px 14px',
   borderRadius: 20,
   boxShadow: RING,
-  fontSize: 11,
+  fontSize: 12,
+  fontWeight: 600,
   cursor: 'pointer',
 };
+
+// The drawer renders outside the admin page's `zoom: 1.15` ancestor (see
+// settings-drawer.tsx), so it doesn't inherit that ambient magnification —
+// these local overrides of the shared `kicker`/`inputBase` tokens keep field
+// labels and input text a touch bigger/bolder so they stay just as readable.
+const fieldLabel: CSSProperties = { ...kicker, fontSize: 12, fontWeight: 600 };
+const fieldInput: CSSProperties = {
+  ...inputBase,
+  fontSize: 14,
+  borderRadius: 8,
+  padding: '9px 14px',
+};
+
+// Crop ratio the public gallery actually renders at (Gallery.tsx: 3-col grid,
+// 313px canvas, 118px fixed row height ⇒ a single cell's colWidth/rowHeight ≈
+// 0.79, close to 4:5). A cell spanning `col`×`row` isn't the same shape as a
+// single cell scaled up — e.g. the {col:2} tile in block 2 is landscape
+// (~1.6), not portrait — so the ratio has to scale by span, not stay fixed.
+// Using CSS aspect-ratio (instead of the old fixed 130px pixel row height)
+// means every tile keeps its true proportion at whatever width this section
+// ends up rendering at.
+function galleryAspect(cell: { col?: number; row?: number }): string {
+  return `${4 * (cell.col ?? 1)} / ${5 * (cell.row ?? 1)}`;
+}
 
 type GalleryCell = { col?: number; row?: number };
 const GALLERY_BLOCKS: {
@@ -107,7 +132,7 @@ export function SettingsFields({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <span style={kicker}>{t('hero')}</span>
+          <span style={fieldLabel}>{t('hero')}</span>
           <FocalPicker
             url={val<string | null>('heroUrl', null)}
             x={val<number>('heroX', 50)}
@@ -129,7 +154,7 @@ export function SettingsFields({
           </label>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <span style={kicker}>{t('music')}</span>
+          <span style={fieldLabel}>{t('music')}</span>
           <div
             style={{
               height: 110,
@@ -146,7 +171,8 @@ export function SettingsFields({
             <span
               style={{
                 fontStyle: 'italic',
-                fontSize: 11,
+                fontSize: 12,
+                fontWeight: 500,
                 color: INK,
                 maxWidth: '90%',
                 overflow: 'hidden',
@@ -183,7 +209,7 @@ export function SettingsFields({
             </button>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 11, color: INK }}>{t('defaultVolume')}</span>
+            <span style={{ fontSize: 12, fontWeight: 500, color: INK }}>{t('defaultVolume')}</span>
             <input
               type="range"
               min={0}
@@ -202,43 +228,39 @@ export function SettingsFields({
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <span style={kicker}>{t('storyHeading')}</span>
+        <span style={fieldLabel}>{t('storyHeading')}</span>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
           <input
             value={val<string>('storyLine1', '')}
             onChange={(e) => patch({ storyLine1: e.target.value })}
             aria-label={t('storyLine1')}
             placeholder={t('storyLine1')}
-            style={{ ...inputBase, borderRadius: 8, padding: '9px 14px' }}
+            style={fieldInput}
           />
           <input
             value={val<string>('storyLine2', '')}
             onChange={(e) => patch({ storyLine2: e.target.value })}
             aria-label={t('storyLine2')}
             placeholder={t('storyLine2')}
-            style={{ ...inputBase, borderRadius: 8, padding: '9px 14px' }}
+            style={fieldInput}
           />
         </div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <span style={kicker}>{t('gallery', { count: gallery.length })}</span>
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 20,
-            maxWidth: 480,
-            margin: '0 auto',
-          }}
-        >
+        <span style={fieldLabel}>{t('gallery', { count: gallery.length })}</span>
+        {/* Fills close to the drawer's full content width (was capped at an
+            arbitrary 480px) — each tile below keeps the public site's true
+            portrait crop via aspect-ratio instead of a fixed row height, so it
+            stays correct at whatever width this ends up rendering. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20, width: '100%' }}>
           {galleryBlocks.map((block, bi) => (
             <div key={bi} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div
                 style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(3, 1fr)',
-                  gridAutoRows: 130,
+                  gridAutoRows: 'auto',
                   gap: 12,
                   gridAutoFlow: 'dense',
                 }}
@@ -261,6 +283,7 @@ export function SettingsFields({
                       }}
                       style={{
                         position: 'relative',
+                        aspectRatio: galleryAspect(cell),
                         gridColumn: cell.col ? `span ${cell.col}` : undefined,
                         gridRow: cell.row ? `span ${cell.row}` : undefined,
                       }}
@@ -349,10 +372,10 @@ export function SettingsFields({
                 placeholder={t(block.captionKey)}
                 style={{
                   ...inputBase,
-                  height: 40,
+                  height: 44,
                   borderRadius: 8,
                   padding: '8px 12px',
-                  fontSize: 12,
+                  fontSize: 13,
                   lineHeight: 1.5,
                   resize: 'vertical',
                 }}
@@ -361,8 +384,10 @@ export function SettingsFields({
           ))}
           <label
             style={{
-              width: 130,
-              height: 130,
+              // Matches one grid column above (3 cols, 12px gaps) so it reads
+              // as part of the same row rather than a fixed, now-undersized square.
+              width: 'calc((100% - 24px) / 3)',
+              aspectRatio: galleryAspect({}),
               borderRadius: 8,
               border: `1px dashed ${TAN}`,
               boxSizing: 'border-box',
@@ -377,7 +402,14 @@ export function SettingsFields({
             }}
           >
             {'+'}
-            <span style={{ fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+              }}
+            >
               {t('addPhotos')}
             </span>
             <input
@@ -409,16 +441,16 @@ export function SettingsFields({
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <span style={kicker}>{t('siteTitle')}</span>
+        <span style={fieldLabel}>{t('siteTitle')}</span>
         <input
           value={val<string>('siteTitle', '')}
           onChange={(e) => patch({ siteTitle: e.target.value })}
           aria-label={t('siteTitle')}
-          style={{ ...inputBase, borderRadius: 8, padding: '9px 14px' }}
+          style={fieldInput}
         />
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <span style={kicker}>{t('siteDesc')}</span>
+        <span style={fieldLabel}>{t('siteDesc')}</span>
         <textarea
           value={val<string>('siteDesc', '')}
           onChange={(e) => patch({ siteDesc: e.target.value })}
@@ -428,6 +460,7 @@ export function SettingsFields({
             height: 56,
             borderRadius: 8,
             padding: '9px 14px',
+            fontSize: 14,
             lineHeight: 1.6,
             resize: 'vertical',
           }}
@@ -437,7 +470,7 @@ export function SettingsFields({
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ ...previewBox(val<string | null>('ogUrl', null), 34), width: 64 }} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={kicker}>{t('og')}</span>
+            <span style={fieldLabel}>{t('og')}</span>
             <label style={{ ...uploadLabel, padding: '5px 12px' }}>
               {t('changeImage')}
               <input
@@ -452,7 +485,7 @@ export function SettingsFields({
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ ...previewBox(val<string | null>('iconUrl', null), 34), width: 34 }} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={kicker}>{t('icon')}</span>
+            <span style={fieldLabel}>{t('icon')}</span>
             <label style={{ ...uploadLabel, padding: '5px 12px' }}>
               {t('changeImage')}
               <input

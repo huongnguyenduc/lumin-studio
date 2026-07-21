@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslations } from 'next-intl';
 import { adminApi, ApiError, type AdminEvent, type Settings } from '@/lib/admin-api';
 import { useDialogFocus } from '@/lib/use-dialog-focus';
+import { useScrollLock } from '@/lib/use-scroll-lock';
 import { useUnsavedGuard } from './use-unsaved-guard';
 import { EventFields } from './event-fields';
 import { SettingsFields } from './settings-fields';
@@ -73,6 +75,7 @@ export function SettingsDrawer({
   const [saving, setSaving] = useState(false);
   const [savedToast, setSavedToast] = useState(false);
   const dialogRef = useDialogFocus<HTMLElement>(open);
+  useScrollLock(open);
 
   const origData = event?.data ?? {};
   const subLabel = event?.subdomain ? event.subdomain.replace(/\.luminstudio\.vn$/, '') : '';
@@ -194,189 +197,201 @@ export function SettingsDrawer({
     }
   };
 
-  return (
+  // The admin page wraps everything in a `zoom: 1.15` ancestor (so the many
+  // hardcoded small px sizes read a bit bigger) — but Chromium treats `zoom`
+  // as a containing block for `position: fixed` descendants, so a fixed
+  // drawer left nested inside it doesn't stay pinned to the real viewport: it
+  // scrolls (and sizes) relative to that zoomed ancestor instead. That's what
+  // was making the drawer's own scroll area fight the page's scroll, and the
+  // sticky Huỷ/Lưu bar land off-screen instead of pinned to the bottom. Same
+  // root cause the floating music button dodges by rendering outside
+  // `.invite-scale` — here we portal the overlay straight to `document.body`.
+  // Losing the inherited 1.15 zoom means the drawer's own text needs slightly
+  // bigger literal sizes/weights to stay as readable as the rest of admin.
+  const overlay = open ? (
     <>
-      <button type="button" onClick={openDrawer} style={pillGhost} className="wa-pill-ghost">
-        {td('open')}
-      </button>
-
-      {open ? (
-        <>
+      <button
+        type="button"
+        onClick={attemptClose}
+        aria-label={td('close')}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 40,
+          border: 'none',
+          padding: 0,
+          background: 'rgba(59,47,39,0.32)',
+          cursor: 'default',
+        }}
+      />
+      <aside
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={td('title')}
+        tabIndex={-1}
+        style={{
+          position: 'fixed',
+          top: 0,
+          right: 0,
+          height: '100dvh',
+          width: 560,
+          maxWidth: '100vw',
+          zIndex: 50,
+          background: CREAM,
+          boxShadow: '-12px 0 40px rgba(59,47,39,0.22)',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <header
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '18px 22px 14px',
+            borderBottom: `0.5px solid ${HAIRLINE}`,
+          }}
+        >
+          <span style={{ fontWeight: 700, fontSize: 17, color: INK }}>{td('title')}</span>
+          {event ? <span style={{ fontSize: 13, color: TAN_LIGHT }}>· {event.name}</span> : null}
+          <span style={{ flexGrow: 1 }} />
+          {savedToast ? (
+            <span style={{ fontStyle: 'italic', fontSize: 13, color: GREEN }}>{tSaved}</span>
+          ) : null}
+          {uploading ? (
+            <span style={{ fontStyle: 'italic', fontSize: 13, color: TAN }}>{ts('uploading')}</span>
+          ) : null}
           <button
             type="button"
             onClick={attemptClose}
             aria-label={td('close')}
             style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 40,
+              width: 32,
+              height: 32,
+              borderRadius: 16,
               border: 'none',
-              padding: 0,
-              background: 'rgba(59,47,39,0.32)',
-              cursor: 'default',
-            }}
-          />
-          <aside
-            ref={dialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label={td('title')}
-            tabIndex={-1}
-            style={{
-              position: 'fixed',
-              top: 0,
-              right: 0,
-              height: '100dvh',
-              width: 560,
-              maxWidth: '100vw',
-              zIndex: 50,
-              background: CREAM,
-              boxShadow: '-12px 0 40px rgba(59,47,39,0.22)',
-              display: 'flex',
-              flexDirection: 'column',
+              background: 'transparent',
+              boxShadow: RING,
+              color: INK,
+              fontSize: 16,
+              lineHeight: 1,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
             }}
           >
-            <header
+            ×
+          </button>
+        </header>
+
+        <div style={{ display: 'flex', gap: 4, padding: '10px 16px 0' }}>
+          {(
+            [
+              ['event', td('tabEvent'), eventDirty],
+              ['site', td('tabSite'), siteDirty],
+            ] as const
+          ).map(([key, label, dirty]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => switchTab(key)}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '18px 22px 14px',
-                borderBottom: `0.5px solid ${HAIRLINE}`,
+                padding: '8px 16px',
+                border: 'none',
+                borderRadius: '8px 8px 0 0',
+                background: tab === key ? CREAM_2 : 'transparent',
+                color: tab === key ? INK : TAN_LIGHT,
+                fontWeight: tab === key ? 700 : 500,
+                fontSize: 14,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                whiteSpace: 'nowrap',
               }}
             >
-              <span style={{ fontWeight: 600, fontSize: 15, color: INK }}>{td('title')}</span>
-              {event ? (
-                <span style={{ fontSize: 12, color: TAN_LIGHT }}>· {event.name}</span>
-              ) : null}
-              <span style={{ flexGrow: 1 }} />
-              {savedToast ? (
-                <span style={{ fontStyle: 'italic', fontSize: 12, color: GREEN }}>{tSaved}</span>
-              ) : null}
-              {uploading ? (
-                <span style={{ fontStyle: 'italic', fontSize: 12, color: TAN }}>
-                  {ts('uploading')}
-                </span>
-              ) : null}
-              <button
-                type="button"
-                onClick={attemptClose}
-                aria-label={td('close')}
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 16,
-                  border: 'none',
-                  background: 'transparent',
-                  boxShadow: RING,
-                  color: INK,
-                  fontSize: 16,
-                  lineHeight: 1,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
-              >
-                ×
-              </button>
-            </header>
+              {label}
+              {dirty ? <span style={{ color: TAN, marginLeft: 6 }}>•</span> : null}
+            </button>
+          ))}
+        </div>
 
-            <div style={{ display: 'flex', gap: 4, padding: '10px 16px 0' }}>
-              {(
-                [
-                  ['event', td('tabEvent'), eventDirty],
-                  ['site', td('tabSite'), siteDirty],
-                ] as const
-              ).map(([key, label, dirty]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => switchTab(key)}
-                  style={{
-                    padding: '8px 16px',
-                    border: 'none',
-                    borderRadius: '8px 8px 0 0',
-                    background: tab === key ? CREAM_2 : 'transparent',
-                    color: tab === key ? INK : TAN_LIGHT,
-                    fontWeight: tab === key ? 600 : 400,
-                    fontSize: 13,
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {label}
-                  {dirty ? <span style={{ color: TAN, marginLeft: 6 }}>•</span> : null}
-                </button>
-              ))}
-            </div>
+        <div
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            overscrollBehavior: 'contain',
+            padding: '20px 22px 24px',
+            background: CREAM_2,
+          }}
+        >
+          {tab === 'event' ? (
+            event ? (
+              <EventFields
+                event={event}
+                val={evVal}
+                patch={evPatch}
+                nameValue={nameDraft ?? event.name}
+                subdomainValue={subdomainDraft ?? subLabel}
+                onNameChange={setNameDraft}
+                onSubdomainChange={setSubdomainDraft}
+                uploadMap={(file) => void uploadFile('map', file, (url) => evPatch('mapUrl', url))}
+              />
+            ) : (
+              <span style={{ fontSize: 13, color: TAN_LIGHT }}>{td('noEvent')}</span>
+            )
+          ) : (
+            <SettingsFields
+              val={siteVal}
+              patch={sitePatch}
+              uploadFile={(kind, file, apply) => void uploadFile(kind, file, apply)}
+              onError={onError}
+            />
+          )}
+        </div>
 
-            <div
-              style={{ flex: 1, overflowY: 'auto', padding: '20px 22px 24px', background: CREAM_2 }}
+        {activeDirty ? (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              gap: 14,
+              padding: '14px 22px',
+              borderTop: `0.5px solid ${HAIRLINE}`,
+              background: CREAM,
+            }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 500, fontStyle: 'italic', color: INK }}>
+              {tu('message')}
+            </span>
+            <button
+              type="button"
+              onClick={resetActive}
+              style={{ ...pillGhost, fontSize: 13, fontWeight: 600 }}
+              className="wa-pill-ghost"
             >
-              {tab === 'event' ? (
-                event ? (
-                  <EventFields
-                    event={event}
-                    val={evVal}
-                    patch={evPatch}
-                    nameValue={nameDraft ?? event.name}
-                    subdomainValue={subdomainDraft ?? subLabel}
-                    onNameChange={setNameDraft}
-                    onSubdomainChange={setSubdomainDraft}
-                    uploadMap={(file) =>
-                      void uploadFile('map', file, (url) => evPatch('mapUrl', url))
-                    }
-                  />
-                ) : (
-                  <span style={{ fontSize: 12, color: TAN_LIGHT }}>{td('noEvent')}</span>
-                )
-              ) : (
-                <SettingsFields
-                  val={siteVal}
-                  patch={sitePatch}
-                  uploadFile={(kind, file, apply) => void uploadFile(kind, file, apply)}
-                  onError={onError}
-                />
-              )}
-            </div>
+              {tu('cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={saving}
+              style={{ ...pillSolid, fontSize: 13, fontWeight: 600, opacity: saving ? 0.6 : 1 }}
+              className="wa-pill-solid"
+            >
+              {saving ? tu('saving') : tu('save')}
+            </button>
+          </div>
+        ) : null}
+      </aside>
+    </>
+  ) : null;
 
-            {activeDirty ? (
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  gap: 14,
-                  padding: '14px 22px',
-                  borderTop: `0.5px solid ${HAIRLINE}`,
-                  background: CREAM,
-                }}
-              >
-                <span style={{ fontSize: 12, fontStyle: 'italic', color: INK }}>
-                  {tu('message')}
-                </span>
-                <button
-                  type="button"
-                  onClick={resetActive}
-                  style={pillGhost}
-                  className="wa-pill-ghost"
-                >
-                  {tu('cancel')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void save()}
-                  disabled={saving}
-                  style={{ ...pillSolid, opacity: saving ? 0.6 : 1 }}
-                  className="wa-pill-solid"
-                >
-                  {saving ? tu('saving') : tu('save')}
-                </button>
-              </div>
-            ) : null}
-          </aside>
-        </>
-      ) : null}
+  return (
+    <>
+      <button type="button" onClick={openDrawer} style={pillGhost} className="wa-pill-ghost">
+        {td('open')}
+      </button>
+      {typeof document !== 'undefined' ? createPortal(overlay, document.body) : null}
     </>
   );
 }
