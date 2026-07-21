@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { INK, SCRIPT } from './theme';
 import { Reveal } from './reveal';
 import { OptimizedImg } from './optimized-img';
+import { OverlayPortal } from './overlay-portal';
 import type { GalleryImage } from '@/lib/site-settings';
 
 // Gallery (§2.5 rev, Figma 132:212): script two-line heading, then three photo
@@ -233,102 +234,104 @@ export function Gallery({
         ))}
       </div>
       {index >= 0 ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={t('photoAlt', { index: index + 1 })}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 60,
-            background: 'rgba(32,26,21,0.94)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          {/* Scrim click closes (§2.5); the image/buttons sit above so their clicks don't. */}
-          <button
-            type="button"
-            onClick={() => setIndex(-1)}
-            aria-label={t('close')}
+        <OverlayPortal>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('photoAlt', { index: index + 1 })}
             style={{
-              position: 'absolute',
+              position: 'fixed',
               inset: 0,
-              border: 'none',
-              padding: 0,
-              background: 'transparent',
-              cursor: 'default',
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => setIndex(-1)}
-            aria-label={t('close')}
-            className="invite-lb-btn"
-            style={{
-              ...navBtn,
-              position: 'absolute',
-              top: 18,
-              right: 18,
-              width: 36,
-              height: 36,
-              borderRadius: 18,
+              zIndex: 60,
+              background: 'rgba(32,26,21,0.94)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
-            <CrossIcon />
-          </button>
-          <OptimizedImg
-            img={srcs[index].full}
-            fallback={srcs[index].url}
-            sizes="86vw"
-            alt={t('photoAlt', { index: index + 1 })}
-            style={{
-              position: 'relative',
-              maxWidth: '86vw',
-              maxHeight: '72vh',
-              objectFit: 'contain',
-              boxShadow: '0 12px 48px rgba(0,0,0,0.5)',
-            }}
-          />
-          <span
-            style={{
-              position: 'relative',
-              marginTop: 14,
-              fontSize: 11,
-              letterSpacing: '0.25em',
-              color: 'rgb(220,207,197)',
-            }}
-          >
-            {t('counter', { current: index + 1, total: n })}
-          </span>
-          <button
-            type="button"
-            onClick={() => setIndex((index + n - 1) % n)}
-            aria-label={t('prev')}
-            className="invite-lb-btn"
-            style={{ ...navBtn, position: 'absolute', left: 10, top: '50%', translate: '0 -50%' }}
-          >
-            <ChevronIcon />
-          </button>
-          <button
-            type="button"
-            onClick={() => setIndex((index + 1) % n)}
-            aria-label={t('next')}
-            className="invite-lb-btn"
-            style={{
-              ...navBtn,
-              position: 'absolute',
-              right: 10,
-              top: '50%',
-              translate: '0 -50%',
-              transform: 'scaleX(-1)',
-            }}
-          >
-            <ChevronIcon />
-          </button>
-        </div>
+            {/* Scrim click closes (§2.5); the image/buttons sit above so their clicks don't. */}
+            <button
+              type="button"
+              onClick={() => setIndex(-1)}
+              aria-label={t('close')}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                border: 'none',
+                padding: 0,
+                background: 'transparent',
+                cursor: 'default',
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setIndex(-1)}
+              aria-label={t('close')}
+              className="invite-lb-btn"
+              style={{
+                ...navBtn,
+                position: 'absolute',
+                top: 18,
+                right: 18,
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+              }}
+            >
+              <CrossIcon />
+            </button>
+            <OptimizedImg
+              img={srcs[index].full}
+              fallback={srcs[index].url}
+              sizes="86vw"
+              alt={t('photoAlt', { index: index + 1 })}
+              style={{
+                position: 'relative',
+                maxWidth: '86vw',
+                maxHeight: '72vh',
+                objectFit: 'contain',
+                boxShadow: '0 12px 48px rgba(0,0,0,0.5)',
+              }}
+            />
+            <span
+              style={{
+                position: 'relative',
+                marginTop: 14,
+                fontSize: 11,
+                letterSpacing: '0.25em',
+                color: 'rgb(220,207,197)',
+              }}
+            >
+              {t('counter', { current: index + 1, total: n })}
+            </span>
+            <button
+              type="button"
+              onClick={() => setIndex((index + n - 1) % n)}
+              aria-label={t('prev')}
+              className="invite-lb-btn"
+              style={{ ...navBtn, position: 'absolute', left: 10, top: '50%', translate: '0 -50%' }}
+            >
+              <ChevronIcon />
+            </button>
+            <button
+              type="button"
+              onClick={() => setIndex((index + 1) % n)}
+              aria-label={t('next')}
+              className="invite-lb-btn"
+              style={{
+                ...navBtn,
+                position: 'absolute',
+                right: 10,
+                top: '50%',
+                translate: '0 -50%',
+                transform: 'scaleX(-1)',
+              }}
+            >
+              <ChevronIcon />
+            </button>
+          </div>
+        </OverlayPortal>
       ) : null}
     </div>
   );

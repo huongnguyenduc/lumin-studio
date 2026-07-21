@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { INK } from './theme';
 import { Reveal } from './reveal';
 import { MapLightbox } from './map-lightbox';
+import { OverlayPortal } from './overlay-portal';
 import { OptimizedImg } from './optimized-img';
 import type { ImgVariants } from '@/lib/site-settings';
 
@@ -97,13 +98,15 @@ export function MapView({
         </button>
       </Reveal>
       {open ? (
-        <MapLightbox
-          src={mapUrl}
-          img={imgFull}
-          alt={alt}
-          mapsUrl={mapsUrl}
-          onClose={() => setOpen(false)}
-        />
+        <OverlayPortal>
+          <MapLightbox
+            src={mapUrl}
+            img={imgFull}
+            alt={alt}
+            mapsUrl={mapsUrl}
+            onClose={() => setOpen(false)}
+          />
+        </OverlayPortal>
       ) : null}
     </>
   );
