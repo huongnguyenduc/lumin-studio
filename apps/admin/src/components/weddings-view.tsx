@@ -8,6 +8,7 @@ import {
   createWedding,
   createWeddingEvent,
   deleteWedding,
+  deleteWeddingEvent,
   reviewSubdomain,
   setEventSubdomain,
   updateWedding,
@@ -280,6 +281,19 @@ function EventRow({
         ) : (
           <span className="text-sm text-text-muted">{t('subdomainNone')}</span>
         )}
+        <span className="flex-1" />
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => {
+            if (window.confirm(t('deleteEventConfirm', { name: event.name }))) {
+              act(() => deleteWeddingEvent(event.slug), 'eventDeleted');
+            }
+          }}
+          className="text-sm text-accent-flame underline hover:opacity-80 disabled:opacity-50"
+        >
+          {t('deleteEvent')}
+        </button>
       </div>
 
       {/* A change the couple requested from their own admin — approve makes it live. */}

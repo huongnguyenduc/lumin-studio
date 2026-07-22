@@ -695,3 +695,48 @@ func TestCoupleCookieCannotReachMaster(t *testing.T) {
 		t.Fatalf("couple delete wedding = %d, want 403", code)
 	}
 }
+
+// TestDeleteEvent: an event created by mistake can be removed with its guests,
+// while the couple's (wedding-wide) wishes wall survives.
+func TestDeleteEvent(t *testing.T) {
+	srv, admin := setupIntegration(t)
+	u := srv.URL
+
+	var ev struct{ Slug string }
+	if code := call(t, "POST", u+"/api/admin/events", admin,
+		map[string]string{"name": "Đám nhầm", "weddingSlug": "giang-hieu"}, &ev); code != 201 {
+		t.Fatalf("create event = %d", code)
+	}
+	if code := call(t, "POST", u+"/api/admin/guests", admin,
+		map[string]string{"label": "Khách của đám nhầm", "eventSlug": ev.Slug}, nil); code != 201 {
+		t.Fatalf("create guest = %d", code)
+	}
+	// A wish on the wedding's wall (posted on the seeded subdomain) must survive.
+	if code := call(t, "POST", u+"/api/wishes?host=giangvahieu.luminstudio.vn", nil,
+		map[string]string{"text": "Chúc mừng"}, nil); code != 201 {
+		t.Fatalf("wish = %d", code)
+	}
+
+	if code := call(t, "DELETE", u+"/api/admin/events/"+ev.Slug, admin, nil, nil); code != 204 {
+		t.Fatalf("delete event = %d, want 204", code)
+	}
+	// Gone from the couple's event list; its guests gone; deleting again 404s.
+	var evs struct{ Items []struct{ Slug string } }
+	call(t, "GET", u+"/api/admin/events", admin, nil, &evs)
+	for _, it := range evs.Items {
+		if it.Slug == ev.Slug {
+			t.Fatal("deleted event still listed")
+		}
+	}
+	if code := call(t, "GET", u+"/api/admin/guests?event="+ev.Slug, admin, nil, nil); code != 404 {
+		t.Fatalf("guests of deleted event = %d, want 404 (event out of scope)", code)
+	}
+	if code := call(t, "DELETE", u+"/api/admin/events/"+ev.Slug, admin, nil, nil); code != 404 {
+		t.Fatalf("delete already-deleted event = %d, want 404", code)
+	}
+	var wall struct{ Total int }
+	call(t, "GET", u+"/api/wishes?host=giangvahieu.luminstudio.vn", nil, nil, &wall)
+	if wall.Total != 1 {
+		t.Fatalf("wishes wall = %d, want 1 (per-wedding, survives event delete)", wall.Total)
+	}
+}
