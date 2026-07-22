@@ -13,6 +13,10 @@ export type GalleryImage = {
   full?: ImgVariants;
 };
 export type SiteSettings = {
+  /** Tên hiển thị theo từng cặp đôi (multi-couple); thiếu → fallback vi.ts `site.*`. */
+  couple?: string;
+  bride?: string;
+  groom?: string;
   heroUrl?: string;
   heroX?: number;
   heroY?: number;
@@ -123,6 +127,9 @@ export function asSiteSettings(raw: Record<string, unknown>): SiteSettings {
     : undefined;
   const n = (k: string) => (typeof raw[k] === 'number' ? (raw[k] as number) : undefined);
   return {
+    couple: s('couple'),
+    bride: s('bride'),
+    groom: s('groom'),
     heroUrl: s('heroUrl'),
     heroX: n('heroX'),
     heroY: n('heroY'),

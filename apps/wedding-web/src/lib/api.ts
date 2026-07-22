@@ -21,12 +21,17 @@ export async function getInvite(slug: string): Promise<Invite | null> {
   }
 }
 
+// hostQS forwards the page's Host to the API, which resolves it to ONE
+// wedding (multi-couple) — the rewrite proxy doesn't reliably keep the
+// original Host header, so it travels as an explicit query param.
+const hostQS = (host?: string) => (host ? `?host=${encodeURIComponent(host)}` : '');
+
 // Host-configurable site settings (HANDOFF §3.5): heroUrl, mapUrl, mapsUrl,
 // gallery (string[]), musicUrl, siteTitle, siteDesc, ogUrl, iconUrl. Missing/
 // down API → {} and the page falls back to the built-in assets.
-export async function getSettings(): Promise<Record<string, unknown>> {
+export async function getSettings(host?: string): Promise<Record<string, unknown>> {
   try {
-    const res = await fetch(`${base}/api/settings`, { cache: 'no-store' });
+    const res = await fetch(`${base}/api/settings${hostQS(host)}`, { cache: 'no-store' });
     if (!res.ok) return {};
     return (await res.json()) as Record<string, unknown>;
   } catch {
@@ -34,12 +39,12 @@ export async function getSettings(): Promise<Record<string, unknown>> {
   }
 }
 
-// Every event (venue/timeline/ceremony data per wedding). getActiveEvent()
+// The host's wedding's events (venue/timeline/ceremony data). getActiveEvent()
 // resolves which one this deployment serves: WEDDING_EVENT_SLUG if set, else
 // the first by sortOrder — so a single-wedding deployment needs no env change.
-export async function getEvents(): Promise<EventSummary[]> {
+export async function getEvents(host?: string): Promise<EventSummary[]> {
   try {
-    const res = await fetch(`${base}/api/events`, { cache: 'no-store' });
+    const res = await fetch(`${base}/api/events${hostQS(host)}`, { cache: 'no-store' });
     if (!res.ok) return [];
     const data = (await res.json()) as { items: EventSummary[] };
     return data.items;
@@ -53,7 +58,7 @@ export async function getEvents(): Promise<EventSummary[]> {
 // WEDDING_EVENT_SLUG then the first event, so local dev (host = localhost)
 // and a not-yet-configured event both still work.
 export async function getActiveEvent(host?: string): Promise<EventSummary | null> {
-  const events = await getEvents();
+  const events = await getEvents(host);
   if (events.length === 0) return null;
   const hostname = host?.split(':')[0].toLowerCase();
   const byHost = hostname && events.find((e) => e.subdomain?.toLowerCase() === hostname);
@@ -62,9 +67,15 @@ export async function getActiveEvent(host?: string): Promise<EventSummary | null
   return (wanted && events.find((e) => e.slug === wanted)) || events[0];
 }
 
-export async function getWishes(limit = 100): Promise<{ items: Wish[]; total: number }> {
+export async function getWishes(
+  limit = 100,
+  host?: string,
+): Promise<{ items: Wish[]; total: number }> {
   try {
-    const res = await fetch(`${base}/api/wishes?limit=${limit}`, { cache: 'no-store' });
+    const res = await fetch(
+      `${base}/api/wishes?limit=${limit}${host ? `&host=${encodeURIComponent(host)}` : ''}`,
+      { cache: 'no-store' },
+    );
     if (!res.ok) return { items: [], total: 0 };
     return (await res.json()) as { items: Wish[]; total: number };
   } catch {

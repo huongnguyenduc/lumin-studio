@@ -35,6 +35,10 @@ export function InvitationCard({
   eventImages?: EventImages;
 }) {
   const t = useTranslations('footer');
+  const tSite = useTranslations('site');
+  const couple = settings.couple ?? tSite('couple');
+  const bride = settings.bride ?? tSite('bride');
+  const groom = settings.groom ?? tSite('groom');
   const music = useMusic(settings.musicUrl, settings.musicVolume);
   const scaleRef = useRef<HTMLDivElement>(null);
 
@@ -167,7 +171,13 @@ export function InvitationCard({
           {/* marginBottom 80: khoảng thở giữa thư mời và section cards (Figma 2143→2222). */}
           <div style={{ padding: '0 6.75px', marginBottom: 80 }}>
             <Envelope />
-            <Letter guestLabel={guest?.label ?? null} event={event} images={eventImages} />
+            <Letter
+              guestLabel={guest?.label ?? null}
+              event={event}
+              images={eventImages}
+              bride={bride}
+              groom={groom}
+            />
           </div>
           <Events event={event} />
           <Gallery
@@ -177,11 +187,12 @@ export function InvitationCard({
             captions={[settings.storyCaption1, settings.storyCaption2, settings.storyCaption3]}
           />
           {/* RSVP only for a valid guest link — recommended §9 anonymous behavior. */}
-          {guest ? <Rsvp guestId={guest.id} initial={guest.rsvp} /> : null}
+          {guest ? <Rsvp guestId={guest.id} initial={guest.rsvp} couple={couple} /> : null}
           <Wishes
             guestId={guest?.id ?? null}
             guestLabel={guest?.label ?? null}
             initialWishes={wishes}
+            couple={couple}
           />
           {/* Figma 206:33 "footer": khối cao ĐÚNG 326px — chữ/monogram/"2026" ĐÈ LÊN
               nửa dưới ảnh vòm (207:70), không nối tiếp bên dưới nó. */}

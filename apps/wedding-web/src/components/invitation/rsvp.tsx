@@ -19,7 +19,15 @@ const pillBase: CSSProperties = {
 // RSVP (§2.6): two pills, mutually exclusive, changeable any time (idempotent
 // upsert). Rendered only for a valid guest link — the anonymous card hides the
 // section (HANDOFF §9 open item, recommended behavior).
-export function Rsvp({ guestId, initial }: { guestId: string; initial: 'yes' | 'no' | null }) {
+export function Rsvp({
+  guestId,
+  initial,
+  couple,
+}: {
+  guestId: string;
+  initial: 'yes' | 'no' | null;
+  couple: string;
+}) {
   const t = useTranslations('rsvp');
   const [rsvp, setRsvp] = useState<'yes' | 'no' | null>(initial);
 
@@ -91,7 +99,7 @@ export function Rsvp({ guestId, initial }: { guestId: string; initial: 'yes' | '
             marginTop: -10,
           }}
         >
-          {rsvp === 'yes' ? t('thanksYes') : t('thanksNo')}
+          {rsvp === 'yes' ? t('thanksYes', { couple }) : t('thanksNo')}
         </span>
       ) : null}
     </div>

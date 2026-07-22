@@ -7,6 +7,7 @@ import {
   ApiError,
   type AdminEvent,
   type AdminGuest,
+  type AdminWedding,
   type AdminWish,
   type AdminStats,
   type Settings,
@@ -16,6 +17,8 @@ import { QuickAdd } from './quick-add';
 import { GuestTable } from './guest-table';
 import { WishesPanel } from './wishes-panel';
 import { SettingsDrawer } from './settings-drawer';
+import { ChangePassword } from './change-password';
+import { WeddingSwitcher } from './wedding-switcher';
 import {
   card,
   chipStyle,
@@ -35,6 +38,9 @@ type EditState = { id: string | null; label: string; group: string; note: string
 export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
   const t = useTranslations('admin');
   const [authed, setAuthed] = useState<boolean | null>(null); // null = probing
+  const [master, setMaster] = useState(false);
+  const [weddings, setWeddings] = useState<AdminWedding[]>([]);
+  const [selectedWedding, setSelectedWedding] = useState<string | null>(null);
   const [events, setEvents] = useState<AdminEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
   const [newEventOpen, setNewEventOpen] = useState(false);
@@ -49,6 +55,7 @@ export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<EditState>(null);
+  const [changingPassword, setChangingPassword] = useState(false);
   const sessionCount = useRef(0);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -58,29 +65,46 @@ export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
     toastTimer.current = setTimeout(() => setToast(null), 2600);
   }, []);
 
-  // Every event has its own guests/groups/stats — reload keeps whatever event
-  // tab is selected, falling back on initial load to THIS subdomain's event
-  // (WEDDING_EVENT_SLUG) so the admin opens on the right wedding's guests, then
-  // to the first event. Wishes/settings stay global (one wall / site-level).
+  // Every wedding has its own events/guests/groups/stats/settings/wishes wall.
+  // A master session picks a wedding first (chips above the event tabs); a
+  // couple session's single wedding is implicit (weddings always has exactly
+  // its one row). Reload keeps whatever wedding/event tab is selected, falling
+  // back on initial load to THIS subdomain's event (WEDDING_EVENT_SLUG) so the
+  // admin opens on the right wedding's guests.
   const reload = useCallback(
-    async (forEvent?: string) => {
+    async (forEvent?: string, forWedding?: string) => {
       try {
+        const me = await adminApi.me();
+        setMaster(me.master);
+        const wr = await adminApi.weddings();
+        setWeddings(wr.items);
+        const wedSlug = forWedding ?? selectedWedding ?? wr.items[0]?.slug ?? null;
+        setSelectedWedding(wedSlug);
+
         const ev = await adminApi.events();
         setEvents(ev.items);
-        const envSlug =
-          activeSlug && ev.items.some((e) => e.slug === activeSlug) ? activeSlug : null;
-        const slug = forEvent ?? selectedEvent ?? envSlug ?? ev.items[0]?.slug ?? null;
+        const scoped = me.master ? ev.items.filter((e) => e.weddingSlug === wedSlug) : ev.items;
+        const envSlug = activeSlug && scoped.some((e) => e.slug === activeSlug) ? activeSlug : null;
+        const slug =
+          forEvent ??
+          (scoped.some((e) => e.slug === selectedEvent) ? selectedEvent : null) ??
+          envSlug ??
+          scoped[0]?.slug ??
+          null;
         setSelectedEvent(slug);
         if (!slug) {
+          setGuests([]);
+          setGroups([]);
+          setStats(null);
           setAuthed(true);
           return;
         }
         const [g, gr, w, s, set] = await Promise.all([
           adminApi.guests(slug),
           adminApi.groups(slug),
-          adminApi.wishes(),
+          adminApi.wishes(500, wedSlug ?? undefined),
           adminApi.stats(slug),
-          adminApi.settings(),
+          adminApi.settings(wedSlug ?? undefined),
         ]);
         setGuests(g.items);
         setGroups(gr.items.map((x) => x.name));
@@ -93,7 +117,7 @@ export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
         else flash(t('toasts.apiError'), true);
       }
     },
-    [flash, t, selectedEvent, activeSlug],
+    [flash, t, selectedEvent, selectedWedding, activeSlug],
   );
 
   // deliberately run once on mount only — reload reads selectedEvent via
@@ -111,7 +135,14 @@ export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
   const run = useCallback(
     async (
       fn: () => Promise<unknown>,
-      opts?: { onDone?: () => void; successMsg?: string; silent?: boolean },
+      opts?: {
+        onDone?: () => void;
+        successMsg?: string;
+        silent?: boolean;
+        // Map an API error code to a specific toast (e.g. LAST_WEDDING) instead
+        // of the generic "có lỗi" — falls back to the generic one when unmapped.
+        errorMsgs?: Record<string, string>;
+      },
     ) => {
       setSaving(true);
       try {
@@ -121,6 +152,8 @@ export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
         if (!opts?.silent) flash(opts?.successMsg ?? t('toasts.updated'));
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) setAuthed(false);
+        else if (err instanceof ApiError && opts?.errorMsgs?.[err.code])
+          flash(opts.errorMsgs[err.code], true);
         else flash(t('toasts.apiError'), true);
       } finally {
         setSaving(false);
@@ -180,6 +213,12 @@ export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
   if (authed === null) return null; // probing — brief, no flash of login
   if (!authed) return <Login onSuccess={() => void reload()} />;
 
+  const eventsForWedding = master
+    ? events.filter((e) => e.weddingSlug === selectedWedding)
+    : events;
+  const currentWedding = weddings.find((w) => w.slug === selectedWedding) ?? null;
+  const coupleLabel = currentWedding?.name ?? t('couple');
+
   return (
     <div
       style={{
@@ -201,20 +240,33 @@ export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
           }}
         />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontFamily: SCRIPT, fontSize: 30, lineHeight: 1.1 }}>{t('couple')}</span>
+          <span style={{ fontFamily: SCRIPT, fontSize: 30, lineHeight: 1.1 }}>{coupleLabel}</span>
           <span style={{ ...kicker, letterSpacing: '0.26em' }}>{t('title')}</span>
         </div>
         <div style={{ flexGrow: 1 }} />
         <SettingsDrawer
           event={events.find((e) => e.slug === selectedEvent) ?? null}
           settings={settings}
+          isMaster={master}
           onEventSaved={() => void reload()}
           onSettingsSaved={(next) => {
             setSettings(next);
             flash(t('toasts.saved'));
           }}
+          onReviewSubdomain={(approve) => {
+            if (!selectedEvent) return;
+            void run(() => adminApi.reviewSubdomain(selectedEvent, approve));
+          }}
           onError={(msg) => flash(msg, true)}
         />
+        <button
+          type="button"
+          onClick={() => setChangingPassword(true)}
+          style={pillGhost}
+          className="wa-pill-ghost"
+        >
+          {t('password.open')}
+        </button>
         <button
           type="button"
           onClick={() => void exportXlsx()}
@@ -254,9 +306,47 @@ export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
         </button>
       </div>
 
+      {changingPassword ? (
+        <ChangePassword
+          onClose={() => setChangingPassword(false)}
+          onError={(m) => flash(m, true)}
+        />
+      ) : null}
+
+      {master ? (
+        <WeddingSwitcher
+          weddings={weddings}
+          selected={selectedWedding}
+          onSelect={(slug) => {
+            if (slug === selectedWedding) return;
+            setSelectedWedding(slug);
+            setSelectedEvent(null);
+            void reload(undefined, slug);
+          }}
+          onCreate={(name) =>
+            void run(() => adminApi.createWedding(name), { successMsg: t('toasts.saved') })
+          }
+          onRename={(slug, name) => void run(() => adminApi.patchWedding(slug, { name }))}
+          onSetPassword={(slug, password) =>
+            void run(() => adminApi.patchWedding(slug, { password }), {
+              successMsg: t('weddings.passwordSaved'),
+            })
+          }
+          onDelete={(slug) =>
+            void run(() => adminApi.deleteWedding(slug), {
+              onDone: () => {
+                if (selectedWedding === slug) setSelectedWedding(null);
+              },
+              errorMsgs: { LAST_WEDDING: t('weddings.cannotDeleteLast') },
+            })
+          }
+          onError={(msg) => flash(msg, true)}
+        />
+      ) : null}
+
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={kicker}>{t('events.heading')}</span>
-        {events.map((ev) => (
+        {eventsForWedding.map((ev) => (
           <button
             key={ev.slug}
             type="button"
@@ -268,6 +358,7 @@ export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
             style={chipStyle(ev.slug === selectedEvent)}
           >
             {ev.name}
+            {ev.requestedSubdomain ? <span style={{ color: TAN, marginLeft: 6 }}>•</span> : null}
           </button>
         ))}
         {newEventOpen ? (
@@ -283,8 +374,10 @@ export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
               const name = newEventName.trim();
               setNewEventOpen(false);
               setNewEventName('');
-              if (!name) return;
-              void run(() => adminApi.createEvent(name), { successMsg: t('toasts.saved') });
+              if (!name || !selectedWedding) return;
+              void run(() => adminApi.createEvent(name, selectedWedding), {
+                successMsg: t('toasts.saved'),
+              });
             }}
             placeholder={t('events.addPlaceholder')}
             aria-label={t('events.addPlaceholder')}
@@ -303,6 +396,7 @@ export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
           <button
             type="button"
             onClick={() => setNewEventOpen(true)}
+            disabled={!selectedWedding}
             style={{
               padding: '5px 14px',
               borderRadius: 20,
@@ -310,7 +404,8 @@ export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
               background: 'transparent',
               fontSize: 12,
               color: INK,
-              cursor: 'pointer',
+              cursor: selectedWedding ? 'pointer' : 'default',
+              opacity: selectedWedding ? 1 : 0.5,
               whiteSpace: 'nowrap',
               fontFamily: 'inherit',
             }}

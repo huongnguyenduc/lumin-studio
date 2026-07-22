@@ -18,6 +18,9 @@ func (s *server) listGroups(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "NO_EVENT", "thiếu tham số event")
 		return
 	}
+	if !s.eventInScope(w, r, event) {
+		return
+	}
 	rows, err := s.pool.Query(r.Context(),
 		`SELECT name, sort_order FROM groups WHERE event_slug = $1 ORDER BY sort_order, name`, event)
 	if err != nil {
@@ -56,6 +59,9 @@ func (s *server) createGroup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "NO_EVENT", "thiếu eventSlug")
 		return
 	}
+	if !s.eventInScope(w, r, eventSlug) {
+		return
+	}
 	_, err := s.pool.Exec(r.Context(),
 		`INSERT INTO groups (event_slug, name, sort_order)
 		 VALUES ($1, $2, (SELECT coalesce(max(sort_order), 0) + 1 FROM groups WHERE event_slug = $1))`,
@@ -75,6 +81,9 @@ func (s *server) createGroup(w http.ResponseWriter, r *http.Request) {
 // renaming cascades).
 func (s *server) renameGroup(w http.ResponseWriter, r *http.Request) {
 	eventSlug := chi.URLParam(r, "event")
+	if !s.eventInScope(w, r, eventSlug) {
+		return
+	}
 	oldName := chi.URLParam(r, "name")
 	var body struct {
 		Name string `json:"name"`
@@ -125,6 +134,9 @@ func (s *server) renameGroup(w http.ResponseWriter, r *http.Request) {
 // deleteGroup reassigns members to "Khác" (created on demand) in one tx.
 func (s *server) deleteGroup(w http.ResponseWriter, r *http.Request) {
 	eventSlug := chi.URLParam(r, "event")
+	if !s.eventInScope(w, r, eventSlug) {
+		return
+	}
 	name := chi.URLParam(r, "name")
 	if name == fallbackGroup {
 		writeError(w, http.StatusBadRequest, "PROTECTED_GROUP", `không thể xoá nhóm "Khác"`)
@@ -170,4 +182,9 @@ func (s *server) deleteGroup(w http.ResponseWriter, r *http.Request) {
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+func isForeignKeyViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503"
 }

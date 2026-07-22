@@ -7,7 +7,6 @@ import { card, inputBase, kicker, pillSolid, RED, SCRIPT, INK } from './ui';
 
 export function Login({ onSuccess }: { onSuccess: () => void }) {
   const t = useTranslations('admin.login');
-  const ta = useTranslations('admin');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -17,7 +16,7 @@ export function Login({ onSuccess }: { onSuccess: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      await adminApi.login(password);
+      await adminApi.login(password, location.hostname);
       onSuccess();
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) setError(t('wrong'));
@@ -49,7 +48,7 @@ export function Login({ onSuccess }: { onSuccess: () => void }) {
           width: 320,
         }}
       >
-        <span style={{ fontFamily: SCRIPT, fontSize: 30, color: INK }}>{ta('couple')}</span>
+        <span style={{ fontFamily: SCRIPT, fontSize: 30, color: INK }}>{t('brand')}</span>
         <span style={kicker}>{t('heading')}</span>
         <input
           type="password"

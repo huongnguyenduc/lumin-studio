@@ -16,8 +16,8 @@ export default async function InvitePage({ params }: { params: Promise<{ slug: s
   const host = (await headers()).get('host') ?? undefined;
   const [guest, wishes, settings, event] = await Promise.all([
     getInvite(slug),
-    getWishes(),
-    getSettings(),
+    getWishes(100, host),
+    getSettings(host),
     getActiveEvent(host),
   ]);
   const eventData = asEventData(event?.data ?? {});

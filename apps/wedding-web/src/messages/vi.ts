@@ -3,6 +3,13 @@
 // wording is locked design; sentence case rules don't apply to the prototype's
 // deliberate uppercase-styled labels (CSS uppercases, the keys stay sentence case).
 export const vi = {
+  // Per-wedding display names — DEFAULTS for the first couple; other weddings
+  // override via settings keys `couple`/`bride`/`groom` (multi-couple).
+  site: {
+    couple: 'Giang & Hiếu',
+    bride: 'Châu Giang',
+    groom: 'Trung Hiếu',
+  },
   meta: {
     title: 'Giang & Hiếu — Thiệp mời cưới',
     description: 'Trân trọng kính mời bạn đến chung vui cùng Giang & Hiếu · 12.09.2026',
@@ -18,8 +25,6 @@ export const vi = {
     invite: 'Trân trọng kính mời',
     anonymousGuest: 'Quý Khách/Cô/Chú/Anh/Chị/Bạn',
     toAttend: 'Đến tham dự tiệc vu quy',
-    bride: 'Châu Giang',
-    groom: 'Trung Hiếu',
     time: '17:30',
     weekday: 'Thứ bảy',
     date: '12.09.2026',
@@ -78,11 +83,11 @@ export const vi = {
     yesSelected: '✓ Tham dự được',
     no: 'Không tham dự được',
     noSelected: '✓ Không tham dự được',
-    thanksYes: 'Cảm ơn bạn! Giang & Hiếu rất mong được đón tiếp bạn.',
+    thanksYes: 'Cảm ơn bạn! {couple} rất mong được đón tiếp bạn.',
     thanksNo: 'Cảm ơn bạn đã phản hồi. Hẹn gặp bạn một dịp gần nhất!',
   },
   wish: {
-    intro: 'Mỗi lời chúc sẽ là một món quà đặc biệt với Giang & Hiếu.',
+    intro: 'Mỗi lời chúc sẽ là một món quà đặc biệt với {couple}.',
     namePlaceholder: 'Tên của bạn',
     textPlaceholder: 'Viết lời chúc...',
     colorLabel: 'Màu thiệp',
@@ -92,7 +97,7 @@ export const vi = {
     colorOlive: 'Xanh ô liu',
     send: 'Gửi lời chúc',
     sentHeading: 'Cảm ơn bạn!',
-    sentBody: 'Lời chúc của bạn đã được gửi đến Giang & Hiếu.',
+    sentBody: 'Lời chúc của bạn đã được gửi đến {couple}.',
     defaultName: 'Khách mời',
     previewLabel: 'Xem trước lời chúc của bạn',
     previewNow: 'vừa xong',
@@ -111,11 +116,12 @@ export const vi = {
     title: 'Quản lý thiệp mời — 12.09.2026',
     couple: 'Giang & Hiếu',
     login: {
+      brand: 'Lumin Studio',
       heading: 'Đăng nhập quản lý',
       passwordPlaceholder: 'Mật khẩu',
       submit: 'Đăng nhập',
       wrong: 'Mật khẩu không đúng',
-      disabled: 'Đăng nhập chưa được cấu hình',
+      disabled: 'Đăng nhập chưa được cấu hình (ADMIN_PASSWORD)',
       error: 'Không kết nối được máy chủ',
     },
     header: {
@@ -187,6 +193,10 @@ export const vi = {
       removePhoto: 'Xoá ảnh',
       replacePhoto: 'Thay ảnh khác',
       reorderPhoto: 'Kéo để đổi thứ tự',
+      coupleHeading: 'Tên cô dâu chú rể',
+      coupleLabel: 'Tên hiển thị chung (VD: Giang & Hiếu)',
+      brideLabel: 'Tên cô dâu',
+      groomLabel: 'Tên chú rể',
       storyHeading: 'Câu chuyện tình yêu',
       storyLine1: 'Dòng tiêu đề 1',
       storyLine2: 'Dòng tiêu đề 2',
@@ -210,6 +220,40 @@ export const vi = {
       addPlaceholder: 'Tên đám cưới mới — Enter',
       add: '+ Thêm đám cưới',
     },
+    weddings: {
+      heading: 'Cặp đôi',
+      addPlaceholder: 'Tên cặp đôi mới (VD: An & Bình) — Enter',
+      add: '+ Thêm cặp đôi',
+      manage: 'Quản lý cặp đôi',
+      manageDone: 'Xong',
+      rename: 'Bấm để đổi tên',
+      renamePrompt: 'Đổi tên cặp đôi "{name}" thành:',
+      setPassword: 'Đặt mật khẩu',
+      badPassword: 'Mật khẩu cần từ 8 đến 72 ký tự',
+      passwordSet: 'Đã có mật khẩu riêng',
+      passwordUnset: 'Chưa có mật khẩu riêng',
+      passwordPrompt:
+        'Mật khẩu riêng cho "{name}" (8–72 ký tự; để trống để tắt đăng nhập của cặp đôi):',
+      passwordSaved: 'Đã cập nhật mật khẩu cặp đôi',
+      delete: 'Xoá',
+      deleteConfirm:
+        'Xoá toàn bộ đám cưới của "{name}" — khách mời, lời chúc, buổi lễ, cài đặt? Gõ lại tên cặp đôi để xác nhận:',
+      deleteMismatch: 'Tên không khớp — không xoá gì cả',
+      cannotDeleteLast: 'Không thể xoá cặp đôi cuối cùng',
+      approve: 'Duyệt',
+      reject: 'Từ chối',
+    },
+    password: {
+      open: 'Đổi mật khẩu',
+      heading: 'Đổi mật khẩu đăng nhập',
+      current: 'Mật khẩu hiện tại',
+      new: 'Mật khẩu mới (8–72 ký tự)',
+      submit: 'Đổi mật khẩu',
+      cancel: 'Huỷ',
+      done: 'Đã đổi mật khẩu',
+      wrongCurrent: 'Mật khẩu hiện tại không đúng',
+      badNew: 'Mật khẩu mới cần từ 8 đến 72 ký tự',
+    },
     drawer: {
       open: 'Cài đặt',
       title: 'Cài đặt',
@@ -230,6 +274,8 @@ export const vi = {
       saving: 'Đang lưu…',
       saveFailed: 'Lưu thất bại — thử lại nhé',
       subdomainTaken: 'Subdomain này đã được dùng cho đám cưới khác — thử tên khác nhé',
+      subdomainPending: 'Đề xuất "{host}" đang chờ duyệt',
+      subdomainReviewNote: 'Subdomain mới cần quản trị viên duyệt trước khi hoạt động',
       domainSuffix: '.luminstudio.vn',
       save: 'Lưu đám cưới này',
       field: {

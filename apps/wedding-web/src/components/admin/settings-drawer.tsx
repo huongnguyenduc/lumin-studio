@@ -49,14 +49,18 @@ function draftDirty(draft: Record<string, unknown>, orig: Record<string, unknown
 export function SettingsDrawer({
   event,
   settings,
+  isMaster,
   onEventSaved,
   onSettingsSaved,
+  onReviewSubdomain,
   onError,
 }: {
   event: AdminEvent | null;
   settings: Settings;
+  isMaster: boolean;
   onEventSaved: (next: AdminEvent) => void;
   onSettingsSaved: (next: Settings) => void;
+  onReviewSubdomain: (approve: boolean) => void;
   onError: (msg: string) => void;
 }) {
   const td = useTranslations('admin.drawer');
@@ -342,6 +346,8 @@ export function SettingsDrawer({
                 onNameChange={setNameDraft}
                 onSubdomainChange={setSubdomainDraft}
                 uploadMap={(file) => void uploadFile('map', file, (url) => evPatch('mapUrl', url))}
+                isMaster={isMaster}
+                onReviewSubdomain={onReviewSubdomain}
               />
             ) : (
               <span style={{ fontSize: 13, color: TAN_LIGHT }}>{td('noEvent')}</span>

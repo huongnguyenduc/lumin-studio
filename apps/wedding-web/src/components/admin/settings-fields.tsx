@@ -134,6 +134,32 @@ export function SettingsFields({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <span style={fieldLabel}>{t('coupleHeading')}</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+          <input
+            value={val<string>('couple', '')}
+            onChange={(e) => patch({ couple: e.target.value })}
+            aria-label={t('coupleLabel')}
+            placeholder={t('coupleLabel')}
+            style={fieldInput}
+          />
+          <input
+            value={val<string>('bride', '')}
+            onChange={(e) => patch({ bride: e.target.value })}
+            aria-label={t('brideLabel')}
+            placeholder={t('brideLabel')}
+            style={fieldInput}
+          />
+          <input
+            value={val<string>('groom', '')}
+            onChange={(e) => patch({ groom: e.target.value })}
+            aria-label={t('groomLabel')}
+            placeholder={t('groomLabel')}
+            style={fieldInput}
+          />
+        </div>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <span style={fieldLabel}>{t('hero')}</span>

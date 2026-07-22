@@ -73,10 +73,14 @@ export function Letter({
   guestLabel,
   event = {},
   images = {},
+  bride,
+  groom,
 }: {
   guestLabel: string | null;
   event?: EventData;
   images?: EventImages;
+  bride: string;
+  groom: string;
 }) {
   const t = useTranslations('letter');
   const v = (key: keyof EventData, fallbackKey: string) => event[key] || t(fallbackKey);
@@ -117,10 +121,10 @@ export function Letter({
           }}
         >
           <span style={{ fontFamily: SCRIPT, fontSize: 48, lineHeight: 'normal', color: INK }}>
-            {t('bride')}
+            {bride}
           </span>
           <span style={{ fontFamily: SCRIPT, fontSize: 48, lineHeight: 'normal', color: INK }}>
-            {t('groom')}
+            {groom}
           </span>
         </Reveal>
         <Reveal style={{ marginTop: 24, display: 'flex', alignItems: 'center' }}>

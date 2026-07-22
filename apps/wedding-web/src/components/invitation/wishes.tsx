@@ -72,10 +72,12 @@ export function Wishes({
   guestId,
   guestLabel,
   initialWishes,
+  couple,
 }: {
   guestId: string | null;
   guestLabel: string | null;
   initialWishes: Wish[];
+  couple: string;
 }) {
   const t = useTranslations('wish');
   const tw = useTranslations('wall');
@@ -103,7 +105,8 @@ export function Wishes({
       },
       ...w,
     ]);
-    void fetch('/api/wishes', {
+    // location.hostname routes the wish to THIS host's wedding wall (multi-couple).
+    void fetch(`/api/wishes?host=${encodeURIComponent(location.hostname)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ guestId: guestId ?? '', name: finalName, text: trimmed, color: bg }),
@@ -143,7 +146,7 @@ export function Wishes({
             }}
           >
             <span style={{ fontSize: 12, lineHeight: 1.6, color: INK, textAlign: 'center' }}>
-              {t('intro')}
+              {t('intro', { couple })}
             </span>
             {sent ? (
               <>
@@ -160,7 +163,7 @@ export function Wishes({
                     width: 180,
                   }}
                 >
-                  {t('sentBody')}
+                  {t('sentBody', { couple })}
                 </span>
               </>
             ) : (
