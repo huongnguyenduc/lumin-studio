@@ -809,6 +809,10 @@ export const vi = {
     addEventPlaceholder: 'Tên đám mới (VD: Đám cưới Sài Gòn)',
     addEvent: '+ Thêm đám',
     eventCreated: 'Đã thêm đám.',
+    deleteEvent: 'Xoá đám',
+    deleteEventConfirm:
+      'Xoá đám "{name}"? Khách mời của đám này sẽ mất (lời chúc chung của cặp đôi vẫn giữ).',
+    eventDeleted: 'Đã xoá đám.',
     subdomainLabel: 'Tên miền con cho {event}',
     subdomainPlaceholder: 'vd: anbinh',
     subdomainSet2: 'Đặt tên miền',

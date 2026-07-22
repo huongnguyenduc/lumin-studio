@@ -65,6 +65,12 @@ export async function createWeddingEvent(
   return run('POST', '/api/admin/events', { name, weddingSlug });
 }
 
+/** Delete an event ("đám") and its guests (DELETE /api/admin/events/{slug}).
+ *  The couple's wishes wall (per-wedding) is not touched. */
+export async function deleteWeddingEvent(eventSlug: string): Promise<WeddingsActionResult> {
+  return run('DELETE', `/api/admin/events/${encodeURIComponent(eventSlug)}`);
+}
+
 /** Set/change an event's LIVE subdomain directly (owner action — no review).
  *  `label` is the bare name ("anbinh"); the API owns the ".luminstudio.vn"
  *  suffix and provisions bucket CORS. '' clears it. */

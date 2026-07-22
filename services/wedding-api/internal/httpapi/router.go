@@ -98,6 +98,7 @@ func New(pool *pgxpool.Pool, a *auth.Auth, uploads *uploadstore.Store) http.Hand
 		r.Get("/events", s.listEvents)
 		r.Post("/events", s.createEvent)
 		r.Patch("/events/{slug}", s.patchEvent)
+		r.Delete("/events/{slug}", s.deleteEvent)
 		r.Post("/events/{slug}/subdomain-review", s.reviewSubdomain)
 
 		r.Get("/weddings", s.listWeddings)

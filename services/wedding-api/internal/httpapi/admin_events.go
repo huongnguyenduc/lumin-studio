@@ -232,6 +232,48 @@ func (s *server) patchEvent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, e)
 }
 
+// deleteEvent removes one event ("đám") and everything under it — its guests and
+// groups — in one tx. Wishes are per-WEDDING (not per-event), so the couple's
+// wall is untouched. Scoped: a couple can only delete its own events; master
+// (bearer) any. Deleting a couple's only event just leaves it with no live
+// subdomain (recoverable — add another), so it isn't blocked.
+func (s *server) deleteEvent(w http.ResponseWriter, r *http.Request) {
+	eventSlug := chi.URLParam(r, "slug")
+	if !s.eventInScope(w, r, eventSlug) {
+		return
+	}
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB", err.Error())
+		return
+	}
+	defer tx.Rollback(r.Context()) //nolint:errcheck // no-op after commit
+
+	for _, q := range []string{
+		`DELETE FROM guests WHERE event_slug = $1`,
+		`DELETE FROM groups WHERE event_slug = $1`,
+	} {
+		if _, err := tx.Exec(r.Context(), q, eventSlug); err != nil {
+			writeError(w, http.StatusInternalServerError, "DB", err.Error())
+			return
+		}
+	}
+	tag, err := tx.Exec(r.Context(), `DELETE FROM events WHERE slug = $1`, eventSlug)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB", err.Error())
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		writeError(w, http.StatusNotFound, "EVENT_NOT_FOUND", "không tìm thấy đám cưới")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "DB", err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // allowOrigin best-effort adds a bucket CORS rule for a newly live subdomain —
 // a failure only means uploads on that subdomain need the old manual step.
 func (s *server) allowOrigin(ctx context.Context, host string) {
