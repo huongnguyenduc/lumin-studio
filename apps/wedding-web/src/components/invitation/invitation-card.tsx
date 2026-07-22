@@ -183,25 +183,76 @@ export function InvitationCard({
             guestLabel={guest?.label ?? null}
             initialWishes={wishes}
           />
-          <div
-            style={{
-              padding: '52px 40px 48px',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 20,
-            }}
-          >
-            <Reveal style={{ fontFamily: SCRIPT, fontSize: 48, color: TAN_LIGHT }}>
-              {t('thanks')}
-            </Reveal>
-            <Reveal
-              style={{
-                width: 22,
-                height: 22,
-                background: 'url(/invite/logo-mark.svg) center / contain no-repeat',
-              }}
+          {/* Figma 206:33 "footer": khối cao ĐÚNG 326px — chữ/monogram/"2026" ĐÈ LÊN
+              nửa dưới ảnh vòm (207:70), không nối tiếp bên dưới nó. */}
+          <div style={{ position: 'relative', background: CREAM }}>
+            {/* 207:70: viền ren + vòm nền tối là 1 ảnh phẳng Figma đã flatten sẵn
+                (mask lace cong + ellipse) — không tách lại bằng CSS vì viền ren cong
+                theo đúng cung của vòm, ghép 2 lớp CSS riêng sẽ hở góc. */}
+            <img
+              src="/invite/footer-dome.png"
+              alt=""
+              style={{ display: 'block', width: '100%', height: 'auto' }}
             />
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                padding: '60px 40px 36px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
+                // Figma gap 54 ứng với monogram 37×40; logo phóng to +13.6px cao
+                // nên bớt lại để chân chữ "thank you" vẫn nằm đúng y=172.6 của design.
+                gap: 40.4,
+              }}
+            >
+              <Reveal
+                style={{
+                  fontFamily: SCRIPT,
+                  fontSize: 48,
+                  color: TAN_LIGHT,
+                  // Figma đo khoảng cách 54px từ ĐƯỜNG CHÂN CHỮ (text-box-trim
+                  // cap/alphabetic), không tính phần thừa của line-box — thiếu
+                  // dòng này chữ bị đẩy lên ~19px so với design.
+                  textBox: 'trim-both cap alphabetic',
+                }}
+              >
+                {t('thanks')}
+              </Reveal>
+              <Reveal
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 12,
+                }}
+              >
+                <div
+                  style={{
+                    width: 46,
+                    height: 50,
+                    // Figma 206:38: monogram trên nền vòm tối dùng bản chữ kem
+                    // (#E8DACB), khác bản cocoa #78695D dùng trên nền sáng.
+                    background: 'url(/invite/logo-oval-cream.svg) center / contain no-repeat',
+                  }}
+                />
+                <span
+                  style={{
+                    fontSize: 10,
+                    letterSpacing: 8,
+                    // letter-spacing thêm cả sau ký tự cuối → bù trái đúng 1 nhịp
+                    // để khối chữ cân giữa so với monogram.
+                    paddingLeft: 8,
+                    textTransform: 'uppercase',
+                    color: TAN_LIGHT,
+                  }}
+                >
+                  {t('year')}
+                </span>
+              </Reveal>
+            </div>
           </div>
         </div>
       </div>
