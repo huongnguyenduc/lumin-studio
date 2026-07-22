@@ -5,9 +5,8 @@ import { useTranslations } from 'next-intl';
 import { adminApi, ApiError } from '@/lib/admin-api';
 import { card, inputBase, kicker, pillGhost, pillSolid, GREEN, RED } from './ui';
 
-// Self-service password change for whoever is logged in — master changes the
-// master password, a couple session changes its own wedding's password
-// (server infers which from the session scope, HANDOFF multi-couple).
+// Self-service password change for the logged-in couple — updates its own
+// wedding's login password (the server infers which from the session scope).
 export function ChangePassword({
   onClose,
   onError,

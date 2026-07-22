@@ -73,15 +73,14 @@ export type AdminEvent = {
   data: Record<string, unknown>;
 };
 
-export type Me = { scope: string; master: boolean };
-
 // The wedding admin is COUPLE-ONLY: a couple logs in on its own subdomain and
 // manages just its own wedding. Couple management (create/rename/password/
 // delete/subdomain-review) lives in the lumin admin, not here.
 export const adminApi = {
   // host: the page's own hostname — the API resolves it to the couple's wedding.
+  // The response body (scope) is unused; a 2xx means the session cookie is set.
   login: (password: string, host?: string) =>
-    call<Me>('POST', '/api/admin/login', { password, host }),
+    call<void>('POST', '/api/admin/login', { password, host }),
   logout: () => call<void>('POST', '/api/admin/logout'),
 
   changePassword: (current: string, next: string) =>
