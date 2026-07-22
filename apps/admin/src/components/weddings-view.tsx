@@ -6,18 +6,29 @@ import { useTranslations } from 'next-intl';
 import { Button, Card, Input } from '@lumin/ui';
 import {
   createWedding,
+  createWeddingEvent,
   deleteWedding,
   reviewSubdomain,
+  setEventSubdomain,
   updateWedding,
   type WeddingsActionResult,
 } from '@/lib/weddings-actions';
 import type { Wedding, WeddingEvent, WeddingsData } from '@/lib/weddings-fetch';
 
-// "Đám cưới": owner-only couple management for the wedding-invitation side.
-// Data lives in wedding-api; every write is a Server Action, then router.refresh
-// re-reads the RSC list. ponytail: rename/set-password/delete use native
-// prompt/confirm — a low-traffic owner tool doesn't need bespoke dialogs; swap
-// to a modal if it ever needs richer validation.
+const DOMAIN_SUFFIX = '.luminstudio.vn';
+const subLabel = (host: string | null) =>
+  host ? host.replace(new RegExp(`\\${DOMAIN_SUFFIX}$`), '') : '';
+
+type Act = (fn: () => Promise<WeddingsActionResult>, successKey: string) => void;
+
+// "Đám cưới": owner-only couple management for the wedding-invitation side. Each
+// couple has one or more "đám" (events), each an invitation site with its own
+// subdomain. The owner: creates couples, sets their login password, adds đám,
+// sets each đám's LIVE subdomain directly, and approves/rejects a subdomain
+// change a couple requested from their own admin. Data lives in wedding-api;
+// every write is a Server Action, then router.refresh re-reads the RSC list.
+// ponytail: couple rename/password/delete use native prompt/confirm (low-traffic
+// owner tool); subdomain uses a real inline input since it's the key setup step.
 export function WeddingsView({ data }: { data: WeddingsData }) {
   const t = useTranslations('weddings');
   const router = useRouter();
@@ -35,7 +46,7 @@ export function WeddingsView({ data }: { data: WeddingsData }) {
   const flash = (text: string, error = false) => setToast({ text, error });
 
   // Run an action, translate its result to a toast, and refresh on success.
-  const act = (fn: () => Promise<WeddingsActionResult>, successKey: string) =>
+  const act: Act = (fn, successKey) =>
     startTransition(async () => {
       const res = await fn();
       if (res.ok) {
@@ -51,11 +62,9 @@ export function WeddingsView({ data }: { data: WeddingsData }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl font-semibold text-text-strong">{t('title')}</h1>
-          <p className="mt-1 text-sm text-text-muted">{t('subtitle')}</p>
-        </div>
+      <div>
+        <h1 className="font-display text-2xl font-semibold text-text-strong">{t('title')}</h1>
+        <p className="mt-1 text-sm text-text-muted">{t('subtitle')}</p>
       </div>
 
       {toast ? (
@@ -98,137 +107,234 @@ export function WeddingsView({ data }: { data: WeddingsData }) {
           <p className="text-text-muted">{t('empty')}</p>
         </Card>
       ) : (
-        <Card elevation="md" className="overflow-hidden p-0">
-          <ul className="divide-y divide-border-subtle">
-            {data.weddings.map((wd) => (
-              <WeddingRow
-                key={wd.slug}
-                wedding={wd}
-                events={eventsFor(wd.slug)}
-                pending={pending}
-                t={t}
-                onRename={() => {
-                  const name = window.prompt(t('renamePrompt', { name: wd.name }), wd.name)?.trim();
-                  if (name && name !== wd.name)
-                    act(() => updateWedding(wd.slug, { name }), 'saved');
-                }}
-                onSetPassword={() => {
-                  const pw = window.prompt(t('passwordPrompt', { name: wd.name }));
-                  if (pw === null) return;
-                  if (pw !== '' && (pw.length < 8 || pw.length > 72)) {
-                    flash(t('badPassword'), true);
-                    return;
-                  }
-                  act(() => updateWedding(wd.slug, { password: pw }), 'passwordSaved');
-                }}
-                onDelete={() => {
-                  const typed = window.prompt(t('deleteConfirm', { name: wd.name }));
-                  if (typed === null) return;
-                  if (typed.trim() !== wd.name) {
-                    flash(t('deleteMismatch'), true);
-                    return;
-                  }
-                  act(() => deleteWedding(wd.slug), 'deleted');
-                }}
-                onReview={(eventSlug, approve) =>
-                  act(() => reviewSubdomain(eventSlug, approve), approve ? 'approved' : 'rejected')
-                }
-              />
-            ))}
-          </ul>
-        </Card>
+        <div className="flex flex-col gap-4">
+          {data.weddings.map((wd) => (
+            <WeddingCard
+              key={wd.slug}
+              wedding={wd}
+              events={eventsFor(wd.slug)}
+              pending={pending}
+              t={t}
+              act={act}
+              flash={flash}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
 }
 
-function WeddingRow({
+function WeddingCard({
   wedding,
   events,
   pending,
   t,
-  onRename,
-  onSetPassword,
-  onDelete,
-  onReview,
+  act,
+  flash,
 }: {
   wedding: Wedding;
   events: WeddingEvent[];
   pending: boolean;
   t: ReturnType<typeof useTranslations>;
-  onRename: () => void;
-  onSetPassword: () => void;
-  onDelete: () => void;
-  onReview: (eventSlug: string, approve: boolean) => void;
+  act: Act;
+  flash: (text: string, error?: boolean) => void;
 }) {
-  const requests = events.filter((e) => e.requestedSubdomain);
+  const [newEvent, setNewEvent] = useState('');
+
   return (
-    <li className="flex flex-col gap-3 px-5 py-4">
+    <Card elevation="md" className="flex flex-col gap-4 p-5">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="font-semibold text-text-strong">{wedding.name}</span>
+        <span className="font-display text-lg font-semibold text-text-strong">{wedding.name}</span>
         <span
           className={`text-xs ${wedding.hasPassword ? 'text-text-muted' : 'text-accent-flame'}`}
         >
           {wedding.hasPassword ? t('passwordSet') : t('passwordUnset')}
         </span>
-        <span className="text-xs text-text-muted">
-          {events.length === 1 ? t('eventCountOne') : t('eventCount', { count: events.length })}
-        </span>
         <span className="flex-1" />
-        <button
-          type="button"
+        <RowButton
           disabled={pending}
-          onClick={onRename}
-          className="text-sm text-text-body underline hover:text-text-strong disabled:opacity-50"
+          onClick={() => {
+            const name = window
+              .prompt(t('renamePrompt', { name: wedding.name }), wedding.name)
+              ?.trim();
+            if (name && name !== wedding.name)
+              act(() => updateWedding(wedding.slug, { name }), 'saved');
+          }}
         >
           {t('rename')}
-        </button>
-        <button
-          type="button"
+        </RowButton>
+        <RowButton
           disabled={pending}
-          onClick={onSetPassword}
-          className="text-sm text-text-body underline hover:text-text-strong disabled:opacity-50"
+          onClick={() => {
+            const pw = window.prompt(t('passwordPrompt', { name: wedding.name }));
+            if (pw === null) return;
+            if (pw !== '' && (pw.length < 8 || pw.length > 72)) {
+              flash(t('badPassword'), true);
+              return;
+            }
+            act(() => updateWedding(wedding.slug, { password: pw }), 'passwordSaved');
+          }}
         >
           {t('setPassword')}
-        </button>
-        <button
-          type="button"
+        </RowButton>
+        <RowButton
+          danger
           disabled={pending}
-          onClick={onDelete}
-          className="text-sm text-accent-flame underline hover:opacity-80 disabled:opacity-50"
+          onClick={() => {
+            const typed = window.prompt(t('deleteConfirm', { name: wedding.name }));
+            if (typed === null) return;
+            if (typed.trim() !== wedding.name) {
+              flash(t('deleteMismatch'), true);
+              return;
+            }
+            act(() => deleteWedding(wedding.slug), 'deleted');
+          }}
         >
           {t('delete')}
-        </button>
+        </RowButton>
       </div>
 
-      {requests.length > 0 ? (
-        <ul className="flex flex-col gap-2 rounded-lg bg-surface-sunken p-3">
-          {requests.map((e) => (
-            <li key={e.slug} className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="text-text-body">
-                {t('pendingRequest', {
-                  event: e.name,
-                  from: e.subdomain ?? '—',
-                  to: e.requestedSubdomain ?? '',
-                })}
-              </span>
-              <span className="flex-1" />
-              <Button size="sm" disabled={pending} onClick={() => onReview(e.slug, true)}>
-                {t('approve')}
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={pending}
-                onClick={() => onReview(e.slug, false)}
-              >
-                {t('reject')}
-              </Button>
-            </li>
+      {/* Each event ("đám") = one invitation site + subdomain. */}
+      {events.length === 0 ? (
+        <p className="text-sm text-text-muted">{t('noEvents')}</p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-border-subtle rounded-lg bg-surface-sunken">
+          {events.map((e) => (
+            <EventRow key={e.slug} event={e} pending={pending} t={t} act={act} />
           ))}
         </ul>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          value={newEvent}
+          onChange={(ev) => setNewEvent(ev.target.value)}
+          placeholder={t('addEventPlaceholder')}
+          className="max-w-xs"
+        />
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={pending || newEvent.trim() === ''}
+          onClick={() => {
+            const name = newEvent.trim();
+            if (!name) return;
+            setNewEvent('');
+            act(() => createWeddingEvent(wedding.slug, name), 'eventCreated');
+          }}
+        >
+          {t('addEvent')}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function EventRow({
+  event,
+  pending,
+  t,
+  act,
+}: {
+  event: WeddingEvent;
+  pending: boolean;
+  t: ReturnType<typeof useTranslations>;
+  act: Act;
+}) {
+  const [label, setLabel] = useState(subLabel(event.subdomain));
+  const dirty = label.trim() !== subLabel(event.subdomain);
+
+  return (
+    <li className="flex flex-col gap-2 p-3">
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-semibold text-text-strong">{event.name}</span>
+          <div className="flex items-center gap-1">
+            <Input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder={t('subdomainPlaceholder')}
+              aria-label={t('subdomainLabel', { event: event.name })}
+              className="w-44"
+            />
+            <span className="whitespace-nowrap text-sm text-text-muted">{DOMAIN_SUFFIX}</span>
+          </div>
+        </div>
+        <Button
+          size="sm"
+          disabled={pending || !dirty}
+          onClick={() => act(() => setEventSubdomain(event.slug, label.trim()), 'subdomainSet')}
+        >
+          {event.subdomain ? t('subdomainChange') : t('subdomainSet2')}
+        </Button>
+        {event.subdomain ? (
+          <a
+            href={`https://${event.subdomain}`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm text-accent-sky underline"
+          >
+            {`https://${event.subdomain}`}
+          </a>
+        ) : (
+          <span className="text-sm text-text-muted">{t('subdomainNone')}</span>
+        )}
+      </div>
+
+      {/* A change the couple requested from their own admin — approve makes it live. */}
+      {event.requestedSubdomain ? (
+        <div className="flex flex-wrap items-center gap-2 rounded bg-surface-card p-2 text-sm">
+          <span className="text-text-body">
+            {t('pendingRequest', {
+              from: event.subdomain ?? '—',
+              to: event.requestedSubdomain,
+            })}
+          </span>
+          <span className="flex-1" />
+          <Button
+            size="sm"
+            disabled={pending}
+            onClick={() => act(() => reviewSubdomain(event.slug, true), 'approved')}
+          >
+            {t('approve')}
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={pending}
+            onClick={() => act(() => reviewSubdomain(event.slug, false), 'rejected')}
+          >
+            {t('reject')}
+          </Button>
+        </div>
       ) : null}
     </li>
+  );
+}
+
+function RowButton({
+  children,
+  onClick,
+  disabled,
+  danger,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`text-sm underline hover:text-text-strong disabled:opacity-50 ${
+        danger ? 'text-accent-flame hover:opacity-80' : 'text-text-body'
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 

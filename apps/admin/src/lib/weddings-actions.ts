@@ -56,6 +56,25 @@ export async function deleteWedding(slug: string): Promise<WeddingsActionResult>
   return run('DELETE', `/api/admin/weddings/${encodeURIComponent(slug)}`);
 }
 
+/** Add an event ("đám") to a couple (POST /api/admin/events). Each event is one
+ *  invitation site with its own subdomain — a couple may have several. */
+export async function createWeddingEvent(
+  weddingSlug: string,
+  name: string,
+): Promise<WeddingsActionResult> {
+  return run('POST', '/api/admin/events', { name, weddingSlug });
+}
+
+/** Set/change an event's LIVE subdomain directly (owner action — no review).
+ *  `label` is the bare name ("anbinh"); the API owns the ".luminstudio.vn"
+ *  suffix and provisions bucket CORS. '' clears it. */
+export async function setEventSubdomain(
+  eventSlug: string,
+  label: string,
+): Promise<WeddingsActionResult> {
+  return run('PATCH', `/api/admin/events/${encodeURIComponent(eventSlug)}`, { subdomain: label });
+}
+
 /** Approve/reject a couple's pending subdomain request
  *  (POST /api/admin/events/{slug}/subdomain-review). */
 export async function reviewSubdomain(
