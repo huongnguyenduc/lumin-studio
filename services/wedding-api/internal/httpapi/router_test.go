@@ -38,13 +38,25 @@ func TestAdminRoutesRequireAuth(t *testing.T) {
 func TestPresignDisabledWithoutConfig(t *testing.T) {
 	a := auth.New(config.Config{AdminPassword: "pw", JWTSecret: "t", JWTTTL: time.Hour})
 	h := New(nil, a, nil)
-	cookie, _ := a.IssueCookie(auth.ScopeAll)
+	// Master scope via the bearer (the lumin admin BFF's path) — no DB needed.
 	req := httptest.NewRequest("POST", "/api/admin/uploads/presign", nil)
-	req.AddCookie(cookie)
+	req.Header.Set("Authorization", "Bearer pw")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("presign without upload config = %d, want 503", rec.Code)
+	}
+}
+
+func TestBearerGrantsMasterWrongTokenRejected(t *testing.T) {
+	h := New(nil, auth.New(config.Config{AdminPassword: "pw", JWTSecret: "t", JWTTTL: time.Hour}), nil)
+	// Wrong bearer → 401 (no cookie either).
+	req := httptest.NewRequest("POST", "/api/admin/uploads/presign", nil)
+	req.Header.Set("Authorization", "Bearer nope")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong bearer = %d, want 401", rec.Code)
 	}
 }
 

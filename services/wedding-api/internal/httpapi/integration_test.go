@@ -69,21 +69,27 @@ func freshPool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
+// masterSecret is the wedding ADMIN_PASSWORD in tests; the lumin admin BFF sends
+// it as a bearer to reach master scope. Tests reuse the same value.
+const masterSecret = "pw"
+
+// bearerSentinel: a fake cookie name that `call` recognises to mean "send this
+// value as an Authorization: Bearer header" instead of a cookie — lets the many
+// master-scoped call sites keep passing a single `admin` credential unchanged.
+const bearerSentinel = "__bearer__"
+
 func setupIntegration(t *testing.T) (*httptest.Server, *http.Cookie) {
 	t.Helper()
 	pool := freshPool(t)
-	a := auth.New(config.Config{AdminPassword: "pw", JWTSecret: "test", JWTTTL: time.Hour})
+	a := auth.New(config.Config{AdminPassword: masterSecret, JWTSecret: "test", JWTTTL: time.Hour})
 	srv := httptest.NewServer(New(pool, a, nil))
 	t.Cleanup(srv.Close)
-	cookie, err := a.IssueCookie(auth.ScopeAll)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return srv, cookie
+	return srv, &http.Cookie{Name: bearerSentinel, Value: masterSecret}
 }
 
-// call is a tiny JSON client; cookie nil → unauthenticated.
-func call(t *testing.T, method, url string, cookie *http.Cookie, body any, out any) int {
+// call is a tiny JSON client. cred nil → unauthenticated; a bearerSentinel
+// cookie → Authorization: Bearer (master); any other cookie → a real session.
+func call(t *testing.T, method, url string, cred *http.Cookie, body any, out any) int {
 	t.Helper()
 	var buf bytes.Buffer
 	if body != nil {
@@ -95,8 +101,12 @@ func call(t *testing.T, method, url string, cookie *http.Cookie, body any, out a
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cookie != nil {
-		req.AddCookie(cookie)
+	if cred != nil {
+		if cred.Name == bearerSentinel {
+			req.Header.Set("Authorization", "Bearer "+cred.Value)
+		} else {
+			req.AddCookie(cred)
+		}
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -534,16 +544,14 @@ func TestMultiWeddingScoping(t *testing.T) {
 		t.Fatalf("new couple password = %d", code)
 	}
 
-	// Master changes the master password (env bootstrap → DB hash).
+	// changePassword is couple-only: a master (bearer) session is refused.
 	if code := call(t, "POST", u+"/api/admin/password", admin,
-		map[string]string{"current": "pw", "new": "master-moi-123"}, nil); code != 204 {
-		t.Fatalf("change master password = %d", code)
+		map[string]string{"current": "pw", "new": "whatever12"}, nil); code != 403 {
+		t.Fatalf("master changePassword = %d, want 403", code)
 	}
-	if _, code := loginCookie("pw", ""); code != 401 {
-		t.Fatalf("env bootstrap still works after DB master set = %d", code)
-	}
-	if _, code := loginCookie("master-moi-123", ""); code != 200 {
-		t.Fatalf("new master password = %d", code)
+	// Login requires a host (master scope is bearer-only, never browser login).
+	if _, code := loginCookie(masterSecret, ""); code != 400 {
+		t.Fatalf("login without host = %d, want 400", code)
 	}
 
 	// Master deletes the couple — everything under it goes. (Two weddings exist:
@@ -644,21 +652,46 @@ func TestSubdomainRequestCollision(t *testing.T) {
 	}
 }
 
-// TestLoginDisabledWithoutMaster: with no env ADMIN_PASSWORD and no DB master
-// hash, no login is possible (couple passwords are set only by a master), so
-// login returns a clear 503 rather than a generic 401.
-func TestLoginDisabledWithoutMaster(t *testing.T) {
-	pool := freshPool(t)
-	a := auth.New(config.Config{AdminPassword: "", JWTSecret: "test", JWTTTL: time.Hour})
-	srv := httptest.NewServer(New(pool, a, nil))
-	t.Cleanup(srv.Close)
+// TestCoupleCookieCannotReachMaster: a valid couple session (cookie) is confined
+// to its own wedding — it can't hit master-only endpoints even though it's
+// authenticated. Master scope is reachable ONLY via the bearer.
+func TestCoupleCookieCannotReachMaster(t *testing.T) {
+	srv, admin := setupIntegration(t)
+	u := srv.URL
 
-	var body struct {
-		Error struct{ Code string } `json:"error"`
+	var wed struct{ Slug string }
+	call(t, "POST", u+"/api/admin/weddings", admin, map[string]string{"name": "Couple X"}, &wed)
+	var ev struct{ Slug string }
+	call(t, "POST", u+"/api/admin/events", admin,
+		map[string]string{"name": "X event", "weddingSlug": wed.Slug}, &ev)
+	call(t, "PATCH", u+"/api/admin/events/"+ev.Slug, admin, map[string]string{"subdomain": "cx"}, nil)
+	call(t, "PATCH", u+"/api/admin/weddings/"+wed.Slug, admin, map[string]string{"password": "couple-x-pw"}, nil)
+
+	// Couple login → real session cookie.
+	var buf bytes.Buffer
+	_ = json.NewEncoder(&buf).Encode(map[string]string{"password": "couple-x-pw", "host": "cx.luminstudio.vn"})
+	req, _ := http.NewRequest("POST", u+"/api/admin/login", &buf)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("CF-Connecting-IP", "10.2.0.1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
 	}
-	code := call(t, "POST", srv.URL+"/api/admin/login", nil,
-		map[string]string{"password": "anything", "host": "giangvahieu.luminstudio.vn"}, &body)
-	if code != 503 || body.Error.Code != "LOGIN_DISABLED" {
-		t.Fatalf("login with no master configured = %d %q, want 503 LOGIN_DISABLED", code, body.Error.Code)
+	var couple *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == auth.CookieName && c.Value != "" {
+			couple = c
+		}
+	}
+	resp.Body.Close()
+	if couple == nil {
+		t.Fatal("couple login failed")
+	}
+	// Master-only endpoints reject the couple cookie (403).
+	if code := call(t, "POST", u+"/api/admin/weddings", couple, map[string]string{"name": "hack"}, nil); code != 403 {
+		t.Fatalf("couple create wedding = %d, want 403", code)
+	}
+	if code := call(t, "DELETE", u+"/api/admin/weddings/giang-hieu", couple, nil, nil); code != 403 {
+		t.Fatalf("couple delete wedding = %d, want 403", code)
 	}
 }
