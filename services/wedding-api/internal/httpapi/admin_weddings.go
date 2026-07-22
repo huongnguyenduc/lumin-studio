@@ -6,7 +6,6 @@ package httpapi
 // the master password lives in admin_config (env ADMIN_PASSWORD as bootstrap).
 
 import (
-	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -79,17 +78,7 @@ type weddingRow struct {
 	CreatedAt   time.Time `json:"createdAt"`
 }
 
-// me tells the admin app what the session can see — the dashboard branches on
-// this (wedding switcher + management for master, single locked wedding else).
-func (s *server) me(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
-		"scope":  auth.Scope(r.Context()),
-		"master": isMaster(r),
-	})
-}
-
-// listWeddings: master sees all, a couple sees only its own row (the frontend
-// can call it unconditionally).
+// listWeddings: master (bearer) sees all; a couple session sees only its own row.
 func (s *server) listWeddings(w http.ResponseWriter, r *http.Request) {
 	q := `SELECT slug, name, sort_order, password_hash IS NOT NULL, created_at
 	      FROM weddings`
@@ -268,32 +257,20 @@ func (s *server) deleteWedding(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// changePassword lets the session change ITS OWN password: master → the master
-// password (admin_config), couple → its wedding's password. Requires the
-// current password so a walked-away session can't be silently hijacked.
+// changePassword lets a COUPLE session change its own wedding's password.
+// Requires the current password so a walked-away session can't be silently
+// hijacked. Master (bearer) callers set couple passwords via patchWedding, not
+// here — a master scope is rejected.
 func (s *server) changePassword(w http.ResponseWriter, r *http.Request) {
+	if isMaster(r) {
+		writeError(w, http.StatusForbidden, "COUPLE_ONLY", "thao tác này chỉ dành cho phiên của cặp đôi")
+		return
+	}
 	var body struct {
 		Current string `json:"current"`
 		New     string `json:"new"`
 	}
 	if !readJSON(w, r, &body) {
-		return
-	}
-	if isMaster(r) {
-		if !s.checkMaster(r.Context(), body.Current) {
-			writeError(w, http.StatusUnauthorized, "BAD_PASSWORD", "mật khẩu hiện tại không đúng")
-			return
-		}
-		h, ok := hashPassword(w, body.New)
-		if !ok {
-			return
-		}
-		if _, err := s.pool.Exec(r.Context(),
-			`UPDATE admin_config SET master_password_hash = $1`, h); err != nil {
-			writeError(w, http.StatusInternalServerError, "DB", err.Error())
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	weddingSlug := auth.Scope(r.Context())
@@ -317,30 +294,6 @@ func (s *server) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// masterConfigured reports whether a master login is possible at all — a DB
-// hash is set or the ADMIN_PASSWORD env bootstrap is present. Used to give a
-// clearer 503 (vs a generic 401) on a deploy where neither is set: since a
-// couple password can only be set by a master, no login works in that state.
-func (s *server) masterConfigured(ctx context.Context) bool {
-	var hash *string
-	if err := s.pool.QueryRow(ctx,
-		`SELECT master_password_hash FROM admin_config`).Scan(&hash); err == nil && hash != nil {
-		return true
-	}
-	return s.auth.EnvMasterEnabled()
-}
-
-// checkMaster verifies a candidate against the DB master hash when set, else
-// the ADMIN_PASSWORD env bootstrap.
-func (s *server) checkMaster(ctx context.Context, pw string) bool {
-	var hash *string
-	if err := s.pool.QueryRow(ctx,
-		`SELECT master_password_hash FROM admin_config`).Scan(&hash); err == nil && hash != nil {
-		return bcrypt.CompareHashAndPassword([]byte(*hash), []byte(pw)) == nil
-	}
-	return s.auth.CheckEnvMaster(pw)
 }
 
 // hashPassword validates length and bcrypts; writes the 400 itself.

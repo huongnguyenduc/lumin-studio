@@ -73,47 +73,29 @@ export type AdminEvent = {
   data: Record<string, unknown>;
 };
 
-export type AdminWedding = {
-  slug: string;
-  name: string;
-  sortOrder: number;
-  hasPassword: boolean;
-  createdAt: string;
-};
-
 export type Me = { scope: string; master: boolean };
 
+// The wedding admin is COUPLE-ONLY: a couple logs in on its own subdomain and
+// manages just its own wedding. Couple management (create/rename/password/
+// delete/subdomain-review) lives in the lumin admin, not here.
 export const adminApi = {
-  // host: the page's own hostname, resolved server-side to a wedding when the
-  // password isn't the master password (multi-couple scoped login).
+  // host: the page's own hostname — the API resolves it to the couple's wedding.
   login: (password: string, host?: string) =>
     call<Me>('POST', '/api/admin/login', { password, host }),
   logout: () => call<void>('POST', '/api/admin/logout'),
 
-  me: () => call<Me>('GET', '/api/admin/me'),
-
-  weddings: () => call<{ items: AdminWedding[] }>('GET', '/api/admin/weddings'),
-  createWedding: (name: string) => call<AdminWedding>('POST', '/api/admin/weddings', { name }),
-  patchWedding: (slug: string, patch: { name?: string; password?: string }) =>
-    call<AdminWedding>('PATCH', `/api/admin/weddings/${encodeURIComponent(slug)}`, patch),
-  deleteWedding: (slug: string) =>
-    call<void>('DELETE', `/api/admin/weddings/${encodeURIComponent(slug)}`),
   changePassword: (current: string, next: string) =>
     call<void>('POST', '/api/admin/password', { current, new: next }),
 
   events: () => call<{ items: AdminEvent[] }>('GET', '/api/admin/events'),
-  createEvent: (name: string, weddingSlug?: string) =>
-    call<AdminEvent>('POST', '/api/admin/events', { name, weddingSlug }),
-  // subdomain: label only (e.g. "damcuoisg") — the API owns the ".luminstudio.vn" suffix.
-  // A couple session's subdomain lands in requestedSubdomain (master review).
+  createEvent: (name: string) => call<AdminEvent>('POST', '/api/admin/events', { name }),
+  // subdomain: label only (e.g. "damcuoisg") — the API owns the ".luminstudio.vn"
+  // suffix. A couple's change lands in requestedSubdomain, pending master review
+  // (done in the lumin admin).
   patchEvent: (
     slug: string,
     patch: { name?: string; subdomain?: string; data?: Record<string, unknown> },
   ) => call<AdminEvent>('PATCH', `/api/admin/events/${encodeURIComponent(slug)}`, patch),
-  reviewSubdomain: (slug: string, approve: boolean) =>
-    call<AdminEvent>('POST', `/api/admin/events/${encodeURIComponent(slug)}/subdomain-review`, {
-      approve,
-    }),
 
   guests: (event: string) =>
     call<{ items: AdminGuest[] }>('GET', `/api/admin/guests?event=${encodeURIComponent(event)}`),
@@ -144,11 +126,9 @@ export const adminApi = {
       `/api/admin/groups/${encodeURIComponent(event)}/${encodeURIComponent(name)}`,
     ),
 
-  wishes: (limit = 500, wedding?: string) =>
-    call<{ items: AdminWish[]; total: number }>(
-      'GET',
-      `/api/admin/wishes?limit=${limit}${wedding ? `&wedding=${encodeURIComponent(wedding)}` : ''}`,
-    ),
+  // No wedding arg: a couple session's wall is inferred from the session scope.
+  wishes: (limit = 500) =>
+    call<{ items: AdminWish[]; total: number }>('GET', `/api/admin/wishes?limit=${limit}`),
   deleteWish: (id: string) => call<void>('DELETE', `/api/admin/wishes/${encodeURIComponent(id)}`),
   bulkDeleteWishes: (ids: string[]) =>
     call<{ deleted: number }>('POST', '/api/admin/wishes/bulk-delete', { ids }),
@@ -157,17 +137,8 @@ export const adminApi = {
   // block URLs containing "stats" as presumed analytics.
   stats: (event: string) =>
     call<AdminStats>('GET', `/api/admin/overview?event=${encodeURIComponent(event)}`),
-  settings: (wedding?: string) =>
-    call<Settings>(
-      'GET',
-      `/api/admin/settings${wedding ? `?wedding=${encodeURIComponent(wedding)}` : ''}`,
-    ),
-  patchSettings: (patch: Settings, wedding?: string) =>
-    call<Settings>(
-      'PATCH',
-      `/api/admin/settings${wedding ? `?wedding=${encodeURIComponent(wedding)}` : ''}`,
-      patch,
-    ),
+  settings: () => call<Settings>('GET', '/api/admin/settings'),
+  patchSettings: (patch: Settings) => call<Settings>('PATCH', '/api/admin/settings', patch),
 
   // Presign + direct browser POST to Garage; resolves to the public finalUrl.
   upload: async (kind: string, file: File): Promise<string> => {

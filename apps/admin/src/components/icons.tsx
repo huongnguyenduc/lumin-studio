@@ -130,3 +130,15 @@ export function GlobeIcon(props: IconProps) {
     </Svg>
   );
 }
+
+// Two overlapping rings — weddings/couples.
+export function RingsIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="9" cy="14" r="6" />
+      <circle cx="15" cy="14" r="6" />
+      <path d="M9 4.5 7.5 7h3L9 4.5Z" />
+      <path d="M15 4.5 13.5 7h3L15 4.5Z" />
+    </Svg>
+  );
+}

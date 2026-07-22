@@ -3,7 +3,7 @@
 import { type CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 import type { AdminEvent } from '@/lib/admin-api';
-import { inputBase, kicker, pillGhost, pillSolid, CREAM_2, INK, RING, TAN } from './ui';
+import { inputBase, kicker, CREAM_2, INK, RING, TAN } from './ui';
 
 // Presentational body of the venue/timeline tab. Draft (data fields + name +
 // subdomain) lives in the parent SettingsDrawer; this only reads via `val`/
@@ -63,8 +63,6 @@ export function EventFields({
   onNameChange,
   onSubdomainChange,
   uploadMap,
-  isMaster,
-  onReviewSubdomain,
 }: {
   event: AdminEvent;
   val: (key: string) => string;
@@ -74,11 +72,8 @@ export function EventFields({
   onNameChange: (v: string) => void;
   onSubdomainChange: (v: string) => void;
   uploadMap: (file: File) => void;
-  isMaster: boolean;
-  onReviewSubdomain: (approve: boolean) => void;
 }) {
   const t = useTranslations('admin.eventPanel');
-  const tw = useTranslations('admin.weddings');
 
   const field = (key: DataField) => (
     <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -133,32 +128,12 @@ export function EventFields({
             </a>
           ) : null}
           {event.requestedSubdomain ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 12, fontStyle: 'italic', color: TAN }}>
-                {t('subdomainPending', { host: event.requestedSubdomain })}
-              </span>
-              {isMaster ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => onReviewSubdomain(true)}
-                    style={{ ...pillSolid, padding: '4px 12px', fontSize: 11 }}
-                    className="wa-pill-solid"
-                  >
-                    {tw('approve')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onReviewSubdomain(false)}
-                    style={{ ...pillGhost, padding: '4px 12px', fontSize: 11 }}
-                    className="wa-pill-ghost"
-                  >
-                    {tw('reject')}
-                  </button>
-                </>
-              ) : null}
-            </div>
-          ) : null}
+            <span style={{ fontSize: 12, fontStyle: 'italic', color: TAN }}>
+              {t('subdomainPending', { host: event.requestedSubdomain })}
+            </span>
+          ) : (
+            <span style={{ fontSize: 12, color: TAN }}>{t('subdomainReviewNote')}</span>
+          )}
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>

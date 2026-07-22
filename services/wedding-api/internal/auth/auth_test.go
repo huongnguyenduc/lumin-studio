@@ -17,16 +17,16 @@ func newTestAuth(password string) *Auth {
 	})
 }
 
-func TestCheckEnvMaster(t *testing.T) {
+func TestCheckMasterToken(t *testing.T) {
 	a := newTestAuth("s3cret")
-	if !a.CheckEnvMaster("s3cret") {
-		t.Error("correct password rejected")
+	if !a.CheckMasterToken("s3cret") {
+		t.Error("correct token rejected")
 	}
-	if a.CheckEnvMaster("wrong") {
-		t.Error("wrong password accepted")
+	if a.CheckMasterToken("wrong") {
+		t.Error("wrong token accepted")
 	}
-	if newTestAuth("").CheckEnvMaster("") {
-		t.Error("empty configured password must disable login, not match empty input")
+	if newTestAuth("").CheckMasterToken("") {
+		t.Error("empty master secret must disable the bearer, not match empty input")
 	}
 }
 
@@ -43,8 +43,8 @@ func TestMiddlewareRoundTrip(t *testing.T) {
 		t.Fatalf("no cookie = %d, want 401", rec.Code)
 	}
 
-	// Issued cookie → 200.
-	cookie, err := a.IssueCookie(ScopeAll)
+	// A couple-scope cookie → 200.
+	cookie, err := a.IssueCookie("giang-hieu")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,27 @@ func TestMiddlewareRoundTrip(t *testing.T) {
 	rec = httptest.NewRecorder()
 	protected.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("valid cookie = %d, want 200", rec.Code)
+		t.Fatalf("valid couple cookie = %d, want 200", rec.Code)
+	}
+
+	// A "*" (master) cookie is IGNORED — master scope is bearer-only, so a stray
+	// master cookie must not authenticate.
+	masterCookie, _ := a.IssueCookie(ScopeAll)
+	req = httptest.NewRequest("GET", "/api/admin/stats", nil)
+	req.AddCookie(masterCookie)
+	rec = httptest.NewRecorder()
+	protected.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("master cookie = %d, want 401 (bearer-only master)", rec.Code)
+	}
+
+	// The bearer with the master secret → 200.
+	req = httptest.NewRequest("GET", "/api/admin/stats", nil)
+	req.Header.Set("Authorization", "Bearer pw")
+	rec = httptest.NewRecorder()
+	protected.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("master bearer = %d, want 200", rec.Code)
 	}
 
 	// Tampered token → 401.
