@@ -121,6 +121,7 @@ export const vi = {
       passwordPlaceholder: 'Mật khẩu',
       submit: 'Đăng nhập',
       wrong: 'Mật khẩu không đúng',
+      disabled: 'Đăng nhập chưa được cấu hình (ADMIN_PASSWORD)',
       error: 'Không kết nối được máy chủ',
     },
     header: {
@@ -238,7 +239,7 @@ export const vi = {
       deleteConfirm:
         'Xoá toàn bộ đám cưới của "{name}" — khách mời, lời chúc, buổi lễ, cài đặt? Gõ lại tên cặp đôi để xác nhận:',
       deleteMismatch: 'Tên không khớp — không xoá gì cả',
-      pendingReview: 'Đề xuất subdomain: {host}',
+      cannotDeleteLast: 'Không thể xoá cặp đôi cuối cùng',
       approve: 'Duyệt',
       reject: 'Từ chối',
     },

@@ -221,6 +221,18 @@ func (s *server) deleteWedding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	weddingSlug := chi.URLParam(r, "slug")
+	// Refuse to delete the last wedding — an empty `weddings` table would make
+	// weddingByHost (public settings/events/wishes) 500 and leave the admin with
+	// no wedding to select. There must always be at least one couple.
+	var remaining int
+	if err := s.pool.QueryRow(r.Context(), `SELECT count(*) FROM weddings`).Scan(&remaining); err != nil {
+		writeError(w, http.StatusInternalServerError, "DB", err.Error())
+		return
+	}
+	if remaining <= 1 {
+		writeError(w, http.StatusConflict, "LAST_WEDDING", "không thể xoá cặp đôi cuối cùng")
+		return
+	}
 	tx, err := s.pool.Begin(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
@@ -307,6 +319,19 @@ func (s *server) changePassword(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// masterConfigured reports whether a master login is possible at all — a DB
+// hash is set or the ADMIN_PASSWORD env bootstrap is present. Used to give a
+// clearer 503 (vs a generic 401) on a deploy where neither is set: since a
+// couple password can only be set by a master, no login works in that state.
+func (s *server) masterConfigured(ctx context.Context) bool {
+	var hash *string
+	if err := s.pool.QueryRow(ctx,
+		`SELECT master_password_hash FROM admin_config`).Scan(&hash); err == nil && hash != nil {
+		return true
+	}
+	return s.auth.EnvMasterEnabled()
+}
+
 // checkMaster verifies a candidate against the DB master hash when set, else
 // the ADMIN_PASSWORD env bootstrap.
 func (s *server) checkMaster(ctx context.Context, pw string) bool {
@@ -350,11 +375,11 @@ func (s *server) reviewSubdomain(w http.ResponseWriter, r *http.Request) {
 	var e eventRow
 	var err error
 	if body.Approve {
-		err = s.pool.QueryRow(r.Context(),
+		err = scanEvent(s.pool.QueryRow(r.Context(),
 			`UPDATE events SET subdomain = requested_subdomain, requested_subdomain = NULL
 			 WHERE slug = $1 AND requested_subdomain IS NOT NULL
-			 RETURNING slug, name, sort_order, subdomain, requested_subdomain, data`,
-			eventSlug).Scan(&e.Slug, &e.Name, &e.SortOrder, &e.Subdomain, &e.RequestedSubdomain, &e.Data)
+			 RETURNING `+eventSelect,
+			eventSlug), &e)
 		if isUniqueViolation(err) {
 			writeError(w, http.StatusConflict, "SUBDOMAIN_TAKEN", "subdomain đã được dùng cho đám cưới khác")
 			return
@@ -363,11 +388,11 @@ func (s *server) reviewSubdomain(w http.ResponseWriter, r *http.Request) {
 			s.allowOrigin(r.Context(), *e.Subdomain)
 		}
 	} else {
-		err = s.pool.QueryRow(r.Context(),
+		err = scanEvent(s.pool.QueryRow(r.Context(),
 			`UPDATE events SET requested_subdomain = NULL
 			 WHERE slug = $1 AND requested_subdomain IS NOT NULL
-			 RETURNING slug, name, sort_order, subdomain, requested_subdomain, data`,
-			eventSlug).Scan(&e.Slug, &e.Name, &e.SortOrder, &e.Subdomain, &e.RequestedSubdomain, &e.Data)
+			 RETURNING `+eventSelect,
+			eventSlug), &e)
 	}
 	if err == pgx.ErrNoRows {
 		writeError(w, http.StatusNotFound, "NO_REQUEST", "không có đề xuất subdomain đang chờ")

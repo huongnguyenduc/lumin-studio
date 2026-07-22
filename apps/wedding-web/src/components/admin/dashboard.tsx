@@ -135,7 +135,14 @@ export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
   const run = useCallback(
     async (
       fn: () => Promise<unknown>,
-      opts?: { onDone?: () => void; successMsg?: string; silent?: boolean },
+      opts?: {
+        onDone?: () => void;
+        successMsg?: string;
+        silent?: boolean;
+        // Map an API error code to a specific toast (e.g. LAST_WEDDING) instead
+        // of the generic "có lỗi" — falls back to the generic one when unmapped.
+        errorMsgs?: Record<string, string>;
+      },
     ) => {
       setSaving(true);
       try {
@@ -145,6 +152,8 @@ export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
         if (!opts?.silent) flash(opts?.successMsg ?? t('toasts.updated'));
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) setAuthed(false);
+        else if (err instanceof ApiError && opts?.errorMsgs?.[err.code])
+          flash(opts.errorMsgs[err.code], true);
         else flash(t('toasts.apiError'), true);
       } finally {
         setSaving(false);
@@ -328,6 +337,7 @@ export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
               onDone: () => {
                 if (selectedWedding === slug) setSelectedWedding(null);
               },
+              errorMsgs: { LAST_WEDDING: t('weddings.cannotDeleteLast') },
             })
           }
           onError={(msg) => flash(msg, true)}

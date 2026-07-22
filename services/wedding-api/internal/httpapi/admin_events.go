@@ -188,6 +188,24 @@ func (s *server) patchEvent(w http.ResponseWriter, r *http.Request) {
 		col := "subdomain"
 		if !isMaster(r) {
 			col = "requested_subdomain" // couple proposal — live only after master approval
+			// requested_subdomain has no UNIQUE constraint (only live `subdomain`
+			// does), so a couple would otherwise learn the name is taken only when
+			// master tries to approve it (409, much later). Reject up front if it
+			// collides with any other event's live or pending subdomain.
+			if sub != nil {
+				var taken bool
+				if qerr := s.pool.QueryRow(r.Context(),
+					`SELECT EXISTS (SELECT 1 FROM events
+					 WHERE slug <> $1 AND (subdomain = $2 OR requested_subdomain = $2))`,
+					eventSlug, *sub).Scan(&taken); qerr != nil {
+					writeError(w, http.StatusInternalServerError, "DB", qerr.Error())
+					return
+				}
+				if taken {
+					writeError(w, http.StatusConflict, "SUBDOMAIN_TAKEN", "subdomain đã được dùng cho đám cưới khác")
+					return
+				}
+			}
 		}
 		err = scanEvent(s.pool.QueryRow(r.Context(),
 			`UPDATE events SET name = coalesce($2, name), `+col+` = $3,

@@ -105,7 +105,10 @@ func New(pool *pgxpool.Pool, a *auth.Auth, uploads *uploadstore.Store) http.Hand
 		r.Post("/weddings", s.createWedding)
 		r.Patch("/weddings/{slug}", s.patchWedding)
 		r.Delete("/weddings/{slug}", s.deleteWedding)
-		r.Post("/password", s.changePassword)
+		// Rate-limit the self-service password change: it checks the current
+		// password, so it's a (session-gated, bcrypt-slow) brute-force surface.
+		pw := newRateLimiter(0.2, 5)
+		r.With(pw.middleware).Post("/password", s.changePassword)
 
 		// "overview", not "stats" — generic ad-blocker filter lists (EasyPrivacy-style)
 		// block URLs containing "stats" as presumed analytics, breaking this in-browser.
@@ -154,6 +157,13 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if scope == "" {
+		// No master configured at all → no login can work (couple passwords are
+		// set only by a master), so tell the operator instead of a generic 401.
+		if !s.masterConfigured(r.Context()) {
+			writeError(w, http.StatusServiceUnavailable, "LOGIN_DISABLED",
+				"đăng nhập chưa được cấu hình (ADMIN_PASSWORD)")
+			return
+		}
 		writeError(w, http.StatusUnauthorized, "BAD_PASSWORD", "mật khẩu không đúng")
 		return
 	}

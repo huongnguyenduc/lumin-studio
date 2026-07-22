@@ -31,7 +31,8 @@ import (
 	"github.com/huongnguyenduc/lumin-studio/services/wedding-api/internal/config"
 )
 
-func setupIntegration(t *testing.T) (*httptest.Server, *http.Cookie) {
+// freshPool opens the test DB and resets it to a freshly-migrated schema.
+func freshPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	dsn := os.Getenv("WEDDING_TEST_DATABASE_URL")
 	if dsn == "" {
@@ -65,7 +66,12 @@ func setupIntegration(t *testing.T) (*httptest.Server, *http.Cookie) {
 			t.Fatalf("apply %s: %v", filepath.Base(path), err)
 		}
 	}
+	return pool
+}
 
+func setupIntegration(t *testing.T) (*httptest.Server, *http.Cookie) {
+	t.Helper()
+	pool := freshPool(t)
 	a := auth.New(config.Config{AdminPassword: "pw", JWTSecret: "test", JWTTTL: time.Hour})
 	srv := httptest.NewServer(New(pool, a, nil))
 	t.Cleanup(srv.Close)
@@ -540,7 +546,8 @@ func TestMultiWeddingScoping(t *testing.T) {
 		t.Fatalf("new master password = %d", code)
 	}
 
-	// Master deletes the couple — everything under it goes.
+	// Master deletes the couple — everything under it goes. (Two weddings exist:
+	// the seeded giang-hieu + an-binh, so this isn't the last one.)
 	if code := call(t, "DELETE", u+"/api/admin/weddings/"+wed.Slug, admin, nil, nil); code != 204 {
 		t.Fatalf("delete wedding = %d", code)
 	}
@@ -549,5 +556,109 @@ func TestMultiWeddingScoping(t *testing.T) {
 		if it.Slug == ev.Slug {
 			t.Fatal("deleted wedding's event still public")
 		}
+	}
+
+	// The last remaining wedding can't be deleted — an empty weddings table would
+	// 500 every public endpoint.
+	if code := call(t, "DELETE", u+"/api/admin/weddings/giang-hieu", admin, nil, nil); code != 409 {
+		t.Fatalf("delete last wedding = %d, want 409", code)
+	}
+}
+
+// TestSubdomainRequestCollision: a couple requesting a subdomain already claimed
+// (live or pending) by another event is rejected up front (409), not silently
+// accepted until master approval.
+func TestSubdomainRequestCollision(t *testing.T) {
+	srv, admin := setupIntegration(t)
+	u := srv.URL
+
+	// Couple B with a live subdomain, and its own password to log in with.
+	var wedB struct{ Slug string }
+	call(t, "POST", u+"/api/admin/weddings", admin, map[string]string{"name": "B Couple"}, &wedB)
+	var evB struct{ Slug string }
+	call(t, "POST", u+"/api/admin/events", admin,
+		map[string]string{"name": "B event", "weddingSlug": wedB.Slug}, &evB)
+	if code := call(t, "PATCH", u+"/api/admin/events/"+evB.Slug, admin,
+		map[string]string{"subdomain": "taken"}, nil); code != 200 {
+		t.Fatal("set B subdomain failed")
+	}
+	call(t, "PATCH", u+"/api/admin/weddings/"+wedB.Slug, admin,
+		map[string]string{"password": "b-couple-password"}, nil)
+
+	// Couple B (its own session) requests "taken" for its own event again — that's
+	// its OWN live subdomain, so the slug<>self guard means no collision (allowed).
+	var buf bytes.Buffer
+	_ = json.NewEncoder(&buf).Encode(map[string]string{
+		"password": "b-couple-password", "host": "taken.luminstudio.vn",
+	})
+	req, _ := http.NewRequest("POST", u+"/api/admin/login", &buf)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("CF-Connecting-IP", "10.1.0.1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var coupleB *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == auth.CookieName && c.Value != "" {
+			coupleB = c
+		}
+	}
+	resp.Body.Close()
+	if coupleB == nil {
+		t.Fatal("couple B login failed")
+	}
+
+	// Couple C requests the subdomain already live for B → 409 up front.
+	var wedC struct{ Slug string }
+	call(t, "POST", u+"/api/admin/weddings", admin, map[string]string{"name": "C Couple"}, &wedC)
+	var evC struct{ Slug string }
+	call(t, "POST", u+"/api/admin/events", admin,
+		map[string]string{"name": "C event", "weddingSlug": wedC.Slug}, &evC)
+	if code := call(t, "PATCH", u+"/api/admin/events/"+evC.Slug, admin,
+		map[string]string{"subdomain": "cc"}, nil); code != 200 {
+		t.Fatal("set C subdomain failed")
+	}
+	call(t, "PATCH", u+"/api/admin/weddings/"+wedC.Slug, admin,
+		map[string]string{"password": "c-couple-password"}, nil)
+	_ = json.NewEncoder(&buf).Encode(map[string]string{
+		"password": "c-couple-password", "host": "cc.luminstudio.vn",
+	})
+	req2, _ := http.NewRequest("POST", u+"/api/admin/login", &buf)
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("CF-Connecting-IP", "10.1.0.2")
+	resp2, _ := http.DefaultClient.Do(req2)
+	var coupleC *http.Cookie
+	for _, c := range resp2.Cookies() {
+		if c.Name == auth.CookieName && c.Value != "" {
+			coupleC = c
+		}
+	}
+	resp2.Body.Close()
+	if coupleC == nil {
+		t.Fatal("couple C login failed")
+	}
+	if code := call(t, "PATCH", u+"/api/admin/events/"+evC.Slug, coupleC,
+		map[string]string{"subdomain": "taken"}, nil); code != 409 {
+		t.Fatalf("request already-live subdomain = %d, want 409", code)
+	}
+}
+
+// TestLoginDisabledWithoutMaster: with no env ADMIN_PASSWORD and no DB master
+// hash, no login is possible (couple passwords are set only by a master), so
+// login returns a clear 503 rather than a generic 401.
+func TestLoginDisabledWithoutMaster(t *testing.T) {
+	pool := freshPool(t)
+	a := auth.New(config.Config{AdminPassword: "", JWTSecret: "test", JWTTTL: time.Hour})
+	srv := httptest.NewServer(New(pool, a, nil))
+	t.Cleanup(srv.Close)
+
+	var body struct {
+		Error struct{ Code string } `json:"error"`
+	}
+	code := call(t, "POST", srv.URL+"/api/admin/login", nil,
+		map[string]string{"password": "anything", "host": "giangvahieu.luminstudio.vn"}, &body)
+	if code != 503 || body.Error.Code != "LOGIN_DISABLED" {
+		t.Fatalf("login with no master configured = %d %q, want 503 LOGIN_DISABLED", code, body.Error.Code)
 	}
 }

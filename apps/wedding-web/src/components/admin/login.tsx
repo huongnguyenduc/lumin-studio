@@ -20,6 +20,7 @@ export function Login({ onSuccess }: { onSuccess: () => void }) {
       onSuccess();
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) setError(t('wrong'));
+      else if (err instanceof ApiError && err.status === 503) setError(t('disabled'));
       else setError(t('error'));
     } finally {
       setBusy(false);
