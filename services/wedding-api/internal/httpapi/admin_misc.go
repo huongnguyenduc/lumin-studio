@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/huongnguyenduc/lumin-studio/services/wedding-api/internal/uploadstore"
 )
@@ -15,11 +16,16 @@ import (
 // --- wishes moderation (HANDOFF §3.6/§3.7: delete-only, no approval queue) ---
 
 func (s *server) adminListWishes(w http.ResponseWriter, r *http.Request) {
+	wedding, ok := weddingScope(w, r)
+	if !ok {
+		return
+	}
 	limit := queryInt(r, "limit", 24, 100)
 	offset := queryInt(r, "offset", 0, 1<<30)
 	rows, err := s.pool.Query(r.Context(),
 		`SELECT w.id, w.guest_id, w.name, w.text, w.color, w.created_at, count(*) OVER ()
-		 FROM wishes w ORDER BY w.created_at DESC LIMIT $1 OFFSET $2`, limit, offset)
+		 FROM wishes w WHERE w.wedding_slug = $3
+		 ORDER BY w.created_at DESC LIMIT $1 OFFSET $2`, limit, offset, wedding)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
@@ -47,7 +53,8 @@ func (s *server) adminListWishes(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) adminDeleteWish(w http.ResponseWriter, r *http.Request) {
 	tag, err := s.pool.Exec(r.Context(),
-		`DELETE FROM wishes WHERE id = $1`, chi.URLParam(r, "id"))
+		`DELETE FROM wishes WHERE id = $1 AND ($2::bool OR wedding_slug = $3)`,
+		chi.URLParam(r, "id"), isMaster(r), sessionWedding(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
@@ -70,7 +77,9 @@ func (s *server) bulkDeleteWishes(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "NO_IDS", "danh sách ids trống")
 		return
 	}
-	tag, err := s.pool.Exec(r.Context(), `DELETE FROM wishes WHERE id = ANY($1)`, body.IDs)
+	tag, err := s.pool.Exec(r.Context(),
+		`DELETE FROM wishes WHERE id = ANY($1) AND ($2::bool OR wedding_slug = $3)`,
+		body.IDs, isMaster(r), sessionWedding(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
@@ -80,12 +89,15 @@ func (s *server) bulkDeleteWishes(w http.ResponseWriter, r *http.Request) {
 
 // --- stats (HANDOFF §3.1) ---
 
-// adminStats scopes guest counts to one event (?event=) — wishes stay a
-// shared wall across events, so that count is global.
+// adminStats scopes guest counts to one event (?event=) — wishes are the
+// event's wedding-wide wall (shared across that couple's events).
 func (s *server) adminStats(w http.ResponseWriter, r *http.Request) {
 	event := r.URL.Query().Get("event")
 	if event == "" {
 		writeError(w, http.StatusBadRequest, "NO_EVENT", "thiếu tham số event")
+		return
+	}
+	if !s.eventInScope(w, r, event) {
 		return
 	}
 	var total, opened, yes, no, wishes int
@@ -94,7 +106,8 @@ func (s *server) adminStats(w http.ResponseWriter, r *http.Request) {
 		       (SELECT count(*) FROM guests WHERE event_slug = $1 AND opened_at IS NOT NULL),
 		       (SELECT count(*) FROM guests WHERE event_slug = $1 AND rsvp = 'yes'),
 		       (SELECT count(*) FROM guests WHERE event_slug = $1 AND rsvp = 'no'),
-		       (SELECT count(*) FROM wishes)`, event).
+		       (SELECT count(*) FROM wishes
+		        WHERE wedding_slug = (SELECT wedding_slug FROM events WHERE slug = $1))`, event).
 		Scan(&total, &opened, &yes, &no, &wishes)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
@@ -105,11 +118,22 @@ func (s *server) adminStats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// --- settings (HANDOFF §3.5: single JSONB row, shallow key merge) ---
+// --- settings (HANDOFF §3.5: JSONB row per wedding, shallow key merge) ---
 
-func (s *server) getSettings(w http.ResponseWriter, r *http.Request) {
+// adminGetSettings returns the session wedding's settings (master: ?wedding=).
+func (s *server) adminGetSettings(w http.ResponseWriter, r *http.Request) {
+	wedding, ok := weddingScope(w, r)
+	if !ok {
+		return
+	}
 	var data json.RawMessage
-	if err := s.pool.QueryRow(r.Context(), `SELECT data FROM settings`).Scan(&data); err != nil {
+	err := s.pool.QueryRow(r.Context(),
+		`SELECT data FROM settings WHERE wedding_slug = $1`, wedding).Scan(&data)
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusNotFound, "WEDDING_NOT_FOUND", "không tìm thấy cặp đôi")
+		return
+	}
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
 	}
@@ -117,9 +141,14 @@ func (s *server) getSettings(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
-// patchSettings shallow-merges the posted object into the row (jsonb ||). A key
-// set to null is removed — that's how the host clears a slot (e.g. music).
+// patchSettings shallow-merges the posted object into the wedding's row
+// (jsonb ||). A key set to null is removed — that's how the host clears a slot
+// (e.g. music).
 func (s *server) patchSettings(w http.ResponseWriter, r *http.Request) {
+	wedding, ok := weddingScope(w, r)
+	if !ok {
+		return
+	}
 	var patch map[string]json.RawMessage
 	if !readJSONLoose(w, r, &patch) {
 		return
@@ -138,8 +167,13 @@ func (s *server) patchSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	var data json.RawMessage
 	err = s.pool.QueryRow(r.Context(),
-		`UPDATE settings SET data = (data || $1::jsonb) - $2::text[] RETURNING data`,
-		merged, nullKeys).Scan(&data)
+		`UPDATE settings SET data = (data || $1::jsonb) - $2::text[]
+		 WHERE wedding_slug = $3 RETURNING data`,
+		merged, nullKeys, wedding).Scan(&data)
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusNotFound, "WEDDING_NOT_FOUND", "không tìm thấy cặp đôi")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return

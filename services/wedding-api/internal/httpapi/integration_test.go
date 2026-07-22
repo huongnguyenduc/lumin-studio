@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -68,7 +69,7 @@ func setupIntegration(t *testing.T) (*httptest.Server, *http.Cookie) {
 	a := auth.New(config.Config{AdminPassword: "pw", JWTSecret: "test", JWTTTL: time.Hour})
 	srv := httptest.NewServer(New(pool, a, nil))
 	t.Cleanup(srv.Close)
-	cookie, err := a.IssueCookie()
+	cookie, err := a.IssueCookie(auth.ScopeAll)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,10 +254,10 @@ func TestEndToEndFlows(t *testing.T) {
 	}
 
 	// --- settings: shallow merge + null deletes a key ---
-	call(t, "PATCH", u+"/api/admin/settings", admin,
+	call(t, "PATCH", u+"/api/admin/settings?wedding=giang-hieu", admin,
 		map[string]any{"heroImage": "hero/abc.jpg", "mapsUrl": "https://maps.example"}, nil)
 	var settings map[string]any
-	call(t, "PATCH", u+"/api/admin/settings", admin,
+	call(t, "PATCH", u+"/api/admin/settings?wedding=giang-hieu", admin,
 		map[string]any{"mapsUrl": nil, "title": "Giang & Hiếu"}, &settings)
 	if settings["heroImage"] != "hero/abc.jpg" || settings["title"] != "Giang & Hiếu" {
 		t.Fatalf("settings merge = %v", settings)
@@ -287,7 +288,7 @@ func TestEventScoping(t *testing.T) {
 
 	var ev2 struct{ Slug, Name string }
 	if code := call(t, "POST", u+"/api/admin/events", admin,
-		map[string]string{"name": "Đám cưới 2"}, &ev2); code != 201 {
+		map[string]string{"name": "Đám cưới 2", "weddingSlug": "giang-hieu"}, &ev2); code != 201 {
 		t.Fatalf("create event = %d", code)
 	}
 	if ev2.Slug != "dam-cuoi-2" {
@@ -362,7 +363,8 @@ func TestEventScoping(t *testing.T) {
 
 	// A second event can't steal an already-claimed subdomain.
 	var ev3 struct{ Slug string }
-	call(t, "POST", u+"/api/admin/events", admin, map[string]string{"name": "Đám cưới 3"}, &ev3)
+	call(t, "POST", u+"/api/admin/events", admin,
+		map[string]string{"name": "Đám cưới 3", "weddingSlug": "giang-hieu"}, &ev3)
 	if code := call(t, "PATCH", u+"/api/admin/events/"+ev3.Slug, admin,
 		map[string]string{"subdomain": "Dam Cuoi SG!!"}, nil); code != 409 {
 		t.Fatalf("duplicate subdomain = %d, want 409", code)
@@ -375,5 +377,177 @@ func TestEventScoping(t *testing.T) {
 	}
 	if withSub.Subdomain != nil {
 		t.Fatalf("subdomain not cleared: %v", withSub.Subdomain)
+	}
+}
+
+// TestMultiWeddingScoping: a second COUPLE (weddings layer) gets its own
+// events/settings/wishes and a couple login confined to it — the point of
+// multi-couple support.
+func TestMultiWeddingScoping(t *testing.T) {
+	srv, admin := setupIntegration(t)
+	u := srv.URL
+
+	// Master creates the couple; a couple session must not be able to.
+	var wed struct{ Slug string }
+	if code := call(t, "POST", u+"/api/admin/weddings", admin,
+		map[string]string{"name": "An & Bình"}, &wed); code != 201 {
+		t.Fatalf("create wedding = %d", code)
+	}
+	if wed.Slug != "an-binh" {
+		t.Fatalf("wedding slug = %q", wed.Slug)
+	}
+
+	// Its first event + a live subdomain (master sets directly).
+	var ev struct{ Slug string }
+	if code := call(t, "POST", u+"/api/admin/events", admin,
+		map[string]string{"name": "Đám cưới An Bình", "weddingSlug": wed.Slug}, &ev); code != 201 {
+		t.Fatalf("create event = %d", code)
+	}
+	if code := call(t, "PATCH", u+"/api/admin/events/"+ev.Slug, admin,
+		map[string]string{"subdomain": "anbinh"}, nil); code != 200 {
+		t.Fatal("set subdomain failed")
+	}
+
+	// Master sets the couple password → couple logs in ON THEIR SUBDOMAIN only.
+	if code := call(t, "PATCH", u+"/api/admin/weddings/"+wed.Slug, admin,
+		map[string]string{"password": "matkhau-cua-an-binh"}, nil); code != 200 {
+		t.Fatal("set couple password failed")
+	}
+	// Each login gets its own CF-Connecting-IP so the tight per-IP login rate
+	// limit (burst 5) doesn't 429 the test's ~7 attempts.
+	loginN := 0
+	loginCookie := func(password, host string) (*http.Cookie, int) {
+		loginN++
+		var buf bytes.Buffer
+		_ = json.NewEncoder(&buf).Encode(map[string]string{"password": password, "host": host})
+		req, err := http.NewRequest("POST", u+"/api/admin/login", &buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("CF-Connecting-IP", "10.0.0."+strconv.Itoa(loginN))
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		for _, c := range resp.Cookies() {
+			if c.Name == auth.CookieName && c.Value != "" {
+				return c, resp.StatusCode
+			}
+		}
+		return nil, resp.StatusCode
+	}
+	if _, code := loginCookie("matkhau-cua-an-binh", "giangvahieu.luminstudio.vn"); code != 401 {
+		t.Fatalf("couple password on another couple's host = %d, want 401", code)
+	}
+	couple, code := loginCookie("matkhau-cua-an-binh", "anbinh.luminstudio.vn")
+	if code != 200 || couple == nil {
+		t.Fatalf("couple login = %d, cookie %v", code, couple)
+	}
+
+	// Couple session: sees only its own wedding/events, cannot touch the other's.
+	var weds struct{ Items []struct{ Slug string } }
+	call(t, "GET", u+"/api/admin/weddings", couple, nil, &weds)
+	if len(weds.Items) != 1 || weds.Items[0].Slug != wed.Slug {
+		t.Fatalf("couple weddings = %+v, want only own", weds.Items)
+	}
+	if code := call(t, "GET", u+"/api/admin/guests?event="+evt, couple, nil, nil); code != 404 {
+		t.Fatalf("couple listing other couple's guests = %d, want 404", code)
+	}
+	if code := call(t, "POST", u+"/api/admin/weddings", couple,
+		map[string]string{"name": "Hack"}, nil); code != 403 {
+		t.Fatalf("couple creating wedding = %d, want 403", code)
+	}
+
+	// Settings are per wedding: couple writes its own without ?wedding=.
+	var set map[string]any
+	call(t, "PATCH", u+"/api/admin/settings", couple, map[string]any{"couple": "An & Bình"}, &set)
+	if set["couple"] != "An & Bình" {
+		t.Fatalf("couple settings write = %v", set)
+	}
+	var other map[string]any
+	call(t, "GET", u+"/api/admin/settings?wedding=giang-hieu", admin, nil, &other)
+	if other["couple"] == "An & Bình" {
+		t.Fatal("settings leaked across weddings")
+	}
+
+	// Public wall is scoped by host; a wish posted on anbinh stays off the default wall.
+	if code := call(t, "POST", u+"/api/wishes?host=anbinh.luminstudio.vn", nil,
+		map[string]string{"text": "Chúc An Bình trăm năm"}, nil); code != 201 {
+		t.Fatal("scoped wish failed")
+	}
+	var wall struct{ Total int }
+	call(t, "GET", u+"/api/wishes?host=anbinh.luminstudio.vn", nil, nil, &wall)
+	if wall.Total != 1 {
+		t.Fatalf("anbinh wall = %d, want 1", wall.Total)
+	}
+	call(t, "GET", u+"/api/wishes", nil, nil, &wall)
+	if wall.Total != 0 {
+		t.Fatalf("default wall = %d, want 0 (no cross-wedding leak)", wall.Total)
+	}
+	var pub struct{ Items []struct{ Slug string } }
+	call(t, "GET", u+"/api/events?host=anbinh.luminstudio.vn", nil, nil, &pub)
+	if len(pub.Items) != 1 || pub.Items[0].Slug != ev.Slug {
+		t.Fatalf("public events by host = %+v", pub.Items)
+	}
+
+	// Couple subdomain change is a REQUEST pending master review.
+	var reqd struct {
+		Subdomain          *string `json:"subdomain"`
+		RequestedSubdomain *string `json:"requestedSubdomain"`
+	}
+	call(t, "PATCH", u+"/api/admin/events/"+ev.Slug, couple,
+		map[string]string{"subdomain": "anbinh2026"}, &reqd)
+	if reqd.RequestedSubdomain == nil || *reqd.RequestedSubdomain != "anbinh2026.luminstudio.vn" {
+		t.Fatalf("requested subdomain = %v", reqd.RequestedSubdomain)
+	}
+	if reqd.Subdomain == nil || *reqd.Subdomain != "anbinh.luminstudio.vn" {
+		t.Fatalf("live subdomain changed without approval: %v", reqd.Subdomain)
+	}
+	if code := call(t, "POST", u+"/api/admin/events/"+ev.Slug+"/subdomain-review", couple,
+		map[string]bool{"approve": true}, nil); code != 403 {
+		t.Fatalf("couple approving own request = %d, want 403", code)
+	}
+	call(t, "POST", u+"/api/admin/events/"+ev.Slug+"/subdomain-review", admin,
+		map[string]bool{"approve": true}, &reqd)
+	if reqd.Subdomain == nil || *reqd.Subdomain != "anbinh2026.luminstudio.vn" ||
+		reqd.RequestedSubdomain != nil {
+		t.Fatalf("approve = sub %v req %v", reqd.Subdomain, reqd.RequestedSubdomain)
+	}
+
+	// Couple changes its own password; old one stops working.
+	if code := call(t, "POST", u+"/api/admin/password", couple,
+		map[string]string{"current": "matkhau-cua-an-binh", "new": "mat-khau-moi-123"}, nil); code != 204 {
+		t.Fatalf("change password = %d", code)
+	}
+	if _, code := loginCookie("matkhau-cua-an-binh", "anbinh2026.luminstudio.vn"); code != 401 {
+		t.Fatalf("old couple password still works = %d", code)
+	}
+	if _, code := loginCookie("mat-khau-moi-123", "anbinh2026.luminstudio.vn"); code != 200 {
+		t.Fatalf("new couple password = %d", code)
+	}
+
+	// Master changes the master password (env bootstrap → DB hash).
+	if code := call(t, "POST", u+"/api/admin/password", admin,
+		map[string]string{"current": "pw", "new": "master-moi-123"}, nil); code != 204 {
+		t.Fatalf("change master password = %d", code)
+	}
+	if _, code := loginCookie("pw", ""); code != 401 {
+		t.Fatalf("env bootstrap still works after DB master set = %d", code)
+	}
+	if _, code := loginCookie("master-moi-123", ""); code != 200 {
+		t.Fatalf("new master password = %d", code)
+	}
+
+	// Master deletes the couple — everything under it goes.
+	if code := call(t, "DELETE", u+"/api/admin/weddings/"+wed.Slug, admin, nil, nil); code != 204 {
+		t.Fatalf("delete wedding = %d", code)
+	}
+	call(t, "GET", u+"/api/events?host=anbinh2026.luminstudio.vn", nil, nil, &pub)
+	for _, it := range pub.Items {
+		if it.Slug == ev.Slug {
+			t.Fatal("deleted wedding's event still public")
+		}
 	}
 }

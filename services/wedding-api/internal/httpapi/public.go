@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -23,6 +25,48 @@ const (
 	maxWishLen     = 500
 	maxWishNameLen = 100
 )
+
+// weddingByHost maps a public request's page host (?host=, sent explicitly by
+// wedding-web — the Next rewrite proxy doesn't reliably forward the original
+// Host) to a wedding via events.subdomain. No match (localhost dev, apex) →
+// the first wedding by sort_order, preserving single-tenant behavior.
+func (s *server) weddingByHost(ctx context.Context, host string) (string, error) {
+	hostname := strings.ToLower(strings.Split(host, ":")[0])
+	if hostname != "" {
+		var wedding string
+		err := s.pool.QueryRow(ctx,
+			`SELECT wedding_slug FROM events WHERE lower(subdomain) = $1 LIMIT 1`,
+			hostname).Scan(&wedding)
+		if err == nil {
+			return wedding, nil
+		}
+		if err != pgx.ErrNoRows {
+			return "", err
+		}
+	}
+	var wedding string
+	err := s.pool.QueryRow(ctx,
+		`SELECT slug FROM weddings ORDER BY sort_order, slug LIMIT 1`).Scan(&wedding)
+	return wedding, err
+}
+
+// publicSettings serves the invitation page content for the requesting host's
+// wedding — SSR reads it without a session (HANDOFF §3.5).
+func (s *server) publicSettings(w http.ResponseWriter, r *http.Request) {
+	wedding, err := s.weddingByHost(r.Context(), r.URL.Query().Get("host"))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB", err.Error())
+		return
+	}
+	var data json.RawMessage
+	if err := s.pool.QueryRow(r.Context(),
+		`SELECT data FROM settings WHERE wedding_slug = $1`, wedding).Scan(&data); err != nil {
+		writeError(w, http.StatusInternalServerError, "DB", err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_, _ = w.Write(data)
+}
 
 // getInvite resolves a guest link — a pure read. Open tracking moved to
 // markOpened (POST) so link-preview bots (Zalo/Messenger fetch the page via
@@ -120,16 +164,26 @@ func (s *server) postWish(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_NAME", "tên tối đa 100 ký tự")
 		return
 	}
+	// The wish lands on ONE couple's wall: the guest's wedding when the link is
+	// known, else the wall of the wedding serving this host.
 	var guestID *string
+	var wedding string
 	if body.GuestID != "" {
-		var exists bool
-		if err := s.pool.QueryRow(r.Context(),
-			`SELECT EXISTS (SELECT 1 FROM guests WHERE id = $1)`, body.GuestID).Scan(&exists); err != nil {
+		err := s.pool.QueryRow(r.Context(),
+			`SELECT e.wedding_slug FROM guests g JOIN events e ON e.slug = g.event_slug
+			 WHERE g.id = $1`, body.GuestID).Scan(&wedding)
+		if err == nil {
+			guestID = &body.GuestID
+		} else if err != pgx.ErrNoRows {
 			writeError(w, http.StatusInternalServerError, "DB", err.Error())
 			return
 		}
-		if exists {
-			guestID = &body.GuestID
+	}
+	if wedding == "" {
+		var err error
+		if wedding, err = s.weddingByHost(r.Context(), r.URL.Query().Get("host")); err != nil {
+			writeError(w, http.StatusInternalServerError, "DB", err.Error())
+			return
 		}
 	}
 	var (
@@ -137,8 +191,8 @@ func (s *server) postWish(w http.ResponseWriter, r *http.Request) {
 		createdAt time.Time
 	)
 	err := s.pool.QueryRow(r.Context(),
-		`INSERT INTO wishes (guest_id, name, text, color) VALUES ($1, $2, $3, $4)
-		 RETURNING id, created_at`, guestID, name, text, color).Scan(&id, &createdAt)
+		`INSERT INTO wishes (guest_id, name, text, color, wedding_slug) VALUES ($1, $2, $3, $4, $5)
+		 RETURNING id, created_at`, guestID, name, text, color, wedding).Scan(&id, &createdAt)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
@@ -153,10 +207,16 @@ func (s *server) postWish(w http.ResponseWriter, r *http.Request) {
 func (s *server) getWishes(w http.ResponseWriter, r *http.Request) {
 	limit := queryInt(r, "limit", 20, 100)
 	offset := queryInt(r, "offset", 0, 1<<30)
+	wedding, werr := s.weddingByHost(r.Context(), r.URL.Query().Get("host"))
+	if werr != nil {
+		writeError(w, http.StatusInternalServerError, "DB", werr.Error())
+		return
+	}
 
 	rows, err := s.pool.Query(r.Context(),
 		`SELECT id, name, text, color, created_at, count(*) OVER () AS total
-		 FROM wishes ORDER BY created_at DESC LIMIT $1 OFFSET $2`, limit, offset)
+		 FROM wishes WHERE wedding_slug = $3
+		 ORDER BY created_at DESC LIMIT $1 OFFSET $2`, limit, offset, wedding)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
@@ -182,12 +242,19 @@ func (s *server) getWishes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
 }
 
-// getEvents lists events (public, unauthenticated): wedding-web resolves its
-// "active" event from this list, matching the request Host against `subdomain`
-// first, falling back to WEDDING_EVENT_SLUG or the first by sort_order.
+// getEvents lists ONE wedding's events (public, unauthenticated): scoped by
+// ?host= so a couple's guests never see another couple's venues; wedding-web
+// resolves its "active" event from this list by Host, falling back to
+// WEDDING_EVENT_SLUG or the first by sort_order.
 func (s *server) getEvents(w http.ResponseWriter, r *http.Request) {
+	wedding, werr := s.weddingByHost(r.Context(), r.URL.Query().Get("host"))
+	if werr != nil {
+		writeError(w, http.StatusInternalServerError, "DB", werr.Error())
+		return
+	}
 	rows, err := s.pool.Query(r.Context(),
-		`SELECT slug, name, sort_order, subdomain, data FROM events ORDER BY sort_order, slug`)
+		`SELECT `+eventSelect+` FROM events WHERE wedding_slug = $1 ORDER BY sort_order, slug`,
+		wedding)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
@@ -196,7 +263,7 @@ func (s *server) getEvents(w http.ResponseWriter, r *http.Request) {
 	items := []eventRow{}
 	for rows.Next() {
 		var e eventRow
-		if err := rows.Scan(&e.Slug, &e.Name, &e.SortOrder, &e.Subdomain, &e.Data); err != nil {
+		if err := scanEvent(rows, &e); err != nil {
 			writeError(w, http.StatusInternalServerError, "DB", err.Error())
 			return
 		}

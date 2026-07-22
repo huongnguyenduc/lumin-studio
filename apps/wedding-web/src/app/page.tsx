@@ -11,8 +11,8 @@ export const dynamic = 'force-dynamic';
 export default async function HomePage() {
   const host = (await headers()).get('host') ?? undefined;
   const [wishes, settings, event] = await Promise.all([
-    getWishes(),
-    getSettings(),
+    getWishes(100, host),
+    getSettings(host),
     getActiveEvent(host),
   ]);
   const eventData = asEventData(event?.data ?? {});

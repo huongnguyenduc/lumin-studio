@@ -17,15 +17,15 @@ func newTestAuth(password string) *Auth {
 	})
 }
 
-func TestCheckPassword(t *testing.T) {
+func TestCheckEnvMaster(t *testing.T) {
 	a := newTestAuth("s3cret")
-	if !a.CheckPassword("s3cret") {
+	if !a.CheckEnvMaster("s3cret") {
 		t.Error("correct password rejected")
 	}
-	if a.CheckPassword("wrong") {
+	if a.CheckEnvMaster("wrong") {
 		t.Error("wrong password accepted")
 	}
-	if newTestAuth("").CheckPassword("") {
+	if newTestAuth("").CheckEnvMaster("") {
 		t.Error("empty configured password must disable login, not match empty input")
 	}
 }
@@ -44,7 +44,7 @@ func TestMiddlewareRoundTrip(t *testing.T) {
 	}
 
 	// Issued cookie → 200.
-	cookie, err := a.IssueCookie()
+	cookie, err := a.IssueCookie(ScopeAll)
 	if err != nil {
 		t.Fatal(err)
 	}

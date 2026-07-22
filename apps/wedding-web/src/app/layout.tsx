@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
+import { headers } from 'next/headers';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages, getTranslations } from 'next-intl/server';
 import { fontScript, fontSerif } from '@/fonts';
@@ -21,7 +22,8 @@ export const viewport: Viewport = { viewportFit: 'cover', themeColor: '#eff3f2' 
 // defaults so link previews on Zalo/Messenger show the host's title/OG/icon.
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('meta');
-  const s = asSiteSettings(await getSettings());
+  const host = (await headers()).get('host') ?? undefined;
+  const s = asSiteSettings(await getSettings(host));
   return {
     title: s.siteTitle ?? t('title'),
     description: s.siteDesc ?? t('description'),

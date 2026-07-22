@@ -38,7 +38,7 @@ func TestAdminRoutesRequireAuth(t *testing.T) {
 func TestPresignDisabledWithoutConfig(t *testing.T) {
 	a := auth.New(config.Config{AdminPassword: "pw", JWTSecret: "t", JWTTTL: time.Hour})
 	h := New(nil, a, nil)
-	cookie, _ := a.IssueCookie()
+	cookie, _ := a.IssueCookie(auth.ScopeAll)
 	req := httptest.NewRequest("POST", "/api/admin/uploads/presign", nil)
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()

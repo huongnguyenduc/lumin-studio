@@ -38,6 +38,9 @@ func (s *server) listGuests(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "NO_EVENT", "thiếu tham số event")
 		return
 	}
+	if !s.eventInScope(w, r, event) {
+		return
+	}
 	rows, err := s.pool.Query(r.Context(),
 		guestSelect+` WHERE g.event_slug = $1 ORDER BY g.created_at DESC`, event)
 	if err != nil {
@@ -79,6 +82,9 @@ func (s *server) createGuest(w http.ResponseWriter, r *http.Request) {
 	eventSlug := strings.TrimSpace(body.EventSlug)
 	if eventSlug == "" {
 		writeError(w, http.StatusBadRequest, "NO_EVENT", "thiếu eventSlug")
+		return
+	}
+	if !s.eventInScope(w, r, eventSlug) {
 		return
 	}
 	group := strings.TrimSpace(body.Group)
@@ -126,8 +132,8 @@ func (s *server) patchGuest(w http.ResponseWriter, r *http.Request) {
 		`UPDATE guests SET label = coalesce($2, label),
 		                   "group" = coalesce($3, "group"),
 		                   note = coalesce($4, note)
-		 WHERE id = $1`,
-		chi.URLParam(r, "id"), body.Label, body.Group, body.Note)
+		 WHERE id = $1`+guestScopeSQL("$5", "$6"),
+		chi.URLParam(r, "id"), body.Label, body.Group, body.Note, isMaster(r), sessionWedding(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
@@ -141,7 +147,8 @@ func (s *server) patchGuest(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) deleteGuest(w http.ResponseWriter, r *http.Request) {
 	tag, err := s.pool.Exec(r.Context(),
-		`DELETE FROM guests WHERE id = $1`, chi.URLParam(r, "id"))
+		`DELETE FROM guests WHERE id = $1`+guestScopeSQL("$2", "$3"),
+		chi.URLParam(r, "id"), isMaster(r), sessionWedding(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
@@ -151,6 +158,14 @@ func (s *server) deleteGuest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// guestScopeSQL confines a guest-by-id write to the session's wedding: master
+// (first arg true) passes through, a couple only reaches guests of its own
+// events. Args are the placeholder names for (isMaster, weddingSlug).
+func guestScopeSQL(masterPh, weddingPh string) string {
+	return ` AND (` + masterPh + `::bool OR event_slug IN
+	 (SELECT slug FROM events WHERE wedding_slug = ` + weddingPh + `))`
 }
 
 // bulkDeleteGuests deletes the selection in one statement (HANDOFF §3.7).
@@ -166,7 +181,8 @@ func (s *server) bulkDeleteGuests(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tag, err := s.pool.Exec(r.Context(),
-		`DELETE FROM guests WHERE id = ANY($1)`, body.IDs)
+		`DELETE FROM guests WHERE id = ANY($1)`+guestScopeSQL("$2", "$3"),
+		body.IDs, isMaster(r), sessionWedding(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return

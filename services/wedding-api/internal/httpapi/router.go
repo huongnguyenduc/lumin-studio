@@ -9,11 +9,14 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/huongnguyenduc/lumin-studio/services/wedding-api/internal/auth"
 	"github.com/huongnguyenduc/lumin-studio/services/wedding-api/internal/uploadstore"
@@ -63,7 +66,7 @@ func New(pool *pgxpool.Pool, a *auth.Auth, uploads *uploadstore.Store) http.Hand
 		r.Get("/api/wishes", s.getWishes)
 		// Site settings are public page content (hero/gallery/map/music/meta) —
 		// the invitation SSR reads them without a session (HANDOFF §3.5).
-		r.Get("/api/settings", s.getSettings)
+		r.Get("/api/settings", s.publicSettings)
 		// Events (venue/timeline per wedding) — each wedding-web deployment
 		// resolves its active event from this list.
 		r.Get("/api/events", s.getEvents)
@@ -95,11 +98,19 @@ func New(pool *pgxpool.Pool, a *auth.Auth, uploads *uploadstore.Store) http.Hand
 		r.Get("/events", s.listEvents)
 		r.Post("/events", s.createEvent)
 		r.Patch("/events/{slug}", s.patchEvent)
+		r.Post("/events/{slug}/subdomain-review", s.reviewSubdomain)
+
+		r.Get("/me", s.me)
+		r.Get("/weddings", s.listWeddings)
+		r.Post("/weddings", s.createWedding)
+		r.Patch("/weddings/{slug}", s.patchWedding)
+		r.Delete("/weddings/{slug}", s.deleteWedding)
+		r.Post("/password", s.changePassword)
 
 		// "overview", not "stats" — generic ad-blocker filter lists (EasyPrivacy-style)
 		// block URLs containing "stats" as presumed analytics, breaking this in-browser.
 		r.Get("/overview", s.adminStats)
-		r.Get("/settings", s.getSettings)
+		r.Get("/settings", s.adminGetSettings)
 		r.Patch("/settings", s.patchSettings)
 		r.Post("/uploads/presign", s.presignUpload)
 	})
@@ -107,30 +118,52 @@ func New(pool *pgxpool.Pool, a *auth.Auth, uploads *uploadstore.Store) http.Hand
 	return r
 }
 
-// login checks the shared password and sets the session cookie (HANDOFF §6).
+// login verifies a password and sets the session cookie (HANDOFF §6, extended
+// for multi-couple): the master password (DB hash, env bootstrap fallback)
+// works everywhere and scopes to every wedding; otherwise the page host the
+// client sends resolves — strictly, via events.subdomain, no fallback — to one
+// wedding whose own bcrypt password is checked, yielding a session confined to
+// that couple.
 func (s *server) login(w http.ResponseWriter, r *http.Request) {
-	if !s.auth.Enabled() {
-		writeError(w, http.StatusServiceUnavailable, "LOGIN_DISABLED",
-			"đăng nhập chưa được cấu hình (ADMIN_PASSWORD)")
-		return
-	}
 	var body struct {
 		Password string `json:"password"`
+		Host     string `json:"host"`
 	}
 	if !readJSON(w, r, &body) {
 		return
 	}
-	if !s.auth.CheckPassword(body.Password) {
+	scope := ""
+	switch {
+	case s.checkMaster(r.Context(), body.Password):
+		scope = auth.ScopeAll
+	case body.Host != "":
+		hostname := strings.ToLower(strings.Split(body.Host, ":")[0])
+		var wedding string
+		var hash *string
+		err := s.pool.QueryRow(r.Context(),
+			`SELECT w.slug, w.password_hash FROM weddings w
+			 JOIN events e ON e.wedding_slug = w.slug
+			 WHERE lower(e.subdomain) = $1 LIMIT 1`, hostname).Scan(&wedding, &hash)
+		if err != nil && err != pgx.ErrNoRows {
+			writeError(w, http.StatusInternalServerError, "DB", err.Error())
+			return
+		}
+		if err == nil && hash != nil &&
+			bcrypt.CompareHashAndPassword([]byte(*hash), []byte(body.Password)) == nil {
+			scope = wedding
+		}
+	}
+	if scope == "" {
 		writeError(w, http.StatusUnauthorized, "BAD_PASSWORD", "mật khẩu không đúng")
 		return
 	}
-	cookie, err := s.auth.IssueCookie()
+	cookie, err := s.auth.IssueCookie(scope)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "TOKEN", err.Error())
 		return
 	}
 	http.SetCookie(w, cookie)
-	w.WriteHeader(http.StatusNoContent)
+	writeJSON(w, http.StatusOK, map[string]any{"scope": scope, "master": scope == auth.ScopeAll})
 }
 
 func (s *server) logout(w http.ResponseWriter, _ *http.Request) {
