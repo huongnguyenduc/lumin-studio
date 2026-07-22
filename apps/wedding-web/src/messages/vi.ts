@@ -105,6 +105,7 @@ export const vi = {
   },
   footer: {
     thanks: 'Thank You',
+    year: '2026',
   },
   admin: {
     title: 'Quản lý thiệp mời — 12.09.2026',
