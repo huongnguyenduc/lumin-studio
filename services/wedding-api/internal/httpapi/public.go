@@ -27,19 +27,26 @@ const (
 	maxWishNameLen = 100
 )
 
-// errHostNotFound signals a page host that carries a subdomain but doesn't
-// match any event — callers must 404, NOT silently serve another couple's
-// wedding.
+// errHostNotFound signals a page host that carries a *.luminstudio.vn
+// subdomain but doesn't match any event — callers must 404, NOT silently
+// serve another couple's wedding.
 var errHostNotFound = errors.New("host not mapped to a wedding")
+
+// rootDomain is the suffix that marks a host as "a real subdomain attempt" —
+// anything else (k8s readiness probe hitting the pod IP, localhost dev, no
+// host at all) is NOT a couple mistyping their link and must keep falling
+// back, or the probe 404s forever and the rollout never becomes Ready.
+const rootDomain = ".luminstudio.vn"
 
 // weddingByHost maps a public request's page host (?host=, sent explicitly by
 // wedding-web — the Next rewrite proxy doesn't reliably forward the original
-// Host) to a wedding via events.subdomain. No host at all (localhost dev,
-// apex) → the first wedding by sort_order, preserving single-tenant
-// behavior. A host that IS present but matches no event → errHostNotFound.
+// Host) to a wedding via events.subdomain. Any host that isn't itself a
+// "*.luminstudio.vn" subdomain (no host, localhost dev, probe IP, apex) →
+// the first wedding by sort_order, preserving single-tenant behavior. An
+// actual "*.luminstudio.vn" subdomain that matches no event → errHostNotFound.
 func (s *server) weddingByHost(ctx context.Context, host string) (string, error) {
 	hostname := strings.ToLower(strings.Split(host, ":")[0])
-	if hostname != "" {
+	if strings.HasSuffix(hostname, rootDomain) {
 		var wedding string
 		err := s.pool.QueryRow(ctx,
 			`SELECT wedding_slug FROM events WHERE lower(subdomain) = $1 LIMIT 1`,
