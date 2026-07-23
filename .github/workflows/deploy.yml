@@ -212,7 +212,18 @@ jobs:
           probe https://www.luminstudio.vn/ || rc=1
           probe https://admin.luminstudio.vn/ || rc=1
           if kubectl -n "$NS" get secret wedding-secrets >/dev/null 2>&1; then
-            probe https://giangvahieu.luminstudio.vn/ || rc=1
+            # Subdomain changes as couples come and go (was giangvahieu, is
+            # gianghieuwedding-bh) — read the live one from events instead of
+            # hardcoding, so this stops going stale on every couple swap.
+            WEDDING_DB_URL=$(kubectl -n "$NS" get secret wedding-secrets -o jsonpath='{.data.DATABASE_URL}' | base64 -d)
+            WEDDING_HOST=$(kubectl -n "$NS" exec deploy/postgres -- psql "$WEDDING_DB_URL" -tAc \
+              "select subdomain from events where subdomain is not null order by created_at desc limit 1" \
+              | tr -d '[:space:]')
+            if [ -n "$WEDDING_HOST" ]; then
+              probe "https://$WEDDING_HOST/" || rc=1
+            else
+              echo "no event with a subdomain yet — skipping wedding site probe"
+            fi
           fi
           exit $rc
 
