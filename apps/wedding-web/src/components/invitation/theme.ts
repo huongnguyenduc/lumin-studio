@@ -24,5 +24,4 @@ export const WISH_COLORS = [
   { key: 'colorWhite', bg: 'rgb(255,251,248)' },
   { key: 'colorCream', bg: 'rgb(255,248,240)' },
   { key: 'colorBeige', bg: 'rgb(249,241,232)' },
-  
 ] as const;

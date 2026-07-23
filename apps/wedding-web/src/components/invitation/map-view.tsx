@@ -39,7 +39,7 @@ export function MapView({
           border: `0.5px solid ${INK}`,
           boxSizing: 'border-box',
           overflow: 'hidden',
-          background: "#FFF8F0"
+          background: '#FFF8F0',
         }}
       >
         <button

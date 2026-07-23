@@ -248,10 +248,7 @@ export function Letter({
               gap: 8,
             }}
           >
-            <Medallion
-              src="/image/arch.webp"
-              inset={{ l: 0, t: 0, s: 100 }}
-            />
+            <Medallion src="/image/arch.webp" inset={{ l: 0, t: 0, s: 100 }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ ...timelineLabel, fontWeight: 600 }}>
                 {v('timelineWelcomeTime', 'timelineWelcomeTime')}
@@ -282,10 +279,7 @@ export function Letter({
               gap: 8,
             }}
           >
-            <Medallion
-              src="/image/toast.webp"
-              inset={{ l: 0, t: 0, s: 100 }}
-            />
+            <Medallion src="/image/toast.webp" inset={{ l: 0, t: 0, s: 100 }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ ...timelineLabel, fontWeight: 600 }}>
                 {v('timelinePartyTime', 'timelinePartyTime')}
