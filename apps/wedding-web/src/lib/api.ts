@@ -39,16 +39,23 @@ export async function getSettings(host?: string): Promise<Record<string, unknown
   }
 }
 
+// Thrown by getEvents() when the request's Host carries a subdomain that
+// matches no event — the page must 404, not silently show another couple's
+// wedding (see weddingByHost in wedding-api).
+export class HostNotFoundError extends Error {}
+
 // The host's wedding's events (venue/timeline/ceremony data). getActiveEvent()
 // resolves which one this deployment serves: WEDDING_EVENT_SLUG if set, else
 // the first by sortOrder — so a single-wedding deployment needs no env change.
 export async function getEvents(host?: string): Promise<EventSummary[]> {
   try {
     const res = await fetch(`${base}/api/events${hostQS(host)}`, { cache: 'no-store' });
+    if (res.status === 404) throw new HostNotFoundError();
     if (!res.ok) return [];
     const data = (await res.json()) as { items: EventSummary[] };
     return data.items;
-  } catch {
+  } catch (err) {
+    if (err instanceof HostNotFoundError) throw err;
     return [];
   }
 }
