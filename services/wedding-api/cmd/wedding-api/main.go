@@ -58,7 +58,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           httpapi.New(pool, auth.New(cfg), uploads),
+		Handler:           httpapi.New(pool, auth.New(cfg), uploads, cfg.RootDomain),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 	}
 

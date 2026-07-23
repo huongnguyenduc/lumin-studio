@@ -82,7 +82,7 @@ func setupIntegration(t *testing.T) (*httptest.Server, *http.Cookie) {
 	t.Helper()
 	pool := freshPool(t)
 	a := auth.New(config.Config{AdminPassword: masterSecret, JWTSecret: "test", JWTTTL: time.Hour})
-	srv := httptest.NewServer(New(pool, a, nil))
+	srv := httptest.NewServer(New(pool, a, nil, "luminstudio.vn"))
 	t.Cleanup(srv.Close)
 	return srv, &http.Cookie{Name: bearerSentinel, Value: masterSecret}
 }

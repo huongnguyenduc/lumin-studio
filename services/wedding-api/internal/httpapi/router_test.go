@@ -13,7 +13,7 @@ import (
 
 func newTestRouter() http.Handler {
 	a := auth.New(config.Config{AdminPassword: "pw", JWTSecret: "t", JWTTTL: time.Hour})
-	return New(nil, a, nil) // routes under test never touch the pool
+	return New(nil, a, nil, "luminstudio.vn") // routes under test never touch the pool
 }
 
 func TestHealthz(t *testing.T) {
@@ -37,7 +37,7 @@ func TestAdminRoutesRequireAuth(t *testing.T) {
 
 func TestPresignDisabledWithoutConfig(t *testing.T) {
 	a := auth.New(config.Config{AdminPassword: "pw", JWTSecret: "t", JWTTTL: time.Hour})
-	h := New(nil, a, nil)
+	h := New(nil, a, nil, "luminstudio.vn")
 	// Master scope via the bearer (the lumin admin BFF's path) — no DB needed.
 	req := httptest.NewRequest("POST", "/api/admin/uploads/presign", nil)
 	req.Header.Set("Authorization", "Bearer pw")
@@ -49,7 +49,7 @@ func TestPresignDisabledWithoutConfig(t *testing.T) {
 }
 
 func TestBearerGrantsMasterWrongTokenRejected(t *testing.T) {
-	h := New(nil, auth.New(config.Config{AdminPassword: "pw", JWTSecret: "t", JWTTTL: time.Hour}), nil)
+	h := New(nil, auth.New(config.Config{AdminPassword: "pw", JWTSecret: "t", JWTTTL: time.Hour}), nil, "luminstudio.vn")
 	// Wrong bearer → 401 (no cookie either).
 	req := httptest.NewRequest("POST", "/api/admin/uploads/presign", nil)
 	req.Header.Set("Authorization", "Bearer nope")

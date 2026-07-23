@@ -23,14 +23,15 @@ import (
 )
 
 type server struct {
-	pool    *pgxpool.Pool
-	auth    *auth.Auth
-	uploads *uploadstore.Store // nil → presign answers 503 (log-and-disable)
+	pool       *pgxpool.Pool
+	auth       *auth.Auth
+	uploads    *uploadstore.Store // nil → presign answers 503 (log-and-disable)
+	rootDomain string             // e.g. "luminstudio.vn" — see weddingByHost
 }
 
 // New builds the router. uploads may be nil when UPLOAD_S3_* is not configured.
-func New(pool *pgxpool.Pool, a *auth.Auth, uploads *uploadstore.Store) http.Handler {
-	s := &server{pool: pool, auth: a, uploads: uploads}
+func New(pool *pgxpool.Pool, a *auth.Auth, uploads *uploadstore.Store, rootDomain string) http.Handler {
+	s := &server{pool: pool, auth: a, uploads: uploads, rootDomain: rootDomain}
 
 	r := chi.NewRouter()
 	// No RealIP middleware: deprecated/spoofable — clientIP() reads CF-Connecting-IP
