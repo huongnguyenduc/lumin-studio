@@ -27,6 +27,13 @@ type Config struct {
 	// DBConnectTimeout bounds a single connection attempt.
 	DBConnectTimeout time.Duration
 
+	// RootDomain is the suffix (e.g. "luminstudio.vn") that marks a request Host
+	// as an actual couple subdomain attempt — vs. an infra host (k8s readiness
+	// probe hitting the pod IP, localhost dev, apex) that must keep falling back
+	// to the default wedding instead of 404ing. Override via env if the domain
+	// is ever migrated.
+	RootDomain string
+
 	// AdminPassword is the single shared admin password (HANDOFF §6 — 1–2 operators,
 	// no user management). Empty → login is DISABLED (503), never open.
 	AdminPassword string
@@ -89,6 +96,8 @@ func Load() Config {
 			"postgres://postgres:postgres@localhost:5432/wedding?sslmode=disable"),
 		DBMaxConns:       getInt32("DB_MAX_CONNS", 5),
 		DBConnectTimeout: getDuration("DB_CONNECT_TIMEOUT", 5*time.Second),
+
+		RootDomain: getenv("ROOT_DOMAIN", "luminstudio.vn"),
 
 		AdminPassword:     os.Getenv("ADMIN_PASSWORD"),
 		JWTSecret:         getenv("JWT_SECRET", DevJWTSecret),
