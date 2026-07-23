@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -26,10 +27,16 @@ const (
 	maxWishNameLen = 100
 )
 
+// errHostNotFound signals a page host that carries a subdomain but doesn't
+// match any event — callers must 404, NOT silently serve another couple's
+// wedding.
+var errHostNotFound = errors.New("host not mapped to a wedding")
+
 // weddingByHost maps a public request's page host (?host=, sent explicitly by
 // wedding-web — the Next rewrite proxy doesn't reliably forward the original
-// Host) to a wedding via events.subdomain. No match (localhost dev, apex) →
-// the first wedding by sort_order, preserving single-tenant behavior.
+// Host) to a wedding via events.subdomain. No host at all (localhost dev,
+// apex) → the first wedding by sort_order, preserving single-tenant
+// behavior. A host that IS present but matches no event → errHostNotFound.
 func (s *server) weddingByHost(ctx context.Context, host string) (string, error) {
 	hostname := strings.ToLower(strings.Split(host, ":")[0])
 	if hostname != "" {
@@ -43,6 +50,7 @@ func (s *server) weddingByHost(ctx context.Context, host string) (string, error)
 		if err != pgx.ErrNoRows {
 			return "", err
 		}
+		return "", errHostNotFound
 	}
 	var wedding string
 	err := s.pool.QueryRow(ctx,
@@ -55,7 +63,7 @@ func (s *server) weddingByHost(ctx context.Context, host string) (string, error)
 func (s *server) publicSettings(w http.ResponseWriter, r *http.Request) {
 	wedding, err := s.weddingByHost(r.Context(), r.URL.Query().Get("host"))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "DB", err.Error())
+		writeHostErr(w, err)
 		return
 	}
 	var data json.RawMessage
@@ -182,7 +190,7 @@ func (s *server) postWish(w http.ResponseWriter, r *http.Request) {
 	if wedding == "" {
 		var err error
 		if wedding, err = s.weddingByHost(r.Context(), r.URL.Query().Get("host")); err != nil {
-			writeError(w, http.StatusInternalServerError, "DB", err.Error())
+			writeHostErr(w, err)
 			return
 		}
 	}
@@ -209,7 +217,7 @@ func (s *server) getWishes(w http.ResponseWriter, r *http.Request) {
 	offset := queryInt(r, "offset", 0, 1<<30)
 	wedding, werr := s.weddingByHost(r.Context(), r.URL.Query().Get("host"))
 	if werr != nil {
-		writeError(w, http.StatusInternalServerError, "DB", werr.Error())
+		writeHostErr(w, werr)
 		return
 	}
 
@@ -249,7 +257,7 @@ func (s *server) getWishes(w http.ResponseWriter, r *http.Request) {
 func (s *server) getEvents(w http.ResponseWriter, r *http.Request) {
 	wedding, werr := s.weddingByHost(r.Context(), r.URL.Query().Get("host"))
 	if werr != nil {
-		writeError(w, http.StatusInternalServerError, "DB", werr.Error())
+		writeHostErr(w, werr)
 		return
 	}
 	rows, err := s.pool.Query(r.Context(),
@@ -270,6 +278,15 @@ func (s *server) getEvents(w http.ResponseWriter, r *http.Request) {
 		items = append(items, e)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// writeHostErr 404s an unmapped subdomain (errHostNotFound), else 500s.
+func writeHostErr(w http.ResponseWriter, err error) {
+	if errors.Is(err, errHostNotFound) {
+		writeError(w, http.StatusNotFound, "UNKNOWN_HOST", "không tìm thấy đám cưới cho tên miền này")
+		return
+	}
+	writeError(w, http.StatusInternalServerError, "DB", err.Error())
 }
 
 func queryInt(r *http.Request, key string, def, max int) int {
