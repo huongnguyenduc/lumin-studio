@@ -10,6 +10,7 @@ export const CREAM_2 = 'rgb(249,241,232)';
 export const TERRACOTTA = 'rgb(203,77,28)';
 // Bản rev Figma 107:240 dịu hoá lời chào trên thư mời; wishes/admin giữ tông cũ.
 export const TERRACOTTA_SOFT = 'rgb(166,115,90)';
+export const BRICK = 'rgb(184,82,33)';
 export const DARK = 'rgb(59,47,39)';
 
 export const SCRIPT = 'var(--font-script), cursive';
@@ -21,7 +22,6 @@ export const RING = `0 0 0 0.5px ${TAN}`;
 // The 4 wish-card presets (§2.7) — values must match the API/DB allowlist.
 export const WISH_COLORS = [
   { key: 'colorWhite', bg: 'rgb(255,251,248)' },
-  { key: 'colorCream', bg: 'rgb(249,241,232)' },
-  { key: 'colorPink', bg: 'rgb(248,235,230)' },
-  { key: 'colorOlive', bg: 'rgb(238,239,230)' },
+  { key: 'colorCream', bg: 'rgb(255,248,240)' },
+  { key: 'colorBeige', bg: 'rgb(249,241,232)' },
 ] as const;

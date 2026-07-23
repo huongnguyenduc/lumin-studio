@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 import type { EventData, EventImages } from '@/lib/site-settings';
-import { INK, TAN, TERRACOTTA_SOFT, CREAM, SCRIPT } from './theme';
+import { INK, TAN, CREAM, SCRIPT, BRICK } from './theme';
 import { Reveal } from './reveal';
 import { MapView } from './map-view';
 
@@ -10,7 +10,7 @@ const laceV: CSSProperties = {
   top: 0,
   bottom: 0,
   width: 6,
-  background: 'url(/invite/lace-v.png) repeat-y',
+  background: 'url(/image/lace-v.webp) repeat-y',
   backgroundSize: '6px auto',
 };
 const label600: CSSProperties = {
@@ -88,9 +88,9 @@ export function Letter({
     // 33.5px: giữ content 313px như Figma sau khi frame thu còn ~380 (canvas trừ 6.75 mỗi bên).
     <div style={{ position: 'relative', padding: '42px 33.5px 0' }}>
       <div style={{ ...laceV, left: 0 }} />
-      <div style={{ ...laceV, left: 6 }} />
+      <div style={{ ...laceV, left: 5 }} />
       <div style={{ ...laceV, right: 0 }} />
-      <div style={{ ...laceV, right: 6 }} />
+      <div style={{ ...laceV, right: 5 }} />
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <Reveal style={label600}>{t('invite')}</Reveal>
         <Reveal
@@ -100,7 +100,7 @@ export function Letter({
             fontFamily: SCRIPT,
             fontSize: 22,
             lineHeight: 1.3,
-            color: TERRACOTTA_SOFT,
+            color: BRICK,
             textAlign: 'center',
             textTransform: 'capitalize',
           }}
@@ -248,10 +248,7 @@ export function Letter({
               gap: 8,
             }}
           >
-            <Medallion
-              src="/invite/timeline-arch.png"
-              inset={{ l: -18.12, t: -15.28, s: 136.24 }}
-            />
+            <Medallion src="/image/arch.webp" inset={{ l: 0, t: 0, s: 100 }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ ...timelineLabel, fontWeight: 600 }}>
                 {v('timelineWelcomeTime', 'timelineWelcomeTime')}
@@ -282,10 +279,7 @@ export function Letter({
               gap: 8,
             }}
           >
-            <Medallion
-              src="/invite/timeline-toast.png"
-              inset={{ l: -29.01, t: -15.35, s: 146.35 }}
-            />
+            <Medallion src="/image/toast.webp" inset={{ l: 0, t: 0, s: 100 }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ ...timelineLabel, fontWeight: 600 }}>
                 {v('timelinePartyTime', 'timelinePartyTime')}
@@ -301,14 +295,14 @@ export function Letter({
         <div
           style={{
             height: 6,
-            background: 'url(/invite/lace-h.png) repeat-x',
+            background: 'url(/image/lace-h.webp) repeat-x',
             backgroundSize: 'auto 6px',
           }}
         />
         <div
           style={{
             height: 6,
-            background: 'url(/invite/lace-h.png) repeat-x',
+            background: 'url(/image/lace-h.webp) repeat-x',
             backgroundSize: 'auto 6px',
           }}
         />

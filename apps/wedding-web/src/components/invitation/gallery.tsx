@@ -143,15 +143,15 @@ export function Gallery({
         {/* Con dấu HG (asset chung với envelope) — nhỏ, đứng tách bên trái "Forever.",
             không đè lên chữ (design để hở một khoảng trước chữ F). */}
         <img
-          src="/invite/stamp.png"
+          src="/image/stamp.webp"
           alt=""
           aria-hidden
           style={{
             position: 'absolute',
-            left: 74,
-            top: 73,
-            width: 42,
-            height: 42,
+            left: 67,
+            top: 63,
+            width: 52,
+            height: 52,
             filter: 'drop-shadow(1px 2px 5px rgba(101,101,101,0.35))',
           }}
         />

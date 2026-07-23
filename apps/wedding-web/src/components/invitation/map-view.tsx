@@ -39,6 +39,7 @@ export function MapView({
           border: `0.5px solid ${INK}`,
           boxSizing: 'border-box',
           overflow: 'hidden',
+          background: '#FFF8F0',
         }}
       >
         <button
@@ -62,8 +63,8 @@ export function MapView({
             lazy
             style={{
               position: 'absolute',
-              left: 3,
-              top: 34,
+              inset: 0,
+              margin: 'auto',
               width: 305,
               height: 145,
               objectFit: 'cover',

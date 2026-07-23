@@ -45,9 +45,12 @@ function LetterCard({
         gap: 10,
       }}
     >
-      <span style={{ fontStyle: 'italic', fontSize: 12, lineHeight: 1.7, color: INK }}>
-        “{text}”
-      </span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontStyle: 'italic', fontSize: 12, lineHeight: 1.7, color: INK }}>
+          “{text}”
+        </span>
+        <img src="/image/card-decor.svg" alt="card decor" style={{ width: 30, height: 48 }} />
+      </div>
       <div
         style={{
           display: 'flex',
@@ -56,7 +59,7 @@ function LetterCard({
           gap: 12,
         }}
       >
-        <span style={{ fontFamily: SCRIPT, fontSize: 18, color: TERRACOTTA }}>{name}</span>
+        <span style={{ fontSize: 12, color: INK, fontWeight: 600 }}>{name}</span>
         <span style={{ fontStyle: 'italic', fontSize: 10, color: TAN_LIGHT, whiteSpace: 'nowrap' }}>
           {when}
         </span>
@@ -131,7 +134,7 @@ export function Wishes({
             position: 'relative',
             width: 310,
             height: 475,
-            background: 'url(/invite/wish-paper.png) center / cover no-repeat',
+            background: 'url(/image/wishes-background.webp) center / cover no-repeat',
           }}
         >
           <div
@@ -287,7 +290,7 @@ export function Wishes({
 
       <div
         style={{
-          padding: '56px 24px 24px',
+          padding: '60px 40px 40px',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',

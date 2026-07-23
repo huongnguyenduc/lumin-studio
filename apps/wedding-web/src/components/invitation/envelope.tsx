@@ -1,5 +1,4 @@
 import type { CSSProperties } from 'react';
-import { useTranslations } from 'next-intl';
 
 // top starts at 178 (not 0): the envelope box overlaps the hero by -178px
 // (see below) for the flap/lace-panel bleed effect, but this plain border
@@ -10,7 +9,7 @@ const laceV: CSSProperties = {
   top: 178,
   bottom: 0,
   width: 6,
-  background: 'url(/invite/lace-v.png) repeat-y',
+  background: 'url(/image/lace-v.webp) repeat-y',
   backgroundSize: '6px auto',
 };
 
@@ -25,77 +24,31 @@ const laceV: CSSProperties = {
 // envelope's visible content flush against the photo — zeroing the margin
 // instead leaves a blank strip where the overlapped part used to be.
 export function Envelope() {
-  const t = useTranslations('hero');
   return (
     <div
       style={{
         position: 'relative',
         height: 350,
-        marginTop: -178,
-        clipPath: 'inset(var(--invite-envelope-clip, 0px) 0 0 0)',
+        // clipPath: 'inset(var(--invite-envelope-clip, 0px) 0 0 0)',
+        marginTop: -168,
         zIndex: 2,
       }}
     >
       <div style={{ ...laceV, left: 0 }} />
-      <div style={{ ...laceV, left: 6 }} />
+      <div style={{ ...laceV, left: 5 }} />
       <div style={{ ...laceV, right: 0 }} />
-      <div style={{ ...laceV, right: 6 }} />
-      <div
-        style={{
-          position: 'absolute',
-          left: '50%',
-          top: 176,
-          transform: 'translateX(-50%)',
-          width: 480,
-          height: 121,
-          clipPath: 'polygon(0% 0%, 100% 0%, 52.5% 94%, 47.5% 94%)',
-          filter: 'drop-shadow(0px 14px 22px rgba(101,101,101,0.4))',
-        }}
-      >
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background: 'url(/invite/flap.jpg) 50% 0.3% / 100% 375% no-repeat',
-            filter: 'saturate(0.4) brightness(1.01)',
-          }}
-        />
-      </div>
-      <div
-        style={{
-          position: 'absolute',
-          left: 382.9,
-          top: 0,
-          width: 205.3,
-          height: 313.9,
-          transform: 'rotate(62.47deg)',
-          transformOrigin: '0 0',
-          background: 'url(/invite/lace.png) center / cover no-repeat',
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          left: 11.9,
-          top: 0,
-          width: 205.3,
-          height: 313.9,
-          transform: 'rotate(-62.47deg) scaleX(-1)',
-          transformOrigin: '0 0',
-          background: 'url(/invite/lace.png) center / cover no-repeat',
-        }}
-      />
+      <div style={{ ...laceV, right: 5 }} />
       <img
-        src="/invite/stamp.png"
-        alt={t('stampAlt')}
+        src="/image/envelope.webp"
+        alt="envelope decor"
         style={{
           position: 'absolute',
+          bottom: 8,
           left: '50%',
-          top: 271,
           transform: 'translateX(-50%)',
-          width: 73,
-          height: 73,
-          filter: 'drop-shadow(1px 2px 5px rgba(101,101,101,0.35))',
+          width: 'calc(100% + 32px)',
+          height: 'auto',
+          objectFit: 'cover',
         }}
       />
     </div>

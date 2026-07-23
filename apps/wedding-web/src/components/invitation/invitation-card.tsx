@@ -42,20 +42,12 @@ export function InvitationCard({
   const music = useMusic(settings.musicUrl, settings.musicVolume);
   const scaleRef = useRef<HTMLDivElement>(null);
 
-  // Music starts on first scroll (§2.10) — autoplay usually rejects, then the
-  // one-time pointerdown retry inside useMusic picks it up on first tap.
+  // Music tries to start the moment the page mounts — the browser rejects it
+  // (no gesture yet), which arms useMusic's one-time pointerdown retry, so the
+  // guest's very first tap/touch anywhere (including the start of a scroll
+  // swipe) is what actually starts it.
   useEffect(() => {
-    let done = false;
-    const onScroll = () => {
-      if (done) return;
-      const sc = document.scrollingElement ?? document.documentElement;
-      if (sc.scrollTop < 30) return;
-      done = true;
-      window.removeEventListener('scroll', onScroll);
-      music.start();
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    music.start();
     // deps deliberately empty: bind once on mount; music.start reads refs, not state
   }, []);
 
@@ -246,7 +238,7 @@ export function InvitationCard({
                     height: 50,
                     // Figma 206:38: monogram trên nền vòm tối dùng bản chữ kem
                     // (#E8DACB), khác bản cocoa #78695D dùng trên nền sáng.
-                    background: 'url(/invite/logo-oval-cream.svg) center / contain no-repeat',
+                    background: 'url(/image/logo-cream.svg) center / contain no-repeat',
                   }}
                 />
                 <span

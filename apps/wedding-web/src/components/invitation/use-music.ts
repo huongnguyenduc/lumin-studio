@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-// Background music per HANDOFF §2.10: never on load — first attempt on first
-// scroll; if the browser rejects (no gesture yet), a one-time pointerdown retry
-// starts it on the first tap. Fade in over 2.4s, fade out 0.7s then pause.
+// Background music per HANDOFF §2.10 (autoplay-on-gesture): the first attempt
+// fires on mount; browsers reject it (no gesture yet), which arms a one-time
+// pointerdown retry that starts it on the guest's first tap. Fade in over
+// 2.4s, fade out 0.7s then pause.
 // Degrades silently when the source is absent/unplayable (audio 'error'
 // event) — NOT via a HEAD existence check: admin-uploaded music lives on a
 // different origin (wedding-assets.luminstudio.vn) with no CORS policy for
