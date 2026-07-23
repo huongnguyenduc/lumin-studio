@@ -189,9 +189,9 @@ export function Events({ event = {} }: { event?: EventData }) {
           right: 0,
           top: 112.69,
           height: 574.59,
-          background: 'url(/invite/emboss.png) 0 -16.5px / 393px 574.59px no-repeat',
+          background: 'url(/image/cards-background.webp) 0 -16.5px / 393px 574.59px no-repeat',
           mixBlendMode: 'darken',
-          opacity: 0.24,
+          opacity: 0.9,
         }}
       />
       <div

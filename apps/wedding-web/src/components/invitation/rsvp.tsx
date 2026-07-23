@@ -62,7 +62,7 @@ export function Rsvp({
   return (
     <div
       style={{
-        background: INK,
+        background: 'url(/image/rsvp-background.webp) center / 100% 100% no-repeat',
         padding: '60px 40px',
         display: 'flex',
         flexDirection: 'column',

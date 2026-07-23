@@ -109,7 +109,7 @@ export function Hero({
           transform: 'translateX(-50%)',
           width: 116,
           height: 128,
-          background: 'url(/invite/logo-oval.svg) center / contain no-repeat',
+          background: 'url(/image/logo.svg) center / contain no-repeat',
         }}
       />
       <div
