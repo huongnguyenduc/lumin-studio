@@ -29,6 +29,7 @@ export default async function HomePage() {
       settings={optimizeSettings(asSiteSettings(settings))}
       event={eventData}
       eventImages={optimizeEvent(eventData)}
+      eventSlug={event?.slug ?? ''}
     />
   );
 }

@@ -48,6 +48,9 @@ type Config struct {
 	// CookieSecure sets Secure on the session cookie. Default true (Cloudflare edge
 	// terminates HTTPS); set COOKIE_SECURE=false only for local plain-http dev.
 	CookieSecure bool
+	// GISecret keys Guest Identity HMACs. It defaults to JWTSecret with explicit
+	// domain separation, so existing deployments need no second secret.
+	GISecret string
 
 	// Upload is the presigned-upload config for host-configurable media (HANDOFF
 	// §3.5) — a dedicated `wedding-assets` Garage bucket with its own scoped key.
@@ -88,6 +91,7 @@ func (c Config) UsesForgeableJWTSecret() bool {
 
 // Load reads configuration from the environment, applying local-dev defaults.
 func Load() Config {
+	jwtSecret := getenv("JWT_SECRET", DevJWTSecret)
 	return Config{
 		Addr:              ":" + getenv("PORT", "8081"),
 		ReadHeaderTimeout: getDuration("READ_HEADER_TIMEOUT", 10*time.Second),
@@ -100,10 +104,11 @@ func Load() Config {
 		RootDomain: getenv("ROOT_DOMAIN", "luminstudio.vn"),
 
 		AdminPassword:     os.Getenv("ADMIN_PASSWORD"),
-		JWTSecret:         getenv("JWT_SECRET", DevJWTSecret),
+		JWTSecret:         jwtSecret,
 		AllowDevJWTSecret: os.Getenv("ALLOW_DEV_JWT_SECRET") == "true",
 		JWTTTL:            getDuration("JWT_TTL", 12*time.Hour),
 		CookieSecure:      getenv("COOKIE_SECURE", "true") == "true",
+		GISecret:          getenv("GI_HMAC_SECRET", jwtSecret),
 
 		Upload: UploadConfig{
 			S3Endpoint:      os.Getenv("UPLOAD_S3_ENDPOINT"),

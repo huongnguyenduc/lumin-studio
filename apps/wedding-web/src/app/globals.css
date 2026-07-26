@@ -57,6 +57,16 @@
 .invite-lb-btn:hover {
   background: rgba(255, 251, 248, 0.12) !important;
 }
+/* Ô tên ở RSVP trong suốt trên nền tối — placeholder phải mờ hơn chữ nhập vào,
+ * và ::placeholder thì inline style không với tới được. */
+.invite-rsvp-name::placeholder {
+  color: rgba(255, 251, 248, 0.62);
+}
+.invite-rsvp-name:focus-visible {
+  box-shadow:
+    0 0 0 0.5px rgb(255, 251, 248),
+    0 0 0 2.5px rgba(255, 251, 248, 0.35) !important;
+}
 
 /* Admin pill hovers (prototype style-hover). */
 .wa-pill-solid:hover {

@@ -101,6 +101,8 @@ export type AdminGuest = {
   createdAt: string;
   wishCount: number;
   firstWish: string | null;
+  openCount: number;
+  openDevices: string[];
 };
 
 export type AdminWish = {
@@ -118,6 +120,23 @@ export type AdminStats = {
   rsvpYes: number;
   rsvpNo: number;
   wishes: number;
+};
+
+export type SharedGuest = {
+  id: string;
+  browserFamily: string;
+  deviceFamily: string;
+  matchConfidence: 'token' | 'fingerprint' | 'new';
+  firstSeenAt: string;
+  lastSeenAt: string;
+  name: string | null;
+  rsvp: 'yes' | 'no' | null;
+  rsvpAt: string | null;
+  isAdmin: boolean;
+  isCurrent: boolean;
+  openCount: number;
+  firstOpenedAt: string | null;
+  lastOpenedAt: string | null;
 };
 
 export type Settings = Record<string, unknown>;
@@ -198,6 +217,18 @@ export const adminApi = {
   // block URLs containing "stats" as presumed analytics.
   stats: (event: string) =>
     call<AdminStats>('GET', `/api/admin/overview?event=${encodeURIComponent(event)}`),
+  sharedGuests: (event: string) =>
+    call<{ items: SharedGuest[] }>(
+      'GET',
+      `/api/admin/shared-guests?event=${encodeURIComponent(event)}`,
+    ),
+  createIdentityClaim: () =>
+    call<{ token: string; expiresAt: string }>('POST', '/api/admin/identity-claims'),
+  setIdentityAdmin: (id: string, admin: boolean) =>
+    call<void>('PATCH', `/api/admin/identities/${encodeURIComponent(id)}/admin`, { admin }),
+  deleteIdentity: (id: string) =>
+    call<void>('DELETE', `/api/admin/identities/${encodeURIComponent(id)}`),
+  deleteAllIdentities: () => call<void>('DELETE', '/api/admin/identities'),
   settings: () => call<Settings>('GET', '/api/admin/settings'),
   patchSettings: (patch: Settings) => call<Settings>('PATCH', '/api/admin/settings', patch),
 

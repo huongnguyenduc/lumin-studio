@@ -17,6 +17,7 @@ export type SiteSettings = {
   couple?: string;
   bride?: string;
   groom?: string;
+  sharedGuestLabel?: string;
   heroUrl?: string;
   heroX?: number;
   heroY?: number;
@@ -130,6 +131,7 @@ export function asSiteSettings(raw: Record<string, unknown>): SiteSettings {
     couple: s('couple'),
     bride: s('bride'),
     groom: s('groom'),
+    sharedGuestLabel: s('sharedGuestLabel'),
     heroUrl: s('heroUrl'),
     heroX: n('heroX'),
     heroY: n('heroY'),

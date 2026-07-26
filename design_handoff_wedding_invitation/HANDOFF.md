@@ -159,7 +159,7 @@ CREATE TABLE guests (
   label       TEXT NOT NULL,             -- salutation shown on the card
   "group"     TEXT NOT NULL DEFAULT 'Bạn bè',
   note        TEXT,                      -- private, admin-only
-  opened_at   TIMESTAMPTZ,               -- first open only, never overwritten
+  opened_at   TIMESTAMPTZ,               -- summary: first effective non-admin open
   rsvp        TEXT CHECK (rsvp IN ('yes','no')),  -- NULL = pending
   rsvp_at     TIMESTAMPTZ,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -183,7 +183,8 @@ CREATE TABLE groups (
 Notes:
 - **Guest id doubles as the invite token.** **Slug format: derived from the guest label** — lowercase, Vietnamese diacritics stripped, non-alphanumerics → `-` (e.g. "Cô Lan & Chú Minh" → `co-lan-chu-minh`). On collision, append an incrementing suffix: `co-lan-chu-minh-2`, `-3`… Slug is generated once at creation and **never changes on rename** (links already sent must keep working). Trade-off accepted: links are guessable; risk for a wedding is negligible.
 - Add a `settings` table/JSONB row for site configuration (hero image, gallery list, map image, maps URL, music, title/description/OG image/icon) — values are Garage object keys or plain strings.
-- `opened_at` is write-once (set only if NULL) — matches prototype `markOpened`.
+- `opened_at` is a compatibility summary derived from consented non-admin `invite_opens`; migration preserves old values in `legacy_opened_at`.
+- ADR-056 adds wedding-scoped `guest_identities`, token aliases, append-only `invite_opens`, separate `shared_guest_responses`, admin claims and aggregate-only declined opens. Identity rows contain keyed HMACs/codes, never raw IP/UA/screen.
 - RSVP is upsert, last-write-wins, always stamps `rsvp_at`.
 - Deleting a group reassigns members to "Khác"; renaming cascades.
 
@@ -191,7 +192,10 @@ Notes:
 
 Public (rate-limit these):
 ```
-GET  /api/invite/:guestId          → { id, label, rsvp }        (also fires opened_at write-once; 404 → render anonymous card)
+GET  /api/invite/:guestId          → { id, label, rsvp }        (pure read; 404 → render anonymous card)
+POST /api/identity/resolve         → consented GI + open + restored shared profile; decline → aggregate only
+POST /api/identity/shared-rsvp     → upsert name + RSVP by GI/event
+POST /api/identity/claim/:token    → bind current GI as admin using one-time claim
 POST /api/invite/:guestId/rsvp     { rsvp: "yes"|"no" }
 POST /api/wishes                   { guestId?, name, text, color }   → created wish
 GET  /api/wishes?limit&offset      → public wall (id, name, text, color, createdAt)
@@ -206,6 +210,9 @@ GET                   /api/admin/export.xlsx      (optional server-side export)
 POST                  /api/admin/guests/bulk-delete   { ids: [...] }
 POST                  /api/admin/wishes/bulk-delete   { ids: [...] }
 GET/PATCH             /api/admin/settings
+GET                   /api/admin/shared-guests
+POST                  /api/admin/identity-claims
+PATCH/DELETE          /api/admin/identities[...]
 POST                  /api/admin/uploads/presign      { kind: hero|gallery|map|music|og|icon, mime, size } → presigned Garage POST
 ```
 Validation: wish text required, cap length (~500 chars), color must be one of the 4 presets. Wall updates: simple polling (30–60s) or refetch-on-focus is plenty; SSE is overkill here.
@@ -250,7 +257,7 @@ Validation: wish text required, cap length (~500 chars), color must be one of th
 4. **Personalized salutation as free text** (not first/last name fields) — Vietnamese salutations are relational ("Cô Lan & Chú Minh", "Gia đình Bác Ba"); one label field is the correct model.
 5. **RSVP is two explicit pills, changeable** — guests change their minds; no confirmation friction.
 6. **Wish card colors** are 4 curated presets from the palette — keeps the wall cohesive; never a free color picker.
-7. **Open tracking is first-open-only** — it answers "did the link reach them", not analytics.
+7. **Open tracking uses consented Guest Identity (ADR-056)** — keep append-only opens so admin-device claims can be excluded retroactively; `guests.opened_at` remains the effective first non-admin open summary. Consent-declined visits are aggregate-only — kept as an API capability; the web UI no longer asks (owner's call 2026-07-26, GI resolves silently).
 8. **Duplicate labels allowed + nudge** — real guest lists have duplicate salutations; private notes disambiguate instead of forcing unique names.
 9. **Quick-add optimized for Enter-repeat** — hosts paste from a mental list of dozens; session counter gives progress feedback.
 

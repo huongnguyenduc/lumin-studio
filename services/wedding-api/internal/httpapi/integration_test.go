@@ -79,12 +79,17 @@ const masterSecret = "pw"
 const bearerSentinel = "__bearer__"
 
 func setupIntegration(t *testing.T) (*httptest.Server, *http.Cookie) {
+	srv, admin, _ := setupIntegrationWithPool(t)
+	return srv, admin
+}
+
+func setupIntegrationWithPool(t *testing.T) (*httptest.Server, *http.Cookie, *pgxpool.Pool) {
 	t.Helper()
 	pool := freshPool(t)
 	a := auth.New(config.Config{AdminPassword: masterSecret, JWTSecret: "test", JWTTTL: time.Hour})
-	srv := httptest.NewServer(New(pool, a, nil, "luminstudio.vn"))
+	srv := httptest.NewServer(New(pool, a, nil, "luminstudio.vn", "test-gi-secret"))
 	t.Cleanup(srv.Close)
-	return srv, &http.Cookie{Name: bearerSentinel, Value: masterSecret}
+	return srv, &http.Cookie{Name: bearerSentinel, Value: masterSecret}, pool
 }
 
 // call is a tiny JSON client. cred nil → unauthenticated; a bearerSentinel
@@ -171,23 +176,9 @@ func TestEndToEndFlows(t *testing.T) {
 		}
 		return nil
 	}
-	// GET is a pure read now — a preview bot fetching the link must not mark it opened.
+	// GET is a pure read — a preview bot fetching the link must not mark it opened.
 	if openedAt() != nil {
-		t.Fatal("opened_at set by GET — must only be set by POST /opened")
-	}
-	if code := call(t, "POST", u+"/api/invite/"+g1.ID+"/opened", nil, nil, nil); code != 204 {
-		t.Fatalf("mark opened = %d, want 204", code)
-	}
-	firstOpen := openedAt()
-	if firstOpen == nil {
-		t.Fatal("opened_at not set on first open")
-	}
-	call(t, "POST", u+"/api/invite/"+g1.ID+"/opened", nil, nil, nil) // re-open
-	if got := openedAt(); got == nil || !got.Equal(*firstOpen) {
-		t.Fatal("opened_at overwritten on re-open — must be write-once")
-	}
-	if code := call(t, "POST", u+"/api/invite/khong-ton-tai/opened", nil, nil, nil); code != 204 {
-		t.Fatalf("mark opened unknown guest = %d, want idempotent 204", code)
+		t.Fatal("opened_at set by GET — must only be set by consented identity flow")
 	}
 	if code := call(t, "GET", u+"/api/invite/khong-ton-tai", nil, nil, nil); code != 404 {
 		t.Fatalf("unknown invite = %d, want 404", code)
@@ -265,7 +256,7 @@ func TestEndToEndFlows(t *testing.T) {
 	// --- stats ---
 	var stats map[string]int
 	call(t, "GET", u+"/api/admin/overview?event="+evt, admin, nil, &stats)
-	if stats["guests"] != 2 || stats["opened"] != 1 || stats["rsvpNo"] != 1 || stats["wishes"] != 2 {
+	if stats["guests"] != 2 || stats["opened"] != 0 || stats["rsvpNo"] != 1 || stats["wishes"] != 2 {
 		t.Fatalf("stats = %v", stats)
 	}
 
@@ -292,6 +283,237 @@ func TestEndToEndFlows(t *testing.T) {
 	call(t, "GET", u+"/api/wishes", nil, nil, &wall)
 	if wall.Total != 2 {
 		t.Fatalf("wishes lost on guest delete = total %d, want 2 (SET NULL)", wall.Total)
+	}
+}
+
+func TestGuestIdentityFlows(t *testing.T) {
+	srv, admin, pool := setupIntegrationWithPool(t)
+	u := srv.URL
+
+	var guest struct{ ID string }
+	if code := call(t, "POST", u+"/api/admin/guests", admin,
+		map[string]string{"label": "Khách GI", "eventSlug": evt}, &guest); code != 201 {
+		t.Fatalf("create guest = %d", code)
+	}
+	signals := map[string]any{
+		"userAgent": "Mozilla/5.0 (iPhone) Safari/604.1", "screenWidth": 390,
+		"screenHeight": 844, "devicePixelRatio": "3", "timezone": "Asia/Ho_Chi_Minh",
+		"language": "vi-VN", "platform": "iPhone", "touchPoints": 5,
+	}
+	var identity struct {
+		IdentityID string `json:"identityId"`
+		Token      string `json:"token"`
+		IsAdmin    bool   `json:"isAdmin"`
+	}
+	body := map[string]any{
+		"consent": true, "eventSlug": evt, "source": "personalized",
+		"guestId": guest.ID, "signals": signals,
+	}
+	if code := call(t, "POST", u+"/api/identity/resolve", nil, body, &identity); code != 200 {
+		t.Fatalf("resolve identity = %d", code)
+	}
+	if identity.IdentityID == "" || identity.Token == "" || identity.IsAdmin {
+		t.Fatalf("identity = %+v", identity)
+	}
+
+	var listed struct {
+		Items []struct {
+			ID       string     `json:"id"`
+			OpenedAt *time.Time `json:"openedAt"`
+		} `json:"items"`
+	}
+	call(t, "GET", u+"/api/admin/guests?event="+evt, admin, nil, &listed)
+	if len(listed.Items) != 1 || listed.Items[0].OpenedAt == nil {
+		t.Fatalf("non-admin open not reflected: %+v", listed.Items)
+	}
+
+	// The same identity resolving with authenticated master scope becomes admin;
+	// all of its prior personalized opens are excluded retroactively.
+	body["token"] = identity.Token
+	if code := call(t, "POST", u+"/api/identity/resolve", admin, body, &identity); code != 200 {
+		t.Fatalf("admin resolve = %d", code)
+	}
+	if !identity.IsAdmin {
+		t.Fatal("authenticated identity was not marked admin")
+	}
+	call(t, "GET", u+"/api/admin/guests?event="+evt, admin, nil, &listed)
+	if listed.Items[0].OpenedAt != nil {
+		t.Fatal("admin open was not removed retroactively")
+	}
+
+	// A pre-migration summary survives every later recomputation.
+	legacyAt := time.Now().Add(-24 * time.Hour).UTC().Truncate(time.Microsecond)
+	if _, err := pool.Exec(context.Background(), `
+		UPDATE guests SET opened_at=$2,legacy_opened_at=$2 WHERE id=$1`,
+		guest.ID, legacyAt); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := pool.Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := recomputeOpened(context.Background(), tx, "giang-hieu"); err != nil {
+		_ = tx.Rollback(context.Background())
+		t.Fatal(err)
+	}
+	if err := tx.Commit(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var preserved time.Time
+	if err := pool.QueryRow(context.Background(),
+		`SELECT opened_at FROM guests WHERE id=$1`, guest.ID).Scan(&preserved); err != nil {
+		t.Fatal(err)
+	}
+	if !preserved.Equal(legacyAt) {
+		t.Fatalf("legacy open changed: got %s want %s", preserved, legacyAt)
+	}
+
+	// A fresh token with the same fingerprint must not inherit an admin identity.
+	var shared struct {
+		IdentityID string `json:"identityId"`
+		Token      string `json:"token"`
+	}
+	if code := call(t, "POST", u+"/api/identity/resolve", nil, map[string]any{
+		"consent": true, "eventSlug": evt, "source": "shared", "signals": signals,
+	}, &shared); code != 200 {
+		t.Fatalf("shared resolve = %d", code)
+	}
+	if shared.IdentityID == identity.IdentityID {
+		t.Fatal("different device merged into admin identity")
+	}
+	if code := call(t, "POST", u+"/api/identity/shared-rsvp", nil, map[string]any{
+		"token": shared.Token, "eventSlug": evt, "name": "Bạn An", "rsvp": "yes",
+	}, nil); code != 204 {
+		t.Fatalf("shared RSVP = %d", code)
+	}
+	var restored struct {
+		Profile *sharedProfile `json:"profile"`
+	}
+	if code := call(t, "POST", u+"/api/identity/resolve", nil, map[string]any{
+		"consent": true, "eventSlug": evt, "source": "shared",
+		"token": shared.Token, "signals": signals,
+	}, &restored); code != 200 {
+		t.Fatalf("restore shared identity = %d", code)
+	}
+	if restored.Profile == nil || restored.Profile.Name != "Bạn An" ||
+		restored.Profile.RSVP == nil || *restored.Profile.RSVP != "yes" {
+		t.Fatalf("restored profile = %+v", restored.Profile)
+	}
+	var sharedList struct {
+		Items []struct {
+			Name      *string `json:"name"`
+			RSVP      *string `json:"rsvp"`
+			OpenCount int     `json:"openCount"`
+		} `json:"items"`
+	}
+	call(t, "GET", u+"/api/admin/shared-guests?event="+evt, admin, nil, &sharedList)
+	if len(sharedList.Items) != 1 || sharedList.Items[0].Name == nil ||
+		*sharedList.Items[0].Name != "Bạn An" || sharedList.Items[0].RSVP == nil ||
+		*sharedList.Items[0].RSVP != "yes" || sharedList.Items[0].OpenCount != 2 {
+		t.Fatalf("shared guests = %+v", sharedList.Items)
+	}
+	var claim struct {
+		Token string `json:"token"`
+	}
+	if code := call(t, "POST", u+"/api/admin/identity-claims?wedding=giang-hieu", admin, nil, &claim); code != 201 {
+		t.Fatalf("create identity claim = %d", code)
+	}
+	claimBody := map[string]string{"identityToken": shared.Token}
+	claimURL := u + "/api/identity/claim/" + claim.Token
+	if code := call(t, "POST", claimURL, nil, claimBody, nil); code != 204 {
+		t.Fatalf("consume identity claim = %d", code)
+	}
+	if code := call(t, "POST", claimURL, nil, claimBody, nil); code != 410 {
+		t.Fatalf("reuse identity claim = %d, want 410", code)
+	}
+
+	// Declining later withdraws consent: identity and profile cascade away.
+	if code := call(t, "POST", u+"/api/identity/resolve", nil, map[string]any{
+		"consent": false, "eventSlug": evt, "source": "shared", "token": shared.Token,
+	}, nil); code != 200 {
+		t.Fatalf("withdraw identity = %d", code)
+	}
+	var remaining int
+	if err := pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM guest_identities WHERE id=$1`, shared.IdentityID).Scan(&remaining); err != nil {
+		t.Fatal(err)
+	}
+	if remaining != 0 {
+		t.Fatal("declined identity was not deleted")
+	}
+
+	// Expiry removes pseudonyms but preserves the non-identifying opened summary.
+	var retainedGuest struct{ ID string }
+	if code := call(t, "POST", u+"/api/admin/guests", admin,
+		map[string]string{"label": "Khách lưu summary", "eventSlug": evt}, &retainedGuest); code != 201 {
+		t.Fatalf("create retained guest = %d", code)
+	}
+	signals["screenWidth"] = 412
+	signals["screenHeight"] = 915
+	var expiring struct {
+		IdentityID string `json:"identityId"`
+	}
+	if code := call(t, "POST", u+"/api/identity/resolve", nil, map[string]any{
+		"consent": true, "eventSlug": evt, "source": "personalized",
+		"guestId": retainedGuest.ID, "signals": signals,
+	}, &expiring); code != 200 {
+		t.Fatalf("resolve expiring identity = %d", code)
+	}
+	var survivingGuest struct{ ID string }
+	if code := call(t, "POST", u+"/api/admin/guests", admin,
+		map[string]string{"label": "Khách còn hạn", "eventSlug": evt}, &survivingGuest); code != 201 {
+		t.Fatalf("create surviving guest = %d", code)
+	}
+	signals["screenWidth"] = 430
+	signals["screenHeight"] = 932
+	var surviving struct {
+		IdentityID string `json:"identityId"`
+	}
+	if code := call(t, "POST", u+"/api/identity/resolve", nil, map[string]any{
+		"consent": true, "eventSlug": evt, "source": "personalized",
+		"guestId": survivingGuest.ID, "signals": signals,
+	}, &surviving); code != 200 {
+		t.Fatalf("resolve surviving identity = %d", code)
+	}
+	if _, err := pool.Exec(context.Background(),
+		`UPDATE guest_identities SET expires_at=now()-interval '1 minute' WHERE id=$1`,
+		expiring.IdentityID); err != nil {
+		t.Fatal(err)
+	}
+	if err := (&server{pool: pool}).purgeExpiredIdentities(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	tx, err = pool.Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := recomputeOpened(context.Background(), tx, "giang-hieu"); err != nil {
+		_ = tx.Rollback(context.Background())
+		t.Fatal(err)
+	}
+	if err := tx.Commit(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var retainedOpen *time.Time
+	if err := pool.QueryRow(context.Background(),
+		`SELECT opened_at FROM guests WHERE id=$1`, retainedGuest.ID).Scan(&retainedOpen); err != nil {
+		t.Fatal(err)
+	}
+	if retainedOpen == nil {
+		t.Fatal("retention purge erased effective opened summary")
+	}
+	if code := call(t, "PATCH",
+		u+"/api/admin/identities/"+surviving.IdentityID+"/admin?wedding=giang-hieu",
+		admin, map[string]bool{"admin": true}, nil); code != 204 {
+		t.Fatalf("mark surviving identity admin = %d", code)
+	}
+	var survivingOpen *time.Time
+	if err := pool.QueryRow(context.Background(),
+		`SELECT opened_at FROM guests WHERE id=$1`, survivingGuest.ID).Scan(&survivingOpen); err != nil {
+		t.Fatal(err)
+	}
+	if survivingOpen != nil {
+		t.Fatal("partial purge froze a surviving identity's opened summary")
 	}
 }
 
@@ -559,6 +781,7 @@ func TestMultiWeddingScoping(t *testing.T) {
 	if code := call(t, "DELETE", u+"/api/admin/weddings/"+wed.Slug, admin, nil, nil); code != 204 {
 		t.Fatalf("delete wedding = %d", code)
 	}
+	pub.Items = nil
 	call(t, "GET", u+"/api/events?host=anbinh2026.luminstudio.vn", nil, nil, &pub)
 	for _, it := range pub.Items {
 		if it.Slug == ev.Slug {
@@ -738,5 +961,209 @@ func TestDeleteEvent(t *testing.T) {
 	call(t, "GET", u+"/api/wishes?host=giangvahieu.luminstudio.vn", nil, nil, &wall)
 	if wall.Total != 1 {
 		t.Fatalf("wishes wall = %d, want 1 (per-wedding, survives event delete)", wall.Total)
+	}
+}
+
+// A couple's SECOND event usually has no subdomain of its own, so the host only
+// ever resolves the first one. Its guests' personal links must still open, RSVP
+// and record their open against their OWN event — not 404 into the anonymous card.
+func TestSecondEventGuestLinkResolvesByWedding(t *testing.T) {
+	srv, admin, _ := setupIntegrationWithPool(t)
+	u := srv.URL
+	host := "giangvahieu.luminstudio.vn" // subdomain of event 1 only
+
+	var ev2 struct{ Slug string }
+	if code := call(t, "POST", u+"/api/admin/events", admin,
+		map[string]string{"name": "Đám cưới 2", "weddingSlug": "giang-hieu"}, &ev2); code != 201 {
+		t.Fatalf("create event 2 = %d", code)
+	}
+	var guest struct{ ID string }
+	if code := call(t, "POST", u+"/api/admin/guests", admin,
+		map[string]string{"label": "Khách tiệc 2", "eventSlug": ev2.Slug}, &guest); code != 201 {
+		t.Fatalf("create guest = %d", code)
+	}
+
+	var invite struct{ Label string }
+	if code := call(t, "GET",
+		u+"/api/invite/"+guest.ID+"?host="+host, nil, nil, &invite); code != 200 {
+		t.Fatalf("get invite = %d, want 200", code)
+	}
+	if invite.Label != "Khách tiệc 2" {
+		t.Fatalf("label = %q", invite.Label)
+	}
+	if code := call(t, "POST", u+"/api/invite/"+guest.ID+"/rsvp?host="+host, nil,
+		map[string]string{"rsvp": "yes"}, nil); code != 204 {
+		t.Fatalf("rsvp = %d, want 204", code)
+	}
+
+	// eventSlug is the host's default event — the open must still land on ev2.
+	if code := call(t, "POST", u+"/api/identity/resolve", nil, map[string]any{
+		"consent": true, "host": host, "eventSlug": evt, "source": "personalized",
+		"guestId": guest.ID, "signals": map[string]any{"userAgent": "Mozilla/5.0 (iPhone)"},
+	}, nil); code != 200 {
+		t.Fatalf("resolve identity = %d, want 200", code)
+	}
+	var listed struct {
+		Items []struct {
+			OpenedAt *time.Time `json:"openedAt"`
+			RSVP     *string    `json:"rsvp"`
+		} `json:"items"`
+	}
+	call(t, "GET", u+"/api/admin/guests?event="+ev2.Slug, admin, nil, &listed)
+	if len(listed.Items) != 1 || listed.Items[0].OpenedAt == nil ||
+		listed.Items[0].RSVP == nil || *listed.Items[0].RSVP != "yes" {
+		t.Fatalf("second-event guest = %+v", listed.Items)
+	}
+}
+
+// ScopeFromRequest is reachable from the PUBLIC identity endpoint, so a couple
+// session must only ever tag its OWN wedding's devices as the couple's. Couple
+// B browsing couple A's shared link stays an ordinary guest — otherwise B's
+// opens would silently vanish from A's "đã mở" counts.
+func TestIdentityAdminTagIsWeddingScoped(t *testing.T) {
+	srv, admin, _ := setupIntegrationWithPool(t)
+	u := srv.URL
+
+	var wed struct{ Slug string }
+	if code := call(t, "POST", u+"/api/admin/weddings", admin,
+		map[string]string{"name": "An & Bình"}, &wed); code != 201 {
+		t.Fatalf("create wedding = %d", code)
+	}
+	var ev struct{ Slug string }
+	if code := call(t, "POST", u+"/api/admin/events", admin,
+		map[string]string{"name": "Đám cưới An Bình", "weddingSlug": wed.Slug}, &ev); code != 201 {
+		t.Fatalf("create event = %d", code)
+	}
+	if code := call(t, "PATCH", u+"/api/admin/events/"+ev.Slug, admin,
+		map[string]string{"subdomain": "anbinh"}, nil); code != 200 {
+		t.Fatal("set subdomain failed")
+	}
+	if code := call(t, "PATCH", u+"/api/admin/weddings/"+wed.Slug, admin,
+		map[string]string{"password": "matkhau-cua-an-binh"}, nil); code != 200 {
+		t.Fatal("set couple password failed")
+	}
+	var buf bytes.Buffer
+	_ = json.NewEncoder(&buf).Encode(map[string]string{
+		"password": "matkhau-cua-an-binh", "host": "anbinh.luminstudio.vn",
+	})
+	req, err := http.NewRequest("POST", u+"/api/admin/login", &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var couple *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == auth.CookieName && c.Value != "" {
+			couple = c
+		}
+	}
+	if couple == nil {
+		t.Fatalf("couple login = %d, no cookie", resp.StatusCode)
+	}
+
+	// Couple B on couple A's host: a guest, not an admin device.
+	var foreign struct {
+		IsAdmin bool `json:"isAdmin"`
+	}
+	if code := call(t, "POST", u+"/api/identity/resolve", couple, map[string]any{
+		"consent": true, "host": "giangvahieu.luminstudio.vn", "source": "shared",
+		"signals": map[string]any{"userAgent": "Mozilla/5.0 (Macintosh)"},
+	}, &foreign); code != 200 {
+		t.Fatalf("foreign couple resolve = %d", code)
+	}
+	if foreign.IsAdmin {
+		t.Fatal("another couple's session was tagged as this wedding's admin device")
+	}
+
+	// Same session on its OWN host is the admin device.
+	var own struct {
+		IsAdmin bool `json:"isAdmin"`
+	}
+	if code := call(t, "POST", u+"/api/identity/resolve", couple, map[string]any{
+		"consent": true, "host": "anbinh.luminstudio.vn", "source": "shared",
+		"signals": map[string]any{"userAgent": "Mozilla/5.0 (Macintosh)"},
+	}, &own); code != 200 {
+		t.Fatalf("own couple resolve = %d", code)
+	}
+	if !own.IsAdmin {
+		t.Fatal("couple session was not tagged admin on its own wedding")
+	}
+}
+
+// Tên tự lưu sau khi khách ngưng gõ, TRƯỚC khi họ bấm tham dự/không tham dự.
+// Hàng đó phải tồn tại với rsvp NULL, và lần lưu-tên sau đó không được xoá mất
+// lựa chọn RSVP đã có.
+func TestSharedNameSavesBeforeRSVP(t *testing.T) {
+	srv, admin, _ := setupIntegrationWithPool(t)
+	u := srv.URL
+
+	var gi struct{ Token string }
+	if code := call(t, "POST", u+"/api/identity/resolve", nil, map[string]any{
+		"consent": true, "eventSlug": evt, "source": "shared",
+		"signals": map[string]any{"userAgent": "Mozilla/5.0 (iPhone)"},
+	}, &gi); code != 200 {
+		t.Fatalf("resolve = %d", code)
+	}
+
+	// 1. Chỉ có tên, chưa chọn gì.
+	if code := call(t, "POST", u+"/api/identity/shared-rsvp", nil, map[string]any{
+		"token": gi.Token, "eventSlug": evt, "name": "Bạn Chưa Quyết", "rsvp": "",
+	}, nil); code != 204 {
+		t.Fatalf("name-only save = %d, want 204", code)
+	}
+	var restored struct {
+		Profile *sharedProfile `json:"profile"`
+	}
+	if code := call(t, "POST", u+"/api/identity/resolve", nil, map[string]any{
+		"consent": true, "eventSlug": evt, "source": "shared", "token": gi.Token,
+		"signals": map[string]any{"userAgent": "Mozilla/5.0 (iPhone)"},
+	}, &restored); code != 200 {
+		t.Fatalf("restore = %d", code)
+	}
+	if restored.Profile == nil || restored.Profile.Name != "Bạn Chưa Quyết" ||
+		restored.Profile.RSVP != nil {
+		t.Fatalf("name-only profile = %+v", restored.Profile)
+	}
+	var listed struct {
+		Items []struct {
+			Name *string `json:"name"`
+			RSVP *string `json:"rsvp"`
+		} `json:"items"`
+	}
+	call(t, "GET", u+"/api/admin/shared-guests?event="+evt, admin, nil, &listed)
+	if len(listed.Items) != 1 || listed.Items[0].Name == nil ||
+		*listed.Items[0].Name != "Bạn Chưa Quyết" || listed.Items[0].RSVP != nil {
+		t.Fatalf("admin row = %+v", listed.Items)
+	}
+
+	// 2. Chọn RSVP.
+	if code := call(t, "POST", u+"/api/identity/shared-rsvp", nil, map[string]any{
+		"token": gi.Token, "eventSlug": evt, "name": "Bạn Chưa Quyết", "rsvp": "yes",
+	}, nil); code != 204 {
+		t.Fatalf("rsvp save = %d", code)
+	}
+
+	// 3. Sửa tên (rsvp rỗng) — KHÔNG được xoá lựa chọn vừa chọn.
+	if code := call(t, "POST", u+"/api/identity/shared-rsvp", nil, map[string]any{
+		"token": gi.Token, "eventSlug": evt, "name": "Bạn Đã Quyết", "rsvp": "",
+	}, nil); code != 204 {
+		t.Fatalf("rename = %d", code)
+	}
+	call(t, "GET", u+"/api/admin/shared-guests?event="+evt, admin, nil, &listed)
+	if len(listed.Items) != 1 || *listed.Items[0].Name != "Bạn Đã Quyết" ||
+		listed.Items[0].RSVP == nil || *listed.Items[0].RSVP != "yes" {
+		t.Fatalf("rename wiped the RSVP: %+v", listed.Items)
+	}
+
+	// rsvp sai vẫn phải bị từ chối.
+	if code := call(t, "POST", u+"/api/identity/shared-rsvp", nil, map[string]any{
+		"token": gi.Token, "eventSlug": evt, "name": "X", "rsvp": "maybe",
+	}, nil); code != 400 {
+		t.Fatalf("bad rsvp = %d, want 400", code)
 	}
 }

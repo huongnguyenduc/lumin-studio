@@ -40,4 +40,23 @@ test.describe('wedding invite', () => {
     // exact: câu cảm ơn RSVP cũng mở đầu bằng "Cảm ơn bạn!" (strict mode).
     await expect(page.getByText('Cảm ơn bạn!', { exact: true })).toBeVisible();
   });
+
+  test('link chung nhớ tên và RSVP', async ({ page }) => {
+    // GI resolve chạy ngầm lúc mount và là ĐIỀU KIỆN để nút RSVP link chung ăn
+    // click — chờ nó xong, không thì click rơi vào no-op và test flake.
+    const resolved = page.waitForResponse(
+      (r) => r.url().includes('/identity/resolve') && r.request().method() === 'POST' && r.ok(),
+    );
+    await page.goto(base!);
+    await resolved;
+    await page.getByLabel('Nhập tên của bạn').fill('Khách link chung');
+    const saved = page.waitForResponse(
+      (r) => r.url().includes('/identity/shared-rsvp') && r.request().method() === 'POST' && r.ok(),
+    );
+    await page.getByRole('button', { name: /^(✓ )?Tham dự được$/ }).click();
+    await saved;
+    await page.reload();
+    await expect(page.getByLabel('Nhập tên của bạn')).toHaveValue('Khách link chung');
+    await expect(page.getByText('✓ Tham dự được')).toBeVisible();
+  });
 });

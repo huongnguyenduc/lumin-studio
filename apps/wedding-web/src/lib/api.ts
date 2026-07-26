@@ -2,16 +2,16 @@ import 'server-only';
 
 // Server-side calls to wedding-api (the browser talks to the same paths via the
 // next.config rewrite). SSR of /i/<slug> uses no-store so the label renders
-// without flicker (§6); open tracking is a client POST (MarkOpened), not here.
+// without flicker (§6); consented GI/open tracking is a client POST, not here.
 const base = process.env.WEDDING_API_URL ?? 'http://localhost:8081';
 
 import type { EventSummary, Invite, Wish } from './types';
 
 export type { Invite, Wish, EventSummary };
 
-export async function getInvite(slug: string): Promise<Invite | null> {
+export async function getInvite(slug: string, host?: string): Promise<Invite | null> {
   try {
-    const res = await fetch(`${base}/api/invite/${encodeURIComponent(slug)}`, {
+    const res = await fetch(`${base}/api/invite/${encodeURIComponent(slug)}${hostQS(host)}`, {
       cache: 'no-store',
     });
     if (!res.ok) return null; // 404 → anonymous card

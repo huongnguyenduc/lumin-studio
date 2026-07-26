@@ -26,8 +26,9 @@ colors are CHECK constraints. Guest ids are slugs from `internal/slug`
 ## API (HANDOFF §5)
 
 Public, per-IP rate-limited (`CF-Connecting-IP`, fallback RemoteAddr):
-`GET /api/invite/{guestId}` (fires write-once `opened_at`) · `POST …/rsvp` (upsert) ·
-`POST /api/wishes` · `GET /api/wishes?limit&offset`.
+`GET /api/invite/{guestId}` (pure read) · `POST /api/identity/resolve`
+(consented GI + open) · `POST …/rsvp` (upsert) · `POST /api/wishes` ·
+`GET /api/wishes?limit&offset`.
 
 Admin, behind the shared-password JWT cookie (`wedding_session`, SameSite=Strict):
 `POST /api/admin/login|logout` (login rate-limited hard) · guests CRUD +

@@ -8,8 +8,10 @@ package httpapi
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -23,21 +25,30 @@ import (
 )
 
 type server struct {
-	pool       *pgxpool.Pool
-	auth       *auth.Auth
-	uploads    *uploadstore.Store // nil → presign answers 503 (log-and-disable)
-	rootDomain string             // e.g. "luminstudio.vn" — see weddingByHost
+	pool        *pgxpool.Pool
+	auth        *auth.Auth
+	uploads     *uploadstore.Store // nil → presign answers 503 (log-and-disable)
+	rootDomain  string             // e.g. "luminstudio.vn" — see weddingByHost
+	giSecret    string
+	lastGIPurge atomic.Int64
 }
 
 // New builds the router. uploads may be nil when UPLOAD_S3_* is not configured.
-func New(pool *pgxpool.Pool, a *auth.Auth, uploads *uploadstore.Store, rootDomain string) http.Handler {
-	s := &server{pool: pool, auth: a, uploads: uploads, rootDomain: rootDomain}
+func New(
+	pool *pgxpool.Pool,
+	a *auth.Auth,
+	uploads *uploadstore.Store,
+	rootDomain string,
+	giSecret string,
+) http.Handler {
+	s := &server{pool: pool, auth: a, uploads: uploads, rootDomain: rootDomain, giSecret: giSecret}
 
 	r := chi.NewRouter()
 	// No RealIP middleware: deprecated/spoofable — clientIP() reads CF-Connecting-IP
 	// deliberately (the service only ever sits behind the Cloudflare Tunnel).
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
+	r.Use(s.purgeIdentityMiddleware)
 
 	// Liveness: the process is up and serving.
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -61,8 +72,10 @@ func New(pool *pgxpool.Pool, a *auth.Auth, uploads *uploadstore.Store, rootDomai
 	r.Group(func(r chi.Router) {
 		r.Use(public.middleware)
 		r.Get("/api/invite/{guestId}", s.getInvite)
-		r.Post("/api/invite/{guestId}/opened", s.markOpened)
 		r.Post("/api/invite/{guestId}/rsvp", s.postRSVP)
+		r.Post("/api/identity/resolve", s.resolveIdentity)
+		r.Post("/api/identity/shared-rsvp", s.postSharedRSVP)
+		r.Post("/api/identity/claim/{token}", s.consumeIdentityClaim)
 		r.Post("/api/wishes", s.postWish)
 		r.Get("/api/wishes", s.getWishes)
 		// Site settings are public page content (hero/gallery/map/music/meta) —
@@ -114,12 +127,35 @@ func New(pool *pgxpool.Pool, a *auth.Auth, uploads *uploadstore.Store, rootDomai
 		// "overview", not "stats" — generic ad-blocker filter lists (EasyPrivacy-style)
 		// block URLs containing "stats" as presumed analytics, breaking this in-browser.
 		r.Get("/overview", s.adminStats)
+		r.Get("/shared-guests", s.listSharedGuests)
+		r.Post("/identity-claims", s.createIdentityClaim)
+		r.Patch("/identities/{id}/admin", s.setIdentityAdmin)
+		r.Delete("/identities", s.deleteAllIdentities)
+		r.Delete("/identities/{id}", s.deleteIdentity)
 		r.Get("/settings", s.adminGetSettings)
 		r.Patch("/settings", s.patchSettings)
 		r.Post("/uploads/presign", s.presignUpload)
 	})
 
 	return r
+}
+
+func (s *server) purgeIdentityMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		day := time.Now().Unix() / int64((24 * time.Hour).Seconds())
+		previous := s.lastGIPurge.Load()
+		if s.pool != nil && previous != day && s.lastGIPurge.CompareAndSwap(previous, day) {
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				if err := s.purgeExpiredIdentities(ctx); err != nil {
+					s.lastGIPurge.CompareAndSwap(day, previous)
+					slog.Error("purge expired wedding identities", "err", err)
+				}
+			}()
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // login is couple-only: the page host the client sends resolves — strictly, via
