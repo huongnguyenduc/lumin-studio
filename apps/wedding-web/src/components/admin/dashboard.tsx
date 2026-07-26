@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import {
   adminApi,
   ApiError,
+  errDetail,
   type AdminEvent,
   type AdminGuest,
   type AdminWish,
@@ -33,7 +34,7 @@ import {
 
 type EditState = { id: string | null; label: string; group: string; note: string } | null;
 
-export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
+export function AdminDashboard({ activeHost }: { activeHost: string | null }) {
   const t = useTranslations('admin');
   const [authed, setAuthed] = useState<boolean | null>(null); // null = probing
   const [events, setEvents] = useState<AdminEvent[]>([]);
@@ -54,27 +55,37 @@ export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
   const sessionCount = useRef(0);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Toast lỗi ở lâu hơn (10s): nó chứa chi tiết kỹ thuật để người dùng đọc/chụp gửi dev.
   const flash = useCallback((text: string, error = false) => {
     setToast({ text, error });
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 2600);
+    toastTimer.current = setTimeout(() => setToast(null), error ? 10000 : 2600);
   }, []);
+
+  // Mọi toast lỗi = câu thân thiện + nguyên văn lỗi server.
+  const flashError = useCallback(
+    (msg: string, err: unknown) =>
+      flash(t('toasts.withDetail', { msg, detail: errDetail(err) }), true),
+    [flash, t],
+  );
 
   // Couple-only: the session is scoped to one wedding, so events/wishes/settings
   // come back already confined to it (no wedding arg needed). The API returns
   // just this couple's events; the tab defaults to THIS subdomain's event
-  // (WEDDING_EVENT_SLUG) so the admin opens on the right one.
+  // (matched by event.subdomain against the request's Host) so the admin
+  // opens on the right one instead of always the first.
   const reload = useCallback(
     async (forEvent?: string) => {
       try {
         const ev = await adminApi.events();
         setEvents(ev.items);
-        const envSlug =
-          activeSlug && ev.items.some((e) => e.slug === activeSlug) ? activeSlug : null;
+        const hostname = activeHost?.split(':')[0].toLowerCase() ?? null;
+        const hostSlug =
+          hostname && (ev.items.find((e) => e.subdomain?.toLowerCase() === hostname)?.slug ?? null);
         const slug =
           forEvent ??
           (ev.items.some((e) => e.slug === selectedEvent) ? selectedEvent : null) ??
-          envSlug ??
+          hostSlug ??
           ev.items[0]?.slug ??
           null;
         setSelectedEvent(slug);
@@ -100,10 +111,10 @@ export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
         setAuthed(true);
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) setAuthed(false);
-        else flash(t('toasts.apiError'), true);
+        else flashError(t('toasts.apiError'), err);
       }
     },
-    [flash, t, selectedEvent, activeSlug],
+    [flashError, t, selectedEvent, activeHost],
   );
 
   // deliberately run once on mount only — reload reads selectedEvent via
@@ -131,12 +142,12 @@ export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
         if (!opts?.silent) flash(opts?.successMsg ?? t('toasts.updated'));
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) setAuthed(false);
-        else flash(t('toasts.apiError'), true);
+        else flashError(t('toasts.apiError'), err);
       } finally {
         setSaving(false);
       }
     },
-    [reload, flash, t],
+    [reload, flash, flashError, t],
   );
 
   const copyLink = (g: AdminGuest) => {
@@ -286,19 +297,48 @@ export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={kicker}>{t('events.heading')}</span>
         {events.map((ev) => (
-          <button
-            key={ev.slug}
-            type="button"
-            onClick={() => {
-              if (ev.slug === selectedEvent) return;
-              setSelectedEvent(ev.slug);
-              void reload(ev.slug);
-            }}
-            style={chipStyle(ev.slug === selectedEvent)}
-          >
-            {ev.name}
-            {ev.requestedSubdomain ? <span style={{ color: TAN, marginLeft: 6 }}>•</span> : null}
-          </button>
+          <span key={ev.slug} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <button
+              type="button"
+              onClick={() => {
+                if (ev.slug === selectedEvent) return;
+                setSelectedEvent(ev.slug);
+                void reload(ev.slug);
+              }}
+              style={chipStyle(ev.slug === selectedEvent)}
+            >
+              {ev.name}
+              {ev.requestedSubdomain ? <span style={{ color: TAN, marginLeft: 6 }}>•</span> : null}
+            </button>
+            {events.length > 1 ? (
+              <button
+                type="button"
+                aria-label={t('events.delete', { name: ev.name })}
+                title={t('events.delete', { name: ev.name })}
+                disabled={saving}
+                onClick={() => {
+                  if (!window.confirm(t('events.deleteConfirm', { name: ev.name }))) return;
+                  void run(() => adminApi.deleteEvent(ev.slug), {
+                    onDone: () => {
+                      if (selectedEvent === ev.slug) setSelectedEvent(null);
+                    },
+                  });
+                }}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: RED,
+                  cursor: 'pointer',
+                  fontSize: 14,
+                  lineHeight: 1,
+                  padding: '2px 4px',
+                  fontFamily: 'inherit',
+                }}
+              >
+                ×
+              </button>
+            ) : null}
+          </span>
         ))}
         {newEventOpen ? (
           <input
@@ -392,7 +432,16 @@ export function AdminDashboard({ activeSlug }: { activeSlug: string | null }) {
             {t('toasts.saving')}
           </span>
         ) : toast ? (
-          <span style={{ fontStyle: 'italic', fontSize: 12, color: toast.error ? RED : GREEN }}>
+          <span
+            style={{
+              fontStyle: 'italic',
+              fontSize: 12,
+              color: toast.error ? RED : GREEN,
+              // Toast lỗi mang chi tiết kỹ thuật dài → cho xuống dòng thay vì ép hàng.
+              maxWidth: 520,
+              textAlign: 'right',
+            }}
+          >
             {toast.text}
           </span>
         ) : null}

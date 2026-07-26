@@ -2,11 +2,12 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { adminApi, ApiError } from '@/lib/admin-api';
+import { adminApi, ApiError, errDetail } from '@/lib/admin-api';
 import { card, inputBase, kicker, pillSolid, RED, SCRIPT, INK } from './ui';
 
 export function Login({ onSuccess }: { onSuccess: () => void }) {
   const t = useTranslations('admin.login');
+  const tt = useTranslations('admin.toasts');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -21,7 +22,8 @@ export function Login({ onSuccess }: { onSuccess: () => void }) {
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) setError(t('wrong'));
       else if (err instanceof ApiError && err.status === 503) setError(t('disabled'));
-      else setError(t('error'));
+      // Lỗi lạ → kèm nguyên văn để người dùng báo lại dev.
+      else setError(tt('withDetail', { msg: t('error'), detail: errDetail(err) }));
     } finally {
       setBusy(false);
     }

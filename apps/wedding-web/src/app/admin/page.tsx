@@ -1,18 +1,19 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { AdminDashboard } from '@/components/admin/dashboard';
 
 // Private host dashboard (HANDOFF §3) — desktop-first, admin bg, never indexed.
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 
-// Each wedding runs on its own subdomain with WEDDING_EVENT_SLUG set per
-// deployment (same env that picks the active event for the public page). Read it
-// server-side and hand it to the dashboard so the admin lands on THIS
-// subdomain's event — not always the first — and shows that wedding's guest
-// list. Read at request time (env may be injected per pod), so keep dynamic.
+// A couple can have several "đám" (events), each on its own subdomain. The
+// admin must land on THIS request's subdomain, not always the first — same
+// resolution the public page uses (getActiveEvent: Host header first). Pass
+// the raw Host down so the dashboard can match it against event.subdomain
+// once it has the couple's event list; keep dynamic since Host varies per request.
 export const dynamic = 'force-dynamic';
 
-export default function AdminPage() {
-  const activeSlug = process.env.WEDDING_EVENT_SLUG ?? null;
+export default async function AdminPage() {
+  const host = (await headers()).get('host') ?? null;
   return (
     <div
       style={{
@@ -27,7 +28,7 @@ export default function AdminPage() {
         zoom: 1.15,
       }}
     >
-      <AdminDashboard activeSlug={activeSlug} />
+      <AdminDashboard activeHost={host} />
     </div>
   );
 }

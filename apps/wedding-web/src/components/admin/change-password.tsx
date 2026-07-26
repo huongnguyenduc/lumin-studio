@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { adminApi, ApiError } from '@/lib/admin-api';
+import { adminApi, ApiError, errDetail } from '@/lib/admin-api';
 import { card, inputBase, kicker, pillGhost, pillSolid, GREEN, RED } from './ui';
 
 // Self-service password change for the logged-in couple — updates its own
@@ -15,6 +15,7 @@ export function ChangePassword({
   onError: (msg: string) => void;
 }) {
   const t = useTranslations('admin.password');
+  const tt = useTranslations('admin.toasts');
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [busy, setBusy] = useState(false);
@@ -33,7 +34,11 @@ export function ChangePassword({
       setCurrent('');
       setNext('');
     } catch (err) {
-      onError(err instanceof ApiError && err.status === 401 ? t('wrongCurrent') : t('badNew'));
+      onError(
+        err instanceof ApiError && err.status === 401
+          ? t('wrongCurrent')
+          : tt('withDetail', { msg: t('badNew'), detail: errDetail(err) }),
+      );
     } finally {
       setBusy(false);
     }

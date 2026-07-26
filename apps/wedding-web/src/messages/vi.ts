@@ -144,6 +144,8 @@ export const vi = {
       updated: 'Đã cập nhật',
       saving: 'Đang cập nhật…',
       apiError: 'Có lỗi — thử lại nhé',
+      // Ghép chi tiết kỹ thuật vào cuối mọi toast lỗi để người dùng chụp gửi dev.
+      withDetail: '{msg} · {detail}',
     },
     quick: {
       heading: 'Thêm nhanh',
@@ -218,6 +220,9 @@ export const vi = {
       heading: 'Đám cưới',
       addPlaceholder: 'Tên đám cưới mới — Enter',
       add: '+ Thêm đám cưới',
+      delete: 'Xoá "{name}"',
+      deleteConfirm:
+        'Xoá đám cưới "{name}"? Toàn bộ khách mời và nhóm của đám này sẽ mất, không thể hoàn tác.',
     },
     password: {
       open: 'Đổi mật khẩu',
