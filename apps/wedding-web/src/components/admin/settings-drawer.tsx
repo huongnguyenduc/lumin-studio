@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslations } from 'next-intl';
-import { adminApi, ApiError, type AdminEvent, type Settings } from '@/lib/admin-api';
+import { adminApi, ApiError, errDetail, type AdminEvent, type Settings } from '@/lib/admin-api';
 import { useDialogFocus } from '@/lib/use-dialog-focus';
 import { useScrollLock } from '@/lib/use-scroll-lock';
 import { useUnsavedGuard } from './use-unsaved-guard';
@@ -63,7 +63,10 @@ export function SettingsDrawer({
   const tu = useTranslations('admin.unsaved');
   const te = useTranslations('admin.eventPanel');
   const ts = useTranslations('admin.settings');
-  const tSaved = useTranslations('admin.toasts')('saved');
+  const tt = useTranslations('admin.toasts');
+  const tSaved = tt('saved');
+  // Mọi lỗi báo ra kèm nguyên văn server để người dùng chụp gửi dev.
+  const errMsg = (msg: string, err: unknown) => tt('withDetail', { msg, detail: errDetail(err) });
 
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>('event');
@@ -148,8 +151,8 @@ export function SettingsDrawer({
     setUploading(kind);
     try {
       apply(await adminApi.upload(kind, file));
-    } catch {
-      onError(ts('uploadFailed'));
+    } catch (err) {
+      onError(errMsg(ts('uploadFailed'), err));
     } finally {
       setUploading(null);
     }
@@ -185,12 +188,15 @@ export function SettingsDrawer({
     } catch (err) {
       if (tab === 'event') {
         onError(
-          err instanceof ApiError && err.code === 'SUBDOMAIN_TAKEN'
-            ? te('subdomainTaken')
-            : te('saveFailed'),
+          errMsg(
+            err instanceof ApiError && err.code === 'SUBDOMAIN_TAKEN'
+              ? te('subdomainTaken')
+              : te('saveFailed'),
+            err,
+          ),
         );
       } else {
-        onError(ts('saveFailed'));
+        onError(errMsg(ts('saveFailed'), err));
       }
     } finally {
       setSaving(false);

@@ -6,9 +6,23 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     public code: string,
+    /** Nguyên văn message của server — hiện cho người dùng để báo lại dev. */
+    public detail?: string,
   ) {
-    super(code);
+    super(detail ? `${code}: ${detail}` : code);
   }
+}
+
+/**
+ * Chuỗi kỹ thuật ngắn gọn cho toast lỗi: mã + nguyên văn server (hoặc message
+ * của Error thường). Đủ để người dùng chụp màn hình gửi dev.
+ */
+export function errDetail(err: unknown): string {
+  if (err instanceof ApiError) {
+    return `${err.status} ${err.code}${err.detail ? ` — ${err.detail}` : ''}`;
+  }
+  if (err instanceof Error) return err.message;
+  return String(err);
 }
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -19,16 +33,61 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   });
   if (!res.ok) {
     let code = 'HTTP_' + res.status;
+    let detail: string | undefined;
     try {
-      const data = (await res.json()) as { error?: { code?: string } };
+      const data = (await res.json()) as { error?: { code?: string; message?: string } };
       if (data.error?.code) code = data.error.code;
+      detail = data.error?.message;
     } catch {
       /* non-JSON error body */
     }
-    throw new ApiError(res.status, code);
+    throw new ApiError(res.status, code, detail);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+// Server caps every presigned policy at 10MB (uploadstore.MaxUploadSize).
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Ảnh quá nặng → re-encode sang WebP q90 (thu nhỏ dần nếu vẫn quá cap) trước khi
+ * upload, im lặng: người dùng không phải tự resize. Ảnh vừa cap giữ nguyên bit-đối-bit.
+ * Chỉ áp cho JPEG/PNG/WebP — icon (.ico/.png) và nhạc giữ nguyên định dạng.
+ * ponytail: canvas + OffscreenCanvas, không thêm thư viện nén ảnh.
+ */
+async function shrinkImage(file: File): Promise<File> {
+  if (file.size <= MAX_UPLOAD_BYTES) return file;
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) return file;
+
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    return file; // ảnh hỏng / trình duyệt không đọc được → để server từ chối như cũ
+  }
+  try {
+    for (let scale = 1; scale >= 0.25; scale /= 2) {
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return file;
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, 'image/webp', 0.9),
+      );
+      if (!blob) return file;
+      if (blob.size <= MAX_UPLOAD_BYTES) {
+        return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.webp', {
+          type: 'image/webp',
+        });
+      }
+    }
+    return file;
+  } finally {
+    bitmap.close();
+  }
 }
 
 export type AdminGuest = {
@@ -95,6 +154,9 @@ export const adminApi = {
     slug: string,
     patch: { name?: string; subdomain?: string; data?: Record<string, unknown> },
   ) => call<AdminEvent>('PATCH', `/api/admin/events/${encodeURIComponent(slug)}`, patch),
+  // Removes the event and everything under it (guests, wishes for it).
+  deleteEvent: (slug: string) =>
+    call<void>('DELETE', `/api/admin/events/${encodeURIComponent(slug)}`),
 
   guests: (event: string) =>
     call<{ items: AdminGuest[] }>('GET', `/api/admin/guests?event=${encodeURIComponent(event)}`),
@@ -140,7 +202,8 @@ export const adminApi = {
   patchSettings: (patch: Settings) => call<Settings>('PATCH', '/api/admin/settings', patch),
 
   // Presign + direct browser POST to Garage; resolves to the public finalUrl.
-  upload: async (kind: string, file: File): Promise<string> => {
+  upload: async (kind: string, original: File): Promise<string> => {
+    const file = await shrinkImage(original);
     const signed = await call<{
       uploadUrl: string;
       fields: Record<string, string>;
@@ -150,7 +213,12 @@ export const adminApi = {
     for (const [k, v] of Object.entries(signed.fields)) form.append(k, v);
     form.append('file', file);
     const res = await fetch(signed.uploadUrl, { method: 'POST', body: form });
-    if (!res.ok) throw new ApiError(res.status, 'UPLOAD_FAILED');
+    if (!res.ok) {
+      // Garage trả XML <Error><Message>…</Message></Error> — lấy Message cho dễ báo lỗi.
+      const body = await res.text().catch(() => '');
+      const msg = /<Message>([^<]*)<\/Message>/.exec(body)?.[1] ?? body.slice(0, 200);
+      throw new ApiError(res.status, 'UPLOAD_FAILED', msg || undefined);
+    }
     return signed.finalUrl;
   },
 };

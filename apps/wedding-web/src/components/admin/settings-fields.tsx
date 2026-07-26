@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
-import { adminApi, type Settings } from '@/lib/admin-api';
+import { adminApi, errDetail, type Settings } from '@/lib/admin-api';
 import type { GalleryImage } from '@/lib/site-settings';
 import { proxied } from '@/lib/img-client';
 import { inputBase, kicker, CREAM_2, GREEN, INK, TAN, RING } from './ui';
@@ -68,6 +68,7 @@ export function SettingsFields({
   onError: (msg: string) => void;
 }) {
   const t = useTranslations('admin.settings');
+  const tt = useTranslations('admin.toasts');
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [previewPlaying, setPreviewPlaying] = useState(false);
   const previewRef = useRef<HTMLAudioElement | null>(null);
@@ -453,15 +454,24 @@ export function SettingsFields({
                 void (async () => {
                   let g = gallery.slice();
                   let failed = 0;
+                  let lastErr: unknown;
                   for (const f of files) {
                     try {
                       g = [...g, { url: await adminApi.upload('gallery', f) }];
                       patch({ gallery: g });
-                    } catch {
+                    } catch (err) {
                       failed += 1;
+                      lastErr = err;
                     }
                   }
-                  if (failed > 0) onError(t('uploadFailedCount', { failed, total: files.length }));
+                  if (failed > 0) {
+                    onError(
+                      tt('withDetail', {
+                        msg: t('uploadFailedCount', { failed, total: files.length }),
+                        detail: errDetail(lastErr),
+                      }),
+                    );
+                  }
                 })();
               }}
               style={{ display: 'none' }}
