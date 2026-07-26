@@ -44,6 +44,10 @@ type Auth struct {
 	masterSecret string
 	ttl          time.Duration
 	secure       bool
+	// domain scopes the session cookie to the root domain so ONE login covers
+	// every wedding subdomain of the same couple (đổi tab đám = đổi subdomain,
+	// không phải đăng nhập lại). Empty in dev/localhost → host-only cookie.
+	domain string
 }
 
 func New(cfg config.Config) *Auth {
@@ -52,6 +56,7 @@ func New(cfg config.Config) *Auth {
 		masterSecret: cfg.AdminPassword,
 		ttl:          cfg.JWTTTL,
 		secure:       cfg.CookieSecure,
+		domain:       cfg.RootDomain,
 	}
 }
 
@@ -84,6 +89,7 @@ func (a *Auth) IssueCookie(scope string) (*http.Cookie, error) {
 		Name:     CookieName,
 		Value:    tok,
 		Path:     "/",
+		Domain:   a.domain,
 		MaxAge:   int(a.ttl.Seconds()),
 		HttpOnly: true,
 		Secure:   a.secure,
@@ -97,6 +103,7 @@ func (a *Auth) Clear() *http.Cookie {
 		Name:     CookieName,
 		Value:    "",
 		Path:     "/",
+		Domain:   a.domain,
 		MaxAge:   -1,
 		HttpOnly: true,
 		Secure:   a.secure,

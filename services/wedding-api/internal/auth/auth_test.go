@@ -30,6 +30,27 @@ func TestCheckMasterToken(t *testing.T) {
 	}
 }
 
+// Đổi tab đám = đổi subdomain; cookie phải scope theo root domain thì cặp đôi
+// mới không phải đăng nhập lại (host-only cookie sẽ chết ngay khi hop host).
+func TestCookieScopedToRootDomain(t *testing.T) {
+	a := New(config.Config{JWTSecret: "test-secret", JWTTTL: time.Hour, RootDomain: "luminstudio.vn"})
+	c, err := a.IssueCookie("giang-hieu")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Domain != "luminstudio.vn" {
+		t.Errorf("session cookie Domain = %q, muốn root domain", c.Domain)
+	}
+	if a.Clear().Domain != "luminstudio.vn" {
+		t.Error("logout phải xoá đúng cookie đó (cùng Domain), nếu không sẽ xoá hụt")
+	}
+	// dev/localhost: không có root domain → host-only như cũ
+	dev := New(config.Config{JWTSecret: "test-secret", JWTTTL: time.Hour})
+	if c, _ := dev.IssueCookie("giang-hieu"); c.Domain != "" {
+		t.Errorf("dev cookie Domain = %q, muốn rỗng", c.Domain)
+	}
+}
+
 func TestMiddlewareRoundTrip(t *testing.T) {
 	a := newTestAuth("pw")
 	protected := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
