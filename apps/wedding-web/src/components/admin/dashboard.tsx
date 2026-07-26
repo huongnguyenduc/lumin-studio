@@ -302,6 +302,15 @@ export function AdminDashboard({ activeHost }: { activeHost: string | null }) {
               type="button"
               onClick={() => {
                 if (ev.slug === selectedEvent) return;
+                // Mỗi đám sống trên subdomain riêng — đổi tab thì đi thẳng
+                // sang URL của đám đó (session cookie scope theo root domain
+                // nên không phải đăng nhập lại). Không có subdomain (chưa
+                // duyệt) hoặc đang đúng host rồi → đổi tại chỗ như cũ.
+                const host = ev.subdomain?.toLowerCase();
+                if (host && host !== window.location.hostname.toLowerCase()) {
+                  window.location.assign(`${window.location.protocol}//${host}/admin`);
+                  return;
+                }
                 setSelectedEvent(ev.slug);
                 void reload(ev.slug);
               }}
