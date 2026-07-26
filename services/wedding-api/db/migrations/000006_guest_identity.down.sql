@@ -1,0 +1,10 @@
+DROP TABLE anonymous_open_counts;
+DROP INDEX wishes_identity_id_idx;
+ALTER TABLE wishes DROP COLUMN identity_id;
+DROP TABLE shared_guest_responses;
+DROP TABLE invite_opens;
+DROP TABLE identity_claim_tokens;
+DROP TABLE admin_identity_claims;
+DROP TABLE guest_identity_tokens;
+DROP TABLE guest_identities;
+ALTER TABLE guests DROP COLUMN legacy_opened_at;

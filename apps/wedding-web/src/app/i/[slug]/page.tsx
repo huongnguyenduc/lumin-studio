@@ -3,10 +3,9 @@ import { getActiveEvent, getInvite, getSettings, getWishes } from '@/lib/api';
 import { asEventData, asSiteSettings } from '@/lib/site-settings';
 import { optimizeEvent, optimizeSettings } from '@/lib/img';
 import { InvitationCard } from '@/components/invitation/invitation-card';
-import { MarkOpened } from '@/components/invitation/mark-opened';
 
 // SSR per guest slug (HANDOFF §6): the salutation renders server-side (no
-// flicker); open tracking fires client-side after mount (MarkOpened) so
+// flicker); consented GI/open tracking fires client-side after mount so
 // link-preview bots don't fake an open. no-store — every open must hit the
 // API, and the wall should be current.
 export const dynamic = 'force-dynamic';
@@ -15,22 +14,20 @@ export default async function InvitePage({ params }: { params: Promise<{ slug: s
   const { slug } = await params;
   const host = (await headers()).get('host') ?? undefined;
   const [guest, wishes, settings, event] = await Promise.all([
-    getInvite(slug),
+    getInvite(slug, host),
     getWishes(100, host),
     getSettings(host),
     getActiveEvent(host),
   ]);
   const eventData = asEventData(event?.data ?? {});
   return (
-    <>
-      {guest ? <MarkOpened slug={slug} /> : null}
-      <InvitationCard
-        guest={guest}
-        wishes={wishes.items}
-        settings={optimizeSettings(asSiteSettings(settings))}
-        event={eventData}
-        eventImages={optimizeEvent(eventData)}
-      />
-    </>
+    <InvitationCard
+      guest={guest}
+      wishes={wishes.items}
+      settings={optimizeSettings(asSiteSettings(settings))}
+      event={eventData}
+      eventImages={optimizeEvent(eventData)}
+      eventSlug={event?.slug ?? ''}
+    />
   );
 }

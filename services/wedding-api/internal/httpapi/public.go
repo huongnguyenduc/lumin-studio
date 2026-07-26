@@ -11,6 +11,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/huongnguyenduc/lumin-studio/services/wedding-api/internal/guestidentity"
 )
 
 // wishColors are the 4 curated card presets (HANDOFF §2.7) — the DB CHECK is the
@@ -77,15 +79,26 @@ func (s *server) publicSettings(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
-// getInvite resolves a guest link — a pure read. Open tracking moved to
-// markOpened (POST) so link-preview bots (Zalo/Messenger fetch the page via
-// GET) never fake an open. 404 → the page renders the anonymous card.
+// getInvite resolves a guest link — a pure read. Open tracking is a client POST
+// to /api/identity/resolve so link-preview bots (Zalo/Messenger fetch the page
+// via GET) never fake an open. 404 → the page renders the anonymous card.
+//
+// Scoped to the WEDDING, not the host's default event: one couple may run two
+// events and only one of them owns the subdomain, so an event-scoped lookup
+// would 404 the second event's guests into the anonymous card.
 func (s *server) getInvite(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "guestId")
+	wedding, err := s.weddingByHost(r.Context(), r.URL.Query().Get("host"))
+	if err != nil {
+		writeHostErr(w, err)
+		return
+	}
 	var label string
 	var rsvp *string
-	err := s.pool.QueryRow(r.Context(),
-		`SELECT label, rsvp FROM guests WHERE id = $1`, id).Scan(&label, &rsvp)
+	err = s.pool.QueryRow(r.Context(),
+		`SELECT g.label, g.rsvp FROM guests g JOIN events e ON e.slug = g.event_slug
+		 WHERE g.id = $1 AND e.wedding_slug = $2`,
+		id, wedding).Scan(&label, &rsvp)
 	if err == pgx.ErrNoRows {
 		writeError(w, http.StatusNotFound, "GUEST_NOT_FOUND", "không tìm thấy khách mời")
 		return
@@ -95,21 +108,6 @@ func (s *server) getInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "label": label, "rsvp": rsvp})
-}
-
-// markOpened is the write-once open tracking (HANDOFF §5), fired by the client
-// after the invitation mounts: the UPDATE only touches a NULL opened_at, so
-// re-opens never overwrite the first timestamp. Idempotent 204 either way —
-// the client fires-and-forgets.
-func (s *server) markOpened(w http.ResponseWriter, r *http.Request) {
-	_, err := s.pool.Exec(r.Context(),
-		`UPDATE guests SET opened_at = now() WHERE id = $1 AND opened_at IS NULL`,
-		chi.URLParam(r, "guestId"))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "DB", err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // postRSVP upserts the guest's answer — last write wins, always stamps rsvp_at
@@ -125,9 +123,15 @@ func (s *server) postRSVP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_RSVP", `rsvp phải là "yes" hoặc "no"`)
 		return
 	}
+	wedding, err := s.weddingByHost(r.Context(), r.URL.Query().Get("host"))
+	if err != nil {
+		writeHostErr(w, err)
+		return
+	}
 	tag, err := s.pool.Exec(r.Context(),
-		`UPDATE guests SET rsvp = $2, rsvp_at = now() WHERE id = $1`,
-		chi.URLParam(r, "guestId"), body.RSVP)
+		`UPDATE guests SET rsvp = $2, rsvp_at = now()
+		 WHERE id = $1 AND event_slug IN (SELECT slug FROM events WHERE wedding_slug = $3)`,
+		chi.URLParam(r, "guestId"), body.RSVP, wedding)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
@@ -144,10 +148,11 @@ func (s *server) postRSVP(w http.ResponseWriter, r *http.Request) {
 // link should never eat a wish.
 func (s *server) postWish(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		GuestID string `json:"guestId"`
-		Name    string `json:"name"`
-		Text    string `json:"text"`
-		Color   string `json:"color"`
+		GuestID       string `json:"guestId"`
+		IdentityToken string `json:"identityToken"`
+		Name          string `json:"name"`
+		Text          string `json:"text"`
+		Color         string `json:"color"`
 	}
 	if !readJSON(w, r, &body) {
 		return
@@ -175,12 +180,16 @@ func (s *server) postWish(w http.ResponseWriter, r *http.Request) {
 	}
 	// The wish lands on ONE couple's wall: the guest's wedding when the link is
 	// known, else the wall of the wedding serving this host.
+	wedding, err := s.weddingByHost(r.Context(), r.URL.Query().Get("host"))
+	if err != nil {
+		writeHostErr(w, err)
+		return
+	}
 	var guestID *string
-	var wedding string
 	if body.GuestID != "" {
 		err := s.pool.QueryRow(r.Context(),
 			`SELECT e.wedding_slug FROM guests g JOIN events e ON e.slug = g.event_slug
-			 WHERE g.id = $1`, body.GuestID).Scan(&wedding)
+			 WHERE g.id = $1 AND e.wedding_slug = $2`, body.GuestID, wedding).Scan(&wedding)
 		if err == nil {
 			guestID = &body.GuestID
 		} else if err != pgx.ErrNoRows {
@@ -188,10 +197,19 @@ func (s *server) postWish(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if wedding == "" {
-		var err error
-		if wedding, err = s.weddingByHost(r.Context(), r.URL.Query().Get("host")); err != nil {
-			writeHostErr(w, err)
+	var identityID *string
+	if body.IdentityToken != "" {
+		tokenHash := guestidentity.Build(
+			s.giSecret, wedding, body.IdentityToken, "", guestidentity.Signals{},
+		).Token
+		var id string
+		err := s.pool.QueryRow(r.Context(), `
+			SELECT identity_id FROM guest_identity_tokens
+			WHERE wedding_slug=$1 AND token_hash=$2`, wedding, tokenHash).Scan(&id)
+		if err == nil {
+			identityID = &id
+		} else if err != pgx.ErrNoRows {
+			writeError(w, http.StatusInternalServerError, "DB", err.Error())
 			return
 		}
 	}
@@ -199,9 +217,11 @@ func (s *server) postWish(w http.ResponseWriter, r *http.Request) {
 		id        string
 		createdAt time.Time
 	)
-	err := s.pool.QueryRow(r.Context(),
-		`INSERT INTO wishes (guest_id, name, text, color, wedding_slug) VALUES ($1, $2, $3, $4, $5)
-		 RETURNING id, created_at`, guestID, name, text, color, wedding).Scan(&id, &createdAt)
+	err = s.pool.QueryRow(r.Context(),
+		`INSERT INTO wishes (guest_id, identity_id, name, text, color, wedding_slug)
+		 VALUES ($1, $2, $3, $4, $5, $6)
+		 RETURNING id, created_at`,
+		guestID, identityID, name, text, color, wedding).Scan(&id, &createdAt)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return

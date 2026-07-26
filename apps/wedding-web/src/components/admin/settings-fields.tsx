@@ -161,6 +161,16 @@ export function SettingsFields({
           />
         </div>
       </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <span style={fieldLabel}>{t('sharedGuestLabel')}</span>
+        <input
+          value={val<string>('sharedGuestLabel', '')}
+          onChange={(e) => patch({ sharedGuestLabel: e.target.value })}
+          aria-label={t('sharedGuestLabel')}
+          placeholder={t('sharedGuestPlaceholder')}
+          style={fieldInput}
+        />
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <span style={fieldLabel}>{t('hero')}</span>

@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import type { Invite, Wish } from '@/lib/types';
 import type { EventData, EventImages, SiteSettings } from '@/lib/site-settings';
-import { CREAM, TAN_LIGHT, SCRIPT, SERIF } from './theme';
+import { CREAM, INK, TAN_LIGHT, SCRIPT, SERIF } from './theme';
 import { useMusic } from './use-music';
 import { Reveal } from './reveal';
 import { Hero } from './hero';
@@ -15,6 +15,7 @@ import { Events } from './events';
 import { Gallery } from './gallery';
 import { Rsvp } from './rsvp';
 import { Wishes } from './wishes';
+import { claimCurrentIdentity, resolveIdentity } from '@/lib/guest-identity';
 
 // The whole invitation is one client tree: SSR still renders the initial HTML
 // (guest label without flicker), and every section shares the reveal/music
@@ -26,6 +27,7 @@ export function InvitationCard({
   settings = {},
   event = {},
   eventImages = {},
+  eventSlug,
 }: {
   guest: Invite | null;
   wishes: Wish[];
@@ -33,6 +35,7 @@ export function InvitationCard({
   event?: EventData;
   /** Biến thể ảnh bản đồ, ký ở server (ADR-055) — tách khỏi `event` vì EventData toàn string. */
   eventImages?: EventImages;
+  eventSlug: string;
 }) {
   const t = useTranslations('footer');
   const tSite = useTranslations('site');
@@ -41,6 +44,42 @@ export function InvitationCard({
   const groom = settings.groom ?? tSite('groom');
   const music = useMusic(settings.musicUrl, settings.musicVolume);
   const scaleRef = useRef<HTMLDivElement>(null);
+  const [identityReady, setIdentityReady] = useState(false);
+  const [sharedName, setSharedName] = useState('');
+  const [sharedRsvp, setSharedRsvp] = useState<'yes' | 'no' | null>(null);
+  const [identityError, setIdentityError] = useState(false);
+  const tIdentity = useTranslations('identity');
+
+  // Guest Identity resolves silently on mount — no consent gate (owner's call,
+  // ADR-056). Failure is non-fatal: the card still reads, only the remembered
+  // name/RSVP on the shared link needs the retry.
+  const identify = useCallback(async () => {
+    setIdentityReady(false);
+    setIdentityError(false);
+    try {
+      const result = await resolveIdentity({
+        eventSlug,
+        source: guest ? 'personalized' : 'shared',
+        guestId: guest?.id,
+      });
+      if (result.profile) {
+        setSharedName(result.profile.name);
+        setSharedRsvp(result.profile.rsvp);
+      }
+      const claim = new URLSearchParams(location.search).get('claim');
+      if (claim) {
+        await claimCurrentIdentity(claim);
+        history.replaceState(null, '', location.pathname);
+      }
+      setIdentityReady(true);
+    } catch {
+      setIdentityError(true);
+    }
+  }, [eventSlug, guest]);
+
+  useEffect(() => {
+    void identify();
+  }, [identify]);
 
   // Music tries to start the moment the page mounts — the browser rejects it
   // (no gesture yet), which arms useMusic's one-time pointerdown retry, so the
@@ -164,7 +203,7 @@ export function InvitationCard({
           <div style={{ padding: '0 6.75px', marginBottom: 80 }}>
             <Envelope />
             <Letter
-              guestLabel={guest?.label ?? null}
+              guestLabel={guest?.label ?? settings.sharedGuestLabel ?? null}
               event={event}
               images={eventImages}
               bride={bride}
@@ -178,11 +217,19 @@ export function InvitationCard({
             line2={settings.storyLine2}
             captions={[settings.storyCaption1, settings.storyCaption2, settings.storyCaption3]}
           />
-          {/* RSVP only for a valid guest link — recommended §9 anonymous behavior. */}
-          {guest ? <Rsvp guestId={guest.id} initial={guest.rsvp} couple={couple} /> : null}
+          <Rsvp
+            guestId={guest?.id ?? null}
+            eventSlug={eventSlug}
+            initial={guest?.rsvp ?? sharedRsvp}
+            couple={couple}
+            name={guest ? undefined : sharedName}
+            onNameChange={guest ? undefined : setSharedName}
+            enabled={guest ? true : identityReady}
+          />
           <Wishes
             guestId={guest?.id ?? null}
-            guestLabel={guest?.label ?? null}
+            guestLabel={(guest?.label ?? sharedName) || null}
+            identityEnabled={identityReady}
             initialWishes={wishes}
             couple={couple}
           />
@@ -259,6 +306,30 @@ export function InvitationCard({
           </div>
         </div>
       </div>
+      {identityError ? (
+        <button
+          type="button"
+          onClick={() => void identify()}
+          style={{
+            position: 'fixed',
+            left: 12,
+            bottom: 12,
+            zIndex: 1000,
+            minHeight: 44,
+            border: 'none',
+            background: CREAM,
+            color: INK,
+            borderRadius: 22,
+            padding: '8px 14px',
+            boxShadow: '0 2px 10px rgba(59,47,39,0.15)',
+            fontFamily: SERIF,
+            fontSize: 11,
+            cursor: 'pointer',
+          }}
+        >
+          {tIdentity('retry')}
+        </button>
+      ) : null}
     </>
   );
 }

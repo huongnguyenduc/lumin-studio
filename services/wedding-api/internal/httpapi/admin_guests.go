@@ -11,22 +11,31 @@ import (
 )
 
 type guestRow struct {
-	ID        string     `json:"id"`
-	Label     string     `json:"label"`
-	Group     string     `json:"group"`
-	Note      *string    `json:"note"`
-	OpenedAt  *time.Time `json:"openedAt"`
-	RSVP      *string    `json:"rsvp"`
-	RSVPAt    *time.Time `json:"rsvpAt"`
-	CreatedAt time.Time  `json:"createdAt"`
-	WishCount int        `json:"wishCount"`
-	FirstWish *string    `json:"firstWish"`
+	ID          string     `json:"id"`
+	Label       string     `json:"label"`
+	Group       string     `json:"group"`
+	Note        *string    `json:"note"`
+	OpenedAt    *time.Time `json:"openedAt"`
+	RSVP        *string    `json:"rsvp"`
+	RSVPAt      *time.Time `json:"rsvpAt"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	WishCount   int        `json:"wishCount"`
+	FirstWish   *string    `json:"firstWish"`
+	OpenCount   int        `json:"openCount"`
+	OpenDevices []string   `json:"openDevices"`
 }
 
 const guestSelect = `
 	SELECT g.id, g.label, g."group", g.note, g.opened_at, g.rsvp, g.rsvp_at, g.created_at,
 	       (SELECT count(*) FROM wishes w WHERE w.guest_id = g.id) AS wish_count,
-	       (SELECT w.text FROM wishes w WHERE w.guest_id = g.id ORDER BY w.created_at LIMIT 1)
+	       (SELECT w.text FROM wishes w WHERE w.guest_id = g.id ORDER BY w.created_at LIMIT 1),
+	       (SELECT count(*) FROM invite_opens o
+	        WHERE o.guest_id=g.id AND NOT EXISTS (
+	          SELECT 1 FROM admin_identity_claims a WHERE a.identity_id=o.identity_id)),
+	       (SELECT coalesce(array_agg(DISTINCT i.browser_family || ':' || i.device_family), '{}'::text[])
+	        FROM invite_opens o JOIN guest_identities i ON i.id=o.identity_id
+	        WHERE o.guest_id=g.id AND NOT EXISTS (
+	          SELECT 1 FROM admin_identity_claims a WHERE a.identity_id=o.identity_id))
 	FROM guests g`
 
 // listGuests returns the whole list for one event — filters/sort/pagination
@@ -52,7 +61,8 @@ func (s *server) listGuests(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var g guestRow
 		if err := rows.Scan(&g.ID, &g.Label, &g.Group, &g.Note, &g.OpenedAt, &g.RSVP,
-			&g.RSVPAt, &g.CreatedAt, &g.WishCount, &g.FirstWish); err != nil {
+			&g.RSVPAt, &g.CreatedAt, &g.WishCount, &g.FirstWish, &g.OpenCount,
+			&g.OpenDevices); err != nil {
 			writeError(w, http.StatusInternalServerError, "DB", err.Error())
 			return
 		}

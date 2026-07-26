@@ -11,6 +11,7 @@ import {
   type AdminWish,
   type AdminStats,
   type Settings,
+  type SharedGuest,
 } from '@/lib/admin-api';
 import { Login } from './login';
 import { QuickAdd } from './quick-add';
@@ -18,6 +19,7 @@ import { GuestTable } from './guest-table';
 import { WishesPanel } from './wishes-panel';
 import { SettingsDrawer } from './settings-drawer';
 import { ChangePassword } from './change-password';
+import { SharedGuestTable } from './shared-guest-table';
 import {
   card,
   chipStyle,
@@ -46,6 +48,7 @@ export function AdminDashboard({ activeHost }: { activeHost: string | null }) {
   const [wishes, setWishes] = useState<AdminWish[]>([]);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [settings, setSettings] = useState<Settings>({});
+  const [sharedGuests, setSharedGuests] = useState<SharedGuest[]>([]);
   const [search, setSearch] = useState('');
   const [quickGroup, setQuickGroup] = useState('Bạn bè');
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
@@ -93,21 +96,24 @@ export function AdminDashboard({ activeHost }: { activeHost: string | null }) {
           setGuests([]);
           setGroups([]);
           setStats(null);
+          setSharedGuests([]);
           setAuthed(true);
           return;
         }
-        const [g, gr, w, s, set] = await Promise.all([
+        const [g, gr, w, s, set, shared] = await Promise.all([
           adminApi.guests(slug),
           adminApi.groups(slug),
           adminApi.wishes(500),
           adminApi.stats(slug),
           adminApi.settings(),
+          adminApi.sharedGuests(slug),
         ]);
         setGuests(g.items);
         setGroups(gr.items.map((x) => x.name));
         setWishes(w.items);
         setStats(s);
         setSettings(set);
+        setSharedGuests(shared.items);
         setAuthed(true);
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) setAuthed(false);
@@ -157,6 +163,18 @@ export function AdminDashboard({ activeHost }: { activeHost: string | null }) {
     else done();
   };
 
+  const createIdentityClaim = async () => {
+    try {
+      const claim = await adminApi.createIdentityClaim();
+      const link = `${location.origin}/?claim=${encodeURIComponent(claim.token)}`;
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(link);
+      window.prompt(t('shared.claimPrompt'), link);
+      flash(t('shared.claimCopied'));
+    } catch (err) {
+      flashError(t('shared.claimFailed'), err);
+    }
+  };
+
   const exportXlsx = async () => {
     const te = (k: string, v?: Record<string, string | number>) => t(`export.${k}`, v);
     const XLSX = await import('xlsx'); // dynamic — keep SheetJS out of the page bundle
@@ -183,6 +201,22 @@ export function AdminDashboard({ activeHost }: { activeHost: string | null }) {
       { wch: 50 },
     ];
     XLSX.utils.book_append_sheet(wb, ws, te('guestSheet'));
+    const sharedRows = sharedGuests.map((g) => ({
+      [te('colName')]: g.name ?? '',
+      [te('colDevice')]: t('device.summary', {
+        browser: t(`device.browser.${g.browserFamily}`),
+        device: t(`device.family.${g.deviceFamily}`),
+      }),
+      [te('colOpenedAt')]: g.lastOpenedAt ? formatVN(g.lastOpenedAt) : '',
+      [te('colOpenCount')]: g.openCount,
+      [te('colRsvp')]:
+        g.rsvp === 'yes' ? te('rsvpYes') : g.rsvp === 'no' ? te('rsvpNo') : te('rsvpPending'),
+      [te('colAdmin')]: g.isAdmin ? te('adminYes') : '',
+    }));
+    const sharedSheet = XLSX.utils.json_to_sheet(
+      sharedRows.length ? sharedRows : [{ [te('colName')]: '' }],
+    );
+    XLSX.utils.book_append_sheet(wb, sharedSheet, te('sharedSheet'));
     const wishRows = wishes.map((w) => ({
       [te('colName')]: w.name,
       [te('colWish')]: w.text,
@@ -543,6 +577,24 @@ export function AdminDashboard({ activeHost }: { activeHost: string | null }) {
         onBulkDelete={(ids) => void run(() => adminApi.bulkDeleteGuests(ids))}
         onSaveNote={(id, note) => void run(() => adminApi.patchGuest(id, { note }))}
         onCopyLink={copyLink}
+      />
+
+      <SharedGuestTable
+        guests={sharedGuests}
+        onCreateClaim={() => void createIdentityClaim()}
+        onDeleteAll={() => {
+          if (confirm(t('shared.deleteAllConfirm'))) {
+            void run(() => adminApi.deleteAllIdentities());
+          }
+        }}
+        onToggleAdmin={(guest) =>
+          void run(() => adminApi.setIdentityAdmin(guest.id, !guest.isAdmin))
+        }
+        onDelete={(guest) => {
+          if (confirm(t('shared.deleteConfirm', { name: guest.name ?? t('shared.unnamed') }))) {
+            void run(() => adminApi.deleteIdentity(guest.id));
+          }
+        }}
       />
 
       <WishesPanel

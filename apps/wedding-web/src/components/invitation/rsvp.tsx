@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 import { CREAM, INK } from './theme';
 import { Reveal } from './reveal';
+import { saveSharedRSVP } from '@/lib/guest-identity';
 
 const pillBase: CSSProperties = {
   padding: '7px 18px',
@@ -21,23 +22,70 @@ const pillBase: CSSProperties = {
 // section (HANDOFF §9 open item, recommended behavior).
 export function Rsvp({
   guestId,
+  eventSlug,
   initial,
   couple,
+  name,
+  onNameChange,
+  enabled,
 }: {
-  guestId: string;
+  guestId: string | null;
+  eventSlug: string;
   initial: 'yes' | 'no' | null;
   couple: string;
+  name?: string;
+  onNameChange?: (name: string) => void;
+  enabled: boolean;
 }) {
   const t = useTranslations('rsvp');
   const [rsvp, setRsvp] = useState<'yes' | 'no' | null>(initial);
+  const [nameError, setNameError] = useState(false);
+  useEffect(() => setRsvp(initial), [initial]);
+
+  // Chỉ tên do KHÁCH TỰ GÕ mới được đẩy lên. Tên khôi phục từ profile vốn đã
+  // nằm sẵn trên server — bám theo `initial` để đoán thì hỏng đúng ca lưu
+  // tên-chưa-RSVP (`initial` vẫn null nên mỗi lần mở trang lại ghi đè lại nó).
+  const userEdited = useRef(false);
+  const savedName = useRef<string | null>(null);
+
+  // Tự lưu tên sau khi ngưng gõ, kể cả khi khách CHƯA chọn tham dự — gửi
+  // rsvp:null, server giữ nguyên lựa chọn cũ nếu đã có (coalesce).
+  useEffect(() => {
+    if (guestId || !enabled || !userEdited.current) return;
+    const trimmed = (name ?? '').trim();
+    if (!trimmed || trimmed === savedName.current) return;
+    const timer = setTimeout(() => {
+      const previous = savedName.current;
+      savedName.current = trimmed;
+      void saveSharedRSVP({ eventSlug, name: trimmed, rsvp }).catch(() => {
+        savedName.current = previous; // hỏng thì lần gõ kế tiếp thử lại
+      });
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [name, rsvp, enabled, guestId, eventSlug]);
 
   const choose = (v: 'yes' | 'no') => {
+    if (!enabled) return;
+    if (!guestId && !name?.trim()) {
+      setNameError(true);
+      return;
+    }
+    setNameError(false);
     setRsvp(v); // optimistic — the write is idempotent, a retry just re-sends
-    void fetch(`/api/invite/${encodeURIComponent(guestId)}/rsvp`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rsvp: v }),
-    }).catch(() => {});
+    if (guestId) {
+      const qs = new URLSearchParams({ host: location.hostname, event: eventSlug });
+      void fetch(`/api/invite/${encodeURIComponent(guestId)}/rsvp?${qs}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rsvp: v }),
+      }).catch(() => {});
+    } else {
+      const trimmed = name!.trim();
+      savedName.current = trimmed; // tránh debounce gửi lại y hệt ngay sau đó
+      void saveSharedRSVP({ eventSlug, name: trimmed, rsvp: v }).catch(() => {
+        savedName.current = null;
+      });
+    }
   };
 
   const pill = (v: 'yes' | 'no') => {
@@ -85,9 +133,69 @@ export function Rsvp({
         <br />
         {t('regards')}
       </Reveal>
-      <Reveal style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
-        {pill('yes')}
-        {pill('no')}
+      {/* Ô tên + 2 nút nằm chung MỘT cột `fit-content`: cột co theo hàng nút,
+          ô tên `width:100%` nên mép trái/phải luôn trùng mép 2 nút — kể cả khi
+          nhãn đổi sang "✓ Tham dự được" làm hàng nút rộng ra. `size={1}` để
+          chiều rộng mặc định 20 ký tự của <input> không kéo cột phình. */}
+      <Reveal
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'stretch',
+          gap: 12,
+          width: 'fit-content',
+        }}
+      >
+        {!guestId ? (
+          <input
+            id="shared-rsvp-name"
+            size={1}
+            value={name ?? ''}
+            onChange={(event) => {
+              userEdited.current = true;
+              onNameChange?.(event.target.value);
+            }}
+            maxLength={100}
+            placeholder={t('nameLabel')}
+            aria-label={t('nameLabel')}
+            aria-invalid={nameError}
+            aria-describedby={nameError ? 'shared-rsvp-name-error' : undefined}
+            className="invite-rsvp-name"
+            style={{
+              width: '100%',
+              minWidth: 0,
+              boxSizing: 'border-box',
+              border: 'none',
+              outline: 'none',
+              borderRadius: 22,
+              padding: '7px 18px',
+              // Trong suốt = ăn theo nền section; giữ ring 0.5px như pill
+              // "Không tham dự được" để ô vẫn thấy được mà không chọi tông.
+              background: 'transparent',
+              boxShadow: `0 0 0 0.5px ${CREAM}`,
+              color: CREAM,
+              fontFamily: 'inherit',
+              fontSize: 12,
+              textAlign: 'center',
+            }}
+          />
+        ) : null}
+        <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
+          {pill('yes')}
+          {pill('no')}
+        </div>
+        {!guestId && nameError ? (
+          <span
+            id="shared-rsvp-name-error"
+            style={{ color: CREAM, fontSize: 11, textAlign: 'center' }}
+          >
+            {t('nameRequired')}
+          </span>
+        ) : !guestId && !enabled ? (
+          <span style={{ color: CREAM, fontSize: 11, textAlign: 'center' }}>
+            {t('identityRequired')}
+          </span>
+        ) : null}
       </Reveal>
       {rsvp ? (
         <span

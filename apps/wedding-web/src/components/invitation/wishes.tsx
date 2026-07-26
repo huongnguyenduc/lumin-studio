@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 import type { Wish } from '@/lib/types';
 import { CREAM, INK, TAN, TAN_LIGHT, TERRACOTTA, RING, SCRIPT } from './theme';
 import { WISH_COLORS } from './theme';
 import { timeAgo } from '@/lib/time';
 import { Reveal } from './reveal';
+import { storedToken } from '@/lib/guest-identity';
 
 const inputBase: CSSProperties = {
   width: 171,
@@ -74,11 +75,13 @@ function LetterCard({
 export function Wishes({
   guestId,
   guestLabel,
+  identityEnabled,
   initialWishes,
   couple,
 }: {
   guestId: string | null;
   guestLabel: string | null;
+  identityEnabled: boolean;
   initialWishes: Wish[];
   couple: string;
 }) {
@@ -90,6 +93,13 @@ export function Wishes({
   const [sent, setSent] = useState(false);
   const [wishes, setWishes] = useState(initialWishes);
   const [limit, setLimit] = useState(4);
+  // Mirror the name typed at RSVP (or the guest label) until the guest edits
+  // this field themselves — after that their own wording wins, including an
+  // empty one. Keyed on `name` instead would refill mid-deletion.
+  const renamed = useRef(false);
+  useEffect(() => {
+    if (!renamed.current && guestLabel) setName(guestLabel);
+  }, [guestLabel]);
 
   const send = () => {
     const trimmed = text.trim();
@@ -112,7 +122,13 @@ export function Wishes({
     void fetch(`/api/wishes?host=${encodeURIComponent(location.hostname)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ guestId: guestId ?? '', name: finalName, text: trimmed, color: bg }),
+      body: JSON.stringify({
+        guestId: guestId ?? '',
+        identityToken: identityEnabled ? storedToken() : '',
+        name: finalName,
+        text: trimmed,
+        color: bg,
+      }),
     }).catch(() => {});
   };
 
@@ -173,7 +189,10 @@ export function Wishes({
               <>
                 <input
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    renamed.current = true;
+                    setName(e.target.value);
+                  }}
                   placeholder={t('namePlaceholder')}
                   aria-label={t('namePlaceholder')}
                   style={{ ...inputBase, borderRadius: 25, padding: '8px 14px' }}

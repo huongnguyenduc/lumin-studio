@@ -68,6 +68,7 @@ export function GuestTable({
   const t = useTranslations('admin.table');
   const tf = useTranslations('admin.filters');
   const ts = useTranslations('admin.selection');
+  const td = useTranslations('admin.device');
   const [status, setStatus] = useState<StatusKey>('all');
   const [groupFilter, setGroupFilter] = useState('all');
   const [sortKey, setSortKey] = useState<SortKey>('added');
@@ -433,19 +434,37 @@ export function GuestTable({
                   </button>
                 ) : null}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    background: g.openedAt ? GREEN : 'rgb(217,217,217)',
-                    flexShrink: 0,
-                  }}
-                />
-                <span style={{ fontSize: 12, color: INK }}>
-                  {g.openedAt ? t('openedAt', { ago: timeAgo(g.openedAt) }) : t('notOpened')}
-                </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      background: g.openedAt ? GREEN : 'rgb(217,217,217)',
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span style={{ fontSize: 12, color: INK }}>
+                    {g.openedAt ? t('openedAt', { ago: timeAgo(g.openedAt) }) : t('notOpened')}
+                  </span>
+                </div>
+                {g.openCount > 0 ? (
+                  <span style={{ fontSize: 10, color: TAN }}>
+                    {t('openDevices', {
+                      count: g.openCount,
+                      devices: g.openDevices
+                        .map((value) => {
+                          const [browser = 'other', device = 'other'] = value.split(':');
+                          return td('summary', {
+                            browser: td(`browser.${browser}`),
+                            device: td(`family.${device}`),
+                          });
+                        })
+                        .join(', '),
+                    })}
+                  </span>
+                ) : null}
               </div>
               <span
                 style={{

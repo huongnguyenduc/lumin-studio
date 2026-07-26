@@ -63,6 +63,10 @@ func New(cfg config.Config) *Auth {
 // MasterEnabled reports whether a master secret is configured (ADMIN_PASSWORD).
 func (a *Auth) MasterEnabled() bool { return a.masterSecret != "" }
 
+// CookieSecure exposes the deployment cookie policy to sibling first-party
+// cookies without exposing signing internals.
+func (a *Auth) CookieSecure() bool { return a.secure }
+
 // CheckMasterToken compares a bearer token against the master secret in constant
 // time. Always false when unset — fail closed, never open.
 func (a *Auth) CheckMasterToken(tok string) bool {
@@ -121,34 +125,36 @@ func (a *Auth) Clear() *http.Cookie {
 // the bearer path is server-to-server only (never set by a browser here).
 func (a *Auth) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if tok := bearerToken(r); tok != "" && a.CheckMasterToken(tok) {
-			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, ScopeAll)))
-			return
-		}
-		c, err := r.Cookie(CookieName)
-		if err != nil {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		tok, err := jwtauth.VerifyToken(a.ja, c.Value)
-		if err != nil {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		// A couple cookie only ever carries its own slug; ignore a "*" claim so
-		// the bearer stays the sole master path even against a stray token.
-		scope := ""
-		if v, ok := tok.Get("wed"); ok {
-			if s, ok := v.(string); ok && s != "" && s != ScopeAll {
-				scope = s
-			}
-		}
-		if scope == "" {
+		scope, ok := a.ScopeFromRequest(r)
+		if !ok {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, scope)))
 	})
+}
+
+// ScopeFromRequest verifies an optional admin credential without writing a
+// response. Public Guest Identity endpoints use it only to tag the current
+// browser as the couple's own device.
+func (a *Auth) ScopeFromRequest(r *http.Request) (string, bool) {
+	if tok := bearerToken(r); tok != "" && a.CheckMasterToken(tok) {
+		return ScopeAll, true
+	}
+	c, err := r.Cookie(CookieName)
+	if err != nil {
+		return "", false
+	}
+	tok, err := jwtauth.VerifyToken(a.ja, c.Value)
+	if err != nil {
+		return "", false
+	}
+	if v, ok := tok.Get("wed"); ok {
+		if scope, ok := v.(string); ok && scope != "" && scope != ScopeAll {
+			return scope, true
+		}
+	}
+	return "", false
 }
 
 // bearerToken extracts the token from an `Authorization: Bearer <token>` header,
