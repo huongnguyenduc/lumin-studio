@@ -86,6 +86,41 @@ jobs:
         with:
           ref: ${{ env.DEPLOY_SHA }}
 
+      # Dọn TRƯỚC khi build, không chỉ sau. Bước prune cuối file chạy quá muộn:
+      # nếu đĩa cạn giữa lúc `docker build` thì cả WSL chết (2026-07-26: C: còn
+      # 3.7G ⇒ vhdx hết chỗ nở ⇒ box sập, kéo sập luôn prod) và bước dọn không
+      # bao giờ tới lượt. Ở đây dọn nhẹ + chặn sớm nếu vẫn không đủ chỗ.
+      - name: Free disk before build (+ chặn sớm nếu vẫn thiếu)
+        run: |
+          set -euo pipefail
+          # Ngưỡng đo trên Windows C: chứ KHÔNG phải `df /`: rootfs trong WSL là
+          # ext4.vhdx sparse, nó báo cả trăm GB "trống" trong khi thứ giới hạn
+          # thật là chỗ trống còn lại của C: để file vhdx nở ra.
+          host_free_gb() {
+            [ -d /mnt/c ] || { echo ""; return; }
+            df -BG --output=avail /mnt/c 2>/dev/null | tail -1 | tr -dc '0-9'
+          }
+          before="$(host_free_gb)"
+          echo "C: trống trước khi dọn: ${before:-n/a}G"
+
+          # containerd của k3d: mỗi lần deploy import thêm image SHA mới mà không
+          # ai xoá cũ (đã từng dồn 570 image / 27GB). `crictl rmi --prune` chỉ bỏ
+          # image KHÔNG container nào tham chiếu ⇒ pod đang chạy không hề hấn.
+          docker exec "k3d-${CLUSTER}-server-0" crictl rmi --prune >/dev/null 2>&1 || true
+
+          docker image prune -f >/dev/null 2>&1 || true
+          # Chặn theo DUNG LƯỢNG, không theo tuổi: cache trẻ hơn ngưỡng tuổi thì
+          # không bao giờ bị xoá, deploy đều đặn là nó phình mãi (đã lên 61GB).
+          docker builder prune -f --max-used-space 20GB >/dev/null 2>&1 || true
+
+          after="$(host_free_gb)"
+          echo "C: trống sau khi dọn:  ${after:-n/a}G"
+          if [ -n "$after" ] && [ "$after" -lt 15 ]; then
+            echo "::error::C: chỉ còn ${after}G — dừng trước khi build để không làm sập WSL/prod."
+            echo "Cách xử lý: tắt WSL rồi nén vhdx (diskpart: select vdisk file=... / attach vdisk readonly / compact vdisk / detach vdisk)."
+            exit 1
+          fi
+
       # core-api / migrate / admin build without a live backend. (Go + baked-migrations images use the
       # default bridge network; admin is a Next build so it needs --network=host for next/font's Google
       # Fonts fetch — the docker bridge can't reach it, the host can.)
@@ -248,4 +283,13 @@ jobs:
               | xargs -r -I{} docker rmi -f "$repo:{}"
           done
           docker image prune -f
-          docker builder prune -f --filter until=168h
+          # Dung lượng, KHÔNG phải tuổi: `--filter until=168h` chừa lại mọi cache
+          # trẻ hơn 7 ngày, mà deploy thì thường xuyên hơn thế ⇒ cache không bao
+          # giờ già đủ để bị xoá và đã dồn tới 61GB.
+          docker builder prune -f --max-used-space 20GB
+          # containerd của k3d nằm NGOÀI `docker system df` nên trước giờ không
+          # ai dọn — chỉ bỏ image không container nào tham chiếu.
+          docker exec "k3d-${CLUSTER}-server-0" crictl rmi --prune || true
+          if [ -d /mnt/c ]; then
+            echo "C: còn trống: $(df -h /mnt/c | tail -1 | awk '{print $4}')"
+          fi
