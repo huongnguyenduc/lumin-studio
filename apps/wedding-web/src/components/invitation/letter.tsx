@@ -75,12 +75,16 @@ export function Letter({
   images = {},
   bride,
   groom,
+  inviteLine,
+  groomFirst = false,
 }: {
   guestLabel: string | null;
   event?: EventData;
   images?: EventImages;
   bride: string;
   groom: string;
+  inviteLine?: string;
+  groomFirst?: boolean;
 }) {
   const t = useTranslations('letter');
   const v = (key: keyof EventData, fallbackKey: string) => event[key] || t(fallbackKey);
@@ -108,7 +112,7 @@ export function Letter({
           {guestLabel ?? t('anonymousGuest')}
         </Reveal>
         <Reveal delay={200} style={{ ...label600, marginTop: 48 }}>
-          {t('toAttend')}
+          {inviteLine || t('toAttend')}
         </Reveal>
         <Reveal
           style={{
@@ -120,12 +124,14 @@ export function Letter({
             textTransform: 'capitalize',
           }}
         >
-          <span style={{ fontFamily: SCRIPT, fontSize: 48, lineHeight: 'normal', color: INK }}>
-            {bride}
-          </span>
-          <span style={{ fontFamily: SCRIPT, fontSize: 48, lineHeight: 'normal', color: INK }}>
-            {groom}
-          </span>
+          {(groomFirst ? [groom, bride] : [bride, groom]).map((name) => (
+            <span
+              key={name}
+              style={{ fontFamily: SCRIPT, fontSize: 48, lineHeight: 'normal', color: INK }}
+            >
+              {name}
+            </span>
+          ))}
         </Reveal>
         <Reveal style={{ marginTop: 24, display: 'flex', alignItems: 'center' }}>
           <span style={{ ...dateCell, borderRight: `0.5px solid ${TAN}` }}>
