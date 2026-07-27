@@ -17,10 +17,6 @@ export type SiteSettings = {
   couple?: string;
   bride?: string;
   groom?: string;
-  /** Dòng trên tên cặp đôi ("Đến tham dự tiệc vu quy"); thiếu → vi.ts `letter.toAttend`. */
-  inviteLine?: string;
-  /** Đảo thứ tự: tên chú rể lên trước cô dâu. */
-  groomFirst?: boolean;
   sharedGuestLabel?: string;
   heroUrl?: string;
   heroX?: number;
@@ -44,6 +40,10 @@ export type SiteSettings = {
 // exactly one venue block + 2 timeline stops, Events renders exactly 2
 // ceremony tickets). Empty/missing fields fall back to the vi.ts copy.
 export type EventData = {
+  /** Dòng trên tên cặp đôi ("Đến tham dự tiệc vu quy"); thiếu → vi.ts `letter.toAttend`. */
+  inviteLine?: string;
+  /** `'groom'` → tên chú rể đứng trước cô dâu; mặc định cô dâu trước. */
+  nameOrder?: string;
   date?: string;
   weekday?: string;
   lunarDate?: string;
@@ -75,6 +75,8 @@ export type EventData = {
 export type EventImages = { map?: ImgVariants; mapFull?: ImgVariants };
 
 const eventDataKeys: (keyof EventData)[] = [
+  'inviteLine',
+  'nameOrder',
   'date',
   'weekday',
   'lunarDate',
@@ -135,8 +137,6 @@ export function asSiteSettings(raw: Record<string, unknown>): SiteSettings {
     couple: s('couple'),
     bride: s('bride'),
     groom: s('groom'),
-    inviteLine: s('inviteLine'),
-    groomFirst: raw.groomFirst === true,
     sharedGuestLabel: s('sharedGuestLabel'),
     heroUrl: s('heroUrl'),
     heroX: n('heroX'),
