@@ -208,6 +208,8 @@ export function InvitationCard({
               images={eventImages}
               bride={bride}
               groom={groom}
+              inviteLine={settings.inviteLine}
+              groomFirst={settings.groomFirst}
             />
           </div>
           <Events event={event} />

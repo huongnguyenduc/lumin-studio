@@ -17,6 +17,10 @@ export type SiteSettings = {
   couple?: string;
   bride?: string;
   groom?: string;
+  /** Dòng trên tên cặp đôi ("Đến tham dự tiệc vu quy"); thiếu → vi.ts `letter.toAttend`. */
+  inviteLine?: string;
+  /** Đảo thứ tự: tên chú rể lên trước cô dâu. */
+  groomFirst?: boolean;
   sharedGuestLabel?: string;
   heroUrl?: string;
   heroX?: number;
@@ -131,6 +135,8 @@ export function asSiteSettings(raw: Record<string, unknown>): SiteSettings {
     couple: s('couple'),
     bride: s('bride'),
     groom: s('groom'),
+    inviteLine: s('inviteLine'),
+    groomFirst: raw.groomFirst === true,
     sharedGuestLabel: s('sharedGuestLabel'),
     heroUrl: s('heroUrl'),
     heroX: n('heroX'),
