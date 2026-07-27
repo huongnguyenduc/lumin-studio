@@ -94,6 +94,7 @@ func New(
 	// Admin routes — session cookie required.
 	r.Route("/api/admin", func(r chi.Router) {
 		r.Use(s.auth.Middleware)
+		r.Use(s.hostScopeMiddleware)
 		r.Get("/guests", s.listGuests)
 		r.Post("/guests", s.createGuest)
 		r.Patch("/guests/{id}", s.patchGuest)

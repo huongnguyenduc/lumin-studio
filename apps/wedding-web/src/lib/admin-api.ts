@@ -26,9 +26,16 @@ export function errDetail(err: unknown): string {
 }
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+  // The session cookie lives on the root domain (một lần đăng nhập cho mọi
+  // subdomain của cùng cặp đôi) → nó cũng theo sang subdomain của cặp KHÁC.
+  // Gửi kèm host của trang để API từ chối (401) khi phiên thuộc đám cưới khác,
+  // thay vì im lặng hiện dữ liệu của đám đang đăng nhập.
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (typeof location !== 'undefined') headers['X-Wedding-Host'] = location.host;
   const res = await fetch(path, {
     method,
-    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {

@@ -796,6 +796,91 @@ func TestMultiWeddingScoping(t *testing.T) {
 	}
 }
 
+// TestSessionOnAnotherCouplesHost: the session cookie is set on the root domain
+// (one login covers every subdomain of the same couple), so it also travels to
+// ANOTHER couple's subdomain. The admin there must refuse (401 → that host's own
+// login) instead of rendering the logged-in couple's data.
+func TestSessionOnAnotherCouplesHost(t *testing.T) {
+	srv, admin := setupIntegration(t)
+	u := srv.URL
+
+	var wed struct{ Slug string }
+	if code := call(t, "POST", u+"/api/admin/weddings", admin,
+		map[string]string{"name": "An & Bình"}, &wed); code != 201 {
+		t.Fatalf("create wedding = %d", code)
+	}
+	var ev struct{ Slug string }
+	if code := call(t, "POST", u+"/api/admin/events", admin,
+		map[string]string{"name": "Đám cưới An Bình", "weddingSlug": wed.Slug}, &ev); code != 201 {
+		t.Fatalf("create event = %d", code)
+	}
+	if code := call(t, "PATCH", u+"/api/admin/events/"+ev.Slug, admin,
+		map[string]string{"subdomain": "anbinh"}, nil); code != 200 {
+		t.Fatal("set subdomain failed")
+	}
+	if code := call(t, "PATCH", u+"/api/admin/weddings/"+wed.Slug, admin,
+		map[string]string{"password": "matkhau-cua-an-binh"}, nil); code != 200 {
+		t.Fatal("set couple password failed")
+	}
+
+	var buf bytes.Buffer
+	_ = json.NewEncoder(&buf).Encode(map[string]string{
+		"password": "matkhau-cua-an-binh", "host": "anbinh.luminstudio.vn"})
+	req, err := http.NewRequest("POST", u+"/api/admin/login", &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	var couple *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == auth.CookieName && c.Value != "" {
+			couple = c
+		}
+	}
+	if couple == nil {
+		t.Fatalf("couple login = %d, no cookie", resp.StatusCode)
+	}
+
+	// pageHost sends the admin page's own hostname the way the browser client does.
+	pageHost := func(host string) int {
+		t.Helper()
+		req, err := http.NewRequest("GET", u+"/api/admin/weddings", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.AddCookie(couple)
+		if host != "" {
+			req.Header.Set(HostHeader, host)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	if code := pageHost("giangvahieu.luminstudio.vn"); code != 401 {
+		t.Fatalf("session on another couple's host = %d, want 401", code)
+	}
+	if code := pageHost("anbinh.luminstudio.vn"); code != 200 {
+		t.Fatalf("session on own host = %d, want 200", code)
+	}
+	// No header (dev/localhost, server-to-server) → unchanged behaviour.
+	if code := pageHost(""); code != 200 {
+		t.Fatalf("session without page host = %d, want 200", code)
+	}
+	// A subdomain mapped to no event at all is refused too.
+	if code := pageHost("khong-ton-tai.luminstudio.vn"); code != 401 {
+		t.Fatalf("session on unmapped subdomain = %d, want 401", code)
+	}
+}
+
 // TestSubdomainRequestCollision: a couple requesting a subdomain already claimed
 // (live or pending) by another event is rejected up front (409), not silently
 // accepted until master approval.

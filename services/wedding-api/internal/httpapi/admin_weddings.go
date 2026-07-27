@@ -44,6 +44,36 @@ func weddingScope(w http.ResponseWriter, r *http.Request) (string, bool) {
 	return "", false
 }
 
+// HostHeader carries the admin page's own hostname (the Next rewrite proxy
+// doesn't reliably forward the original Host — same reason the public routes
+// pass ?host=).
+const HostHeader = "X-Wedding-Host"
+
+// hostScopeMiddleware rejects a couple session whose wedding isn't the one the
+// visited subdomain belongs to. The session cookie is set on the ROOT domain so
+// one login covers every subdomain of the SAME couple (đổi tab đám ≠ đăng nhập
+// lại) — which also means it travels to ANOTHER couple's subdomain, where the
+// admin would otherwise silently render the logged-in couple's data. 401 here
+// flips the dashboard back to that subdomain's own login.
+//
+// Only enforced for a real "*.<rootDomain>" host: no header (older client,
+// server-to-server), localhost dev, apex, or the k8s probe → unchanged.
+func (s *server) hostScopeMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		scope := auth.Scope(r.Context())
+		hostname := strings.ToLower(strings.Split(r.Header.Get(HostHeader), ":")[0])
+		if scope != auth.ScopeAll && s.rootDomain != "" && strings.HasSuffix(hostname, "."+s.rootDomain) {
+			wedding, err := s.weddingByHost(r.Context(), hostname)
+			if err != nil || wedding != scope {
+				writeError(w, http.StatusUnauthorized, "HOST_SCOPE_MISMATCH",
+					"phiên đăng nhập thuộc đám cưới khác — đăng nhập lại cho tên miền này")
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // eventInScope verifies the event exists and belongs to the session's wedding.
 // Writes the 404 itself so call sites stay one line.
 func (s *server) eventInScope(w http.ResponseWriter, r *http.Request, eventSlug string) bool {
