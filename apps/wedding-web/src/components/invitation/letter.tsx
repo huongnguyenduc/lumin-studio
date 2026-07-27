@@ -75,19 +75,16 @@ export function Letter({
   images = {},
   bride,
   groom,
-  inviteLine,
-  groomFirst = false,
 }: {
   guestLabel: string | null;
   event?: EventData;
   images?: EventImages;
   bride: string;
   groom: string;
-  inviteLine?: string;
-  groomFirst?: boolean;
 }) {
   const t = useTranslations('letter');
   const v = (key: keyof EventData, fallbackKey: string) => event[key] || t(fallbackKey);
+  const names = event.nameOrder === 'groom' ? [groom, bride] : [bride, groom];
   return (
     // 33.5px: giữ content 313px như Figma sau khi frame thu còn ~380 (canvas trừ 6.75 mỗi bên).
     <div style={{ position: 'relative', padding: '42px 33.5px 0' }}>
@@ -112,7 +109,7 @@ export function Letter({
           {guestLabel ?? t('anonymousGuest')}
         </Reveal>
         <Reveal delay={200} style={{ ...label600, marginTop: 48 }}>
-          {inviteLine || t('toAttend')}
+          {v('inviteLine', 'toAttend')}
         </Reveal>
         <Reveal
           style={{
@@ -124,7 +121,7 @@ export function Letter({
             textTransform: 'capitalize',
           }}
         >
-          {(groomFirst ? [groom, bride] : [bride, groom]).map((name) => (
+          {names.map((name) => (
             <span
               key={name}
               style={{ fontFamily: SCRIPT, fontSize: 48, lineHeight: 'normal', color: INK }}

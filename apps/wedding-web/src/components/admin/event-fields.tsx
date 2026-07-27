@@ -3,7 +3,7 @@
 import { type CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 import type { AdminEvent } from '@/lib/admin-api';
-import { inputBase, kicker, CREAM_2, INK, RING, TAN } from './ui';
+import { checkbox, inputBase, kicker, CREAM_2, INK, RING, TAN } from './ui';
 
 // Presentational body of the venue/timeline tab. Draft (data fields + name +
 // subdomain) lives in the parent SettingsDrawer; this only reads via `val`/
@@ -11,6 +11,7 @@ import { inputBase, kicker, CREAM_2, INK, RING, TAN } from './ui';
 // `onSubdomainChange` + the injected `uploadMap`. Lifted from the former
 // standalone EventPanel.
 type DataField =
+  | 'inviteLine'
   | 'date'
   | 'weekday'
   | 'lunarDate'
@@ -136,6 +137,16 @@ export function EventFields({
           )}
         </div>
       </div>
+      {field('inviteLine')}
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: INK }}>
+        <input
+          type="checkbox"
+          checked={val('nameOrder') === 'groom'}
+          onChange={(e) => patch('nameOrder', e.target.checked ? 'groom' : '')}
+          style={checkbox}
+        />
+        {t('field.nameOrder')}
+      </label>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
         {(['date', 'weekday', 'lunarDate'] as const).map(field)}
       </div>

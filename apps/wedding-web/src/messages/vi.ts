@@ -204,9 +204,6 @@ export const vi = {
       coupleLabel: 'Tên hiển thị chung (VD: Giang & Hiếu)',
       brideLabel: 'Tên cô dâu',
       groomLabel: 'Tên chú rể',
-      inviteLine: 'Dòng mời trên tên cặp đôi',
-      inviteLinePlaceholder: 'VD: Đến tham dự tiệc vu quy',
-      groomFirst: 'Đặt tên chú rể lên trước',
       sharedGuestLabel: 'Lời xưng hô trên link chung',
       sharedGuestPlaceholder: 'VD: Quý khách và gia đình',
       storyHeading: 'Câu chuyện tình yêu',
@@ -272,6 +269,8 @@ export const vi = {
       save: 'Lưu đám cưới này',
       field: {
         name: 'Tên đám cưới',
+        inviteLine: 'Dòng mời trên tên cặp đôi',
+        nameOrder: 'Đặt tên chú rể lên trước cô dâu',
         subdomain: 'Subdomain (địa chỉ web riêng)',
         date: 'Ngày (VD: 12.09.2026)',
         weekday: 'Thứ',
@@ -297,6 +296,7 @@ export const vi = {
       },
       placeholder: {
         name: 'VD: Đám cưới tại Sài Gòn',
+        inviteLine: 'Đến tham dự tiệc vu quy',
         subdomain: 'damcuoisg',
         date: '12.09.2026',
         weekday: 'Thứ bảy',

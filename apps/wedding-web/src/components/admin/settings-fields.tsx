@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { adminApi, errDetail, type Settings } from '@/lib/admin-api';
 import type { GalleryImage } from '@/lib/site-settings';
 import { proxied } from '@/lib/img-client';
-import { checkbox, inputBase, kicker, CREAM_2, GREEN, INK, TAN, RING } from './ui';
+import { inputBase, kicker, CREAM_2, GREEN, INK, TAN, RING } from './ui';
 
 // Presentational body of the site-settings tab (hero/music/gallery/story/meta).
 // Draft state lives in the parent SettingsDrawer (which owns one shared Huỷ/Lưu
@@ -160,25 +160,6 @@ export function SettingsFields({
             style={fieldInput}
           />
         </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-          <input
-            type="checkbox"
-            checked={val<boolean>('groomFirst', false)}
-            onChange={(e) => patch({ groomFirst: e.target.checked })}
-            style={checkbox}
-          />
-          {t('groomFirst')}
-        </label>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <span style={fieldLabel}>{t('inviteLine')}</span>
-        <input
-          value={val<string>('inviteLine', '')}
-          onChange={(e) => patch({ inviteLine: e.target.value })}
-          aria-label={t('inviteLine')}
-          placeholder={t('inviteLinePlaceholder')}
-          style={fieldInput}
-        />
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <span style={fieldLabel}>{t('sharedGuestLabel')}</span>
