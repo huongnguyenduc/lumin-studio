@@ -180,6 +180,7 @@ export function SettingsFields({
             y={val<number>('heroY', 0)}
             width={140}
             height={304}
+            srcWidth={800}
             label={t('setFocalPoint')}
             errorLabel={t('imageLoadFailed')}
             onChange={(x, y) => patch({ heroX: x, heroY: y })}
@@ -335,6 +336,7 @@ export function SettingsFields({
                         y={img.y ?? 50}
                         width="100%"
                         height="100%"
+                        srcWidth={640}
                         label={t('setFocalPoint')}
                         errorLabel={t('imageLoadFailed')}
                         onChange={(x, y) => {
@@ -560,6 +562,7 @@ function FocalPicker({
   y,
   width,
   height,
+  srcWidth,
   label,
   onChange,
   errorLabel,
@@ -569,6 +572,8 @@ function FocalPicker({
   y: number;
   width: number | string;
   height: number | string;
+  /** Khổ ảnh kéo về, phải nằm trong `PROXY_WIDTHS` (lib/img.ts). */
+  srcWidth: number;
   label: string;
   onChange: (x: number, y: number) => void;
   errorLabel: string;
@@ -583,7 +588,7 @@ function FocalPicker({
     setBroken(false);
     setDegraded(false);
   }, [url]);
-  const optimizedSrc = url ? proxied(url, 320) : null;
+  const optimizedSrc = url ? proxied(url, srcWidth) : null;
   // Ảnh mẫu tương đối không đi qua cầu ký ⇒ không có bước lùi nào để thử, lỗi là hỏng thật.
   const hasFallbackStep = Boolean(url) && optimizedSrc !== url;
 
@@ -638,8 +643,8 @@ function FocalPicker({
     >
       {url ? (
         <img
-          // Khung chọn điểm nhấn rộng nhất là 140px ⇒ bản 320px thừa nét cho cả
-          // màn retina, thay vì kéo nguyên ảnh máy ảnh về (ADR-055).
+          // Khổ do nơi gọi chọn: ô cắt là `object-fit: cover` nên khung dọc/ô lớn
+          // cần bản rộng hơn bề ngang của nó, không thì phóng lên là mờ (ADR-055).
           src={degraded ? url : (optimizedSrc ?? url)}
           alt=""
           draggable={false}
