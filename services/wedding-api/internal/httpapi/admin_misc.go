@@ -208,6 +208,12 @@ func (s *server) presignUpload(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &body) {
 		return
 	}
+	// ponytail: existing subdomains never got their CORS rule backfilled when
+	// EnsureOriginAllowed was added (it only fires on subdomain create/change) —
+	// ensure it here too; no-ops once the rule exists.
+	if host := strings.ToLower(strings.Split(r.Header.Get(HostHeader), ":")[0]); host != "" {
+		s.allowOrigin(r.Context(), host)
+	}
 	signed, err := s.uploads.Presign(strings.TrimSpace(body.Kind), body.Mime, body.Size)
 	if errors.Is(err, uploadstore.ErrInvalid) {
 		writeError(w, http.StatusBadRequest, "BAD_UPLOAD", err.Error())
