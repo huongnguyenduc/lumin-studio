@@ -59,6 +59,23 @@ export const pillGhost: CSSProperties = {
   whiteSpace: 'nowrap',
 };
 
+export const pagerBtn: CSSProperties = {
+  width: 26,
+  height: 26,
+  borderRadius: 13,
+  border: 'none',
+  background: 'transparent',
+  boxShadow: RING,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: 14,
+  color: INK,
+  cursor: 'pointer',
+  userSelect: 'none',
+  fontFamily: 'inherit',
+};
+
 export const inputBase: CSSProperties = {
   boxSizing: 'border-box',
   border: 'none',

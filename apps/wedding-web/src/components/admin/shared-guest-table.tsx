@@ -1,9 +1,22 @@
 'use client';
 
+import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import type { SharedGuest } from '@/lib/admin-api';
 import { timeAgo } from '@/lib/time';
-import { card, CREAM_2, GREEN, HAIRLINE, INK, RED, TAN, pillGhost } from './ui';
+import {
+  card,
+  chipStyle,
+  CREAM_2,
+  GREEN,
+  HAIRLINE,
+  INK,
+  kicker,
+  pagerBtn,
+  RED,
+  TAN,
+  pillGhost,
+} from './ui';
 
 export function SharedGuestTable({
   guests,
@@ -20,6 +33,14 @@ export function SharedGuestTable({
 }) {
   const t = useTranslations('admin.shared');
   const td = useTranslations('admin.device');
+  const tt = useTranslations('admin.table');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const maxPage = Math.max(1, Math.ceil(guests.length / pageSize));
+  const safePage = Math.min(page, maxPage);
+  const rows = guests.slice((safePage - 1) * pageSize, (safePage - 1) * pageSize + pageSize);
+
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -41,7 +62,7 @@ export function SharedGuestTable({
         {guests.length === 0 ? (
           <div style={{ padding: 28, textAlign: 'center', color: INK }}>{t('empty')}</div>
         ) : (
-          guests.map((guest) => (
+          rows.map((guest) => (
             <div
               key={guest.id}
               style={{
@@ -92,6 +113,44 @@ export function SharedGuestTable({
           ))
         )}
       </div>
+      {guests.length ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ ...kicker, letterSpacing: '0.1em' }}>{tt('pageSize')}</span>
+          {[10, 25, 50].map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => {
+                setPageSize(n);
+                setPage(1);
+              }}
+              style={{ ...chipStyle(pageSize === n), padding: '4px 11px', borderRadius: 18 }}
+            >
+              {n}
+            </button>
+          ))}
+          <div style={{ flex: 1 }} />
+          <button
+            type="button"
+            onClick={() => setPage(Math.max(1, safePage - 1))}
+            aria-label={tt('prev')}
+            style={pagerBtn}
+          >
+            {'‹'}
+          </button>
+          <span style={{ fontSize: 12, color: INK, minWidth: 70, textAlign: 'center' }}>
+            {tt('page', { page: safePage, max: maxPage })}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage(Math.min(maxPage, safePage + 1))}
+            aria-label={tt('next')}
+            style={pagerBtn}
+          >
+            {'›'}
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

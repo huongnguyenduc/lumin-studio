@@ -95,47 +95,6 @@ export function WishesPanel({
             </button>
           </div>
         ) : null}
-        <div style={{ flexGrow: 1 }} />
-        <span style={{ ...kicker, letterSpacing: '0.1em' }}>{t('pageSize')}</span>
-        {[6, 12, 24].map((n) => (
-          <button
-            key={n}
-            type="button"
-            onClick={() => {
-              setPageSize(n);
-              setPage(1);
-              setSel({});
-            }}
-            style={{ ...chipStyle(pageSize === n), padding: '4px 11px', borderRadius: 18 }}
-          >
-            {n}
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => {
-            setPage(Math.max(1, safePage - 1));
-            setSel({}); // §3.7: selection clears on page change
-          }}
-          aria-label={tt('prev')}
-          style={{ ...pagerBtn, marginLeft: 8 }}
-        >
-          {'‹'}
-        </button>
-        <span style={{ fontSize: 12, color: INK, minWidth: 44, textAlign: 'center' }}>
-          {safePage} / {maxPage}
-        </span>
-        <button
-          type="button"
-          onClick={() => {
-            setPage(Math.min(maxPage, safePage + 1));
-            setSel({});
-          }}
-          aria-label={tt('next')}
-          style={pagerBtn}
-        >
-          {'›'}
-        </button>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
         {rows.map((w) => (
@@ -212,6 +171,49 @@ export function WishesPanel({
             </button>
           </div>
         ))}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ ...kicker, letterSpacing: '0.1em' }}>{t('pageSize')}</span>
+        {[6, 12, 24].map((n) => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => {
+              setPageSize(n);
+              setPage(1);
+              setSel({});
+            }}
+            style={{ ...chipStyle(pageSize === n), padding: '4px 11px', borderRadius: 18 }}
+          >
+            {n}
+          </button>
+        ))}
+        <div style={{ flexGrow: 1 }} />
+        <button
+          type="button"
+          onClick={() => {
+            setPage(Math.max(1, safePage - 1));
+            setSel({}); // §3.7: selection clears on page change
+          }}
+          aria-label={tt('prev')}
+          style={pagerBtn}
+        >
+          {'‹'}
+        </button>
+        <span style={{ fontSize: 12, color: INK, minWidth: 44, textAlign: 'center' }}>
+          {safePage} / {maxPage}
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            setPage(Math.min(maxPage, safePage + 1));
+            setSel({});
+          }}
+          aria-label={tt('next')}
+          style={pagerBtn}
+        >
+          {'›'}
+        </button>
       </div>
     </div>
   );
