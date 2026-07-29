@@ -6,6 +6,10 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**✅ XONG (2026-07-29, wedding admin — "Thêm nhanh" tạo 2 khách khi gõ tiếng Việt).** User gõ "Nhi Nguyễn" → ra 2 hàng ("Nguyễn" + "Nhi Nguyễn"). **Root cause (không phải API/double-submit):** phím Enter dùng để CHỐT composition của bộ gõ tiếng Việt cũng bắn `keydown` → `add()` chạy với label hiện tại rồi `setLabel('')`, ngay sau đó `compositionend` đẩy lại đoạn vừa chốt vào ô đã trống, Enter thật thêm nốt. **Fix (root-cause, áp cho MỌI handler Enter chứ không riêng ô báo lỗi):** bỏ qua khi `e.nativeEvent.isComposing` — `quick-add.tsx` (ô thêm nhanh + ô nhóm mới), `dashboard.tsx` (ô đám mới), `guest-table.tsx` (ô ghi chú blur). **Verify:** `pnpm --filter @lumin/wedding-web typecheck` xanh. **CHƯA:** smoke browser (cần bộ gõ VN thật) · commit/PR.
+
+---
+
 **✅ XONG (2026-07-29, wedding admin — phân trang "Khách từ link chung" + đảo thứ tự).** Bảng shared-guest render thẳng toàn bộ `guests.map` (API `/api/admin/shared-guests` cũng không `LIMIT`) nên list dài. Fix 3 file: `components/admin/shared-guest-table.tsx` phân trang client-side 10/25/50 (mặc định 10) + ‹ › dùng lại key i18n `admin.table.*` (không thêm chuỗi); `components/admin/ui.ts` nâng `pagerBtn` thành export chung (bản copy trong wishes-panel/guest-table giữ nguyên); pager của CẢ HAI bảng chuyển xuống DƯỚI danh sách (`wishes-panel.tsx`) để hai cụm phân trang không dính nhau; thứ tự section giữ nguyên như cũ (khách link chung trên, lời chúc dưới). **Verify:** `pnpm --filter @lumin/wedding-web typecheck` xanh. **CHƯA:** smoke browser · commit/PR.
 
 ---

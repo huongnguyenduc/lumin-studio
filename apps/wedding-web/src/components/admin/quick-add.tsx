@@ -77,7 +77,9 @@ export function QuickAdd({
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') add();
+            // Enter kết thúc composition của bộ gõ tiếng Việt cũng bắn keydown →
+            // bỏ qua, nếu không sẽ thêm khách 2 lần (nửa chữ + phần còn lại).
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) add();
           }}
           placeholder={t('placeholder')}
           aria-label={t('placeholder')}
@@ -155,7 +157,7 @@ export function QuickAdd({
                 setNewOpen(false);
                 setNewName('');
               }
-              if (e.key !== 'Enter') return;
+              if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
               const name = newName.trim();
               setNewOpen(false);
               setNewName('');
