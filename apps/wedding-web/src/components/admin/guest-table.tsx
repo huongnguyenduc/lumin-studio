@@ -349,7 +349,8 @@ export function GuestTable({
                     onChange={(e) => setNoteDraft(e.target.value)}
                     onBlur={commitNote}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                      if (e.key === 'Enter' && !e.nativeEvent.isComposing)
+                        (e.target as HTMLInputElement).blur();
                       if (e.key === 'Escape') {
                         setNoteEditId(null);
                         setNoteDraft('');

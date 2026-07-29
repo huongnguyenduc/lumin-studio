@@ -392,7 +392,7 @@ export function AdminDashboard({ activeHost }: { activeHost: string | null }) {
                 setNewEventOpen(false);
                 setNewEventName('');
               }
-              if (e.key !== 'Enter') return;
+              if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
               const name = newEventName.trim();
               setNewEventOpen(false);
               setNewEventName('');
