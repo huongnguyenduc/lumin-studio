@@ -6,7 +6,7 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
-**✅ XONG (2026-07-29, wedding admin — phân trang "Khách từ link chung" + đảo thứ tự).** Bảng shared-guest render thẳng toàn bộ `guests.map` (API `/api/admin/shared-guests` cũng không `LIMIT`) nên list dài. Fix 3 file: `components/admin/shared-guest-table.tsx` phân trang client-side 10/25/50 (mặc định 10) + ‹ › dùng lại key i18n `admin.table.*` (không thêm chuỗi); `components/admin/ui.ts` nâng `pagerBtn` thành export chung (bản copy trong wishes-panel/guest-table giữ nguyên); `components/admin/dashboard.tsx` đưa `WishesPanel` lên trước `SharedGuestTable`; pager của CẢ HAI bảng chuyển xuống DƯỚI danh sách (`wishes-panel.tsx`) để hai cụm phân trang không dính nhau. **Verify:** `pnpm --filter @lumin/wedding-web typecheck` xanh. **CHƯA:** smoke browser · commit/PR.
+**✅ XONG (2026-07-29, wedding admin — phân trang "Khách từ link chung" + đảo thứ tự).** Bảng shared-guest render thẳng toàn bộ `guests.map` (API `/api/admin/shared-guests` cũng không `LIMIT`) nên list dài. Fix 3 file: `components/admin/shared-guest-table.tsx` phân trang client-side 10/25/50 (mặc định 10) + ‹ › dùng lại key i18n `admin.table.*` (không thêm chuỗi); `components/admin/ui.ts` nâng `pagerBtn` thành export chung (bản copy trong wishes-panel/guest-table giữ nguyên); pager của CẢ HAI bảng chuyển xuống DƯỚI danh sách (`wishes-panel.tsx`) để hai cụm phân trang không dính nhau; thứ tự section giữ nguyên như cũ (khách link chung trên, lời chúc dưới). **Verify:** `pnpm --filter @lumin/wedding-web typecheck` xanh. **CHƯA:** smoke browser · commit/PR.
 
 ---
 

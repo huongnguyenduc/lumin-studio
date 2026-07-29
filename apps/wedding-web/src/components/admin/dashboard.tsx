@@ -579,12 +579,6 @@ export function AdminDashboard({ activeHost }: { activeHost: string | null }) {
         onCopyLink={copyLink}
       />
 
-      <WishesPanel
-        wishes={wishes}
-        onDelete={(w) => void run(() => adminApi.deleteWish(w.id))}
-        onBulkDelete={(ids) => void run(() => adminApi.bulkDeleteWishes(ids))}
-      />
-
       <SharedGuestTable
         guests={sharedGuests}
         onCreateClaim={() => void createIdentityClaim()}
@@ -601,6 +595,12 @@ export function AdminDashboard({ activeHost }: { activeHost: string | null }) {
             void run(() => adminApi.deleteIdentity(guest.id));
           }
         }}
+      />
+
+      <WishesPanel
+        wishes={wishes}
+        onDelete={(w) => void run(() => adminApi.deleteWish(w.id))}
+        onBulkDelete={(ids) => void run(() => adminApi.bulkDeleteWishes(ids))}
       />
     </div>
   );
