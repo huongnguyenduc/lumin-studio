@@ -232,6 +232,7 @@ export function InvitationCard({
             identityEnabled={identityReady}
             initialWishes={wishes}
             couple={couple}
+            maxLines={settings.wishMaxLines ?? 6}
           />
           {/* Figma 206:33 "footer": khối cao ĐÚNG 326px — chữ/monogram/"2026" ĐÈ LÊN
               nửa dưới ảnh vòm (207:70), không nối tiếp bên dưới nó. */}

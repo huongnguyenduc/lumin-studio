@@ -44,18 +44,34 @@ const inputBase: CSSProperties = {
 };
 
 // Letter card on the wall + the live preview share one look (§2.7/§2.8 — final
-// style "letters", option 1a).
+// style "letters", option 1a). `maxLines` clamps the message (admin-configurable,
+// SiteSettings.wishMaxLines, default 6) with a "xem thêm" toggle when it overflows.
 function LetterCard({
   bg,
   text,
   name,
   when,
+  maxLines,
 }: {
   bg: string;
   text: string;
   name: string;
   when: string;
+  maxLines?: number;
 }) {
+  const t = useTranslations('wish');
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+  const clampLines = maxLines ?? 6;
+
+  useEffect(() => {
+    setExpanded(false);
+    const el = textRef.current;
+    if (!el) return;
+    setOverflowing(el.scrollHeight > el.clientHeight + 1);
+  }, [text, clampLines]);
+
   return (
     <div
       style={{
@@ -70,18 +86,46 @@ function LetterCard({
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
         <span
+          ref={textRef}
           style={{
             fontStyle: 'italic',
             fontSize: 12,
             lineHeight: 1.7,
             color: INK,
             whiteSpace: 'pre-line',
+            ...(expanded
+              ? {}
+              : {
+                  display: '-webkit-box',
+                  WebkitBoxOrient: 'vertical',
+                  WebkitLineClamp: clampLines,
+                  overflow: 'hidden',
+                }),
           }}
         >
           “{text}”
         </span>
         <img src="/image/card-decor.svg" alt="card decor" style={{ width: 30, height: 48 }} />
       </div>
+      {overflowing ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          style={{
+            alignSelf: 'flex-start',
+            border: 'none',
+            background: 'transparent',
+            padding: 0,
+            fontSize: 10,
+            color: TAN_LIGHT,
+            textDecoration: 'underline',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
+          {expanded ? t('showLess') : t('showMore')}
+        </button>
+      ) : null}
       <div
         style={{
           display: 'flex',
@@ -108,12 +152,15 @@ export function Wishes({
   identityEnabled,
   initialWishes,
   couple,
+  maxLines,
 }: {
   guestId: string | null;
   guestLabel: string | null;
   identityEnabled: boolean;
   initialWishes: Wish[];
   couple: string;
+  /** SiteSettings.wishMaxLines — dòng tối đa mỗi thẻ lời chúc trước khi cắt (mặc định 6). */
+  maxLines?: number;
 }) {
   const t = useTranslations('wish');
   const tw = useTranslations('wall');
@@ -417,6 +464,7 @@ export function Wishes({
               text={text.trim() || t('previewEmpty')}
               name={name.trim() || t('defaultName')}
               when={t('previewNow')}
+              maxLines={maxLines}
             />
           </div>
         ) : null}
@@ -578,6 +626,7 @@ export function Wishes({
                   text={w.text}
                   name={w.name}
                   when={timeAgo(w.createdAt)}
+                  maxLines={maxLines}
                 />
                 {editableIds.has(w.id) ? (
                   <button

@@ -6,6 +6,10 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**✅ XONG (2026-07-30, wedding-web side project — giới hạn số dòng thẻ lời chúc).** User yêu cầu: card lời chúc khách gửi chỉ hiện tối đa `maxLine` dòng (mặc định 6), quá thì cắt còn "Xem thêm"; admin chỉnh được số này ở Cài đặt chung. Backend không đổi (settings là JSONB shallow-merge mở, key mới tự đi qua). Đổi 5 file: `lib/site-settings.ts` (`SiteSettings.wishMaxLines?`, parse trong `asSiteSettings`) · `components/invitation/wishes.tsx` (`LetterCard` clamp `-webkit-line-clamp` + đo `scrollHeight` để hiện nút "Xem thêm/Thu gọn"; `Wishes` nhận/forward `maxLines`) · `components/invitation/invitation-card.tsx` (truyền `maxLines={settings.wishMaxLines ?? 6}`) · `components/admin/settings-fields.tsx` (input number 1–50) · `messages/vi.ts` (key `wish.showMore/showLess` + `admin.settings.wishMaxLines`). **Verify xanh:** `pnpm --filter wedding-web typecheck` sạch, eslint 5 file đổi sạch. **CHƯA:** browser thật (dev server đang bị phiên chat khác chiếm) · commit/PR.
+
+---
+
 **🔧 ĐANG LÀM (2026-07-30, tiếp — nhiều vị trí khắc chữ + preview 360° trong admin).** User yêu cầu thêm 2 việc SAU phiên 4-yêu-cầu bên dưới: (a) "cho phép thêm nhiều vị trí khắc chữ" — trước đó `engrave_anchor` là MỘT vị trí chung cho cả sản phẩm (dù đã cho nhiều option "Khắc chữ"), khiến 2 ô khắc chữ phải dùng chung 1 chỗ; (b) "cho xem trước ảnh 360 trên admin nữa" — màn "Mô hình 3D" chỉ có upload + trạng thái job, chưa preview được sprite đã dựng.
 **Đã làm (a) — anchor chuyển từ product sang OPTION (ADR-037 follow-up):**
 - Migration `000031_option_engrave_anchor`: `ADD COLUMN options.engrave_anchor jsonb` + `DROP COLUMN products.engrave_anchor` (1 file, cả 2 việc — "di dời" là 1 thay đổi logic). sqlc query mới `UpdateOptionEngraveAnchor` scoped `(id, product_id)` như `UpdateOption`; xoá `UpdateProductEngraveAnchor`.

@@ -493,6 +493,21 @@ export function SettingsFields({
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <span style={fieldLabel}>{t('wishMaxLines')}</span>
+        <input
+          type="number"
+          min={1}
+          max={50}
+          value={val<number>('wishMaxLines', 6)}
+          onChange={(e) => {
+            const v = Math.min(50, Math.max(1, Number(e.target.value) || 1));
+            patch({ wishMaxLines: v });
+          }}
+          aria-label={t('wishMaxLines')}
+          style={{ ...fieldInput, width: 100 }}
+        />
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <span style={fieldLabel}>{t('siteTitle')}</span>
         <input
           value={val<string>('siteTitle', '')}

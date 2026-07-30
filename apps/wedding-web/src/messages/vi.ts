@@ -111,6 +111,8 @@ export const vi = {
     save: 'Lưu',
     cancel: 'Huỷ',
     editError: 'Không lưu được, thử lại nhé.',
+    showMore: 'Xem thêm',
+    showLess: 'Thu gọn',
   },
   wall: {
     heading: 'Lời chúc gửi trao',
@@ -216,6 +218,7 @@ export const vi = {
       storyCaption1: 'Chú thích ảnh 1',
       storyCaption2: 'Chú thích ảnh 2',
       storyCaption3: 'Chú thích ảnh 3',
+      wishMaxLines: 'Số dòng tối đa mỗi thẻ lời chúc (còn lại sẽ ẩn dưới "Xem thêm")',
       siteTitle: 'Tên website (title)',
       siteDesc: 'Mô tả (description — hiện khi chia sẻ link)',
       og: 'Ảnh OG (chia sẻ link)',
