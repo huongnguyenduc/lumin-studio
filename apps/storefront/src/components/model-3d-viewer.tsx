@@ -2,19 +2,20 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { SpriteTurntable } from './sprite-turntable';
-import type { Viewer3d } from '@/lib/viewer3d';
+import { SpriteTurntable } from '@lumin/ui';
+import type { Viewer3d } from '@lumin/ui/viewer3d';
 
-/** Cached across calls — see hasWebGL. */
-let webglSupportCache: boolean | null = null;
+/** Cached across calls — see hasWebGL. Positive-only: context creation can FAIL transiently in a
+ *  hidden/background tab, so caching a `false` would lock every later mount into the no-WebGL path. */
+let webglSupportCache = false;
 
-/** True when the browser can make a WebGL context (three.js needs it). Cached: every gallery↔3D
- *  toggle remounts this component and re-checks, and creating+never-releasing a probe context on
- *  each check burns into the browser's small concurrent-WebGL-context budget (mobile Safari's cap is
- *  especially low) — that's what left the viewer permanently blank after a couple of toggles. Probe
- *  once, explicitly release the test context, and reuse the result. */
+/** True when the browser can make a WebGL context (three.js needs it). Positive results are cached:
+ *  every gallery↔3D toggle remounts this component and re-checks, and creating+never-releasing a
+ *  probe context on each check burns into the browser's small concurrent-WebGL-context budget
+ *  (mobile Safari's cap is especially low) — that's what left the viewer permanently blank after a
+ *  couple of toggles. Probe, explicitly release the test context, and reuse the result. */
 function hasWebGL(): boolean {
-  if (webglSupportCache !== null) return webglSupportCache;
+  if (webglSupportCache) return true;
   try {
     const canvas = document.createElement('canvas');
     const gl = (canvas.getContext('webgl') ||
@@ -30,9 +31,9 @@ function hasWebGL(): boolean {
 /**
  * Live 3D viewer (P1-i, revised again for P1-j rev 2): the PDP's MAIN media tile, auto-loaded when
  * the browser has WebGL. Now a thin React shell over the imperative three.js wrapper in
- * `lib/viewer3d.ts` — <model-viewer> was replaced because REAL surface engraving (the typed text
- * projected onto the model as a decal at the admin-picked anchor) needs scene access that
- * model-viewer does not expose. The heavy module is still pulled via dynamic import so it stays out
+ * `@lumin/ui/viewer3d` (shared with the admin engrave picker) — <model-viewer> was replaced because
+ * REAL raised-text engraving (the typed text extruded on the model at the admin-picked anchor)
+ * needs scene access that model-viewer does not expose. The heavy module is still pulled via dynamic import so it stays out
  * of the initial JS bundle and only costs product pages that actually have a model. Orbit is
  * user-driven only — no autonomous motion, so prefers-reduced-motion is honoured by construction
  * (the a11y viewer-3D clause). When the browser lacks WebGL, the 360° sprite sheet (ADR-049) is the
@@ -40,14 +41,33 @@ function hasWebGL(): boolean {
  * product's `.glb` (the parent prefers the STRUCTURED glb so per-part recolor works); `partColors`
  * maps object name → hex for per-part recolor (f-3).
  */
+/** One live engraving on the model — a text option's id, current typed text, and its OWN admin-picked
+ *  anchor (ADR-037 follow-up: moved off the product so more than one text option can each place
+ *  independently). No anchor → the viewer's front-centre heuristic ONLY when it is the sole engraving
+ *  in play; with several, an un-placed one renders nothing rather than stacking on a guessed spot. */
+export interface EngraveEntry {
+  id: string;
+  text: string;
+  anchor?: {
+    posX: number;
+    posY: number;
+    posZ: number;
+    normX: number;
+    normY: number;
+    normZ: number;
+  };
+  /** Colour of this engraving's lettering — a customer pick from the product's OWN paint palette (no
+   *  separate config). Undefined → the viewer's ink-dark default. */
+  colorHex?: string;
+}
+
 export function Model3dViewer({
   src,
   productName,
   spriteSheetUrl,
   partColors,
   flatColorHex,
-  engraveText,
-  engraveAnchor,
+  engravings,
   model3dView,
   fallback,
 }: {
@@ -59,20 +79,10 @@ export function Model3dViewer({
    *  model (a flat product has no part→object mapping, so the whole piece is the colour — mirrors what
    *  the printer does). Undefined for a parts product (partColors drives those) or before any pick. */
   flatColorHex?: string;
-  /** Live engraving preview (P1-j rev 2): the typed text, projected onto the model's surface as a
-   *  decal so it hugs curvature like a real engraving. Client-side only per the storefront rule (no
-   *  server render per keystroke). Empty → none. */
-  engraveText?: string;
-  /** The admin-picked spot where that text sits (position + normal, model space, from the product).
-   *  Undefined → the viewer's front-centre heuristic places it. */
-  engraveAnchor?: {
-    posX: number;
-    posY: number;
-    posZ: number;
-    normX: number;
-    normY: number;
-    normZ: number;
-  };
+  /** Live engraving preview (P1-j rev 2, ADR-037 follow-up): one entry per text option, each extruded
+   *  as raised 3D lettering at its OWN spot on the model's surface — like the printed piece.
+   *  Client-side only per the storefront rule (no server render per keystroke). `[]` → none. */
+  engravings: EngraveEntry[];
   /** Owner-saved default camera pose (ADR-038) — the exact angle the admin aligned in "Xem trước &
    *  căn chỉnh 3D". Undefined → auto-framing. */
   model3dView?: {
@@ -95,15 +105,31 @@ export function Model3dViewer({
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
 
-  // WebGL is client-only; detect after mount, then dynamically load three + the wrapper and boot the
-  // viewer into the mount node. A failed chunk OR a failed/corrupt .glb both land in `failed`.
+  // WebGL is client-only; detect after mount. A probe can fail transiently in a hidden/background
+  // tab, so a miss re-probes when the tab becomes visible instead of settling on the fallback.
   useEffect(() => {
-    const ok = hasWebGL();
-    setWebglOk(ok);
-    if (!ok) return;
+    if (hasWebGL()) {
+      setWebglOk(true);
+      return;
+    }
+    setWebglOk(false);
+    const probe = () => {
+      if (hasWebGL()) {
+        setWebglOk(true);
+        document.removeEventListener('visibilitychange', probe);
+      }
+    };
+    document.addEventListener('visibilitychange', probe);
+    return () => document.removeEventListener('visibilitychange', probe);
+  }, []);
+
+  // Once WebGL is in, dynamically load three + the wrapper and boot the viewer into the mount node.
+  // A failed chunk OR a failed/corrupt .glb both land in `failed`.
+  useEffect(() => {
+    if (webglOk !== true) return;
     let alive = true;
     let observer: ResizeObserver | null = null;
-    import('@/lib/viewer3d')
+    import('@lumin/ui/viewer3d')
       .then(({ Viewer3d }) => {
         if (!alive || !mountRef.current) return;
         const viewer = new Viewer3d(mountRef.current, () => alive && setFailed(true));
@@ -118,25 +144,34 @@ export function Model3dViewer({
       observer?.disconnect();
       viewerRef.current?.dispose();
       viewerRef.current = null;
+      setReady(false);
     };
-  }, [src]);
+  }, [webglOk, src]);
 
   // f-3 (ADR-052): recolor to the customer's picked colours — on load and on every selection change.
   useEffect(() => {
     if (ready) viewerRef.current?.setColors(partColors, flatColorHex);
   }, [ready, partColors, flatColorHex]);
 
-  // Live engraving: retype → redraw the decal texture at the admin-picked anchor (or the heuristic).
-  useEffect(() => {
-    if (ready) viewerRef.current?.setServerAnchor(engraveAnchor ?? null);
-  }, [ready, engraveAnchor]);
   // ADR-038: open at the owner-saved camera pose (and follow if it ever changes).
   useEffect(() => {
     if (ready) viewerRef.current?.setView(model3dView ?? null);
   }, [ready, model3dView]);
+  // Live engraving: retype/reselect → rebuild the raised lettering at each option's own anchor.
   useEffect(() => {
-    if (ready) viewerRef.current?.setEngraveText(engraveText ?? '');
-  }, [ready, engraveText]);
+    if (ready) {
+      viewerRef.current?.setEngravings(
+        engravings.map((e) => ({
+          id: e.id,
+          text: e.text,
+          anchor: e.anchor ?? null,
+          colorHex: e.colorHex,
+        })),
+      );
+    }
+    // engravings is a fresh array each render (the parent maps it from state) — depend on its
+    // JSON shape so this effect only re-fires when an entry's id/text/anchor/colour actually changes.
+  }, [ready, JSON.stringify(engravings)]);
 
   // No WebGL → the 360° sprite sheet is the fallback (ADR-007/ADR-049): a self-turning turntable so a
   // WebGL-less browser still gets a rotating preview (stilled under reduced-motion). No sprite → the

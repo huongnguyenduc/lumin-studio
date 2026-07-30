@@ -129,13 +129,6 @@ RETURNING *;
 -- name: UpdateProductModelView :execrows
 UPDATE products SET model3d_view = $2 WHERE id = $1;
 
--- UpdateProductEngraveAnchor persists the owner-picked engrave anchor (atomic jsonb blob
--- {posX,posY,posZ,normX,normY,normZ}) -- the surface point where the storefront projects the customer's
--- engraving text. Same shape as UpdateProductModelView: a separate write from UpdateProduct, never
--- pricing; :execrows so an unknown id (0 rows) surfaces as 404.
--- name: UpdateProductEngraveAnchor :execrows
-UPDATE products SET engrave_anchor = $2 WHERE id = $1;
-
 -- SetProductModel3dUrl is the asset pipeline's write of the LOD glb URL (the column UpdateProduct
 -- deliberately never touches). Called only from the worker render callback (ReportAssetJobResult) when a
 -- `model_ingest` job reaches `ready`, so the storefront's on-demand 3D viewer has a model to load. The
@@ -274,6 +267,15 @@ RETURNING *;
 
 -- name: DeleteOption :one
 DELETE FROM options WHERE id = $1 AND product_id = $2 RETURNING id;
+
+-- UpdateOptionEngraveAnchor persists the owner-picked engrave anchor (atomic jsonb blob
+-- {posX,posY,posZ,normX,normY,normZ}) for ONE text option -- the surface point where the storefront
+-- projects THAT option's engraving text. Moved off the product (was one shared spot for the whole
+-- model; a product with two text options needs two independent spots). Separate write from
+-- UpdateOption, never pricing; scoped by (option, product) like UpdateOption/DeleteOption -- an
+-- optionId under another product → 0 rows → 404. :execrows so that surfaces.
+-- name: UpdateOptionEngraveAnchor :execrows
+UPDATE options SET engrave_anchor = $3 WHERE id = $1 AND product_id = $2;
 
 -- name: InsertReview :one
 INSERT INTO reviews (id, product_id, customer_id, rating, body, images, reply, status)

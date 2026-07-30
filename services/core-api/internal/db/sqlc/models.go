@@ -781,13 +781,14 @@ type Machine struct {
 }
 
 type Option struct {
-	ID          uuid.UUID  `json:"id"`
-	ProductID   uuid.UUID  `json:"productId"`
-	Label       string     `json:"label"`
-	Description string     `json:"description"`
-	Type        OptionType `json:"type"`
-	PriceDelta  int64      `json:"priceDelta"`
-	MaxChars    *int32     `json:"maxChars"`
+	ID            uuid.UUID  `json:"id"`
+	ProductID     uuid.UUID  `json:"productId"`
+	Label         string     `json:"label"`
+	Description   string     `json:"description"`
+	Type          OptionType `json:"type"`
+	PriceDelta    int64      `json:"priceDelta"`
+	MaxChars      *int32     `json:"maxChars"`
+	EngraveAnchor []byte     `json:"engraveAnchor"`
 }
 
 type OptionChoice struct {
@@ -929,7 +930,6 @@ type Product struct {
 	SpriteSheetUrl       string             `json:"spriteSheetUrl"`
 	ModelObjectNames     []string           `json:"modelObjectNames"`
 	Model3dStructuredUrl string             `json:"model3dStructuredUrl"`
-	EngraveAnchor        []byte             `json:"engraveAnchor"`
 }
 
 type ReplyTemplate struct {

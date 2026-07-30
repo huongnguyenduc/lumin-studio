@@ -124,6 +124,7 @@ describe('toProductDetailView', () => {
         priceDelta: 0,
         maxChars: 12,
         choices: [],
+        engravePositions: [],
       },
       {
         id: 'o2',
@@ -133,6 +134,7 @@ describe('toProductDetailView', () => {
         priceDelta: 100000,
         maxChars: null,
         choices: [],
+        engravePositions: [],
       },
     ]);
   });

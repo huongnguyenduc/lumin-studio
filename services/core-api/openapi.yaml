@@ -2036,38 +2036,6 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
-  /admin/products/{id}/engrave-anchor:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema: { type: string, format: uuid }
-    patch:
-      tags: [admin]
-      operationId: updateProductEngraveAnchor
-      summary: Save a product's engrave anchor — where engraving text sits on the 3D model (owner-only).
-      description: >
-        Persists the owner-picked surface point (position + outward normal, model space) where the
-        storefront projects a customer's engraving text onto the 3D model. The whole anchor is set
-        together (atomic). Display metadata, never money. Out-of-range values → 400 with a per-field
-        error. Unknown id → 404. A product with no saved anchor falls back to the storefront's
-        front-centre heuristic.
-      security:
-        - cookieAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EngraveAnchor'
-      responses:
-        '204':
-          description: Saved.
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-
   /admin/products/{id}/colors:
     parameters:
       - name: id
@@ -2218,6 +2186,46 @@ paths:
       responses:
         '204':
           description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/products/{id}/options/{optionId}/engrave-anchor:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: optionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [admin]
+      operationId: updateOptionEngraveAnchor
+      summary: >
+        Save a text option's engrave anchor — where THAT option's engraving text sits on the 3D model
+        (owner-only).
+      description: >
+        Persists the owner-picked surface point (position + outward normal, model space) where the
+        storefront projects this option's engraving text onto the 3D model. Moved off the product
+        (ADR-037 follow-up) so a product with more than one text option can place each independently.
+        The whole anchor is set together (atomic). Display metadata, never money. Out-of-range values →
+        400 with a per-field error. Scoped by (product, option); an optionId under another product → 404.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/EngraveAnchor'
+      responses:
+        '204':
+          description: Saved.
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -3118,6 +3126,14 @@ components:
             legacy toggle priced by this option's priceDelta; non-empty = the customer picks exactly one.
           items:
             $ref: '#/components/schemas/OptionChoice'
+        engravePositions:
+          type: array
+          description: >
+            Meaningful only for a `text` option — the owner-picked, named spots on the 3D model this
+            option's engraving text can go. The storefront customer picks exactly ONE. Empty/absent →
+            the storefront's front-centre heuristic (a single implicit spot, no picker shown).
+          items:
+            $ref: '#/components/schemas/EngraveAnchor'
 
     Product:
       type: object
@@ -3200,8 +3216,6 @@ components:
             part by object name (f-3), else falls back to model3dUrl. Empty until a model_ingest has produced one.
         model3dView:
           $ref: '#/components/schemas/Model3dView'
-        engraveAnchor:
-          $ref: '#/components/schemas/EngraveAnchor'
         spriteSheetUrl:
           type: string
           format: uri
@@ -3290,13 +3304,17 @@ components:
     EngraveAnchor:
       type: object
       description: >
-        Owner-picked surface point on the product's 3D model where a customer's engraving text is
-        projected (storefront decal). Position in model-space metres (matches the glb the viewer
-        loads); normal is the outward surface direction at that point (unit-ish vector, must be
-        non-zero). Absent on a Product = no anchor picked → the storefront falls back to its
-        front-centre heuristic. Display metadata, not money — plain floats (not int-VND).
-      required: [posX, posY, posZ, normX, normY, normZ]
+        One owner-picked surface point on the product's 3D model where a customer's engraving text
+        can be projected (storefront decal). A text option carries a LIST of these (engravePositions)
+        — the owner places as many named spots as they like, and the storefront customer picks exactly
+        ONE to engrave into. Position in model-space metres (matches the glb the viewer loads); normal
+        is the outward surface direction at that point (unit-ish vector, must be non-zero). Display
+        metadata, not money — plain floats (not int-VND).
+      required: [label, posX, posY, posZ, normX, normY, normZ]
       properties:
+        label:
+          type: string
+          description: Owner-facing name for this spot (e.g. "Mặt trước", "Mặt sau") shown to the customer as a pick.
         posX:
           type: number
           format: double

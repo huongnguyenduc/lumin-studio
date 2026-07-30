@@ -283,11 +283,16 @@ func (c *Catalog) UpdateProductModelView(ctx context.Context, id uuid.UUID, view
 	return nil
 }
 
-// UpdateProductEngraveAnchor persists the owner-picked engrave anchor (position + normal on the model
-// surface where engraving text is projected), or ErrNotFound for an unknown id — same :execrows contract
-// as UpdateProductModelView. anchor is the marshalled + range-validated jsonb blob.
-func (c *Catalog) UpdateProductEngraveAnchor(ctx context.Context, id uuid.UUID, anchor []byte) error {
-	rows, err := c.q.UpdateProductEngraveAnchor(ctx, sqlc.UpdateProductEngraveAnchorParams{ID: id, EngraveAnchor: anchor})
+// UpdateOptionEngraveAnchor persists the owner-picked engrave anchor (position + normal on the model
+// surface where THIS text option's engraving text is projected) for one option, scoped by (option,
+// product) like UpdateOption/DeleteOption — an optionId under another product returns ErrNotFound, same
+// :execrows contract as UpdateProductModelView. anchor is the marshalled + range-validated jsonb blob.
+func (c *Catalog) UpdateOptionEngraveAnchor(ctx context.Context, optionID, productID uuid.UUID, anchor []byte) error {
+	rows, err := c.q.UpdateOptionEngraveAnchor(ctx, sqlc.UpdateOptionEngraveAnchorParams{
+		ID:            optionID,
+		ProductID:     productID,
+		EngraveAnchor: anchor,
+	})
 	if err != nil {
 		return err
 	}

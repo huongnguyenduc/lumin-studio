@@ -56,6 +56,14 @@ export function ProductEditor({
   const [draft, setDraft] = useState<ProductDraft>(() =>
     product ? draftFromProduct(product) : emptyDraft(categories[0]?.id ?? ''),
   );
+  // What the server currently holds (draft-shaped). The sticky save bar shows ONLY while draft differs
+  // from this — deep compare via JSON (ProductDraft is flat strings + a string array, key order fixed by
+  // construction), so editing a field back to its original value hides the bar again.
+  const [baseline, setBaseline] = useState<ProductDraft>(draft);
+  const dirty = useMemo(
+    () => JSON.stringify(draft) !== JSON.stringify(baseline),
+    [draft, baseline],
+  );
   const [errors, setErrors] = useState<ProductFieldErrors>({});
   const [formError, setFormError] = useState<WriteCode | null>(null);
   const [saved, setSaved] = useState(false);
@@ -94,6 +102,7 @@ export function ProductEditor({
       if (res.ok) {
         if (isEdit) {
           setSaved(true);
+          setBaseline(draft); // the server now holds this draft → the sticky bar hides
           router.refresh();
         } else {
           router.push(`/san-pham/${res.id}`);
@@ -120,27 +129,23 @@ export function ProductEditor({
   const basePriceInt = parseIntField(draft.basePrice);
 
   return (
-    <div className="flex max-w-2xl flex-col gap-6 pb-24 md:pb-6">
-      {/* Header: back + title + save */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/san-pham"
-            className="rounded-pill px-2 py-1 font-semibold text-text-body hover:text-text-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
-          >
-            {t('edit.back')}
-          </Link>
-          <h1 className="font-display text-2xl font-semibold text-text-strong">
-            {isEdit ? t('edit.titleEdit', { name: product.name }) : t('edit.titleNew')}
-          </h1>
-        </div>
-        <Button onClick={onSave} disabled={pending}>
-          {t('edit.save')}
-        </Button>
+    <div className="flex max-w-6xl flex-col gap-6 pb-24 md:pb-6">
+      {/* Header: back + title (the save action lives in the sticky bar at the bottom — user call +
+          design §5's primary action stays visible while scrolling) */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Link
+          href="/san-pham"
+          className="rounded-pill px-2 py-1 font-semibold text-text-body hover:text-text-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
+        >
+          {t('edit.back')}
+        </Link>
+        <h1 className="font-display text-2xl font-semibold text-text-strong">
+          {isEdit ? t('edit.titleEdit', { name: product.name }) : t('edit.titleNew')}
+        </h1>
       </div>
 
-      {/* Feedback line */}
-      {saved && (
+      {/* Feedback line (the saved note hides again the moment new edits appear) */}
+      {saved && !dirty && (
         <p role="status" className="text-sm text-accent-teal">
           {t('edit.saved')}
         </p>
@@ -151,259 +156,309 @@ export function ProductEditor({
         </p>
       )}
 
-      {/* Thông tin */}
-      <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
-        <h2 className="font-semibold text-text-strong">{t('edit.sectionInfo')}</h2>
-        <Input
-          label={t('edit.nameLabel')}
-          value={draft.name}
-          onChange={(e) => set('name', e.target.value)}
-          error={fieldError('name')}
-          autoComplete="off"
-        />
-        <div className="flex items-end gap-2">
-          <div className="flex-1">
+      {/* Design §5 layout: form fields left, the 3D-model/media column right (stacks on mobile). Each
+          column is its own independent flex flow (true masonry — a column's cards stack by their OWN
+          height, never forced to match a row height with the other column). A flat single CSS grid with
+          `order`/`col-start` was tried here and reverted: shared implicit-row sizing across both columns
+          forced every row to the height of its tallest card, leaving visible gaps under shorter ones —
+          not worth it just to move Vị trí khắc chữ next to Tuỳ chọn on mobile. minmax(0,…) — the 3D
+          canvases' min-content would otherwise blow the fr ratio. */}
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+        <div className="flex flex-col gap-6">
+          {/* Thông tin */}
+          <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
+            <h2 className="font-semibold text-text-strong">{t('edit.sectionInfo')}</h2>
             <Input
-              label={t('edit.slugLabel')}
-              hint={t('edit.slugHint')}
-              value={draft.slug}
-              onChange={(e) => set('slug', e.target.value)}
-              error={fieldError('slug')}
+              label={t('edit.nameLabel')}
+              value={draft.name}
+              onChange={(e) => set('name', e.target.value)}
+              error={fieldError('name')}
               autoComplete="off"
             />
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => set('slug', slugify(draft.name))}
-            disabled={draft.name.trim() === ''}
-          >
-            {t('edit.slugFromName')}
-          </Button>
-        </div>
-        <TextArea
-          label={t('edit.descLabel')}
-          value={draft.description}
-          onChange={(v) => set('description', v)}
-          error={fieldError('description')}
-        />
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Select
-            label={t('edit.categoryLabel')}
-            value={draft.categoryId}
-            onChange={(v) => set('categoryId', v)}
-            error={fieldError('categoryId')}
-          >
-            <option value="" disabled>
-              {t('edit.categoryPlaceholder')}
-            </option>
-            {categoryOptions.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
-          <Select
-            label={t('edit.statusLabel')}
-            value={draft.status}
-            onChange={(v) => set('status', v as ProductDraft['status'])}
-          >
-            {PRODUCT_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {t(`status.${s}`)}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="flex items-center justify-between gap-3 border-t border-border-subtle pt-4">
-          <div>
-            <p className="font-display text-sm font-medium text-text-strong">
-              {t('edit.petTagLabel')}
-            </p>
-            <p className="text-sm text-text-muted">{t('edit.petTagHint')}</p>
-          </div>
-          <Switch
-            label={t('edit.petTagLabel')}
-            checked={draft.productType === 'nfc_tag'}
-            onCheckedChange={(on) => set('productType', on ? 'nfc_tag' : 'standard')}
-          />
-        </div>
-      </Card>
-
-      {/* Giá & quy cách */}
-      <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
-        <h2 className="font-semibold text-text-strong">{t('edit.sectionSpec')}</h2>
-        <Input
-          label={t('edit.priceLabel')}
-          type="number"
-          inputMode="numeric"
-          min={0}
-          step={1}
-          value={draft.basePrice}
-          onChange={(e) => set('basePrice', e.target.value)}
-          error={fieldError('basePrice')}
-          hint={basePriceInt !== null ? formatVnd(basePriceInt) : t('edit.vndHint')}
-          autoComplete="off"
-        />
-        <fieldset>
-          <legend className="mb-1.5 font-display text-sm font-medium text-text-strong">
-            {t('edit.dimsLabel')}
-          </legend>
-          <div className="grid grid-cols-3 gap-3">
-            {(['dimW', 'dimD', 'dimH'] as const).map((key) => (
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Input
+                  label={t('edit.slugLabel')}
+                  hint={t('edit.slugHint')}
+                  value={draft.slug}
+                  onChange={(e) => set('slug', e.target.value)}
+                  error={fieldError('slug')}
+                  autoComplete="off"
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => set('slug', slugify(draft.name))}
+                disabled={draft.name.trim() === ''}
+              >
+                {t('edit.slugFromName')}
+              </Button>
+            </div>
+            <TextArea
+              label={t('edit.descLabel')}
+              value={draft.description}
+              onChange={(v) => set('description', v)}
+              error={fieldError('description')}
+            />
+            {/* Giá + danh mục side by side, như design §5 */}
+            <div className="grid gap-4 sm:grid-cols-2">
               <Input
-                key={key}
+                label={t('edit.priceLabel')}
                 type="number"
                 inputMode="numeric"
-                min={1}
+                min={0}
                 step={1}
-                aria-label={t(`edit.${key}`)}
-                placeholder={t(`edit.${key}`)}
-                value={draft[key]}
-                onChange={(e) => set(key, e.target.value)}
-                error={errors[key] ? t(`edit.err.${errors[key]}`) : undefined}
+                value={draft.basePrice}
+                onChange={(e) => set('basePrice', e.target.value)}
+                error={fieldError('basePrice')}
+                hint={basePriceInt !== null ? formatVnd(basePriceInt) : t('edit.vndHint')}
                 autoComplete="off"
               />
-            ))}
-          </div>
-        </fieldset>
-        <Select
-          label={t('edit.materialLabel')}
-          value={draft.material}
-          onChange={(v) => set('material', v)}
-          error={fieldError('material')}
-        >
-          {MATERIALS.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </Select>
-      </Card>
-
-      {/* Colours & parts (edit only — per-row sub-resources keyed by product id). ADR-037 two-tone: named
-          parts group the colours; a colour can link to a shop filament (ADR-039) for deduct-on-print. */}
-      {isEdit && (
-        <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
-          <div>
-            <h2 className="font-semibold text-text-strong">{t('edit.sectionColors')}</h2>
-            <p className="mt-0.5 text-sm text-text-muted">{t('edit.colorsHint')}</p>
-          </div>
-          <ProductColors
-            productId={product.id}
-            parts={product.parts}
-            colors={product.colors}
-            filaments={filaments}
-            modelObjectNames={product.modelObjectNames ?? []}
-            model3dStructuredUrl={product.model3dStructuredUrl}
-          />
-        </Card>
-      )}
-
-      {/* Customization options (edit only — per-row sub-resources). A text option = engraving field with a
-          char limit; a choice option owns enumerated choices (ADR-037). */}
-      {isEdit && (
-        <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
-          <div>
-            <h2 className="font-semibold text-text-strong">{t('edit.sectionOptions')}</h2>
-            <p className="mt-0.5 text-sm text-text-muted">{t('edit.optionsHint')}</p>
-          </div>
-          <ProductOptions productId={product.id} options={product.options} />
-        </Card>
-      )}
-
-      {/* Media (edit only — model-upload/asset-jobs are keyed by an existing product id; create is core-
-          only → redirect → edit here). Gallery is a Product field (saves with "Lưu sản phẩm"); the model
-          upload enqueues its render jobs immediately. */}
-      {isEdit && (
-        <>
-          <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
-            <div>
-              <h2 className="font-semibold text-text-strong">{t('edit.sectionGallery')}</h2>
-              <p className="mt-0.5 text-sm text-text-muted">{t('edit.galleryHint')}</p>
-            </div>
-            <ProductGallery images={draft.images} onChange={(next) => set('images', next)} />
-          </Card>
-          <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
-            <div>
-              <h2 className="font-semibold text-text-strong">{t('edit.sectionModel')}</h2>
-              <p className="mt-0.5 text-sm text-text-muted">{t('edit.modelHint')}</p>
-            </div>
-            <ProductModel productId={product.id} model3dUrl={product.model3dUrl} />
-          </Card>
-        </>
-      )}
-
-      {/* Preview & align 3D (edit only — needs the pipeline's model3dUrl; ADR-038). Owner sets the default
-          camera pose the storefront viewer opens at. */}
-      {isEdit && (
-        <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
-          <div>
-            <h2 className="font-semibold text-text-strong">{t('edit.sectionPreview')}</h2>
-            <p className="mt-0.5 text-sm text-text-muted">{t('edit.previewHint')}</p>
-          </div>
-          <ProductModelView
-            productId={product.id}
-            model3dUrl={product.model3dUrl}
-            model3dView={product.model3dView}
-            productName={product.name}
-          />
-        </Card>
-      )}
-
-      {/* Engrave anchor (edit only — needs the pipeline's model3dUrl). Owner taps the model to pick
-          WHERE a customer's engraving text sits; the storefront decal projects at that exact spot. */}
-      {isEdit && (
-        <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
-          <div>
-            <h2 className="font-semibold text-text-strong">{t('edit.sectionEngraveAnchor')}</h2>
-            <p className="mt-0.5 text-sm text-text-muted">{t('edit.engraveAnchorHint')}</p>
-          </div>
-          <EngraveAnchorPicker
-            productId={product.id}
-            model3dUrl={product.model3dUrl}
-            engraveAnchor={product.engraveAnchor}
-            productName={product.name}
-          />
-        </Card>
-      )}
-
-      {/* Delete (edit only) — two-step confirm, no blocking browser dialog */}
-      {isEdit && (
-        <Card elevation="md" className="flex flex-wrap items-center gap-3 px-5 py-4">
-          <div className="mr-auto">
-            <p className="font-semibold text-text-strong">{t('edit.deleteTitle')}</p>
-            <p className="text-sm text-text-muted">{t('edit.deleteHint')}</p>
-          </div>
-          {confirmingDelete ? (
-            <>
-              <Button
-                variant="outline"
-                onClick={() => setConfirmingDelete(false)}
-                disabled={pending}
+              <Select
+                label={t('edit.categoryLabel')}
+                value={draft.categoryId}
+                onChange={(v) => set('categoryId', v)}
+                error={fieldError('categoryId')}
               >
-                {t('edit.deleteCancel')}
-              </Button>
-              <button
-                type="button"
-                onClick={onDelete}
-                disabled={pending}
-                className="inline-flex min-h-[44px] items-center rounded-lg border-2 border-danger px-4 py-2 text-sm font-semibold text-danger hover:bg-danger hover:text-on-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2 disabled:opacity-60"
-              >
-                {t('edit.deleteConfirm')}
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirmingDelete(true)}
-              disabled={pending}
-              className="inline-flex min-h-[44px] items-center rounded-lg border-2 border-border-strong px-4 py-2 text-sm font-semibold text-text-body hover:border-danger hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
+                <option value="" disabled>
+                  {t('edit.categoryPlaceholder')}
+                </option>
+                {categoryOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <Select
+              label={t('edit.statusLabel')}
+              value={draft.status}
+              onChange={(v) => set('status', v as ProductDraft['status'])}
             >
-              {t('edit.delete')}
-            </button>
+              {PRODUCT_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {t(`status.${s}`)}
+                </option>
+              ))}
+            </Select>
+            <div className="flex items-center justify-between gap-3 border-t border-border-subtle pt-4">
+              <div>
+                <p className="font-display text-sm font-medium text-text-strong">
+                  {t('edit.petTagLabel')}
+                </p>
+                <p className="text-sm text-text-muted">{t('edit.petTagHint')}</p>
+              </div>
+              <Switch
+                label={t('edit.petTagLabel')}
+                checked={draft.productType === 'nfc_tag'}
+                onCheckedChange={(on) => set('productType', on ? 'nfc_tag' : 'standard')}
+              />
+            </div>
+          </Card>
+
+          {/* Giá & quy cách */}
+          <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
+            <h2 className="font-semibold text-text-strong">{t('edit.sectionSpec')}</h2>
+            <fieldset>
+              <legend className="mb-1.5 font-display text-sm font-medium text-text-strong">
+                {t('edit.dimsLabel')}
+              </legend>
+              <div className="grid grid-cols-3 gap-3">
+                {(['dimW', 'dimD', 'dimH'] as const).map((key) => (
+                  <Input
+                    key={key}
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    step={1}
+                    aria-label={t(`edit.${key}`)}
+                    placeholder={t(`edit.${key}`)}
+                    value={draft[key]}
+                    onChange={(e) => set(key, e.target.value)}
+                    error={errors[key] ? t(`edit.err.${errors[key]}`) : undefined}
+                    autoComplete="off"
+                  />
+                ))}
+              </div>
+            </fieldset>
+            <Select
+              label={t('edit.materialLabel')}
+              value={draft.material}
+              onChange={(v) => set('material', v)}
+              error={fieldError('material')}
+            >
+              {MATERIALS.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </Select>
+          </Card>
+
+          {/* Colours & parts (edit only — per-row sub-resources keyed by product id). ADR-037 two-tone: named
+          parts group the colours; a colour can link to a shop filament (ADR-039) for deduct-on-print. */}
+          {isEdit && (
+            <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
+              <div>
+                <h2 className="font-semibold text-text-strong">{t('edit.sectionColors')}</h2>
+                <p className="mt-0.5 text-sm text-text-muted">{t('edit.colorsHint')}</p>
+              </div>
+              <ProductColors
+                productId={product.id}
+                parts={product.parts}
+                colors={product.colors}
+                filaments={filaments}
+                modelObjectNames={product.modelObjectNames ?? []}
+                model3dStructuredUrl={product.model3dStructuredUrl}
+              />
+            </Card>
           )}
-        </Card>
+
+          {/* Customization options (edit only — per-row sub-resources). A text option = engraving field with a
+          char limit; a choice option owns enumerated choices (ADR-037). */}
+          {isEdit && (
+            <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
+              <div>
+                <h2 className="font-semibold text-text-strong">{t('edit.sectionOptions')}</h2>
+                <p className="mt-0.5 text-sm text-text-muted">{t('edit.optionsHint')}</p>
+              </div>
+              <ProductOptions productId={product.id} options={product.options} />
+            </Card>
+          )}
+        </div>
+
+        {/* Right column — model 3D + shop media (design §5). Create mode shows a hint card: model
+            upload / asset jobs need an existing product id (create is core-only → redirect → edit). */}
+        <div className="flex flex-col gap-6">
+          {!isEdit && (
+            <Card elevation="md" className="px-5 py-5">
+              <h2 className="font-semibold text-text-strong">{t('edit.sectionModel')}</h2>
+              <p className="mt-0.5 text-sm text-text-muted">{t('edit.createFirstHint')}</p>
+            </Card>
+          )}
+
+          {/* Media (edit only — model-upload/asset-jobs are keyed by an existing product id). Gallery is a
+          Product field (saves with the sticky bar); the model upload enqueues its render jobs
+          immediately. Model trước, ảnh sau — thứ tự cột phải của design §5. */}
+          {isEdit && (
+            <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
+              <div>
+                <h2 className="font-semibold text-text-strong">{t('edit.sectionModel')}</h2>
+                <p className="mt-0.5 text-sm text-text-muted">{t('edit.modelHint')}</p>
+              </div>
+              <ProductModel
+                productId={product.id}
+                model3dUrl={product.model3dUrl}
+                spriteSheetUrl={product.spriteSheetUrl}
+                productName={product.name}
+              />
+            </Card>
+          )}
+
+          {/* Preview & align 3D (edit only — needs the pipeline's model3dUrl; ADR-038). Owner sets the default
+          camera pose the storefront viewer opens at. */}
+          {isEdit && (
+            <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
+              <div>
+                <h2 className="font-semibold text-text-strong">{t('edit.sectionPreview')}</h2>
+                <p className="mt-0.5 text-sm text-text-muted">{t('edit.previewHint')}</p>
+              </div>
+              <ProductModelView
+                productId={product.id}
+                model3dUrl={product.model3dUrl}
+                model3dView={product.model3dView}
+                productName={product.name}
+              />
+            </Card>
+          )}
+
+          {/* Engrave anchor (edit only — needs the pipeline's model3dUrl). Owner taps the model to pick
+          WHERE a customer's engraving text sits; the storefront decal projects at that exact spot. */}
+          {isEdit && (
+            <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
+              <div>
+                <h2 className="font-semibold text-text-strong">{t('edit.sectionEngraveAnchor')}</h2>
+                <p className="mt-0.5 text-sm text-text-muted">{t('edit.engraveAnchorHint')}</p>
+              </div>
+              <EngraveAnchorPicker
+                productId={product.id}
+                model3dUrl={product.model3dUrl}
+                options={product.options
+                  .filter((o) => o.type === 'text')
+                  .map((o) => ({
+                    id: o.id,
+                    label: o.label,
+                    engravePositions: o.engravePositions ?? [],
+                  }))}
+                productName={product.name}
+                colors={product.colors}
+              />
+            </Card>
+          )}
+
+          {/* Ảnh & video (shop chụp) — saves with the product via the sticky bar */}
+          {isEdit && (
+            <Card elevation="md" className="flex flex-col gap-4 px-5 py-5">
+              <div>
+                <h2 className="font-semibold text-text-strong">{t('edit.sectionGallery')}</h2>
+                <p className="mt-0.5 text-sm text-text-muted">{t('edit.galleryHint')}</p>
+              </div>
+              <ProductGallery images={draft.images} onChange={(next) => set('images', next)} />
+            </Card>
+          )}
+
+          {/* Delete (edit only) — two-step confirm, no blocking browser dialog */}
+          {isEdit && (
+            <Card elevation="md" className="flex flex-wrap items-center gap-3 px-5 py-4">
+              <div className="mr-auto">
+                <p className="font-semibold text-text-strong">{t('edit.deleteTitle')}</p>
+                <p className="text-sm text-text-muted">{t('edit.deleteHint')}</p>
+              </div>
+              {confirmingDelete ? (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => setConfirmingDelete(false)}
+                    disabled={pending}
+                  >
+                    {t('edit.deleteCancel')}
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={onDelete}
+                    disabled={pending}
+                    className="inline-flex min-h-[44px] items-center rounded-lg border-2 border-danger px-4 py-2 text-sm font-semibold text-danger hover:bg-danger hover:text-on-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2 disabled:opacity-60"
+                  >
+                    {t('edit.deleteConfirm')}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(true)}
+                  disabled={pending}
+                  className="inline-flex min-h-[44px] items-center rounded-lg border-2 border-border-strong px-4 py-2 text-sm font-semibold text-text-body hover:border-danger hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
+                >
+                  {t('edit.delete')}
+                </button>
+              )}
+            </Card>
+          )}
+        </div>
+      </div>
+
+      {/* Sticky save bar — appears ONLY while the draft differs from what the server holds (deep
+          compare; undoing an edit hides it again). Sticks to the viewport bottom at every size. */}
+      {(dirty || pending) && (
+        <div className="sticky bottom-0 z-10 -mx-4 border-t border-border-subtle bg-surface-card/95 px-4 py-3 backdrop-blur">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-text-body">{t('edit.unsaved')}</p>
+            <Button onClick={onSave} disabled={pending}>
+              {pending ? t('edit.savingChanges') : isEdit ? t('edit.saveChanges') : t('edit.save')}
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1111,28 +1111,6 @@ export interface paths {
         patch: operations["updateProductModelView"];
         trace?: never;
     };
-    "/admin/products/{id}/engrave-anchor": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Save a product's engrave anchor — where engraving text sits on the 3D model (owner-only).
-         * @description Persists the owner-picked surface point (position + outward normal, model space) where the storefront projects a customer's engraving text onto the 3D model. The whole anchor is set together (atomic). Display metadata, never money. Out-of-range values → 400 with a per-field error. Unknown id → 404. A product with no saved anchor falls back to the storefront's front-centre heuristic.
-         */
-        patch: operations["updateProductEngraveAnchor"];
-        trace?: never;
-    };
     "/admin/products/{id}/colors": {
         parameters: {
             query?: never;
@@ -1217,6 +1195,29 @@ export interface paths {
          * @description Scoped by (product, option); an optionId under another product → 404.
          */
         patch: operations["updateProductOption"];
+        trace?: never;
+    };
+    "/admin/products/{id}/options/{optionId}/engrave-anchor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                optionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Save a text option's engrave anchor — where THAT option's engraving text sits on the 3D model (owner-only).
+         * @description Persists the owner-picked surface point (position + outward normal, model space) where the storefront projects this option's engraving text onto the 3D model. Moved off the product (ADR-037 follow-up) so a product with more than one text option can place each independently. The whole anchor is set together (atomic). Display metadata, never money. Out-of-range values → 400 with a per-field error. Scoped by (product, option); an optionId under another product → 404.
+         */
+        patch: operations["updateOptionEngraveAnchor"];
         trace?: never;
     };
     "/admin/products/{id}/parts": {
@@ -1659,6 +1660,8 @@ export interface components {
             maxChars?: number | null;
             /** @description Enumerated choices for a `choice` option (ADR-037), each with its own priceDelta. Empty = a legacy toggle priced by this option's priceDelta; non-empty = the customer picks exactly one. */
             choices: components["schemas"]["OptionChoice"][];
+            /** @description Meaningful only for a `text` option — the owner-picked, named spots on the 3D model this option's engraving text can go. The storefront customer picks exactly ONE. Empty/absent → the storefront's front-centre heuristic (a single implicit spot, no picker shown). */
+            engravePositions?: components["schemas"]["EngraveAnchor"][];
         };
         /** @description Storefront product detail (spec §02). Money fields (basePrice, colors[].priceDelta, options[].priceDelta) are raw int-VND — the client formats via @lumin/core (always-must #2). images[0] is the card cover (sprite-first, ADR-007). productType (D-P1-1 follow-up) is an internal/admin-only field like estFilamentQty/estPrintHours below — present on the wire but not read by the storefront app. */
         Product: {
@@ -1696,7 +1699,6 @@ export interface components {
             /** @description .glb URL of the STRUCTURED derivative (f-4) — named objects/materials preserved (unlike the fused model3dUrl), same recenter as model3dUrl. The live viewer loads this when present to recolor each part by object name (f-3), else falls back to model3dUrl. Empty until a model_ingest has produced one. */
             model3dStructuredUrl?: string;
             model3dView?: components["schemas"]["Model3dView"];
-            engraveAnchor?: components["schemas"]["EngraveAnchor"];
             /**
              * Format: uri
              * @description 360° sprite-sheet URL (ADR-049) — the card-hover turntable and the model-viewer's no-WebGL fallback. Omitted until a `sprite_render` job has produced one. Grid is the fixed shared const (24 frames, 6 cols).
@@ -1754,8 +1756,10 @@ export interface components {
              */
             targetZ: number;
         };
-        /** @description Owner-picked surface point on the product's 3D model where a customer's engraving text is projected (storefront decal). Position in model-space metres (matches the glb the viewer loads); normal is the outward surface direction at that point (unit-ish vector, must be non-zero). Absent on a Product = no anchor picked → the storefront falls back to its front-centre heuristic. Display metadata, not money — plain floats (not int-VND). */
+        /** @description One owner-picked surface point on the product's 3D model where a customer's engraving text can be projected (storefront decal). A text option carries a LIST of these (engravePositions) — the owner places as many named spots as they like, and the storefront customer picks exactly ONE to engrave into. Position in model-space metres (matches the glb the viewer loads); normal is the outward surface direction at that point (unit-ish vector, must be non-zero). Display metadata, not money — plain floats (not int-VND). */
         EngraveAnchor: {
+            /** @description Owner-facing name for this spot (e.g. "Mặt trước", "Mặt sau") shown to the customer as a pick. */
+            label: string;
             /**
              * Format: double
              * @description Anchor x in model-space metres, [-100, 100].
@@ -5063,34 +5067,6 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    updateProductEngraveAnchor: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EngraveAnchor"];
-            };
-        };
-        responses: {
-            /** @description Saved. */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-        };
-    };
     createProductColor: {
         parameters: {
             query?: never;
@@ -5254,6 +5230,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Option"];
                 };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateOptionEngraveAnchor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                optionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EngraveAnchor"][];
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];

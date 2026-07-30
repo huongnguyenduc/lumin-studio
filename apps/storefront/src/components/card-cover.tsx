@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { SpriteTurntable } from './sprite-turntable';
+import { SpriteTurntable } from '@lumin/ui';
 
 /** How long the intent must hold — hover (PC) or the tile resting in view (touch) — before the swap. */
 const DWELL_MS = 1200;

@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { SPRITE_COLS, SPRITE_FRAMES, SPRITE_ROWS, spriteFrameCss } from '@/lib/product-view';
-import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
+import { SPRITE_COLS, SPRITE_FRAMES, SPRITE_ROWS, spriteFrameCss } from './lib/sprite';
+import { usePrefersReducedMotion } from './lib/use-prefers-reduced-motion';
 
 // Per-frame dwell for the turntable cycle. 65ms × 46 ping-pong steps ≈ 3s — one full gentle
 // there-and-back that lands on frame 0 right as CardCover's 3s play window hands back to the photo.
@@ -13,10 +13,10 @@ const FRAME_MS = 65;
  * The 360° sprite-sheet turntable (ADR-049 / ADR-007 "lắc trái-phải"). Renders one frame of the sheet as a
  * background and, while `active`, ping-pongs through the frames (0→N-1→0) — a rock left-right preview.
  * prefers-reduced-motion (or `active=false`) pins it to frame 0: no autonomous motion (a11y rule). The pure
- * frame math lives in product-view.spriteFrameCss; this only owns the timer + the reduced-motion gate.
+ * frame math lives in lib/sprite.spriteFrameCss; this only owns the timer + the reduced-motion gate.
  *
- * Used two ways: the catalog card drives `active` from hover; the model-viewer no-WebGL fallback passes
- * `active` steadily so the product turns on its own (still stilled under reduced-motion).
+ * Shared by the storefront (catalog card drives `active` from hover; the PDP's no-WebGL fallback passes
+ * `active` steadily) and the admin editor (a steady preview of the rendered 360° sheet).
  */
 export function SpriteTurntable({
   src,
@@ -52,8 +52,8 @@ export function SpriteTurntable({
     <div
       role="img"
       aria-label={alt}
-      // While idle the sprite sits invisible (opacity-0) on top of the real photo, which has its own
-      // alt — hide it from AT then so a screen reader hears ONE image per tile, not two.
+      // While idle the sprite sits invisible (opacity-0) on top of a real photo the caller may overlay,
+      // which has its own alt — hide it from AT then so a screen reader hears ONE image, not two.
       aria-hidden={!active}
       className={className}
       style={{

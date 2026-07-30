@@ -92,12 +92,15 @@ export function pickedObjectName(
   return name ? name : null;
 }
 
-type EngraveAnchor = components['schemas']['EngraveAnchor'];
+/** The geometry half of an EngraveAnchor — everything but `label` (the picker attaches that separately,
+ *  since a pick is just a surface point; naming it is the admin's own step). */
+type EngraveAnchorGeometry = Omit<components['schemas']['EngraveAnchor'], 'label'>;
 
 /**
- * Decide what a tap on the engrave-anchor picker maps to: the EngraveAnchor to save, or null to ignore.
- * Pure (testable without WebGL) — the component binds `el.positionAndNormalFromPoint` as `surfaceAt`,
- * fed CLIENT (page) pixel coordinates (same contract as `materialAt` above).
+ * Decide what a tap on the engrave-anchor picker maps to: the anchor geometry to save (label attached by
+ * the caller), or null to ignore. Pure (testable without WebGL) — the component binds
+ * `el.positionAndNormalFromPoint` as `surfaceAt`, fed CLIENT (page) pixel coordinates (same contract as
+ * `materialAt` above).
  * Ignores a DRAG (an orbit, same slop rule as pickedObjectName) and a miss (tap on empty space). The
  * position is clamped to the contract envelope ([-100, 100] m) and the normal renormalised to unit
  * length (BE requires each component in [-1, 1] and a non-zero vector); a degenerate zero normal → null.
@@ -113,7 +116,7 @@ export function pickedAnchor(
     normal: { x: number; y: number; z: number };
   } | null,
   slop = 6,
-): EngraveAnchor | null {
+): EngraveAnchorGeometry | null {
   if (!down) return null;
   if (Math.hypot(up.x - down.x, up.y - down.y) > slop) return null; // a drag/orbit, not a pick
   const hit = surfaceAt(up.x, up.y);

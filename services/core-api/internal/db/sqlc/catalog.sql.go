@@ -155,7 +155,7 @@ func (q *Queries) DeleteProduct(ctx context.Context, id uuid.UUID) (uuid.UUID, e
 }
 
 const getOptionByProduct = `-- name: GetOptionByProduct :one
-SELECT id, product_id, label, description, type, price_delta, max_chars FROM options WHERE id = $1 AND product_id = $2
+SELECT id, product_id, label, description, type, price_delta, max_chars, engrave_anchor FROM options WHERE id = $1 AND product_id = $2
 `
 
 type GetOptionByProductParams struct {
@@ -177,6 +177,7 @@ func (q *Queries) GetOptionByProduct(ctx context.Context, arg GetOptionByProduct
 		&i.Type,
 		&i.PriceDelta,
 		&i.MaxChars,
+		&i.EngraveAnchor,
 	)
 	return i, err
 }
@@ -208,7 +209,7 @@ func (q *Queries) GetPartByProduct(ctx context.Context, arg GetPartByProductPara
 }
 
 const getProductByID = `-- name: GetProductByID :one
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names, model3d_structured_url, engrave_anchor FROM products WHERE id = $1
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names, model3d_structured_url FROM products WHERE id = $1
 `
 
 // GetProductByID is the by-id read the checkout handler (PR-3g) needs to derive a
@@ -240,13 +241,12 @@ func (q *Queries) GetProductByID(ctx context.Context, id uuid.UUID) (Product, er
 		&i.SpriteSheetUrl,
 		&i.ModelObjectNames,
 		&i.Model3dStructuredUrl,
-		&i.EngraveAnchor,
 	)
 	return i, err
 }
 
 const getProductBySlug = `-- name: GetProductBySlug :one
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names, model3d_structured_url, engrave_anchor FROM products WHERE slug = $1
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names, model3d_structured_url FROM products WHERE slug = $1
 `
 
 func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (Product, error) {
@@ -274,7 +274,6 @@ func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (Product, e
 		&i.SpriteSheetUrl,
 		&i.ModelObjectNames,
 		&i.Model3dStructuredUrl,
-		&i.EngraveAnchor,
 	)
 	return i, err
 }
@@ -362,7 +361,7 @@ func (q *Queries) InsertColor(ctx context.Context, arg InsertColorParams) (Color
 const insertOption = `-- name: InsertOption :one
 INSERT INTO options (id, product_id, label, description, type, price_delta, max_chars)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, product_id, label, description, type, price_delta, max_chars
+RETURNING id, product_id, label, description, type, price_delta, max_chars, engrave_anchor
 `
 
 type InsertOptionParams struct {
@@ -394,6 +393,7 @@ func (q *Queries) InsertOption(ctx context.Context, arg InsertOptionParams) (Opt
 		&i.Type,
 		&i.PriceDelta,
 		&i.MaxChars,
+		&i.EngraveAnchor,
 	)
 	return i, err
 }
@@ -478,7 +478,7 @@ const insertProduct = `-- name: InsertProduct :one
 INSERT INTO products (
   id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, est_filament_qty, est_print_minutes, product_type
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names, model3d_structured_url, engrave_anchor
+RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names, model3d_structured_url
 `
 
 type InsertProductParams struct {
@@ -538,7 +538,6 @@ func (q *Queries) InsertProduct(ctx context.Context, arg InsertProductParams) (P
 		&i.SpriteSheetUrl,
 		&i.ModelObjectNames,
 		&i.Model3dStructuredUrl,
-		&i.EngraveAnchor,
 	)
 	return i, err
 }
@@ -684,7 +683,7 @@ func (q *Queries) ListActiveProducts(ctx context.Context, arg ListActiveProducts
 }
 
 const listAdminProducts = `-- name: ListAdminProducts :many
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names, model3d_structured_url, engrave_anchor FROM products
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names, model3d_structured_url FROM products
 WHERE ($1::product_status IS NULL OR status = $1::product_status)
 ORDER BY created_at DESC, id DESC
 `
@@ -727,7 +726,6 @@ func (q *Queries) ListAdminProducts(ctx context.Context, status NullProductStatu
 			&i.SpriteSheetUrl,
 			&i.ModelObjectNames,
 			&i.Model3dStructuredUrl,
-			&i.EngraveAnchor,
 		); err != nil {
 			return nil, err
 		}
@@ -1014,7 +1012,7 @@ func (q *Queries) ListColorsByProduct(ctx context.Context, productID uuid.UUID) 
 }
 
 const listOptionsByProduct = `-- name: ListOptionsByProduct :many
-SELECT id, product_id, label, description, type, price_delta, max_chars FROM options WHERE product_id = $1 ORDER BY label
+SELECT id, product_id, label, description, type, price_delta, max_chars, engrave_anchor FROM options WHERE product_id = $1 ORDER BY label
 `
 
 func (q *Queries) ListOptionsByProduct(ctx context.Context, productID uuid.UUID) ([]Option, error) {
@@ -1034,6 +1032,7 @@ func (q *Queries) ListOptionsByProduct(ctx context.Context, productID uuid.UUID)
 			&i.Type,
 			&i.PriceDelta,
 			&i.MaxChars,
+			&i.EngraveAnchor,
 		); err != nil {
 			return nil, err
 		}
@@ -1077,7 +1076,7 @@ func (q *Queries) ListPartsByProduct(ctx context.Context, productID uuid.UUID) (
 }
 
 const listProductsByStatus = `-- name: ListProductsByStatus :many
-SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names, model3d_structured_url, engrave_anchor FROM products WHERE status = $1 ORDER BY created_at DESC
+SELECT id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names, model3d_structured_url FROM products WHERE status = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListProductsByStatus(ctx context.Context, status ProductStatus) ([]Product, error) {
@@ -1111,7 +1110,6 @@ func (q *Queries) ListProductsByStatus(ctx context.Context, status ProductStatus
 			&i.SpriteSheetUrl,
 			&i.ModelObjectNames,
 			&i.Model3dStructuredUrl,
-			&i.EngraveAnchor,
 		); err != nil {
 			return nil, err
 		}
@@ -1378,7 +1376,7 @@ const updateOption = `-- name: UpdateOption :one
 UPDATE options
 SET label = $3, description = $4, type = $5, price_delta = $6, max_chars = $7
 WHERE id = $1 AND product_id = $2
-RETURNING id, product_id, label, description, type, price_delta, max_chars
+RETURNING id, product_id, label, description, type, price_delta, max_chars, engrave_anchor
 `
 
 type UpdateOptionParams struct {
@@ -1412,6 +1410,7 @@ func (q *Queries) UpdateOption(ctx context.Context, arg UpdateOptionParams) (Opt
 		&i.Type,
 		&i.PriceDelta,
 		&i.MaxChars,
+		&i.EngraveAnchor,
 	)
 	return i, err
 }
@@ -1452,6 +1451,30 @@ func (q *Queries) UpdateOptionChoice(ctx context.Context, arg UpdateOptionChoice
 		&i.DisplayOrder,
 	)
 	return i, err
+}
+
+const updateOptionEngraveAnchor = `-- name: UpdateOptionEngraveAnchor :execrows
+UPDATE options SET engrave_anchor = $3 WHERE id = $1 AND product_id = $2
+`
+
+type UpdateOptionEngraveAnchorParams struct {
+	ID            uuid.UUID `json:"id"`
+	ProductID     uuid.UUID `json:"productId"`
+	EngraveAnchor []byte    `json:"engraveAnchor"`
+}
+
+// UpdateOptionEngraveAnchor persists the owner-picked engrave anchor (atomic jsonb blob
+// {posX,posY,posZ,normX,normY,normZ}) for ONE text option -- the surface point where the storefront
+// projects THAT option's engraving text. Moved off the product (was one shared spot for the whole
+// model; a product with two text options needs two independent spots). Separate write from
+// UpdateOption, never pricing; scoped by (option, product) like UpdateOption/DeleteOption -- an
+// optionId under another product → 0 rows → 404. :execrows so that surfaces.
+func (q *Queries) UpdateOptionEngraveAnchor(ctx context.Context, arg UpdateOptionEngraveAnchorParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateOptionEngraveAnchor, arg.ID, arg.ProductID, arg.EngraveAnchor)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updatePart = `-- name: UpdatePart :one
@@ -1499,7 +1522,7 @@ SET slug = $2, name = $3, description = $4, category_id = $5, base_price = $6,
     dimensions = $7, material = $8, images = $9, status = $10, est_filament_qty = $11, est_print_minutes = $12,
     product_type = $13
 WHERE id = $1
-RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names, model3d_structured_url, engrave_anchor
+RETURNING id, slug, name, description, category_id, base_price, dimensions, material, model3d_url, images, status, rating_avg, review_count, created_at, model3d_view, est_filament_qty, est_print_minutes, product_type, sprite_sheet_url, model_object_names, model3d_structured_url
 `
 
 type UpdateProductParams struct {
@@ -1561,30 +1584,8 @@ func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (P
 		&i.SpriteSheetUrl,
 		&i.ModelObjectNames,
 		&i.Model3dStructuredUrl,
-		&i.EngraveAnchor,
 	)
 	return i, err
-}
-
-const updateProductEngraveAnchor = `-- name: UpdateProductEngraveAnchor :execrows
-UPDATE products SET engrave_anchor = $2 WHERE id = $1
-`
-
-type UpdateProductEngraveAnchorParams struct {
-	ID            uuid.UUID `json:"id"`
-	EngraveAnchor []byte    `json:"engraveAnchor"`
-}
-
-// UpdateProductEngraveAnchor persists the owner-picked engrave anchor (atomic jsonb blob
-// {posX,posY,posZ,normX,normY,normZ}) -- the surface point where the storefront projects the customer's
-// engraving text. Same shape as UpdateProductModelView: a separate write from UpdateProduct, never
-// pricing; :execrows so an unknown id (0 rows) surfaces as 404.
-func (q *Queries) UpdateProductEngraveAnchor(ctx context.Context, arg UpdateProductEngraveAnchorParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateProductEngraveAnchor, arg.ID, arg.EngraveAnchor)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
 }
 
 const updateProductModelView = `-- name: UpdateProductModelView :execrows

@@ -49,6 +49,7 @@ const product: ProductDetailView = {
       priceDelta: 40_000,
       maxChars: null,
       choices: [],
+      engravePositions: [],
     },
     {
       id: 'opt-khac',
@@ -58,6 +59,7 @@ const product: ProductDetailView = {
       priceDelta: 30_000,
       maxChars: 12,
       choices: [],
+      engravePositions: [],
     },
   ],
   parts: [],
@@ -118,6 +120,7 @@ const partsProduct: ProductDetailView = {
         { id: 'ch-s', label: 'S', description: '', priceDelta: 0 },
         { id: 'ch-m', label: 'M', description: '', priceDelta: 40_000 },
       ],
+      engravePositions: [],
     },
   ],
   parts: [

@@ -119,6 +119,11 @@ export const vi = {
       titleNew: 'Thêm sản phẩm',
       titleEdit: 'Sửa · {name}',
       save: 'Lưu sản phẩm',
+      saveChanges: 'Lưu thay đổi',
+      savingChanges: 'Đang lưu…',
+      unsaved: 'Bạn có thay đổi chưa lưu.',
+      createFirstHint:
+        'Lưu sản phẩm trước đã — rồi bạn quay lại đây thêm ảnh, model 3D và vị trí khắc nhé.',
       saved: 'Đã lưu 🧡',
       notFound:
         'Không tìm thấy sản phẩm này — có thể mã chưa đúng, bạn kiểm tra lại giúp mình nhé.',
@@ -222,6 +227,9 @@ export const vi = {
           notFound: 'Không tìm thấy sản phẩm này.',
           error: 'Chưa tạo được bản dựng — bạn thử lại nhé.',
         },
+        sprite360Label: 'Xem trước ảnh xoay 360°',
+        sprite360Alt: 'Ảnh xoay 360° của {name}',
+        sprite360None: 'Chưa có ảnh xoay 360° — dựng xong "Ảnh xoay 360°" ở trên sẽ hiện tại đây.',
       },
       colors: {
         partsTitle: 'Bộ phận',
@@ -330,6 +338,8 @@ export const vi = {
         saveView: 'Lưu góc mặc định',
         saving: 'Đang lưu…',
         saved: 'Đã lưu góc 🧡',
+        savedRerender:
+          'Đã lưu góc 🧡 — đang dựng lại ảnh xoay 360° theo góc mới, chạy nền vài phút nhé.',
         saveErr: {
           forbidden: 'Bạn không có quyền lưu góc mặc định.',
           validation: 'Góc chưa hợp lệ — bạn thử lại nhé.',
@@ -341,18 +351,27 @@ export const vi = {
       engraveAnchor: {
         noModel: 'Tải mô hình 3D ở trên trước, rồi bạn chọn vị trí khắc ở đây nhé.',
         noWebgl: 'Trình duyệt này không hỗ trợ WebGL nên chưa chọn được vị trí khắc.',
-        hint: 'Chạm vào bề mặt mẫu để đặt chữ khắc — kéo để xoay, chạm để chọn.',
+        noTextOptions:
+          'Chưa có tuỳ chọn khắc chữ nào — thêm một tuỳ chọn kiểu "Khắc chữ" ở mục Tuỳ chọn phía trên rồi quay lại đây chọn vị trí nhé.',
+        hint: 'Chọn tuỳ chọn khắc chữ ở trên, gõ tên vị trí rồi chạm vào bề mặt mẫu để thêm — kéo để xoay, chạm để đặt. Mỗi tuỳ chọn có thể có NHIỀU vị trí; khách sẽ chọn một trong số đó trên web.',
+        optionTabsLabel: 'Chọn tuỳ chọn khắc chữ để chỉnh danh sách vị trí',
         loading: 'Đang tải mẫu 3D…',
         error: 'Chưa tải được mẫu 3D — bạn thử lại nhé.',
         alt: 'Chọn vị trí khắc trên mẫu 3D của {name}',
-        // The tiny marker glyph pinned at the picked spot (decorative, aria-hidden).
-        marker: 'Aa',
-        save: 'Lưu vị trí khắc',
+        positionLabelInput: 'Tên vị trí sắp thêm',
+        positionLabelHint: 'Gõ tên rồi chạm vào mẫu 3D để thêm vị trí này vào danh sách.',
+        positionLabelPlaceholder: 'Ví dụ: Mặt trước',
+        removePosition: 'Xoá',
+        sampleLabel: 'Chữ xem thử',
+        sampleHint: 'Chỉ để xem thử chữ nổi trên mẫu — không lưu vào sản phẩm.',
+        sampleFallback: 'Tên khách',
+        sampleColorLabel: 'Màu chữ khắc (xem thử)',
+        save: 'Lưu danh sách vị trí',
         saving: 'Đang lưu…',
         saved: 'Đã lưu vị trí khắc 🧡',
-        savedExisting: 'Đang dùng vị trí đã lưu.',
-        pickedUnsaved: 'Vị trí mới — nhớ bấm lưu nhé.',
-        empty: 'Chưa có vị trí — web sẽ tự đặt chữ ở mặt trước.',
+        savedExisting: 'Đang dùng danh sách vị trí đã lưu.',
+        pickedUnsaved: 'Danh sách vừa đổi — nhớ bấm lưu nhé.',
+        empty: 'Chưa có vị trí nào — web sẽ tự đặt chữ ở mặt trước.',
         saveErr: {
           forbidden: 'Bạn không có quyền lưu vị trí khắc.',
           validation: 'Vị trí chưa hợp lệ — bạn chọn lại nhé.',
