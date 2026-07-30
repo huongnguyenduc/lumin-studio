@@ -37,3 +37,4 @@ Cat Peek - Behavior Spec.md
 # Draco decoder vendored verbatim from three (self-hosted, PDPL) — third-party emscripten
 # output, not ours to format (mirrors the eslint ignore).
 /apps/storefront/public/draco/
+/apps/admin/public/draco/
