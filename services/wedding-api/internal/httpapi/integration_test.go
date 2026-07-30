@@ -251,6 +251,28 @@ func TestEndToEndFlows(t *testing.T) {
 		t.Fatalf("edited text = %q", edited.Text)
 	}
 
+	// --- wishes: self-edit via guestId too (personalized link, no editToken
+	// needed) — covers wishes from before the editToken feature existed ---
+	var viaGuest struct{ ID string }
+	call(t, "POST", u+"/api/wishes", nil,
+		map[string]string{"guestId": g1.ID, "text": "chưa sửa"}, &viaGuest)
+	if code := call(t, "PATCH", u+"/api/wishes/"+viaGuest.ID, nil,
+		map[string]string{"guestId": g2.ID, "text": "sửa trộm"}, nil); code != 403 {
+		t.Fatalf("patch with someone else's guestId = %d, want 403", code)
+	}
+	if code := call(t, "PATCH", u+"/api/wishes/"+viaGuest.ID, nil,
+		map[string]string{"guestId": g1.ID, "text": "đã sửa qua guestId"}, &edited); code != 200 {
+		t.Fatalf("patch with matching guestId = %d, want 200", code)
+	}
+	if edited.Text != "đã sửa qua guestId" {
+		t.Fatalf("edited text = %q", edited.Text)
+	}
+	var mine struct{ IDs []string }
+	call(t, "POST", u+"/api/wishes/mine", nil, map[string]string{"guestId": g1.ID}, &mine)
+	if len(mine.IDs) != 1 || mine.IDs[0] != viaGuest.ID {
+		t.Fatalf("myWishes for g1 = %+v, want [%s]", mine, viaGuest.ID)
+	}
+
 	// --- groups: rename cascades, delete reassigns to Khác ---
 	if code := call(t, "POST", u+"/api/admin/groups", admin,
 		map[string]string{"name": "Nhà gái", "eventSlug": evt}, nil); code != 409 {

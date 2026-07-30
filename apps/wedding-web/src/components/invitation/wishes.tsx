@@ -124,11 +124,32 @@ export function Wishes({
   const [wishes, setWishes] = useState(initialWishes);
   const [limit, setLimit] = useState(4);
   // Populated post-mount (localStorage isn't available during SSR) — which
-  // wishes THIS browser can self-edit.
+  // wishes THIS browser can self-edit. Two independent sources: a per-wish
+  // editToken kept locally since sending it, and (for wishes from BEFORE that
+  // feature existed) a server lookup by personalized guestId / consented GI
+  // identity — whichever the wish was originally submitted with.
   const [myEditTokens, setMyEditTokens] = useState<Record<string, string>>({});
+  const [editableIds, setEditableIds] = useState<Set<string>>(new Set());
   useEffect(() => {
-    setMyEditTokens(editTokens());
-  }, []);
+    const tokens = editTokens();
+    setMyEditTokens(tokens);
+    setEditableIds(new Set(Object.keys(tokens)));
+    if (!guestId && !identityEnabled) return;
+    void fetch(`/api/wishes/mine?host=${encodeURIComponent(location.hostname)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        guestId: guestId ?? '',
+        identityToken: identityEnabled ? storedToken() : '',
+      }),
+    })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = (await res.json()) as { ids: string[] };
+        setEditableIds((s) => new Set([...s, ...data.ids]));
+      })
+      .catch(() => {});
+  }, [guestId, identityEnabled]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editText, setEditText] = useState('');
@@ -177,6 +198,7 @@ export function Wishes({
         const data = (await res.json()) as { id: string; editToken?: string };
         setWishes((w) => w.map((item) => (item.id === 'local' ? { ...item, id: data.id } : item)));
         if (data.editToken) saveEditToken(data.id, data.editToken);
+        setEditableIds((s) => new Set(s).add(data.id));
       })
       .catch(() => {});
   };
@@ -203,6 +225,8 @@ export function Wishes({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             editToken: myEditTokens[id] ?? '',
+            guestId: guestId ?? '',
+            identityToken: identityEnabled ? storedToken() : '',
             name: editName.trim() || t('defaultName'),
             text: trimmed,
             color: WISH_COLORS[editColor].bg,
@@ -555,7 +579,7 @@ export function Wishes({
                   name={w.name}
                   when={timeAgo(w.createdAt)}
                 />
-                {myEditTokens[w.id] ? (
+                {editableIds.has(w.id) ? (
                   <button
                     type="button"
                     onClick={() => startEdit(w)}
