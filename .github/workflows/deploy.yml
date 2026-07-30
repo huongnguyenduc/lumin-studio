@@ -38,6 +38,8 @@ env:
   CLUSTER: luminstudio
   NS: prod
   SITE_URL: https://www.luminstudio.vn
+  NEXT_PUBLIC_UMAMI_SRC: https://analytics.luminstudio.vn/script.js
+  NEXT_PUBLIC_UMAMI_WEBSITE_ID: 2a4b1e99-f1d0-4e15-8e42-ac15fe648f79
   # workflow_run: github.sha is the default-branch head at EVENT time (can race a newer push) —
   # deploy exactly the SHA CI just validated. Dispatch: current head.
   DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
@@ -172,6 +174,8 @@ jobs:
           curl -sf http://localhost:8080/healthz >/dev/null || { echo "core-api healthz never came up"; exit 1; }
           docker build --network=host \
             --build-arg SITE_URL="$SITE_URL" --build-arg CORE_API_URL=http://localhost:8080 \
+            --build-arg NEXT_PUBLIC_UMAMI_SRC="$NEXT_PUBLIC_UMAMI_SRC" \
+            --build-arg NEXT_PUBLIC_UMAMI_WEBSITE_ID="$NEXT_PUBLIC_UMAMI_WEBSITE_ID" \
             -f apps/storefront/Dockerfile -t "lumin-storefront:$TAG" .
           kill "$PF" 2>/dev/null || true
           k3d image import "lumin-storefront:$TAG" -c "$CLUSTER"
