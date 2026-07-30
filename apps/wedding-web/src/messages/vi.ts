@@ -107,6 +107,10 @@ export const vi = {
     previewLabel: 'Xem trước lời chúc của bạn',
     previewNow: 'vừa xong',
     previewEmpty: '…',
+    edit: 'Sửa lời chúc',
+    save: 'Lưu',
+    cancel: 'Huỷ',
+    editError: 'Không lưu được, thử lại nhé.',
   },
   wall: {
     heading: 'Lời chúc gửi trao',

@@ -225,6 +225,32 @@ func TestEndToEndFlows(t *testing.T) {
 		t.Fatalf("wall = %+v (want total 2, newest first = anonymous default name)", wall)
 	}
 
+	// --- wishes: self-edit via editToken (right token succeeds, wrong/missing forbidden) ---
+	var created struct {
+		ID        string
+		EditToken string
+	}
+	call(t, "POST", u+"/api/wishes", nil, map[string]string{"text": "chưa sửa"}, &created)
+	if created.EditToken == "" {
+		t.Fatalf("postWish did not return an editToken")
+	}
+	if code := call(t, "PATCH", u+"/api/wishes/"+created.ID, nil,
+		map[string]string{"editToken": "deadbeef", "text": "sửa trộm"}, nil); code != 403 {
+		t.Fatalf("patch with wrong editToken = %d, want 403", code)
+	}
+	if code := call(t, "PATCH", u+"/api/wishes/"+created.ID, nil,
+		map[string]string{"text": "sửa không có token"}, nil); code != 403 {
+		t.Fatalf("patch with no editToken = %d, want 403", code)
+	}
+	var edited struct{ Text string }
+	if code := call(t, "PATCH", u+"/api/wishes/"+created.ID, nil,
+		map[string]string{"editToken": created.EditToken, "text": "đã sửa xong"}, &edited); code != 200 {
+		t.Fatalf("patch with right editToken = %d, want 200", code)
+	}
+	if edited.Text != "đã sửa xong" {
+		t.Fatalf("edited text = %q", edited.Text)
+	}
+
 	// --- groups: rename cascades, delete reassigns to Khác ---
 	if code := call(t, "POST", u+"/api/admin/groups", admin,
 		map[string]string{"name": "Nhà gái", "eventSlug": evt}, nil); code != 409 {
