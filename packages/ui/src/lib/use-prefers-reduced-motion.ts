@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 
 /** True when the OS asks for reduced motion — gates JS-driven animation loops (the global CSS rule
  *  can't stop a setInterval/rAF). Client-only; starts false so SSR/first paint match, then syncs after
- *  mount. Shared by SpriteTurntable and HeroCarousel (always-must #4). */
+ *  mount. Shared by SpriteTurntable (storefront card-hover + no-WebGL fallback, admin 360° preview). */
 export function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
   useEffect(() => {

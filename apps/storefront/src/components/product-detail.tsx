@@ -170,6 +170,13 @@ export function ProductDetail({
   const [choiceByOption, setChoiceByOption] = useState<Record<string, string>>({});
   const [engraveTexts, setEngraveTexts] = useState<Record<string, string>>({});
   const [selectedChoiceIds, setSelectedChoiceIds] = useState<string[]>([]);
+  // Colour of the raised engraved lettering (customer pick from the product's OWN palette — no separate
+  // engrave-colour config). null → the viewer's ink-dark default.
+  const [engraveColorId, setEngraveColorId] = useState<string | null>(null);
+  // Which of a text option's admin-defined engravePositions the customer picked (index into that
+  // option's own array). A text option can offer several NAMED spots (e.g. "Mặt trước"/"Mặt sau") —
+  // the customer picks exactly ONE, never all at once. Undefined until picked → defaults to index 0.
+  const [enginePositionByOption, setEnginePositionByOption] = useState<Record<string, number>>({});
 
   // f-3 (ADR-052): the {objectName → hex} map the live 3D viewer applies. Memoised so the viewer's recolor
   // effect only re-runs when the per-part selection changes, not on every unrelated re-render (e.g. activeImage).
@@ -190,6 +197,9 @@ export function ProductDetail({
     ? undefined
     : product.colors.find((c) => c.id === selectedColorId)?.hex;
   const hasColors = product.colors.length > 0;
+  const engraveColorHex = engraveColorId
+    ? product.colors.find((c) => c.id === engraveColorId)?.hex
+    : undefined;
   const anyPriceDelta = product.colors.some((c) => c.priceDelta > 0);
 
   // Options split by kind (ADR-037): `text` → engrave fields; `choice` with no enumerated choices → a
@@ -202,6 +212,15 @@ export function ProductDetail({
   const engraveEntries = textOptions.map((o) => ({
     text: engraveTexts[o.id] ?? '',
     maxChars: o.maxChars,
+  }));
+  // Live 3D preview: one engraving per text option, at the position the customer picked from THAT
+  // option's own admin-defined list (engravePositions) — index 0 by default. `[]` → anchor undefined,
+  // so the viewer falls back to its front-centre heuristic.
+  const viewerEngravings = textOptions.map((o) => ({
+    id: o.id,
+    text: engraveTexts[o.id] ?? '',
+    anchor: o.engravePositions[enginePositionByOption[o.id] ?? 0],
+    colorHex: engraveColorHex,
   }));
 
   // The colour axis (flat lock OR every part coloured) and the enumerated-choice axis each drive a hint;
@@ -324,8 +343,7 @@ export function ProductDetail({
                   spriteSheetUrl={product.spriteSheetUrl}
                   partColors={viewerPartColors}
                   flatColorHex={flatColorHex}
-                  engraveText={textOptions[0] ? engraveTexts[textOptions[0].id] : undefined}
-                  engraveAnchor={product.engraveAnchor}
+                  engravings={viewerEngravings}
                   model3dView={product.model3dView}
                   fallback={
                     cover ? (
@@ -530,13 +548,69 @@ export function ProductDetail({
           {/* Engraving (text options). Live preview + rune counter + over-limit block (P1-j). Each text
               option is independently counted against its own maxChars — realistically one per product. */}
           {textOptions.map((o) => (
-            <EngraveField
-              key={o.id}
-              option={o}
-              value={engraveTexts[o.id] ?? ''}
-              onChange={(next) => setEngraveTexts((prev) => ({ ...prev, [o.id]: next }))}
-            />
+            <div key={o.id} className="flex flex-col gap-3">
+              <EngraveField
+                option={o}
+                value={engraveTexts[o.id] ?? ''}
+                onChange={(next) => setEngraveTexts((prev) => ({ ...prev, [o.id]: next }))}
+              />
+              {/* Vị trí khắc (admin defines several named spots per option; the customer picks ONE —
+                  never all at once). No picker when the admin only set up one spot (or none). */}
+              {o.engravePositions.length > 1 ? (
+                <fieldset>
+                  <legend className="mb-2 font-display text-sm font-semibold text-text-strong">
+                    {t('enginePositionHeading')}
+                  </legend>
+                  <ul className="flex flex-wrap gap-2.5">
+                    {o.engravePositions.map((pos, i) => {
+                      const groupName = `detail-engrave-position-${o.id}`;
+                      const checked = (enginePositionByOption[o.id] ?? 0) === i;
+                      return (
+                        <li key={i}>
+                          <label className="cursor-pointer">
+                            <input
+                              type="radio"
+                              name={groupName}
+                              checked={checked}
+                              onChange={() =>
+                                setEnginePositionByOption((prev) => ({ ...prev, [o.id]: i }))
+                              }
+                              className="peer sr-only"
+                            />
+                            <span
+                              className={cn(
+                                'inline-flex min-h-11 items-center gap-1.5 rounded-sm border-2 border-border-default bg-surface-card px-5 py-2 text-[15px] font-semibold text-text-strong',
+                                'transition-colors duration-150 ease-out motion-reduce:transition-none',
+                                'peer-checked:border-border-strong peer-checked:bg-surface-brand peer-checked:text-on-dark',
+                                'peer-focus-visible:ring-2 peer-focus-visible:ring-accent-sky peer-focus-visible:ring-offset-2',
+                              )}
+                            >
+                              {pos.label}
+                            </span>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </fieldset>
+              ) : null}
+            </div>
           ))}
+
+          {/* Engrave-text colour (P1-j follow-up): reuses the SAME palette as the model's paint colours —
+              no separate config, no default lock (an unpicked engrave colour just renders ink-dark). */}
+          {textOptions.length > 0 && hasColors ? (
+            <ColorSwatches
+              heading={t('engraveColorHeading')}
+              headingId="detail-engrave-color-heading"
+              colors={product.colors}
+              selectedId={engraveColorId}
+              onSelect={setEngraveColorId}
+              labelFor={colorLabel}
+              outOfStockNote={tErr('colorOutOfStock')}
+              selectedNote={selectedNoteFor(product.colors, engraveColorId)}
+            />
+          ) : null}
 
           {/* Toggle add-on options (ADR-037: a `choice` option with NO enumerated choices). A boolean
               add-on (label + priceDelta); the live total lands with the cart quote. */}

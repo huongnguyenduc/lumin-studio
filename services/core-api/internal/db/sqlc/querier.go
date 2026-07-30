@@ -619,6 +619,13 @@ type Querier interface {
 	// UpdateOptionChoice / DeleteOptionChoice are scoped by BOTH id AND option_id (a choiceId under another
 	// option → no row → 404); the handler has already confirmed the option ∈ product via GetOptionByProduct.
 	UpdateOptionChoice(ctx context.Context, arg UpdateOptionChoiceParams) (OptionChoice, error)
+	// UpdateOptionEngraveAnchor persists the owner-picked engrave anchor (atomic jsonb blob
+	// {posX,posY,posZ,normX,normY,normZ}) for ONE text option -- the surface point where the storefront
+	// projects THAT option's engraving text. Moved off the product (was one shared spot for the whole
+	// model; a product with two text options needs two independent spots). Separate write from
+	// UpdateOption, never pricing; scoped by (option, product) like UpdateOption/DeleteOption -- an
+	// optionId under another product → 0 rows → 404. :execrows so that surfaces.
+	UpdateOptionEngraveAnchor(ctx context.Context, arg UpdateOptionEngraveAnchorParams) (int64, error)
 	// UpdateOrderStatus persists a transition: the new status, the full appended statusHistory,
 	// and — only when supplied — the denormalized refund_proof_url and payment_confirmed_at
 	// (COALESCE keeps the existing value when the narg is NULL). The append itself is computed in
@@ -653,11 +660,6 @@ type Querier interface {
 	// product editor form can never blank it. slug stays mutable — a changed slug that collides trips the
 	// UNIQUE(slug) constraint, which the handler maps to a 400 field error (never a 500).
 	UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error)
-	// UpdateProductEngraveAnchor persists the owner-picked engrave anchor (atomic jsonb blob
-	// {posX,posY,posZ,normX,normY,normZ}) -- the surface point where the storefront projects the customer's
-	// engraving text. Same shape as UpdateProductModelView: a separate write from UpdateProduct, never
-	// pricing; :execrows so an unknown id (0 rows) surfaces as 404.
-	UpdateProductEngraveAnchor(ctx context.Context, arg UpdateProductEngraveAnchorParams) (int64, error)
 	// UpdateProductModelView persists the owner's saved default 3D-viewer camera pose (ADR-038) as the whole
 	// atomic model3d_view jsonb blob ({orbitTheta,orbitPhi,orbitRadius,targetX,targetY,targetZ}). It is a
 	// separate write from UpdateProduct (the design's "Lưu góc mặc định" is its own button) and touches no

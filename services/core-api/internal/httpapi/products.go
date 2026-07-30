@@ -110,9 +110,9 @@ func productDTO(p sqlc.Product, colors []sqlc.Color, options []sqlc.Option, part
 	if err != nil {
 		return api.Product{}, fmt.Errorf("product %s: decode model3d_view jsonb: %w", p.Slug, err)
 	}
-	engraveAnchor, err := engraveAnchorFromJSON(p.EngraveAnchor)
+	optionsOut, err := optionsDTO(options, choices)
 	if err != nil {
-		return api.Product{}, fmt.Errorf("product %s: decode engrave_anchor jsonb: %w", p.Slug, err)
+		return api.Product{}, fmt.Errorf("product %s: %w", p.Slug, err)
 	}
 	return api.Product{
 		Id:                   p.ID,
@@ -126,12 +126,11 @@ func productDTO(p sqlc.Product, colors []sqlc.Color, options []sqlc.Option, part
 		Model3dUrl:           p.Model3dUrl,
 		Model3dStructuredUrl: structuredURLPtr(p.Model3dStructuredUrl), // f-4: named-objects glb for the live viewer's per-part recolor; nil until ingested
 		Model3dView:          view,                                     // ADR-038: owner-saved default camera pose; nil = auto-frame
-		EngraveAnchor:        engraveAnchor,                            // owner-picked engraving spot; nil = storefront front-centre heuristic
 		SpriteSheetUrl:       spriteURLPtr(p.SpriteSheetUrl),           // ADR-049: 360° sprite sheet; nil until rendered
 		ModelObjectNames:     objectNamesPtr(p.ModelObjectNames),       // f-2: object list for the editor's part mapping; nil until ingested
 		Images:               images,
 		Colors:               colorsDTO(colors),
-		Options:              optionsDTO(options, choices),
+		Options:              optionsOut,
 		Parts:                partsDTO(parts),
 		Status:               api.ProductStatus(p.Status),
 		RatingAvg:            p.RatingAvg,
@@ -174,17 +173,21 @@ func model3dViewFromJSON(raw []byte) (*api.Model3dView, error) {
 	return &v, nil
 }
 
-// engraveAnchorFromJSON parses the nullable engrave_anchor jsonb into the wire anchor, or nil when the
-// column is NULL/empty — no anchor picked, so the storefront falls back to its front-centre heuristic.
-func engraveAnchorFromJSON(raw []byte) (*api.EngraveAnchor, error) {
+// engravePositionsFromJSON parses the nullable engrave_anchor jsonb (now a LIST of named spots, one text
+// option can offer several) into the wire slice, or [] when the column is NULL/empty — no positions
+// picked, so the storefront falls back to its front-centre heuristic (no picker shown).
+func engravePositionsFromJSON(raw []byte) ([]api.EngraveAnchor, error) {
 	if len(raw) == 0 {
-		return nil, nil
+		return []api.EngraveAnchor{}, nil
 	}
-	var a api.EngraveAnchor
+	var a []api.EngraveAnchor
 	if err := json.Unmarshal(raw, &a); err != nil {
 		return nil, err
 	}
-	return &a, nil
+	if a == nil {
+		a = []api.EngraveAnchor{}
+	}
+	return a, nil
 }
 
 // colorsDTO maps color rows to the wire shape, dropping the internal productId. A nil/empty result yields
@@ -209,7 +212,7 @@ func colorsDTO(rows []sqlc.Color) []api.Color {
 // max_chars (int32) to the wire *int. Each option's enumerated choices (ADR-037) are grouped in from the
 // product-wide choices list by option_id; an option with none renders `choices: []`. A nil/empty options
 // result yields a non-nil empty slice → `[]`.
-func optionsDTO(rows []sqlc.Option, choices []sqlc.OptionChoice) []api.Option {
+func optionsDTO(rows []sqlc.Option, choices []sqlc.OptionChoice) ([]api.Option, error) {
 	byOption := map[uuid.UUID][]api.OptionChoice{}
 	for _, ch := range choices {
 		byOption[ch.OptionID] = append(byOption[ch.OptionID], optionChoiceDTO(ch))
@@ -220,17 +223,22 @@ func optionsDTO(rows []sqlc.Option, choices []sqlc.OptionChoice) []api.Option {
 		if ch == nil {
 			ch = []api.OptionChoice{} // render [], never null (spec §03)
 		}
+		positions, err := engravePositionsFromJSON(o.EngraveAnchor)
+		if err != nil {
+			return nil, fmt.Errorf("option %s: decode engrave_anchor jsonb: %w", o.ID, err)
+		}
 		out[i] = api.Option{
-			Id:          o.ID,
-			Label:       o.Label,
-			Description: o.Description,
-			Type:        api.OptionType(o.Type),
-			PriceDelta:  o.PriceDelta, // raw int-VND (may be 0)
-			MaxChars:    maxCharsPtr(o.MaxChars),
-			Choices:     ch,
+			Id:               o.ID,
+			Label:            o.Label,
+			Description:      o.Description,
+			Type:             api.OptionType(o.Type),
+			PriceDelta:       o.PriceDelta, // raw int-VND (may be 0)
+			MaxChars:         maxCharsPtr(o.MaxChars),
+			Choices:          ch,
+			EngravePositions: &positions, // this option's named spots; customer picks one, [] = front-centre heuristic
 		}
 	}
-	return out
+	return out, nil
 }
 
 // partDTO maps one part row to the wire shape (ADR-037; ADR-039 est_filament_qty).

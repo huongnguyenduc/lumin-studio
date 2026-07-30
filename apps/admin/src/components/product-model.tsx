@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition, type ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Badge, Button } from '@lumin/ui';
+import { Badge, Button, SpriteTurntable } from '@lumin/ui';
 import type { components } from '@lumin/api-client';
 import { uploadModelFile, type ModelUploadError } from '@/lib/upload-model';
 import { createAssetJob, getAssetJobs, type AssetJobCode } from '@/lib/asset-actions';
@@ -28,7 +28,19 @@ const POLL_MS = 4000;
  * Status is polled (no SSE for asset jobs); when the pipeline settles we router.refresh() to pull the
  * product's new model3dUrl. Edit-mode only — the endpoints are keyed by an existing product id.
  */
-export function ProductModel({ productId, model3dUrl }: { productId: string; model3dUrl: string }) {
+export function ProductModel({
+  productId,
+  model3dUrl,
+  spriteSheetUrl,
+  productName,
+}: {
+  productId: string;
+  model3dUrl: string;
+  /** 360° sprite sheet URL (ADR-049) — undefined until a sprite_render job has produced one. Previewed
+   *  steadily (not hover-gated, unlike the storefront card) so the owner can eyeball the render. */
+  spriteSheetUrl?: string;
+  productName: string;
+}) {
   const t = useTranslations('products.edit.model');
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -163,6 +175,24 @@ export function ProductModel({ productId, model3dUrl }: { productId: string; mod
           ))}
         </ul>
       )}
+
+      <div className="flex flex-col gap-1.5">
+        <span className="font-display text-sm font-medium text-text-strong">
+          {t('sprite360Label')}
+        </span>
+        {spriteSheetUrl ? (
+          <div className="aspect-square w-full max-w-[220px] overflow-hidden rounded-lg border border-border-default bg-surface-sunken">
+            <SpriteTurntable
+              src={spriteSheetUrl}
+              alt={t('sprite360Alt', { name: productName })}
+              active
+              className="h-full w-full"
+            />
+          </div>
+        ) : (
+          <p className="text-sm text-text-muted">{t('sprite360None')}</p>
+        )}
+      </div>
 
       {anyPending && polls >= POLL_CAP && (
         <div>

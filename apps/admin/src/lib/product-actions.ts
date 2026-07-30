@@ -278,18 +278,25 @@ export async function deleteChoice(
   }
 }
 
-// Save the engrave anchor — the owner-picked surface point where the storefront projects a customer's
-// engraving text onto the 3D model. Owner-only; 204 no body. Display metadata, not money.
+// Save one text option's engrave positions — the owner-picked, NAMED surface spots the storefront
+// customer picks ONE of to project THAT option's engraving text onto the 3D model (moved off the
+// product so a product with more than one text option can place each independently; a product can now
+// offer several named spots per option, not just one). Owner-only; whole list replaces the previous one
+// (atomic); 204 no body. Display metadata, not money.
 export async function saveEngraveAnchor(
   productId: string,
-  anchor: components['schemas']['EngraveAnchor'],
+  optionId: string,
+  positions: components['schemas']['EngraveAnchor'][],
 ): Promise<SubWriteResult> {
   try {
     const client = await authedClient();
-    const { error, response } = await client.PATCH('/admin/products/{id}/engrave-anchor', {
-      params: { path: { id: productId } },
-      body: anchor,
-    });
+    const { error, response } = await client.PATCH(
+      '/admin/products/{id}/options/{optionId}/engrave-anchor',
+      {
+        params: { path: { id: productId, optionId } },
+        body: positions,
+      },
+    );
     if (!error) return { ok: true };
     return { ok: false, code: codeFor(response.status) };
   } catch {
@@ -299,16 +306,50 @@ export async function saveEngraveAnchor(
 
 // Save the default 3D camera pose (P3-l l-5, ADR-038). Owner-only; 204 no body. The pose is display
 // metadata (degrees/percent/metres floats), not money — the storefront viewer opens at it.
-export async function saveModelView(productId: string, view: Model3dView): Promise<SubWriteResult> {
+//
+// The 360° sprite's frame-0 azimuth is FROZEN into each sprite_render job at enqueue (admin_asset_jobs.go
+// reads model3d_view), so a saved angle would silently leave the old sprite stale. After a successful
+// PATCH we therefore re-enqueue a sprite_render from the last uploaded source model — the BE reads the
+// just-saved view, so the new sprite opens at the new angle. `rerender` tells the UI whether that render
+// actually kicked off (false when no model was ever uploaded, or the enqueue itself failed — the angle
+// save still stands; the sprite refreshes on the next upload).
+export async function saveModelView(
+  productId: string,
+  view: Model3dView,
+): Promise<{ ok: true; rerender: boolean } | { ok: false; code: WriteCode }> {
   try {
     const client = await authedClient();
     const { error, response } = await client.PATCH('/admin/products/{id}/model-view', {
       params: { path: { id: productId } },
       body: view,
     });
-    if (!error) return { ok: true };
-    return { ok: false, code: codeFor(response.status) };
+    if (error) return { ok: false, code: codeFor(response.status) };
+    return { ok: true, rerender: await enqueueSpriteRerender(productId) };
   } catch {
     return { ok: false, code: 'error' };
+  }
+}
+
+/** Re-enqueue a sprite_render from the product's most recent asset-job source (jobs are newest-first).
+ *  Best-effort: any miss → false, never an error — the caller's angle save already succeeded. */
+async function enqueueSpriteRerender(productId: string): Promise<boolean> {
+  try {
+    const client = await authedClient();
+    const { data: jobs } = await client.GET('/admin/products/{id}/asset-jobs', {
+      params: { path: { id: productId } },
+    });
+    const src = jobs?.find((j) => j.sourceModelUrl && j.sourceVersion);
+    if (!src) return false;
+    const { data } = await client.POST('/admin/products/{id}/asset-jobs', {
+      params: { path: { id: productId } },
+      body: {
+        jobType: 'sprite_render',
+        sourceModelUrl: src.sourceModelUrl,
+        sourceVersion: src.sourceVersion,
+      },
+    });
+    return !!data;
+  } catch {
+    return false;
   }
 }

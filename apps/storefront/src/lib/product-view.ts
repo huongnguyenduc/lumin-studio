@@ -122,6 +122,11 @@ export type OptionView = {
    *  option's own `priceDelta`; non-empty = the customer picks exactly one choice (priced by the choice's
    *  delta, the option base ignored). Always `[]` for a `text` option. */
   choices: OptionChoiceView[];
+  /** Meaningful only for a `text` option — the owner-picked, NAMED surface spots (position + outward
+   *  normal, model space) this option's engraving text can go. `[]` = no positions picked → the viewer
+   *  falls back to its front-centre heuristic (no picker shown). More than one → the customer picks
+   *  exactly one (a "vị trí khắc" radio group), never all at once. */
+  engravePositions: components['schemas']['EngraveAnchor'][];
 };
 
 /** The product-detail view the client component renders. A narrow, serialisable projection of the API
@@ -154,10 +159,6 @@ export type ProductDetailView = {
   spriteSheetUrl?: string;
   /** Owner-saved default camera pose for the 3D viewer (ADR-038). Undefined = auto-frame. */
   model3dView?: components['schemas']['Model3dView'];
-  /** Owner-picked surface point where a customer's engraving text is projected onto the 3D model
-   *  (position + outward normal, model space). Undefined = no anchor picked in admin → the viewer falls
-   *  back to its front-centre heuristic. */
-  engraveAnchor?: components['schemas']['EngraveAnchor'];
   /** Bounding size in mm, shown "w × d × h mm" (spec §02). */
   dimensions: { w: number; d: number; h: number };
   /** Gallery: cover (images[0]) first, then the rest. Empty-string entries dropped; `[]` when the
@@ -194,7 +195,6 @@ export function toProductDetailView(product: components['schemas']['Product']): 
     // Empty-string / absent ⇒ no sprite yet → undefined (the viewer then has no no-WebGL fallback).
     spriteSheetUrl: product.spriteSheetUrl || undefined,
     model3dView: product.model3dView,
-    engraveAnchor: product.engraveAnchor,
     dimensions: { w: product.dimensions.w, d: product.dimensions.d, h: product.dimensions.h },
     // Drop empty-string URLs (broken src never reaches <img>) AND de-duplicate — the contract makes no
     // uniqueness guarantee, and a repeated photo would produce a duplicate React key / doubled thumbnail
@@ -224,6 +224,7 @@ export function toProductDetailView(product: components['schemas']['Product']): 
         description: ch.description,
         priceDelta: ch.priceDelta,
       })),
+      engravePositions: o.engravePositions ?? [],
     })),
     // Same SSG/ISR guard as choices; a flat product has `parts: []`. modelObjectName (f-2) drives the live
     // viewer recolor; empty-string/absent collapses to undefined (unmapped part → keeps its default colour).
@@ -493,29 +494,6 @@ export function canAddConfiguredToCart(input: {
 }
 
 // === 360° sprite sheet (ADR-049) — the fixed grid shared with the render worker (pysrc/render.py). ===
-
-/** Frames per turntable + the sheet's column count. FIXED shared constants: the render worker tiles to
- *  exactly this grid, so the sprite-sheet URL alone describes its layout (no metadata field). Changing
- *  them means re-rendering existing products — keep in lockstep with SPRITE_FRAMES/SPRITE_COLS there. */
-export const SPRITE_FRAMES = 24;
-export const SPRITE_COLS = 6;
-export const SPRITE_ROWS = Math.ceil(SPRITE_FRAMES / SPRITE_COLS); // 4
-
-/**
- * The CSS background-position for one frame of the sprite-sheet grid (ADR-049). With the element sized to
- * one tile and `background-size: (SPRITE_COLS*100)% (SPRITE_ROWS*100)%`, percentage positioning lands frame
- * `n` exactly on its tile: column `n % COLS` at `col/(COLS-1)*100%`, row `floor(n / COLS)` at
- * `row/(ROWS-1)*100%`. `frame` is clamped into range so a bad index never scrolls off the sheet. Pure →
- * unit-tested; SpriteTurntable steps `frame` over time (respecting prefers-reduced-motion).
- */
-export function spriteFrameCss(frame: number): {
-  backgroundPositionX: string;
-  backgroundPositionY: string;
-} {
-  const n = Math.max(0, Math.min(Math.trunc(frame), SPRITE_FRAMES - 1));
-  const col = n % SPRITE_COLS;
-  const row = Math.floor(n / SPRITE_COLS);
-  const x = SPRITE_COLS > 1 ? (col / (SPRITE_COLS - 1)) * 100 : 0;
-  const y = SPRITE_ROWS > 1 ? (row / (SPRITE_ROWS - 1)) * 100 : 0;
-  return { backgroundPositionX: `${x}%`, backgroundPositionY: `${y}%` };
-}
+// Moved to @lumin/ui (shared with the admin editor's 360° preview) — re-exported here so existing
+// imports (this module, test/sprite.test.ts) keep working unchanged.
+export { SPRITE_FRAMES, SPRITE_COLS, SPRITE_ROWS, spriteFrameCss } from '@lumin/ui';

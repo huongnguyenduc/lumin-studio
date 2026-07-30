@@ -18,3 +18,5 @@ export { PriceTag, type PriceTagProps } from './PriceTag';
 export { ProductCard, type ProductCardProps } from './ProductCard';
 export { ORDER_STATUS_TONE } from './order-status-tone';
 export { PrinterIcon, GridIcon, ArrowRightIcon, type IconProps } from './icons';
+export { SpriteTurntable } from './SpriteTurntable';
+export { SPRITE_FRAMES, SPRITE_COLS, SPRITE_ROWS, spriteFrameCss } from './lib/sprite';

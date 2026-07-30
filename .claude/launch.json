@@ -6,6 +6,31 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@lumin/wedding-web", "dev"],
       "port": 3002
+    },
+    {
+      "name": "admin",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "CORE_API_URL=http://localhost:8090",
+        "pnpm",
+        "--filter",
+        "@lumin/admin",
+        "dev"
+      ],
+      "port": 3001
+    },
+    {
+      "name": "storefront",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "CORE_API_URL=http://localhost:8090",
+        "SITE_URL=http://localhost:3000",
+        "pnpm",
+        "--filter",
+        "@lumin/storefront",
+        "dev"
+      ],
+      "port": 3000
     }
   ]
 }

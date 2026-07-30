@@ -338,6 +338,9 @@ importers:
       tailwind-merge:
         specifier: ^2.6.0
         version: 2.6.1
+      three:
+        specifier: 0.183.2
+        version: 0.183.2
     devDependencies:
       '@lumin/tokens':
         specifier: workspace:*
@@ -360,6 +363,9 @@ importers:
       '@types/react-dom':
         specifier: ^18.3.5
         version: 18.3.7(@types/react@18.3.31)
+      '@types/three':
+        specifier: 0.183.0
+        version: 0.183.0
       jsdom:
         specifier: ^25.0.1
         version: 25.0.1

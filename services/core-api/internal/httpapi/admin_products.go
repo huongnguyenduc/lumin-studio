@@ -271,49 +271,60 @@ func cleanModelView(v api.Model3dView) map[string]string {
 	return fields
 }
 
-// UpdateProductEngraveAnchor handles PATCH /admin/products/{id}/engrave-anchor (owner-only). It persists
-// the owner-picked surface point where the storefront projects a customer's engraving text onto the 3D
-// model — same contract shape as UpdateProductModelView: a separate write from the core-fields PATCH,
-// display metadata only. Out-of-range values → 400 field-map; unknown id → 404; success → 204.
-func (s *Server) UpdateProductEngraveAnchor(ctx context.Context, request api.UpdateProductEngraveAnchorRequestObject) (api.UpdateProductEngraveAnchorResponseObject, error) {
+// UpdateOptionEngraveAnchor handles PATCH /admin/products/{id}/options/{optionId}/engrave-anchor
+// (owner-only). It persists the owner-picked LIST of named surface spots this text option's engraving
+// can go — the storefront customer later picks exactly one (spec follow-up: a product can offer several
+// named positions per option, not one anchor per option). Same contract shape as UpdateProductModelView:
+// a separate write from the option's core-fields PATCH, display metadata only. The whole list replaces
+// the previous one (atomic). Scoped by (product, option) like UpdateProductOption; an optionId under
+// another product → 404. Out-of-range values → 400 field-map (indexed); success → 204.
+func (s *Server) UpdateOptionEngraveAnchor(ctx context.Context, request api.UpdateOptionEngraveAnchorRequestObject) (api.UpdateOptionEngraveAnchorResponseObject, error) {
 	if err := assertOwner(ctx); err != nil {
 		return nil, err
 	}
 	if request.Body == nil {
-		return api.UpdateProductEngraveAnchor400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
+		return api.UpdateOptionEngraveAnchor400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
 	}
-	if fields := cleanEngraveAnchor(*request.Body); len(fields) > 0 {
-		return api.UpdateProductEngraveAnchor400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
+	if fields := cleanEngravePositions(*request.Body); len(fields) > 0 {
+		return api.UpdateOptionEngraveAnchor400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(fieldEnvelope(fields))}, nil
 	}
 	raw, err := json.Marshal(*request.Body)
 	if err != nil {
 		return nil, fmt.Errorf("engrave_anchor: marshal: %w", err)
 	}
-	if err := db.NewCatalog(s.pool).UpdateProductEngraveAnchor(ctx, request.Id, raw); err != nil {
+	if err := db.NewCatalog(s.pool).UpdateOptionEngraveAnchor(ctx, request.OptionId, request.Id, raw); err != nil {
 		return nil, err // db.ErrNotFound → 404
 	}
-	return api.UpdateProductEngraveAnchor204Response{}, nil
+	return api.UpdateOptionEngraveAnchor204Response{}, nil
 }
 
-// cleanEngraveAnchor validates an engrave anchor: per-field error map (empty = ok). Position must sit in
-// the same [-100, 100] metre envelope as the camera target (a real model is centimetres-scale); each
-// normal component in [-1, 1] and the normal vector must be non-zero (a zero normal cannot orient the
-// decal). Every field must be finite. Display metadata, not money — plain floats.
-func cleanEngraveAnchor(a api.EngraveAnchor) map[string]string {
+// cleanEngravePositions validates a LIST of engrave anchors: per-field error map (empty = ok), keyed
+// "0.posX", "1.label", etc. so a bad entry at any index is addressable. Position must sit in the same
+// [-100, 100] metre envelope as the camera target (a real model is centimetres-scale); each normal
+// component in [-1, 1] and the normal vector must be non-zero (a zero normal cannot orient the decal);
+// label must be non-blank (it's what the storefront shows the customer to pick between). Every numeric
+// field must be finite. Display metadata, not money — plain floats.
+func cleanEngravePositions(positions []api.EngraveAnchor) map[string]string {
 	fields := map[string]string{}
-	check := func(name string, val, lo, hi float64) {
-		if math.IsNaN(val) || math.IsInf(val, 0) || val > hi || val < lo {
-			fields[name] = msgKey(codeValidation)
+	for i, a := range positions {
+		prefix := fmt.Sprintf("%d.", i)
+		check := func(name string, val, lo, hi float64) {
+			if math.IsNaN(val) || math.IsInf(val, 0) || val > hi || val < lo {
+				fields[prefix+name] = msgKey(codeValidation)
+			}
 		}
-	}
-	check("posX", a.PosX, -100, 100)
-	check("posY", a.PosY, -100, 100)
-	check("posZ", a.PosZ, -100, 100)
-	check("normX", a.NormX, -1, 1)
-	check("normY", a.NormY, -1, 1)
-	check("normZ", a.NormZ, -1, 1)
-	if a.NormX == 0 && a.NormY == 0 && a.NormZ == 0 {
-		fields["normX"] = msgKey(codeValidation)
+		if strings.TrimSpace(a.Label) == "" {
+			fields[prefix+"label"] = msgKey(codeValidation)
+		}
+		check("posX", a.PosX, -100, 100)
+		check("posY", a.PosY, -100, 100)
+		check("posZ", a.PosZ, -100, 100)
+		check("normX", a.NormX, -1, 1)
+		check("normY", a.NormY, -1, 1)
+		check("normZ", a.NormZ, -1, 1)
+		if a.NormX == 0 && a.NormY == 0 && a.NormZ == 0 {
+			fields[prefix+"normX"] = msgKey(codeValidation)
+		}
 	}
 	return fields
 }

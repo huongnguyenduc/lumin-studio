@@ -170,6 +170,13 @@ export const vi = {
     engraveCounter: '{count}/{max}',
     engraveHint: 'Tối đa {max} ký tự.',
     engraveTooLong: 'Dài quá rồi — tối đa {max} ký tự thôi nhé.',
+    // Colour of the raised engraved lettering itself — reuses the SAME swatches as the model's paint
+    // colours (no separate palette), so labelFor/selectColorLabel/colorUnavailableLabel apply here too.
+    engraveColorHeading: 'Màu chữ khắc',
+    // Radio group under a text option, shown only when the admin set up MORE THAN ONE named spot
+    // (engravePositions) — the customer picks exactly one; each pill label is the admin's own naming
+    // ("Mặt trước"/"Mặt sau"…).
+    enginePositionHeading: 'Vị trí khắc',
     // Choice add-on options (P1-j). Boolean add-ons; the live total lands with the cart (P1-k).
     optionsHeading: 'Tuỳ chọn',
     optionFree: 'miễn phí',

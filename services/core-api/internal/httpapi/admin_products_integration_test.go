@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"reflect"
 	"testing"
 	"time"
 
@@ -293,6 +294,94 @@ func TestProductColorOptionScopedByProduct(t *testing.T) {
 	// Creating a colour under a non-existent product → 404 (FK violation mapped, not 500).
 	if _, err := srv.CreateProductColor(owner, api.CreateProductColorRequestObject{Id: uuid.New(), Body: &api.ColorInput{Available: true, FilamentMaterialId: mat}}); !errors.Is(err, db.ErrNotFound) {
 		t.Fatalf("color on unknown product: err = %v, want ErrNotFound (404)", err)
+	}
+}
+
+// ADR-037 follow-up: the engrave anchor moved from the PRODUCT (one shared spot) onto each TEXT option as
+// a LIST of named positions — the owner places as many as they like, the storefront customer picks one —
+// and the SAME (product, child) scoping as colours/parts applies — an optionId under another product →
+// 404, never a cross-product overwrite.
+func TestOptionEngraveAnchorEndToEnd(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+	owner := ownerCtx()
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
+	repo := db.NewCatalog(pool)
+
+	cat, _ := repo.CreateCategory(ctx, sqlc.InsertCategoryParams{ID: uuid.New(), Slug: "cat-anchor", Name: "DM"})
+	mk := func(slug string) uuid.UUID {
+		p, err := repo.CreateProduct(ctx, sqlc.InsertProductParams{
+			ID: uuid.New(), Slug: slug, Name: slug, Description: "", CategoryID: cat.ID, BasePrice: 1,
+			Dimensions: []byte(`{"w":1,"d":1,"h":1}`), Material: "PLA", Images: []byte(`[]`), Status: sqlc.ProductStatusDraft,
+		})
+		if err != nil {
+			t.Fatalf("seed %s: %v", slug, err)
+		}
+		return p.ID
+	}
+	prodA, prodB := mk("prod-anchor-a"), mk("prod-anchor-b")
+
+	optA, err := srv.CreateProductOption(owner, api.CreateProductOptionRequestObject{Id: prodA, Body: &api.OptionInput{
+		Label: "Khắc mặt trước", Type: "text",
+	}})
+	if err != nil {
+		t.Fatalf("create text option on A: %v", err)
+	}
+	optAID := api.Option(optA.(api.CreateProductOption201JSONResponse)).Id
+
+	// A fresh option has no positions → the storefront front-centre heuristic.
+	getOpt := func(prod uuid.UUID) []api.EngraveAnchor {
+		t.Helper()
+		r, err := srv.GetAdminProduct(owner, api.GetAdminProductRequestObject{Id: prod})
+		if err != nil {
+			t.Fatalf("get detail: %v", err)
+		}
+		for _, o := range api.Product(r.(api.GetAdminProduct200JSONResponse)).Options {
+			if o.Id == optAID {
+				if o.EngravePositions == nil {
+					return nil
+				}
+				return *o.EngravePositions
+			}
+		}
+		t.Fatalf("option %s not found on product %s", optAID, prod)
+		return nil
+	}
+	if a := getOpt(prodA); len(a) != 0 {
+		t.Fatalf("fresh option positions = %+v, want empty", a)
+	}
+
+	want := []api.EngraveAnchor{
+		{Label: "Mặt trước", PosX: 1, PosY: 2, PosZ: -3, NormX: 0, NormY: 1, NormZ: 0},
+		{Label: "Mặt sau", PosX: -1, PosY: 2, PosZ: 3, NormX: 0, NormY: -1, NormZ: 0},
+	}
+	saveResp, err := srv.UpdateOptionEngraveAnchor(owner, api.UpdateOptionEngraveAnchorRequestObject{Id: prodA, OptionId: optAID, Body: &want})
+	if err != nil {
+		t.Fatalf("save positions: %v", err)
+	}
+	if _, ok := saveResp.(api.UpdateOptionEngraveAnchor204Response); !ok {
+		t.Fatalf("save resp = %T, want 204", saveResp)
+	}
+	if a := getOpt(prodA); !reflect.DeepEqual(a, want) {
+		t.Fatalf("positions = %+v, want %+v", a, want)
+	}
+
+	// Same optionId under the WRONG product → 404, never a cross-product overwrite.
+	if _, err := srv.UpdateOptionEngraveAnchor(owner, api.UpdateOptionEngraveAnchorRequestObject{Id: prodB, OptionId: optAID, Body: &want}); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("cross-product anchor update: err = %v, want ErrNotFound (404)", err)
+	}
+
+	// Out-of-range normal (zero vector — cannot orient anything) → 400, stored positions untouched.
+	bad := []api.EngraveAnchor{{Label: "Bad"}}
+	badResp, err := srv.UpdateOptionEngraveAnchor(owner, api.UpdateOptionEngraveAnchorRequestObject{Id: prodA, OptionId: optAID, Body: &bad})
+	if err != nil {
+		t.Fatalf("zero-normal should be a 400 response, not an error: %v", err)
+	}
+	if _, ok := badResp.(api.UpdateOptionEngraveAnchor400JSONResponse); !ok {
+		t.Fatalf("zero-normal resp = %T, want 400", badResp)
+	}
+	if a := getOpt(prodA); !reflect.DeepEqual(a, want) {
+		t.Fatalf("after rejected save, positions = %+v, want unchanged %+v", a, want)
 	}
 }
 
