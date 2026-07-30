@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useTranslations } from 'next-intl';
 import type { Wish } from '@/lib/types';
-import { CREAM, INK, TAN, TAN_LIGHT, TERRACOTTA, RING, SCRIPT } from './theme';
+import { CREAM, INK, TAN, TAN_LIGHT, TERRACOTTA, BRICK, RING, SCRIPT } from './theme';
 import { WISH_COLORS } from './theme';
 import { timeAgo } from '@/lib/time';
 import { Reveal } from './reveal';
@@ -284,7 +284,7 @@ export function Wishes({
             </span>
             {sent ? (
               <>
-                <span style={{ fontFamily: SCRIPT, fontSize: 28, color: TERRACOTTA }}>
+                <span style={{ fontFamily: SCRIPT, fontSize: 28, color: BRICK }}>
                   {t('sentHeading')}
                 </span>
                 <span
