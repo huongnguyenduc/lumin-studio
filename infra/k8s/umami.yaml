@@ -1,0 +1,59 @@
+# Umami — self-hosted web analytics (ADR-015). Storefront's client wrapper (apps/storefront/src/lib/
+# analytics.ts + analytics-consent.ts) is already consent-gated and env-driven; this is the server half.
+# Reuses the shared postgres instance (ADR-009 all-home, one box) with its own database — create it once:
+#
+#   kubectl -n prod exec deploy/postgres -- psql -U lumin -d lumin -c 'CREATE DATABASE umami OWNER lumin'
+#
+# APP_SECRET is a session-signing key, not shared with any other service:
+#
+#   kubectl -n prod create secret generic umami-secrets \
+#     --from-literal=APP_SECRET="$(openssl rand -hex 32)" \
+#     --from-literal=DATABASE_URL="postgres://lumin:<POSTGRES_PASSWORD>@postgres:5432/umami?sslmode=disable"
+#
+# After the pod is Running, open https://analytics.luminstudio.vn, log in with the default admin/umami
+# account, change the password, create a website, and put its ID + this host's tracker script URL into
+# storefront's NEXT_PUBLIC_UMAMI_SRC / NEXT_PUBLIC_UMAMI_WEBSITE_ID.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: umami
+  namespace: prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: umami }
+  template:
+    metadata:
+      labels: { app: umami }
+    spec:
+      containers:
+        - name: umami
+          image: ghcr.io/umami-software/umami:postgresql-latest
+          ports:
+            - containerPort: 3000
+          env:
+            - {
+                name: DATABASE_URL,
+                valueFrom: { secretKeyRef: { name: umami-secrets, key: DATABASE_URL } },
+              }
+            - {
+                name: APP_SECRET,
+                valueFrom: { secretKeyRef: { name: umami-secrets, key: APP_SECRET } },
+              }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi } # ADR-014: cap so render/BFF win CPU
+          readinessProbe:
+            httpGet: { path: /api/heartbeat, port: 3000 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: umami
+  namespace: prod
+spec:
+  selector: { app: umami }
+  ports:
+    - { port: 3000, targetPort: 3000 }

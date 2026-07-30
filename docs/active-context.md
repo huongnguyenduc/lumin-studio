@@ -6,6 +6,10 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**🔧 ĐANG LÀM (2026-07-30, infra — thêm Umami self-hosted analytics).** Trước đó box đã có client wiring sẵn (`analytics.ts`/`analytics-consent.ts`, ADR-015) nhưng KHÔNG có server chạy đâu cả (không thấy trong cluster, không phải SaaS) → env `NEXT_PUBLIC_UMAMI_SRC`/`WEBSITE_ID` rỗng nên tracker no-op. Thêm `infra/k8s/umami.yaml` (Deployment+Service, dùng chung postgres hiện có qua DB `umami` riêng, secret `umami-secrets` riêng) + route `analytics.luminstudio.vn` trong `ingress.yaml`. **CHƯA:** chạy tay trên box (tạo DB, tạo secret, `kubectl apply`, tạo website trong UI Umami, đổ website ID vào env storefront) · verify · commit/PR.
+
+---
+
 **✅ XONG (2026-07-29, wedding admin — "Thêm nhanh" tạo 2 khách khi gõ tiếng Việt).** User gõ "Nhi Nguyễn" → ra 2 hàng ("Nguyễn" + "Nhi Nguyễn"). **Root cause (không phải API/double-submit):** phím Enter dùng để CHỐT composition của bộ gõ tiếng Việt cũng bắn `keydown` → `add()` chạy với label hiện tại rồi `setLabel('')`, ngay sau đó `compositionend` đẩy lại đoạn vừa chốt vào ô đã trống, Enter thật thêm nốt. **Fix (root-cause, áp cho MỌI handler Enter chứ không riêng ô báo lỗi):** bỏ qua khi `e.nativeEvent.isComposing` — `quick-add.tsx` (ô thêm nhanh + ô nhóm mới), `dashboard.tsx` (ô đám mới), `guest-table.tsx` (ô ghi chú blur). **Verify:** `pnpm --filter @lumin/wedding-web typecheck` xanh. **CHƯA:** smoke browser (cần bộ gõ VN thật) · commit/PR.
 
 ---
