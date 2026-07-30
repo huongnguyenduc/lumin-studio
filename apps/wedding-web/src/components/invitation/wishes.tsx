@@ -47,7 +47,15 @@ function LetterCard({
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ fontStyle: 'italic', fontSize: 12, lineHeight: 1.7, color: INK }}>
+        <span
+          style={{
+            fontStyle: 'italic',
+            fontSize: 12,
+            lineHeight: 1.7,
+            color: INK,
+            whiteSpace: 'pre-line',
+          }}
+        >
           “{text}”
         </span>
         <img src="/image/card-decor.svg" alt="card decor" style={{ width: 30, height: 48 }} />
@@ -202,7 +210,7 @@ export function Wishes({
                   onChange={(e) => setText(e.target.value)}
                   placeholder={t('textPlaceholder')}
                   aria-label={t('textPlaceholder')}
-                  maxLength={500}
+                  maxLength={2000}
                   style={{
                     ...inputBase,
                     height: 108,

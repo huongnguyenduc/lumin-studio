@@ -25,7 +25,7 @@ var wishColors = map[string]bool{
 }
 
 const (
-	maxWishLen     = 500
+	maxWishLen     = 2000
 	maxWishNameLen = 100
 )
 
@@ -159,7 +159,7 @@ func (s *server) postWish(w http.ResponseWriter, r *http.Request) {
 	}
 	text := strings.TrimSpace(body.Text)
 	if text == "" || len([]rune(text)) > maxWishLen {
-		writeError(w, http.StatusBadRequest, "BAD_TEXT", "lời chúc phải có nội dung và tối đa 500 ký tự")
+		writeError(w, http.StatusBadRequest, "BAD_TEXT", "lời chúc phải có nội dung và tối đa 2000 ký tự")
 		return
 	}
 	var color *string
