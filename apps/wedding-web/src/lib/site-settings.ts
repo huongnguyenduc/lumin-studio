@@ -34,6 +34,8 @@ export type SiteSettings = {
   storyCaption1?: string;
   storyCaption2?: string;
   storyCaption3?: string;
+  /** Số dòng tối đa hiện trên mỗi thẻ lời chúc trước khi cắt còn "xem thêm"; mặc định 6. */
+  wishMaxLines?: number;
 };
 
 // Venue/timeline/ceremony fields for one event (fixed shape — Letter renders
@@ -153,5 +155,6 @@ export function asSiteSettings(raw: Record<string, unknown>): SiteSettings {
     storyCaption1: s('storyCaption1'),
     storyCaption2: s('storyCaption2'),
     storyCaption3: s('storyCaption3'),
+    wishMaxLines: n('wishMaxLines'),
   };
 }
