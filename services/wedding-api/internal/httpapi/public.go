@@ -2,6 +2,9 @@ package httpapi
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -213,20 +216,100 @@ func (s *server) postWish(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// editToken lets the guest's OWN browser edit this wish later (self-edit,
+	// no login) — returned once here, kept only hashed in the DB. Losing the
+	// plaintext (cleared cache, different device) means the wish can no
+	// longer be self-edited; that's an acceptable trade for not requiring
+	// consented identity tracking just to fix a typo.
+	editToken := make([]byte, 32)
+	if _, err := rand.Read(editToken); err != nil {
+		writeError(w, http.StatusInternalServerError, "DB", err.Error())
+		return
+	}
+	editTokenHex := hex.EncodeToString(editToken)
+	editTokenHash := sha256.Sum256(editToken)
+
 	var (
 		id        string
 		createdAt time.Time
 	)
 	err = s.pool.QueryRow(r.Context(),
-		`INSERT INTO wishes (guest_id, identity_id, name, text, color, wedding_slug)
-		 VALUES ($1, $2, $3, $4, $5, $6)
+		`INSERT INTO wishes (guest_id, identity_id, name, text, color, wedding_slug, edit_token_hash)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 RETURNING id, created_at`,
-		guestID, identityID, name, text, color, wedding).Scan(&id, &createdAt)
+		guestID, identityID, name, text, color, wedding, editTokenHash[:]).Scan(&id, &createdAt)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
+		"id": id, "name": name, "text": text, "color": color, "createdAt": createdAt,
+		"editToken": editTokenHex,
+	})
+}
+
+// patchWish lets a guest edit a wish they submitted, proven by the editToken
+// issued at creation time (stored hashed) — no login, no identity consent
+// required. Wishes created before this feature (or edited from another
+// browser/device) have no matching token and can't be self-edited.
+func (s *server) patchWish(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var body struct {
+		EditToken string `json:"editToken"`
+		Name      string `json:"name"`
+		Text      string `json:"text"`
+		Color     string `json:"color"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	text := strings.TrimSpace(body.Text)
+	if text == "" || len([]rune(text)) > maxWishLen {
+		writeError(w, http.StatusBadRequest, "BAD_TEXT", "lời chúc phải có nội dung và tối đa 2000 ký tự")
+		return
+	}
+	var color *string
+	if body.Color != "" {
+		if !wishColors[body.Color] {
+			writeError(w, http.StatusBadRequest, "BAD_COLOR", "màu thiệp không hợp lệ")
+			return
+		}
+		color = &body.Color
+	}
+	name := strings.TrimSpace(body.Name)
+	if name == "" {
+		name = "Khách mời"
+	}
+	if len([]rune(name)) > maxWishNameLen {
+		writeError(w, http.StatusBadRequest, "BAD_NAME", "tên tối đa 100 ký tự")
+		return
+	}
+	wedding, werr := s.weddingByHost(r.Context(), r.URL.Query().Get("host"))
+	if werr != nil {
+		writeHostErr(w, werr)
+		return
+	}
+	editToken, err := hex.DecodeString(body.EditToken)
+	if err != nil || len(editToken) == 0 {
+		writeError(w, http.StatusForbidden, "FORBIDDEN", "không có quyền sửa lời chúc này")
+		return
+	}
+	editTokenHash := sha256.Sum256(editToken)
+
+	var createdAt time.Time
+	err = s.pool.QueryRow(r.Context(),
+		`UPDATE wishes SET name = $1, text = $2, color = $3
+		 WHERE id = $4 AND wedding_slug = $5 AND edit_token_hash = $6
+		 RETURNING created_at`,
+		name, text, color, id, wedding, editTokenHash[:]).Scan(&createdAt)
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusForbidden, "FORBIDDEN", "không có quyền sửa lời chúc này")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
 		"id": id, "name": name, "text": text, "color": color, "createdAt": createdAt,
 	})
 }

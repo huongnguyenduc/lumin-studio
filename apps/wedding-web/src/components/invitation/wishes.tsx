@@ -9,6 +9,28 @@ import { timeAgo } from '@/lib/time';
 import { Reveal } from './reveal';
 import { storedToken } from '@/lib/guest-identity';
 
+// editTokens map wish id -> the once-issued secret that lets THIS browser
+// self-edit that wish (HANDOFF §2.8 follow-up) — never sent anywhere except
+// back to the PATCH endpoint. Keyed per-browser, not per-guest: a wish
+// created before this feature, or opened on another device, has none.
+const EDIT_TOKENS_KEY = 'wedding_wish_edit_tokens_v1';
+
+function editTokens(): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem(EDIT_TOKENS_KEY) ?? '{}') as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+function saveEditToken(id: string, token: string) {
+  try {
+    localStorage.setItem(EDIT_TOKENS_KEY, JSON.stringify({ ...editTokens(), [id]: token }));
+  } catch {
+    // No self-edit for this wish, but it's already sent — not worth failing over.
+  }
+}
+
 const inputBase: CSSProperties = {
   width: 171,
   boxSizing: 'border-box',
@@ -101,6 +123,18 @@ export function Wishes({
   const [sent, setSent] = useState(false);
   const [wishes, setWishes] = useState(initialWishes);
   const [limit, setLimit] = useState(4);
+  // Populated post-mount (localStorage isn't available during SSR) — which
+  // wishes THIS browser can self-edit.
+  const [myEditTokens, setMyEditTokens] = useState<Record<string, string>>({});
+  useEffect(() => {
+    setMyEditTokens(editTokens());
+  }, []);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editText, setEditText] = useState('');
+  const [editColor, setEditColor] = useState(0);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState(false);
   // Mirror the name typed at RSVP (or the guest label) until the guest edits
   // this field themselves — after that their own wording wins, including an
   // empty one. Keyed on `name` instead would refill mid-deletion.
@@ -137,7 +171,56 @@ export function Wishes({
         text: trimmed,
         color: bg,
       }),
-    }).catch(() => {});
+    })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = (await res.json()) as { id: string; editToken?: string };
+        setWishes((w) => w.map((item) => (item.id === 'local' ? { ...item, id: data.id } : item)));
+        if (data.editToken) saveEditToken(data.id, data.editToken);
+      })
+      .catch(() => {});
+  };
+
+  const startEdit = (w: Wish) => {
+    setEditingId(w.id);
+    setEditName(w.name);
+    setEditText(w.text);
+    const idx = WISH_COLORS.findIndex((c) => c.bg === w.color);
+    setEditColor(idx >= 0 ? idx : 0);
+    setEditError(false);
+  };
+
+  const saveEdit = async (id: string) => {
+    const trimmed = editText.trim();
+    if (!trimmed) return;
+    setEditSaving(true);
+    setEditError(false);
+    try {
+      const res = await fetch(
+        `/api/wishes/${encodeURIComponent(id)}?host=${encodeURIComponent(location.hostname)}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            editToken: myEditTokens[id] ?? '',
+            name: editName.trim() || t('defaultName'),
+            text: trimmed,
+            color: WISH_COLORS[editColor].bg,
+          }),
+        },
+      );
+      if (!res.ok) {
+        setEditError(true);
+        return;
+      }
+      const data = (await res.json()) as Wish;
+      setWishes((w) => w.map((item) => (item.id === id ? { ...item, ...data } : item)));
+      setEditingId(null);
+    } catch {
+      setEditError(true);
+    } finally {
+      setEditSaving(false);
+    }
   };
 
   const shown = wishes.slice(0, limit);
@@ -345,15 +428,155 @@ export function Wishes({
             gap: 14,
           }}
         >
-          {shown.map((w) => (
-            <LetterCard
-              key={w.id + w.createdAt}
-              bg={w.color ?? CREAM}
-              text={w.text}
-              name={w.name}
-              when={timeAgo(w.createdAt)}
-            />
-          ))}
+          {shown.map((w) =>
+            editingId === w.id ? (
+              <div
+                key={w.id + w.createdAt}
+                style={{
+                  background: w.color ?? CREAM,
+                  borderRadius: 8,
+                  boxShadow: RING,
+                  padding: '18px 20px 14px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                }}
+              >
+                <input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  aria-label={t('namePlaceholder')}
+                  style={{
+                    ...inputBase,
+                    width: '100%',
+                    borderRadius: 25,
+                    padding: '8px 14px',
+                  }}
+                />
+                <textarea
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                  aria-label={t('textPlaceholder')}
+                  maxLength={2000}
+                  style={{
+                    ...inputBase,
+                    width: '100%',
+                    height: 108,
+                    borderRadius: 14,
+                    padding: '10px 14px',
+                    lineHeight: 1.6,
+                    resize: 'none',
+                  }}
+                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {WISH_COLORS.map((c, i) => (
+                    <button
+                      key={c.key}
+                      type="button"
+                      onClick={() => setEditColor(i)}
+                      title={t(c.key)}
+                      aria-label={t(c.key)}
+                      aria-pressed={editColor === i}
+                      style={{
+                        width: 44,
+                        height: 44,
+                        margin: -13,
+                        border: 'none',
+                        padding: 0,
+                        background: 'transparent',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: 9,
+                          background: c.bg,
+                          boxShadow:
+                            editColor === i
+                              ? `0 0 0 1px ${CREAM}, 0 0 0 2.5px ${TERRACOTTA}`
+                              : RING,
+                        }}
+                      />
+                    </button>
+                  ))}
+                </div>
+                {editError ? (
+                  <span style={{ fontSize: 10, color: TERRACOTTA }}>{t('editError')}</span>
+                ) : null}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    type="button"
+                    disabled={editSaving}
+                    onClick={() => void saveEdit(w.id)}
+                    className="invite-pill-solid"
+                    style={{
+                      padding: '6px 16px',
+                      borderRadius: 22,
+                      border: 'none',
+                      background: INK,
+                      color: CREAM,
+                      fontSize: 11,
+                      cursor: editSaving ? 'default' : 'pointer',
+                      opacity: editSaving ? 0.6 : 1,
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    {t('save')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingId(null)}
+                    style={{
+                      padding: '6px 16px',
+                      borderRadius: 22,
+                      border: 'none',
+                      background: 'transparent',
+                      boxShadow: RING,
+                      fontSize: 11,
+                      color: INK,
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    {t('cancel')}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div key={w.id + w.createdAt} style={{ display: 'flex', flexDirection: 'column' }}>
+                <LetterCard
+                  bg={w.color ?? CREAM}
+                  text={w.text}
+                  name={w.name}
+                  when={timeAgo(w.createdAt)}
+                />
+                {myEditTokens[w.id] ? (
+                  <button
+                    type="button"
+                    onClick={() => startEdit(w)}
+                    style={{
+                      alignSelf: 'flex-end',
+                      marginTop: 4,
+                      border: 'none',
+                      background: 'transparent',
+                      fontSize: 10,
+                      color: TAN,
+                      textDecoration: 'underline',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    {t('edit')}
+                  </button>
+                ) : null}
+              </div>
+            ),
+          )}
           {wishes.length > limit ? (
             <button
               type="button"
