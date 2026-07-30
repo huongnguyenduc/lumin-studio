@@ -79,6 +79,7 @@ func New(
 		r.Post("/api/wishes", s.postWish)
 		r.Get("/api/wishes", s.getWishes)
 		r.Patch("/api/wishes/{id}", s.patchWish)
+		r.Post("/api/wishes/mine", s.myWishes)
 		// Site settings are public page content (hero/gallery/map/music/meta) —
 		// the invitation SSR reads them without a session (HANDOFF §3.5).
 		r.Get("/api/settings", s.publicSettings)

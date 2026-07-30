@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -146,6 +147,26 @@ func (s *server) postRSVP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// resolveIdentityID looks up the consented guest identity behind a GI token
+// (empty or unrecognized token → nil, same as anonymous).
+func (s *server) resolveIdentityID(ctx context.Context, wedding, token string) (*string, error) {
+	if token == "" {
+		return nil, nil
+	}
+	tokenHash := guestidentity.Build(s.giSecret, wedding, token, "", guestidentity.Signals{}).Token
+	var id string
+	err := s.pool.QueryRow(ctx, `
+		SELECT identity_id FROM guest_identity_tokens
+		WHERE wedding_slug=$1 AND token_hash=$2`, wedding, tokenHash).Scan(&id)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &id, nil
+}
+
 // postWish validates and stores a wish (HANDOFF §5). An unknown guestId degrades
 // to anonymous (NULL) rather than failing — the wall doesn't care, and a stale
 // link should never eat a wish.
@@ -200,21 +221,10 @@ func (s *server) postWish(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	var identityID *string
-	if body.IdentityToken != "" {
-		tokenHash := guestidentity.Build(
-			s.giSecret, wedding, body.IdentityToken, "", guestidentity.Signals{},
-		).Token
-		var id string
-		err := s.pool.QueryRow(r.Context(), `
-			SELECT identity_id FROM guest_identity_tokens
-			WHERE wedding_slug=$1 AND token_hash=$2`, wedding, tokenHash).Scan(&id)
-		if err == nil {
-			identityID = &id
-		} else if err != pgx.ErrNoRows {
-			writeError(w, http.StatusInternalServerError, "DB", err.Error())
-			return
-		}
+	identityID, err := s.resolveIdentityID(r.Context(), wedding, body.IdentityToken)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB", err.Error())
+		return
 	}
 	// editToken lets the guest's OWN browser edit this wish later (self-edit,
 	// no login) — returned once here, kept only hashed in the DB. Losing the
@@ -255,10 +265,12 @@ func (s *server) postWish(w http.ResponseWriter, r *http.Request) {
 func (s *server) patchWish(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var body struct {
-		EditToken string `json:"editToken"`
-		Name      string `json:"name"`
-		Text      string `json:"text"`
-		Color     string `json:"color"`
+		EditToken     string `json:"editToken"`
+		GuestID       string `json:"guestId"`
+		IdentityToken string `json:"identityToken"`
+		Name          string `json:"name"`
+		Text          string `json:"text"`
+		Color         string `json:"color"`
 	}
 	if !readJSON(w, r, &body) {
 		return
@@ -289,19 +301,14 @@ func (s *server) patchWish(w http.ResponseWriter, r *http.Request) {
 		writeHostErr(w, werr)
 		return
 	}
-	editToken, err := hex.DecodeString(body.EditToken)
-	if err != nil || len(editToken) == 0 {
-		writeError(w, http.StatusForbidden, "FORBIDDEN", "không có quyền sửa lời chúc này")
-		return
-	}
-	editTokenHash := sha256.Sum256(editToken)
-
-	var createdAt time.Time
-	err = s.pool.QueryRow(r.Context(),
-		`UPDATE wishes SET name = $1, text = $2, color = $3
-		 WHERE id = $4 AND wedding_slug = $5 AND edit_token_hash = $6
-		 RETURNING created_at`,
-		name, text, color, id, wedding, editTokenHash[:]).Scan(&createdAt)
+	var (
+		wishGuestID, wishIdentityID *string
+		wishEditTokenHash           []byte
+	)
+	err := s.pool.QueryRow(r.Context(),
+		`SELECT guest_id, identity_id, edit_token_hash FROM wishes
+		 WHERE id = $1 AND wedding_slug = $2`, id, wedding,
+	).Scan(&wishGuestID, &wishIdentityID, &wishEditTokenHash)
 	if err == pgx.ErrNoRows {
 		writeError(w, http.StatusForbidden, "FORBIDDEN", "không có quyền sửa lời chúc này")
 		return
@@ -309,9 +316,96 @@ func (s *server) patchWish(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "DB", err.Error())
 		return
 	}
+
+	// Three independent ways to prove "this is my wish" — any one is enough.
+	// editToken covers every wish going forward (issued at creation); guestId/
+	// identity cover wishes from BEFORE this feature too, when the guest used
+	// a personalized link or had already consented to GI tracking back then.
+	authorized := false
+	if body.EditToken != "" && wishEditTokenHash != nil {
+		if editToken, derr := hex.DecodeString(body.EditToken); derr == nil && len(editToken) > 0 {
+			sum := sha256.Sum256(editToken)
+			authorized = subtle.ConstantTimeCompare(sum[:], wishEditTokenHash) == 1
+		}
+	}
+	if !authorized && body.GuestID != "" && wishGuestID != nil && *wishGuestID == body.GuestID {
+		authorized = true
+	}
+	if !authorized && body.IdentityToken != "" {
+		identityID, ierr := s.resolveIdentityID(r.Context(), wedding, body.IdentityToken)
+		if ierr != nil {
+			writeError(w, http.StatusInternalServerError, "DB", ierr.Error())
+			return
+		}
+		if identityID != nil && wishIdentityID != nil && *identityID == *wishIdentityID {
+			authorized = true
+		}
+	}
+	if !authorized {
+		writeError(w, http.StatusForbidden, "FORBIDDEN", "không có quyền sửa lời chúc này")
+		return
+	}
+
+	var createdAt time.Time
+	err = s.pool.QueryRow(r.Context(),
+		`UPDATE wishes SET name = $1, text = $2, color = $3
+		 WHERE id = $4 AND wedding_slug = $5
+		 RETURNING created_at`,
+		name, text, color, id, wedding).Scan(&createdAt)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB", err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id": id, "name": name, "text": text, "color": color, "createdAt": createdAt,
 	})
+}
+
+// myWishes lists which wishes on this wall the caller can self-edit — proven
+// by personalized guestId or consented GI identity matching what was stored
+// at submission time. POST (not query params): identityToken is a bearer
+// credential and must never land in a URL/log line.
+func (s *server) myWishes(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		GuestID       string `json:"guestId"`
+		IdentityToken string `json:"identityToken"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	wedding, werr := s.weddingByHost(r.Context(), r.URL.Query().Get("host"))
+	if werr != nil {
+		writeHostErr(w, werr)
+		return
+	}
+	identityID, err := s.resolveIdentityID(r.Context(), wedding, body.IdentityToken)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB", err.Error())
+		return
+	}
+	if body.GuestID == "" && identityID == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ids": []string{}})
+		return
+	}
+	rows, err := s.pool.Query(r.Context(),
+		`SELECT id FROM wishes
+		 WHERE wedding_slug = $1 AND ((guest_id = $2 AND $2 <> '') OR identity_id = $3)`,
+		wedding, body.GuestID, identityID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB", err.Error())
+		return
+	}
+	defer rows.Close()
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			writeError(w, http.StatusInternalServerError, "DB", err.Error())
+			return
+		}
+		ids = append(ids, id)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ids": ids})
 }
 
 // getWishes returns the public wall, newest first (HANDOFF §2.8) with a total
