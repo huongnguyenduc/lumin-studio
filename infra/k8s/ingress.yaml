@@ -59,3 +59,20 @@ spec:
           - path: /
             pathType: Prefix
             backend: { service: { name: imgproxy, port: { number: 8080 } } }
+    # Uptime Kuma UI. Only auth is Kuma's own admin login (single account, no MFA) — the
+    # uptime-kuma.yaml manifest recommends gating this behind Cloudflare Access instead; add a
+    # Zero Trust application for this host in the CF dashboard if you want that extra layer.
+    - host: status.luminstudio.vn
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: uptime-kuma, port: { number: 3001 } } }
+    # Umami — tracker script + dashboard (must be public: the browser fetches the script and posts
+    # events directly from storefront, ADR-015). Consent-gated client-side, no session replay.
+    - host: analytics.luminstudio.vn
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: umami, port: { number: 3000 } } }
