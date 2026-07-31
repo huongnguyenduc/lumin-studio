@@ -175,28 +175,13 @@ export function SettingsFields({
         <span style={fieldLabel}>{t('rsvpHeading')}</span>
         <span style={{ fontSize: 12, color: INK, opacity: 0.7 }}>{t('rsvpTokenHint')}</span>
         <textarea
-          value={val<string>('rsvpIntro1', '')}
-          onChange={(e) => patch({ rsvpIntro1: e.target.value })}
-          aria-label={t('rsvpIntro1')}
-          placeholder={t('rsvpIntro1Default')}
+          value={val<string>('rsvpIntro', '')}
+          onChange={(e) => patch({ rsvpIntro: e.target.value })}
+          aria-label={t('rsvpIntro')}
+          placeholder={t('rsvpIntroDefault')}
           style={{
             ...inputBase,
-            height: 56,
-            borderRadius: 8,
-            padding: '9px 14px',
-            fontSize: 13,
-            lineHeight: 1.5,
-            resize: 'vertical',
-          }}
-        />
-        <textarea
-          value={val<string>('rsvpIntro2', '')}
-          onChange={(e) => patch({ rsvpIntro2: e.target.value })}
-          aria-label={t('rsvpIntro2')}
-          placeholder={t('rsvpIntro2Default')}
-          style={{
-            ...inputBase,
-            height: 56,
+            height: 120,
             borderRadius: 8,
             padding: '9px 14px',
             fontSize: 13,

@@ -74,10 +74,8 @@ export const vi = {
   },
   rsvp: {
     heading: 'Xác nhận tham gia',
-    intro1: 'Tiệc cưới sẽ trọn vẹn hơn khi có thêm lời chúc phúc và sự hiện diện của {guestLabel}.',
-    intro2:
-      'Hi vọng {guestLabel} sẽ sắp xếp thời gian và xác nhận tham dự để cô dâu – chú rể chuẩn bị tiếp đón thật chu đáo nhé!',
-    regards: 'Trân trọng.',
+    intro:
+      'Tiệc cưới sẽ trọn vẹn hơn khi có thêm lời chúc phúc và sự hiện diện của {guestLabel}.\nHi vọng {guestLabel} sẽ sắp xếp thời gian và xác nhận tham dự để cô dâu – chú rể chuẩn bị tiếp đón thật chu đáo nhé!\n\nTrân trọng.',
     yes: 'Tham dự được',
     yesSelected: '✓ Tham dự được',
     no: 'Không tham dự được',
@@ -219,13 +217,11 @@ export const vi = {
       storyCaption3: 'Chú thích ảnh 3',
       wishMaxLines: 'Số dòng tối đa mỗi thẻ lời chúc (còn lại sẽ ẩn dưới "Xem thêm")',
       rsvpHeading: 'Lời mời xác nhận tham gia',
-      rsvpTokenHint: 'Gõ [[danh_xung]] vào chỗ muốn chèn danh xưng riêng của từng khách.',
-      rsvpIntro1: 'Câu giới thiệu 1',
-      rsvpIntro2: 'Câu giới thiệu 2',
-      rsvpIntro1Default:
-        'Tiệc cưới sẽ trọn vẹn hơn khi có thêm lời chúc phúc và sự hiện diện của [[danh_xung]].',
-      rsvpIntro2Default:
-        'Hi vọng [[danh_xung]] sẽ sắp xếp thời gian và xác nhận tham dự để cô dâu – chú rể chuẩn bị tiếp đón thật chu đáo nhé!',
+      rsvpTokenHint:
+        'Gõ [[danh_xung]] vào chỗ muốn chèn danh xưng riêng của từng khách. Xuống dòng bằng Enter, để trống 1 dòng để ngắt đoạn.',
+      rsvpIntro: 'Nội dung lời mời',
+      rsvpIntroDefault:
+        'Tiệc cưới sẽ trọn vẹn hơn khi có thêm lời chúc phúc và sự hiện diện của [[danh_xung]].\nHi vọng [[danh_xung]] sẽ sắp xếp thời gian và xác nhận tham dự để cô dâu – chú rể chuẩn bị tiếp đón thật chu đáo nhé!\n\nTrân trọng.',
       siteTitle: 'Tên website (title)',
       siteDesc: 'Mô tả (description — hiện khi chia sẻ link)',
       og: 'Ảnh OG (chia sẻ link)',

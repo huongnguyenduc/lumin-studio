@@ -30,8 +30,7 @@ export function Rsvp({
   onNameChange,
   enabled,
   guestLabel,
-  intro1,
-  intro2,
+  intro,
 }: {
   guestId: string | null;
   eventSlug: string;
@@ -42,15 +41,15 @@ export function Rsvp({
   enabled: boolean;
   guestLabel?: string | null;
   /** Text tuỳ chỉnh từ Cài đặt chung, chứa {@link RSVP_GUEST_TOKEN}; thiếu → dùng vi.ts mặc định. */
-  intro1?: string;
-  intro2?: string;
+  intro?: string;
 }) {
   const t = useTranslations('rsvp');
   const tLetter = useTranslations('letter');
   const salutation = guestLabel ?? tLetter('anonymousGuest');
-  const withSalutation = (text: string) => text.split(RSVP_GUEST_TOKEN).join(salutation);
-  const introText1 = intro1 ? withSalutation(intro1) : t('intro1', { guestLabel: salutation });
-  const introText2 = intro2 ? withSalutation(intro2) : t('intro2', { guestLabel: salutation });
+  const introText = intro
+    ? intro.split(RSVP_GUEST_TOKEN).join(salutation)
+    : t('intro', { guestLabel: salutation });
+  const introLines = introText.split('\n');
   const [rsvp, setRsvp] = useState<'yes' | 'no' | null>(initial);
   const [nameError, setNameError] = useState(false);
   useEffect(() => setRsvp(initial), [initial]);
@@ -137,15 +136,12 @@ export function Rsvp({
       <Reveal
         style={{ width: 289, fontSize: 12, lineHeight: 1.55, color: CREAM, textAlign: 'center' }}
       >
-        {introText1}
-      </Reveal>
-      <Reveal
-        style={{ width: 280, fontSize: 12, lineHeight: 1.55, color: CREAM, textAlign: 'center' }}
-      >
-        {introText2}
-        <br />
-        <br />
-        {t('regards')}
+        {introLines.map((line, i) => (
+          <span key={i}>
+            {i > 0 ? <br /> : null}
+            {line}
+          </span>
+        ))}
       </Reveal>
       {/* Ô tên + 2 nút nằm chung MỘT cột `fit-content`: cột co theo hàng nút,
           ô tên `width:100%` nên mép trái/phải luôn trùng mép 2 nút — kể cả khi

@@ -37,15 +37,14 @@ export type SiteSettings = {
   /** Số dòng tối đa hiện trên mỗi thẻ lời chúc trước khi cắt còn "xem thêm"; mặc định 6. */
   wishMaxLines?: number;
   /**
-   * 2 dòng giới thiệu ở mục RSVP; thiếu → fallback vi.ts `rsvp.intro1`/`intro2`.
+   * Đoạn giới thiệu ở mục RSVP (1 ô, xuống dòng bằng Enter); thiếu → fallback vi.ts `rsvp.intro`.
    * Chứa token {@link RSVP_GUEST_TOKEN} ở chỗ muốn chèn danh xưng cá nhân hoá của khách.
    */
-  rsvpIntro1?: string;
-  rsvpIntro2?: string;
+  rsvpIntro?: string;
 };
 
 // Ngoặc vuông (không phải `{}`) để tránh đụng cú pháp ICU MessageFormat của next-intl.
-/** Token admin gõ vào rsvpIntro1/2 để đánh dấu chỗ chèn danh xưng khách (guestLabel). */
+/** Token admin gõ vào rsvpIntro để đánh dấu chỗ chèn danh xưng khách (guestLabel). */
 export const RSVP_GUEST_TOKEN = '[[danh_xung]]';
 
 // Venue/timeline/ceremony fields for one event (fixed shape — Letter renders
@@ -166,7 +165,6 @@ export function asSiteSettings(raw: Record<string, unknown>): SiteSettings {
     storyCaption2: s('storyCaption2'),
     storyCaption3: s('storyCaption3'),
     wishMaxLines: n('wishMaxLines'),
-    rsvpIntro1: s('rsvpIntro1'),
-    rsvpIntro2: s('rsvpIntro2'),
+    rsvpIntro: s('rsvpIntro'),
   };
 }
