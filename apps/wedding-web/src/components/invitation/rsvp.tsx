@@ -135,6 +135,7 @@ export function Rsvp({
       >
         {t('intro2', { guestLabel: salutation })}
         <br />
+        <br />
         {t('regards')}
       </Reveal>
       {/* Ô tên + 2 nút nằm chung MỘT cột `fit-content`: cột co theo hàng nút,
