@@ -226,8 +226,7 @@ export function InvitationCard({
             onNameChange={guest ? undefined : setSharedName}
             enabled={guest ? true : identityReady}
             guestLabel={guest?.label ?? settings.sharedGuestLabel ?? null}
-            intro1={settings.rsvpIntro1}
-            intro2={settings.rsvpIntro2}
+            intro={settings.rsvpIntro}
           />
           <Wishes
             guestId={guest?.id ?? null}
