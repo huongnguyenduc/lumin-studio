@@ -76,7 +76,7 @@ export const vi = {
     heading: 'Xác nhận tham gia',
     intro1: 'Tiệc cưới sẽ trọn vẹn hơn khi có thêm lời chúc phúc và sự hiện diện của {guestLabel}.',
     intro2:
-      'Hi vọng {guestLabel} sẽ sắp xếp thời gian và xác nhận tham dự trước ngày 05/09/2026 để cô dâu – chú rể chuẩn bị tiếp đón thật chu đáo nhé!',
+      'Hi vọng {guestLabel} sẽ sắp xếp thời gian và xác nhận tham dự để cô dâu – chú rể chuẩn bị tiếp đón thật chu đáo nhé!',
     regards: 'Trân trọng.',
     yes: 'Tham dự được',
     yesSelected: '✓ Tham dự được',
