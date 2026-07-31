@@ -28,6 +28,7 @@ export function Rsvp({
   name,
   onNameChange,
   enabled,
+  guestLabel,
 }: {
   guestId: string | null;
   eventSlug: string;
@@ -36,8 +37,11 @@ export function Rsvp({
   name?: string;
   onNameChange?: (name: string) => void;
   enabled: boolean;
+  guestLabel?: string | null;
 }) {
   const t = useTranslations('rsvp');
+  const tLetter = useTranslations('letter');
+  const salutation = guestLabel ?? tLetter('anonymousGuest');
   const [rsvp, setRsvp] = useState<'yes' | 'no' | null>(initial);
   const [nameError, setNameError] = useState(false);
   useEffect(() => setRsvp(initial), [initial]);
@@ -124,12 +128,12 @@ export function Rsvp({
       <Reveal
         style={{ width: 289, fontSize: 12, lineHeight: 1.55, color: CREAM, textAlign: 'center' }}
       >
-        {t('intro1')}
+        {t('intro1', { guestLabel: salutation })}
       </Reveal>
       <Reveal
         style={{ width: 280, fontSize: 12, lineHeight: 1.55, color: CREAM, textAlign: 'center' }}
       >
-        {t('intro2')}
+        {t('intro2', { guestLabel: salutation })}
         <br />
         {t('regards')}
       </Reveal>

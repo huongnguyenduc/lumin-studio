@@ -6,6 +6,10 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**✅ XONG (2026-07-31, wedding-web side project — đồng bộ danh xưng ở mục RSVP).** User báo: mục "Xác nhận tham gia" đang hardcode "Quý Anh/Chị/Bạn", lệch với danh xưng cá nhân hoá (`guest.label`) đã dùng ở Letter/Wishes. Đổi 3 file: `messages/vi.ts` (`rsvp.intro1`/`intro2` chuyển hardcode → placeholder ICU `{guestLabel}`) · `components/invitation/rsvp.tsx` (`Rsvp` nhận prop `guestLabel?`, fallback `tLetter('anonymousGuest')` khi null, truyền vào `t('intro1'/'intro2', {guestLabel})`) · `components/invitation/invitation-card.tsx` (truyền `guestLabel={guest?.label ?? settings.sharedGuestLabel ?? null}` vào `<Rsvp>`, cùng pattern với `<Letter>`). **Verify xanh:** `pnpm --filter wedding-web typecheck` sạch, lint sạch, browser thật (`localhost:3002`, dev server) xác nhận cả 2 câu RSVP đổi theo danh xưng ẩn danh đúng như Letter. **CHƯA:** test với link khách cụ thể (guest.label thật) · commit/PR.
+
+---
+
 **✅ XONG (2026-07-30, wedding-web side project — giới hạn số dòng thẻ lời chúc).** User yêu cầu: card lời chúc khách gửi chỉ hiện tối đa `maxLine` dòng (mặc định 6), quá thì cắt còn "Xem thêm"; admin chỉnh được số này ở Cài đặt chung. Backend không đổi (settings là JSONB shallow-merge mở, key mới tự đi qua). Đổi 5 file: `lib/site-settings.ts` (`SiteSettings.wishMaxLines?`, parse trong `asSiteSettings`) · `components/invitation/wishes.tsx` (`LetterCard` clamp `-webkit-line-clamp` + đo `scrollHeight` để hiện nút "Xem thêm/Thu gọn"; `Wishes` nhận/forward `maxLines`) · `components/invitation/invitation-card.tsx` (truyền `maxLines={settings.wishMaxLines ?? 6}`) · `components/admin/settings-fields.tsx` (input number 1–50) · `messages/vi.ts` (key `wish.showMore/showLess` + `admin.settings.wishMaxLines`). **Verify xanh:** `pnpm --filter wedding-web typecheck` sạch, eslint 5 file đổi sạch. **CHƯA:** browser thật (dev server đang bị phiên chat khác chiếm) · commit/PR.
 
 ---
