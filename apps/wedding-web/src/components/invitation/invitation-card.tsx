@@ -225,6 +225,7 @@ export function InvitationCard({
             name={guest ? undefined : sharedName}
             onNameChange={guest ? undefined : setSharedName}
             enabled={guest ? true : identityReady}
+            guestLabel={guest?.label ?? settings.sharedGuestLabel ?? null}
           />
           <Wishes
             guestId={guest?.id ?? null}
