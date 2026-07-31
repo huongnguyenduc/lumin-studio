@@ -171,6 +171,40 @@ export function SettingsFields({
           style={fieldInput}
         />
       </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <span style={fieldLabel}>{t('rsvpHeading')}</span>
+        <span style={{ fontSize: 12, color: INK, opacity: 0.7 }}>{t('rsvpTokenHint')}</span>
+        <textarea
+          value={val<string>('rsvpIntro1', '')}
+          onChange={(e) => patch({ rsvpIntro1: e.target.value })}
+          aria-label={t('rsvpIntro1')}
+          placeholder={t('rsvpIntro1Default')}
+          style={{
+            ...inputBase,
+            height: 56,
+            borderRadius: 8,
+            padding: '9px 14px',
+            fontSize: 13,
+            lineHeight: 1.5,
+            resize: 'vertical',
+          }}
+        />
+        <textarea
+          value={val<string>('rsvpIntro2', '')}
+          onChange={(e) => patch({ rsvpIntro2: e.target.value })}
+          aria-label={t('rsvpIntro2')}
+          placeholder={t('rsvpIntro2Default')}
+          style={{
+            ...inputBase,
+            height: 56,
+            borderRadius: 8,
+            padding: '9px 14px',
+            fontSize: 13,
+            lineHeight: 1.5,
+            resize: 'vertical',
+          }}
+        />
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <span style={fieldLabel}>{t('hero')}</span>

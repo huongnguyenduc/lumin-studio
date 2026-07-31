@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { CREAM, INK } from './theme';
 import { Reveal } from './reveal';
 import { saveSharedRSVP } from '@/lib/guest-identity';
+import { RSVP_GUEST_TOKEN } from '@/lib/site-settings';
 
 const pillBase: CSSProperties = {
   padding: '7px 18px',
@@ -29,6 +30,8 @@ export function Rsvp({
   onNameChange,
   enabled,
   guestLabel,
+  intro1,
+  intro2,
 }: {
   guestId: string | null;
   eventSlug: string;
@@ -38,10 +41,16 @@ export function Rsvp({
   onNameChange?: (name: string) => void;
   enabled: boolean;
   guestLabel?: string | null;
+  /** Text tuỳ chỉnh từ Cài đặt chung, chứa {@link RSVP_GUEST_TOKEN}; thiếu → dùng vi.ts mặc định. */
+  intro1?: string;
+  intro2?: string;
 }) {
   const t = useTranslations('rsvp');
   const tLetter = useTranslations('letter');
   const salutation = guestLabel ?? tLetter('anonymousGuest');
+  const withSalutation = (text: string) => text.split(RSVP_GUEST_TOKEN).join(salutation);
+  const introText1 = intro1 ? withSalutation(intro1) : t('intro1', { guestLabel: salutation });
+  const introText2 = intro2 ? withSalutation(intro2) : t('intro2', { guestLabel: salutation });
   const [rsvp, setRsvp] = useState<'yes' | 'no' | null>(initial);
   const [nameError, setNameError] = useState(false);
   useEffect(() => setRsvp(initial), [initial]);
@@ -128,12 +137,12 @@ export function Rsvp({
       <Reveal
         style={{ width: 289, fontSize: 12, lineHeight: 1.55, color: CREAM, textAlign: 'center' }}
       >
-        {t('intro1', { guestLabel: salutation })}
+        {introText1}
       </Reveal>
       <Reveal
         style={{ width: 280, fontSize: 12, lineHeight: 1.55, color: CREAM, textAlign: 'center' }}
       >
-        {t('intro2', { guestLabel: salutation })}
+        {introText2}
         <br />
         <br />
         {t('regards')}

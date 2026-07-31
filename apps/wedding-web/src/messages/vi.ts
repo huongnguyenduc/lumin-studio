@@ -218,6 +218,14 @@ export const vi = {
       storyCaption2: 'Chú thích ảnh 2',
       storyCaption3: 'Chú thích ảnh 3',
       wishMaxLines: 'Số dòng tối đa mỗi thẻ lời chúc (còn lại sẽ ẩn dưới "Xem thêm")',
+      rsvpHeading: 'Lời mời xác nhận tham gia',
+      rsvpTokenHint: 'Gõ [[danh_xung]] vào chỗ muốn chèn danh xưng riêng của từng khách.',
+      rsvpIntro1: 'Câu giới thiệu 1',
+      rsvpIntro2: 'Câu giới thiệu 2',
+      rsvpIntro1Default:
+        'Tiệc cưới sẽ trọn vẹn hơn khi có thêm lời chúc phúc và sự hiện diện của [[danh_xung]].',
+      rsvpIntro2Default:
+        'Hi vọng [[danh_xung]] sẽ sắp xếp thời gian và xác nhận tham dự để cô dâu – chú rể chuẩn bị tiếp đón thật chu đáo nhé!',
       siteTitle: 'Tên website (title)',
       siteDesc: 'Mô tả (description — hiện khi chia sẻ link)',
       og: 'Ảnh OG (chia sẻ link)',
