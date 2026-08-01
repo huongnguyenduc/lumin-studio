@@ -1628,6 +1628,82 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /admin/encode-tokens:
+    get:
+      tags: [admin]
+      operationId: listEncodeTokens
+      summary: List scoped NFC-encode Bearer tokens (owner-only) — for the Shortcuts automation.
+      description: >
+        Lists every encode-token (active + revoked), newest first, for the token-management surface
+        (Cài đặt › NFC Shortcuts). The raw token is never returned here (only shown once on creation) —
+        owner-only, mirroring staff & roles: managing credentials is an owner power.
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Every encode token (no raw token material).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EncodeToken'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [admin]
+      operationId: createEncodeToken
+      summary: Mint a scoped NFC-encode Bearer token (owner-only).
+      description: >
+        Mints a random token scoped ONLY to POST /admin/print-jobs/{id}/encode — for an iOS Shortcuts
+        automation that can't carry the httpOnly admin session cookie and shouldn't be handed a
+        full-power admin session JWT (unlike the browser extension's ADR-043 bearer, which authenticates
+        every admin route). The raw token is returned ONCE in this response body and never stored or
+        shown again — only its SHA-256 hash is persisted.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EncodeTokenCreate'
+      responses:
+        '201':
+          description: The created token, including the raw token value (shown once).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EncodeTokenCreated'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/encode-tokens/{id}:
+    delete:
+      tags: [admin]
+      operationId: revokeEncodeToken
+      summary: Revoke a scoped NFC-encode Bearer token (owner-only).
+      description: >
+        Revokes the token immediately — any Shortcuts automation still presenting it gets 401 on its
+        next call. Any owner may revoke any token, not only its creator (a small team's owners jointly
+        administer these credentials). Idempotent-not: revoking an already-revoked or unknown id → 404.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Revoked.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /admin/outbox/stats:
     get:
       tags: [admin]
@@ -4855,6 +4931,66 @@ components:
           type: string
           format: password
           minLength: 8
+
+    EncodeToken:
+      type: object
+      description: >
+        A scoped NFC-encode Bearer token row (Cài đặt › NFC Shortcuts). Never carries the raw token or
+        its hash — only metadata for the management list. `scope` is fixed 'pettag_encode' today (a
+        plain string, not an enum, so a future second scope needs no migration).
+      required: [id, label, scope, createdAt, revoked]
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+        scope:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+        revoked:
+          type: boolean
+
+    EncodeTokenCreate:
+      type: object
+      description: Create body for POST /admin/encode-tokens — a human label only (e.g. "iPhone Shortcuts").
+      required: [label]
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 80
+
+    EncodeTokenCreated:
+      type: object
+      description: >
+        The created token INCLUDING the raw value — shown once. The caller must copy `token` into the
+        Shortcuts automation immediately; it cannot be retrieved again (only the hash is persisted).
+      required: [id, label, scope, createdAt, revoked, token]
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+        scope:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+        revoked:
+          type: boolean
+        token:
+          type: string
+          description: The raw Bearer token — shown once, never persisted or returned again.
 
     # --- Storefront customer account (PR-P1-r) ----------------------------------------------------
     CustomerAccount:

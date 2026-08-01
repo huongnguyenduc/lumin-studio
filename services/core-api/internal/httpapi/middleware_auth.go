@@ -60,6 +60,11 @@ const (
 	// injects NO actor — the worker has no identity, only proof-of-trust. Compared constant-time against the
 	// configured workerCallbackToken; an unset token (empty) matches nothing → the endpoint is fail-closed.
 	authService
+	// authEncodeOrRequired gates ONLY EncodePrintJobTag: it accepts a scoped encode-token (an iOS
+	// Shortcuts automation minted via POST /admin/encode-tokens, prefix encodeTokenPrefix) IN ADDITION to
+	// the normal owner/staff session (cookie or the extension's full-power ADR-043 JWT). A scoped token
+	// authenticates NOTHING else — every other admin route still requires a real session actor.
+	authEncodeOrRequired
 )
 
 // classify maps a generated operationID to its gate. Unlisted operations fall through to
@@ -160,6 +165,15 @@ func classify(operationID string) authClass {
 		// access to "Cài đặt & nhân viên"). This is the ONE owner-only admin READ; every other admin
 		// read stays owner+staff via the default. The RBAC matrix the FE draws is display-only.
 		return authOwnerOnly
+	case "ListEncodeTokens", "CreateEncodeToken", "RevokeEncodeToken":
+		// Minting/revoking a standing Shortcuts credential (see authEncodeOrRequired below) is an owner
+		// power, mirroring staff & roles.
+		return authOwnerOnly
+	case "EncodePrintJobTag":
+		// The "Ghi chip NFC" write — normally owner+staff (fulfillment work, the default) — is ALSO
+		// reachable by a scoped encode-token (an iOS Shortcuts automation) so a device that can't run
+		// Web NFC / carry the session cookie can still confirm a chip write without a full admin session.
+		return authEncodeOrRequired
 	case "ReportAssetJobResult":
 		// The asset-worker render callback (ADR-045) — service-token auth, no user session. It writes an
 		// asset job's result + the product's model3d_url, so it must never be reachable by a browser/user
@@ -243,6 +257,23 @@ func (s *Server) authMiddleware(next api.StrictHandlerFunc, operationID string) 
 		if class == authOptionalCustomer {
 			if id, ok, err := s.resolveCustomer(r); err == nil && ok {
 				return next(withCustomer(ctx, id), w, r, request)
+			}
+			return next(ctx, w, r, request)
+		}
+
+		// authEncodeOrRequired: a Bearer shaped like a scoped encode-token (encodeTokenPrefix) is checked
+		// against the encode_tokens table INSTEAD of the session/JWT path below — it authenticates only
+		// this one operation and injects no Actor (an EncodePrintJobTag call from a scoped token has no
+		// byUser to attribute; the handler does not write statusHistory for the tag lifecycle anyway, see
+		// admin_pettag_encode.go). Anything else (no Bearer, a session JWT, a cookie) falls through to the
+		// normal owner/staff resolution unchanged.
+		if class == authEncodeOrRequired && strings.HasPrefix(bearerToken(r), encodeTokenPrefix) {
+			ok, err := s.resolveEncodeToken(ctx, bearerToken(r))
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				return nil, errUnauthenticated
 			}
 			return next(ctx, w, r, request)
 		}
@@ -349,6 +380,29 @@ func (s *Server) resolveCustomer(r *http.Request) (uuid.UUID, bool, error) {
 		return uuid.UUID{}, false, errUnauthenticated
 	}
 	return id, true, nil
+}
+
+// resolveEncodeToken validates a Bearer already known to have the encodeTokenPrefix shape against the
+// encode_tokens table (see 000032_encode_tokens.up.sql, admin_encode_tokens.go): it hashes the presented
+// value, looks it up, and rejects a revoked or unknown token. On success it best-effort bumps
+// last_used_at (a fire-and-forget observability write — its own failure never fails the request, the
+// scoped auth already succeeded). Returns (false, nil) for "not a valid encode token" (→ 401 by the
+// caller) and a non-nil error only on a genuine DB fault (→ 500).
+func (s *Server) resolveEncodeToken(ctx context.Context, token string) (bool, error) {
+	row, err := db.NewIdentity(s.pool).EncodeTokenByHash(ctx, hashEncodeToken(token))
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	if row.RevokedAt.Valid || row.Scope != encodeTokenScope {
+		return false, nil
+	}
+	go func() {
+		_ = db.NewIdentity(s.pool).TouchEncodeToken(context.Background(), row.ID)
+	}()
+	return true, nil
 }
 
 // actorRole maps the stored user_role to a domain order.Role. It is explicit (not a raw cast)
