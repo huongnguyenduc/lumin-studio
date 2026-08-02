@@ -5,6 +5,12 @@ import { coreApiBaseUrl } from '@/lib/session';
 // attach an Authorization header, so this route exists purely to turn that GET into the scoped-token
 // POST /admin/print-jobs/{id}/encode core-api already exposes (authEncodeOrRequired, ADR-043-adjacent).
 // No cookie/session here on purpose — this must work from Safari with nobody logged in to admin.
+//
+// jobId/token are PATH segments, not query params: NFC Helper appends `?tagid=...` to the callback
+// verbatim, blind to whether it already has a `?` — a query-string callback produces a malformed
+// second `?` that Next silently folds into the previous param's value instead of splitting a new one
+// (observed live: tagid vanished, token got `?tagid=...` appended to its value). Path segments sidestep
+// that entirely, since the app only ever appends its own leading `?`.
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,11 +22,12 @@ function page(title: string, body: string): Response {
   );
 }
 
-export async function GET(request: Request): Promise<Response> {
-  const url = new URL(request.url);
-  const jobId = url.searchParams.get('jobId');
-  const token = url.searchParams.get('token');
-  const chipUid = url.searchParams.get('tagid');
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ jobId: string; token: string }> },
+): Promise<Response> {
+  const { jobId, token } = await params;
+  const chipUid = new URL(request.url).searchParams.get('tagid');
   if (!jobId || !token || !chipUid) {
     return page('Thiếu thông tin', '<p>Link không hợp lệ — thiếu jobId/token/tagid.</p>');
   }
