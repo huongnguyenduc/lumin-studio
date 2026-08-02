@@ -188,6 +188,12 @@ func (j *Jobs) PrintQueueEntry(ctx context.Context, id uuid.UUID) (sqlc.GetPrint
 	return row, err
 }
 
+// CountNeedPrintForOrder returns how many of an order's print jobs are still stuck at NEED_PRINT — the
+// auto-advance signal (ADR-050): zero means every line has started printing or further.
+func (j *Jobs) CountNeedPrintForOrder(ctx context.Context, orderID uuid.UUID) (int64, error) {
+	return j.q.CountNeedPrintForOrder(ctx, orderID)
+}
+
 // ErrInvalidAssetJob is returned for a structurally invalid CreateAssetJobInput, before any write.
 var ErrInvalidAssetJob = errors.New("asset job: invalid input")
 

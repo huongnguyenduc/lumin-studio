@@ -13,6 +13,7 @@ type BankAccountUpdate = components['schemas']['BankAccountUpdate'];
 type ShippingRule = components['schemas']['ShippingRule'];
 type ReplyTemplateInput = components['schemas']['ReplyTemplateInput'];
 type StaffInvite = components['schemas']['StaffInvite'];
+type ShopContact = components['schemas']['ShopContact'];
 
 /** `forbidden` = staff hit an owner-only edge (403); `validation` = the server rejected a field
  *  (400/422); `notFound` = the reply template id is gone (404); `conflict` = a duplicate (409, e.g. a
@@ -68,6 +69,18 @@ export async function updateRefundPolicy(refundPolicy: string): Promise<Settings
     const { data, response } = await client.PATCH('/admin/settings/refund-policy', {
       body: { refundPolicy },
     });
+    return data ? { ok: true } : { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
+/** Replace the shop's public contact channels (PATCH /admin/settings/shop-contact) — owner-only.
+ *  Wholesale replace (an omitted field means "not configured", not "unchanged"). */
+export async function updateShopContact(body: ShopContact): Promise<SettingsResult> {
+  try {
+    const client = await authedClient();
+    const { data, response } = await client.PATCH('/admin/settings/shop-contact', { body });
     return data ? { ok: true } : { ok: false, code: codeFor(response.status) };
   } catch {
     return { ok: false, code: 'error' };

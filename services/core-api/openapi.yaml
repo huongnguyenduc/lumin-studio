@@ -1147,6 +1147,44 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /admin/orders/{id}/proof-url:
+    get:
+      tags: [admin]
+      operationId: getAdminOrderProofUrl
+      summary: Sign a short-lived GET URL for one of an order's proof images (admin-gated).
+      description: >
+        The payment-proof/refund-proof/QC-photo buckets are private by design (ADR-046 — no anon read,
+        no website alias) and Garage has no anonymous GET, so `order.paymentProofUrl` etc. are not
+        directly viewable — this mints a presigned GET (10 min TTL) for the requested kind so the admin
+        UI can render an `<img>`. Reads the URL off the order itself (server picks, client never supplies
+        an arbitrary URL to sign) and re-checks the proofstore host-pin before signing. 404 when the
+        order has no URL of that kind (e.g. no refund proof on a non-refunded order).
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: kind
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [payment, refund, qc]
+      responses:
+        '200':
+          description: A signed, short-lived GET URL for the requested proof image.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignedAssetUrl'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /admin/customers:
     get:
       tags: [admin]
@@ -1432,6 +1470,55 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/settings/shop-contact:
+    patch:
+      tags: [admin]
+      operationId: updateShopContact
+      summary: Replace the shop's public contact channels (owner-only).
+      description: >
+        Owner-only. Replaces settings.shop_info wholesale with `{contact: {...}}` — every field optional
+        (a shop may not have every channel); an omitted/blank field is simply not shown on /lien-he or the
+        "Nhắn shop" popup. This is the ONLY writer of shop_info (PR F); GET /shop/contact (public) reads
+        the same object back, whitelisted to just the channel fields (never the full Settings singleton —
+        that also carries the STK).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShopContact'
+      responses:
+        '200':
+          description: Updated settings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /shop/contact:
+    get:
+      tags: [shop]
+      operationId: getShopContact
+      summary: The shop's public contact channels (public, rate-limited) — for /lien-he + the "Nhắn shop" popup.
+      description: >
+        Public read of settings.shop_info's contact fields ONLY — never the full Settings singleton (which
+        also carries the STK, refundPolicy, shippingRules — ADR-032-style whitelist, same posture as
+        GET /checkout/config not leaking shopInfo PII at checkout-config.md). Every field is optional and
+        omitted-when-unset, so a shop that hasn't configured a channel yet returns `{}`, not an error — the
+        storefront renders a "chưa cập nhật" fallback rather than a 404.
+      responses:
+        '200':
+          description: The shop's configured contact channels (omitted fields = not configured).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShopContact'
 
   /admin/reply-templates:
     get:
@@ -5312,6 +5399,30 @@ components:
         targetPort:
           type: integer
 
+    ShopContact:
+      type: object
+      description: >
+        The shop's public contact channels (settings.shop_info.contact) — written by owner-only
+        PATCH /admin/settings/shop-contact, read publicly by GET /shop/contact for /lien-he and the
+        "Nhắn shop" popup. Every field optional/omit-when-unset.
+      properties:
+        zalo:
+          type: string
+          description: Zalo handle or number (opens https://zalo.me/{zalo}).
+        facebook:
+          type: string
+          description: Facebook Messenger username (opens https://m.me/{facebook}).
+        phone:
+          type: string
+        email:
+          type: string
+          format: email
+        address:
+          type: string
+        hours:
+          type: string
+          description: Free-text opening hours, e.g. "8:00–20:00, T2–CN".
+
     CheckoutConfig:
       type: object
       description: >
@@ -5378,6 +5489,20 @@ components:
           type: integer
           format: int64
           description: Maximum object size enforced by the signed POST policy.
+
+    SignedAssetUrl:
+      type: object
+      description: >
+        A short-lived presigned GET for one private proof/QC object (GET /admin/orders/{id}/proof-url).
+      required: [url, expiresAt]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Presigned GET URL, valid until expiresAt.
+        expiresAt:
+          type: string
+          format: date-time
 
     ImageUploadInput:
       type: object
@@ -5696,6 +5821,17 @@ components:
           type: string
           format: date-time
           description: Estimated handoff, when set.
+        personalization:
+          $ref: '#/components/schemas/Personalization'
+        optionChoiceLabels:
+          type: array
+          items:
+            type: string
+          description: >
+            Human-readable option choices for the line ("Kích thước: Lớn") — what to print, beyond colour.
+        orderNote:
+          type: string
+          description: The order's internal note, when set — same field shown on the admin order detail.
 
     PrintStageUpdate:
       type: object

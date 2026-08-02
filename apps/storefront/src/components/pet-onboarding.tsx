@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Checkbox, Input, cn } from '@lumin/ui';
 import { CtaLink } from './cta-link';
@@ -14,6 +14,13 @@ import { activatePetTag } from '@/lib/pet-actions';
 import { track } from '@/lib/analytics';
 import type { PetSpecies } from '@/lib/pet-page';
 
+/** `prefers-reduced-motion` gate for the step/done scroll-ups below (always-must #4). */
+function reducedMotion(): boolean {
+  return (
+    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
+
 // The 2-step activation onboarding wizard (spec §10 steps 2b/2c, P3-t t-3). Rendered on /t/{shortId} when a
 // signed-in customer scans an ENCODED tag. Step 1 = pet profile, step 2 = owner contact + medical + social
 // + the PDPL consent gate (point 1). On submit it calls the activatePetTag Server Action (which attaches
@@ -25,13 +32,28 @@ type WizardError = ReturnType<typeof validateOnboarding> | 'saveFailed' | 'confl
 
 const SPECIES: readonly PetSpecies[] = ['dog', 'cat', 'other'];
 
-export function PetOnboarding({ shortId }: { shortId: string }) {
+export function PetOnboarding({
+  shortId,
+  contactSeed,
+}: {
+  shortId: string;
+  /** Prefill for step 2's owner contact, from the logged-in customer's display profile (a seed the user
+   *  can overwrite, never verified — see emptyOnboardingForm). Absent for a guest scan. */
+  contactSeed?: { name?: string; phone?: string };
+}) {
   const t = useTranslations('petTag.onboarding');
-  const [form, setForm] = useState<OnboardingForm>(emptyOnboardingForm);
+  const [form, setForm] = useState<OnboardingForm>(() => emptyOnboardingForm(contactSeed));
   const [step, setStep] = useState<1 | 2>(1);
   const [error, setError] = useState<WizardError>(null);
   const [pending, setPending] = useState(false);
   const [done, setDone] = useState(false);
+
+  // Scrolling top on every step change: step 1 can run long enough (species chips + 3 boxes + allergies)
+  // that "Tiếp theo" is below the fold — without this the shopper lands mid-form on step 2, and the same
+  // for the done screen swapping in after a scrolled-down step 2.
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: reducedMotion() ? 'auto' : 'smooth' });
+  }, [step, done]);
 
   const set = <K extends keyof OnboardingForm>(key: K, value: OnboardingForm[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -161,7 +183,10 @@ function Step1({ t, form, set, species }: StepProps & { species: PetSpecies }) {
           ))}
         </div>
       </fieldset>
-      <div className="flex gap-3">
+      {/* Giống/Tuổi/Cân nặng — bám design (Lumin Pet Tag - Hi-fi §2b): ba ô nhãn-riêng CÙNG bề rộng thay
+          vì flex chen nhau. Cân nặng mang đơn vị "kg" ngay trong nhãn (Input chưa có prop suffix — nhãn
+          là chỗ rẻ nhất để mang đơn vị, không cần dựng thêm control mới). */}
+      <div className="grid grid-cols-3 gap-3">
         <Input
           label={t('step1.breed')}
           value={form.breed}
@@ -171,13 +196,12 @@ function Step1({ t, form, set, species }: StepProps & { species: PetSpecies }) {
           label={t('step1.age')}
           value={form.age}
           onChange={(e) => set('age', e.target.value)}
-          className="w-24"
         />
         <Input
           label={t('step1.weight')}
           value={form.weight}
           onChange={(e) => set('weight', e.target.value)}
-          className="w-24"
+          inputMode="decimal"
         />
       </div>
       <Input
@@ -205,22 +229,15 @@ function Step2({ t, form, set }: StepProps) {
           value={form.ownerName}
           onChange={(e) => set('ownerName', e.target.value)}
         />
-        <div className="flex gap-3">
-          <Input
-            label={t('step2.phone')}
-            value={form.phone}
-            onChange={(e) => set('phone', e.target.value)}
-            type="tel"
-            inputMode="tel"
-            autoComplete="tel"
-          />
-          <Input
-            label={t('step2.zalo')}
-            value={form.zalo}
-            onChange={(e) => set('zalo', e.target.value)}
-            className="w-28"
-          />
-        </div>
+        {/* Zalo bị bỏ (số điện thoại là kênh liên hệ đủ dùng — trùng lặp không cần thiết). */}
+        <Input
+          label={t('step2.phone')}
+          value={form.phone}
+          onChange={(e) => set('phone', e.target.value)}
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+        />
       </section>
 
       <section className="flex flex-col gap-3">
@@ -238,12 +255,7 @@ function Step2({ t, form, set }: StepProps) {
           checked={form.neutered}
           onChange={(e) => set('neutered', e.target.checked)}
         />
-        <Input
-          label={t('step2.vetClinic')}
-          hint={t('step2.optional')}
-          value={form.vetClinic}
-          onChange={(e) => set('vetClinic', e.target.value)}
-        />
+        {/* Phòng khám thú y bị bỏ (thông tin dư, hiếm khi hữu ích khi bé lạc). */}
       </section>
 
       <section className="flex flex-col gap-3">

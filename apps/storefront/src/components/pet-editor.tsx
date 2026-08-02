@@ -186,7 +186,7 @@ function EditorPanel({
             </div>
           </fieldset>
 
-          <div className="flex gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <TextField
               id="pet-breed"
               label={t('breed')}
@@ -204,6 +204,7 @@ function EditorPanel({
               label={t('weight')}
               value={form.weight}
               onChange={(v) => set('weight', v)}
+              inputMode="decimal"
             />
           </div>
 
@@ -271,12 +272,7 @@ function EditorPanel({
               />
               {t('neutered')}
             </label>
-            <TextField
-              id="pet-vet"
-              label={t('vetClinic')}
-              value={form.vetClinic}
-              onChange={(v) => set('vetClinic', v)}
-            />
+            {/* Phòng khám thú y bị bỏ (thông tin dư, hiếm khi hữu ích khi bé lạc). */}
           </div>
 
           {/* socials */}
@@ -307,19 +303,13 @@ function EditorPanel({
               onChange={(v) => set('ownerName', v)}
               onDark
             />
+            {/* Zalo bị bỏ (số điện thoại là kênh liên hệ đủ dùng — trùng lặp không cần thiết). */}
             <TextField
               id="pet-phone"
               label={t('phone')}
               value={form.phone}
               onChange={(v) => set('phone', v)}
               inputMode="tel"
-              onDark
-            />
-            <TextField
-              id="pet-zalo"
-              label={t('zalo')}
-              value={form.zalo}
-              onChange={(v) => set('zalo', v)}
               onDark
             />
           </div>
@@ -353,7 +343,7 @@ function TextField({
   label: string;
   value: string;
   onChange: (v: string) => void;
-  inputMode?: 'tel';
+  inputMode?: 'tel' | 'decimal';
   onDark?: boolean;
 }) {
   return (

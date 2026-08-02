@@ -16,7 +16,15 @@ import { track } from '@/lib/analytics';
 const PIN = '📍';
 const DONE = '🎉';
 
-type Phase = 'idle' | 'locating' | 'sending' | 'sent' | 'denied' | 'notLost' | 'error';
+type Phase =
+  | 'idle'
+  | 'locating'
+  | 'sending'
+  | 'sent'
+  | 'denied'
+  | 'unsupported'
+  | 'notLost'
+  | 'error';
 
 export function FinderLocationShare({ shortId, petName }: { shortId: string; petName: string }) {
   const t = useTranslations('petTag.page.finder');
@@ -24,8 +32,17 @@ export function FinderLocationShare({ shortId, petName }: { shortId: string; pet
 
   const onShare = () => {
     if (phase === 'locating' || phase === 'sending' || phase === 'sent') return; // guard double-taps + send-once
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setPhase('denied'); // no geolocation support → same fallback as a refusal (call/message still works)
+    // `unsupported` is a DIFFERENT failure than a refused permission — no geolocation object at all (an
+    // in-app browser like Zalo/Messenger, or an old browser), or a non-HTTPS/non-localhost origin (the
+    // spec REQUIRES a secure context; navigator.geolocation may still exist but silently no-ops or errors
+    // there — confirmed live: testing over a plain-HTTP LAN address hits exactly this every time). Neither
+    // is "you clicked deny", so it must not show the "chặn"/re-enable-in-settings copy.
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.geolocation ||
+      (typeof window !== 'undefined' && !window.isSecureContext)
+    ) {
+      setPhase('unsupported');
       return;
     }
     setPhase('locating');
@@ -41,8 +58,13 @@ export function FinderLocationShare({ shortId, petName }: { shortId: string; pet
         })();
       },
       (err) => {
-        // PERMISSION_DENIED (1) → the finder declined; other codes (unavailable / timeout) → a retryable error.
-        // Either way the contact card above still works, so this is never a dead end.
+        // PERMISSION_DENIED (1) → the finder declined, or the browser has this origin permanently
+        // blocked (pressing the button again re-hits this SAME branch without even re-prompting — the
+        // "ấn lại cũng không được" report). Read the constant off the error instance itself (not the
+        // global GeolocationPositionError, which may not exist on every implementation) so a
+        // non-conforming error object still compares correctly. Other codes (unavailable/timeout) → a
+        // genuinely retryable error. Either way the contact card above still works, so this is never a
+        // dead end.
         setPhase(err.code === err.PERMISSION_DENIED ? 'denied' : 'error');
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
@@ -73,15 +95,27 @@ export function FinderLocationShare({ shortId, petName }: { shortId: string; pet
         {PIN}{' '}
         {phase === 'locating' ? t('locating') : phase === 'sending' ? t('sending') : t('button')}
       </button>
-      {(phase === 'denied' || phase === 'error' || phase === 'notLost') && (
+      {(phase === 'denied' ||
+        phase === 'unsupported' ||
+        phase === 'error' ||
+        phase === 'notLost') && (
         <div role="alert" className="mt-2">
           <p className="text-sm text-danger">
-            {phase === 'denied' ? t('denied') : phase === 'notLost' ? t('notLost') : t('error')}
+            {phase === 'denied'
+              ? t('denied')
+              : phase === 'unsupported'
+                ? t('unsupported')
+                : phase === 'notLost'
+                  ? t('notLost')
+                  : t('error')}
           </p>
           {phase === 'denied' && (
             <p className="mt-0.5 font-mono text-[11px] text-text-muted">{t('deniedHint')}</p>
           )}
-          {phase === 'error' && (
+          {phase === 'unsupported' && (
+            <p className="mt-0.5 font-mono text-[11px] text-text-muted">{t('unsupportedHint')}</p>
+          )}
+          {(phase === 'error' || phase === 'denied') && (
             <button
               type="button"
               onClick={onShare}

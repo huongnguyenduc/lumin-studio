@@ -126,7 +126,7 @@ func classify(operationID string) authClass {
 	case "CreateOrder":
 		return authOptional
 	case "UpdateBankAccount",
-		"UpdateShippingRules", "UpdateRefundPolicy",
+		"UpdateShippingRules", "UpdateRefundPolicy", "UpdateShopContact",
 		"CreateReplyTemplate", "UpdateReplyTemplate", "DeleteReplyTemplate":
 		// Every settings/config WRITE is owner-only (staff không sửa cài đặt — domain-core RBAC).
 		// Shipping rules are money-adjacent (checkout fee); the rest is shop config. Reads
@@ -199,6 +199,11 @@ func classify(operationID string) authClass {
 		// client-supplied id), scoped to ONE ENCODED tag's order — see the openapi description + the
 		// GetCustomerByTagShortID query doc for why this is not the guest-order-by-phone auto-link
 		// RegisterCustomer's comment calls out as a security hole.
+		return authPublic
+	case "GetShopContact":
+		// Public read of the shop's contact channels (PR F) — /lien-he + the "Nhắn shop" popup, reachable
+		// from anywhere, no session. Handler whitelists to the channel fields only (never the STK/policy
+		// the rest of Settings carries).
 		return authPublic
 	case "GetPetPage":
 		// Public pet-page read (P3-t t-3/t-4a) — the /t/{shortId} scan target. Anyone who taps the chip

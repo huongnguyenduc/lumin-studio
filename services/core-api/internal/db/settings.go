@@ -57,6 +57,12 @@ func (s *Settings) UpdateRefundPolicy(ctx context.Context, refundPolicy string) 
 	return s.q.UpdateRefundPolicy(ctx, refundPolicy)
 }
 
+// UpdateShopInfo replaces shop_info wholesale (PR F — shop contact channels) and returns the updated
+// singleton. Targeted single-column write (does not touch bank_account/shipping_rules/refund_policy).
+func (s *Settings) UpdateShopInfo(ctx context.Context, shopInfo []byte) (sqlc.Setting, error) {
+	return s.q.UpdateShopInfo(ctx, shopInfo)
+}
+
 // BankAudits returns the money-out config history, newest first (the owner audit view).
 func (s *Settings) BankAudits(ctx context.Context) ([]sqlc.SettingBankAudit, error) {
 	return s.q.ListBankAudit(ctx)

@@ -146,6 +146,13 @@ const (
 	Staff UserRole = "staff"
 )
 
+// Defines values for GetAdminOrderProofUrlParamsKind.
+const (
+	Payment GetAdminOrderProofUrlParamsKind = "payment"
+	Qc      GetAdminOrderProofUrlParamsKind = "qc"
+	Refund  GetAdminOrderProofUrlParamsKind = "refund"
+)
+
 // Defines values for GetProductsParamsSort.
 const (
 	Newest    GetProductsParamsSort = "newest"
@@ -1575,11 +1582,20 @@ type PrintQueueJob struct {
 	Eta *time.Time         `json:"eta,omitempty"`
 	Id  openapi_types.UUID `json:"id"`
 
+	// OptionChoiceLabels Human-readable option choices for the line ("Kích thước: Lớn") — what to print, beyond colour.
+	OptionChoiceLabels *[]string `json:"optionChoiceLabels,omitempty"`
+
 	// OrderCode Display code of the owning order (e.g.
 	OrderCode string `json:"orderCode"`
 
+	// OrderNote The order's internal note, when set — same field shown on the admin order detail.
+	OrderNote *string `json:"orderNote,omitempty"`
+
 	// PartColorLabels Per-part colour labels ("Chao: Đỏ") for a product with named parts (ADR-037), from the names denormalized into the order line at capture. What filament for which part, at the printer. Absent for a flat product (which uses colorName). Read-only.
 	PartColorLabels *[]string `json:"partColorLabels,omitempty"`
+
+	// Personalization Per-item engraving (distinct from a Review's text — that field is `body`).
+	Personalization *Personalization `json:"personalization,omitempty"`
 
 	// Printer Assigned printer, when staff have set one.
 	Printer *string `json:"printer,omitempty"`
@@ -1898,6 +1914,30 @@ type ShippingRulesUpdate struct {
 	ShippingRules []ShippingRule `json:"shippingRules"`
 }
 
+// ShopContact The shop's public contact channels (settings.shop_info.contact) — written by owner-only PATCH /admin/settings/shop-contact, read publicly by GET /shop/contact for /lien-he and the "Nhắn shop" popup. Every field optional/omit-when-unset.
+type ShopContact struct {
+	Address *string              `json:"address,omitempty"`
+	Email   *openapi_types.Email `json:"email,omitempty"`
+
+	// Facebook Facebook Messenger username (opens https://m.me/{facebook}).
+	Facebook *string `json:"facebook,omitempty"`
+
+	// Hours Free-text opening hours, e.g. "8:00–20:00, T2–CN".
+	Hours *string `json:"hours,omitempty"`
+	Phone *string `json:"phone,omitempty"`
+
+	// Zalo Zalo handle or number (opens https://zalo.me/{zalo}).
+	Zalo *string `json:"zalo,omitempty"`
+}
+
+// SignedAssetUrl A short-lived presigned GET for one private proof/QC object (GET /admin/orders/{id}/proof-url).
+type SignedAssetUrl struct {
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// Url Presigned GET URL, valid until expiresAt.
+	Url string `json:"url"`
+}
+
 // StaffInvite Create body for a staff/owner account (POST /admin/staff, P3-q). The owner sets an initial `password` (min 8) shared out-of-band — there is no email-invite flow yet. `role` is owner or staff (the two fixed roles, spec §08 — no custom roles). `name` is 2..60 chars. All bounds are validated server-side (oapi-codegen's strict server does not enforce schema min/maxLength).
 type StaffInvite struct {
 	Email    openapi_types.Email `json:"email"`
@@ -1982,6 +2022,14 @@ type GetAdminOrdersParams struct {
 	// PageSize Items per page. Capped at 50 to bound the query on this admin endpoint.
 	PageSize *int `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
+
+// GetAdminOrderProofUrlParams defines parameters for GetAdminOrderProofUrl.
+type GetAdminOrderProofUrlParams struct {
+	Kind GetAdminOrderProofUrlParamsKind `form:"kind" json:"kind"`
+}
+
+// GetAdminOrderProofUrlParamsKind defines parameters for GetAdminOrderProofUrl.
+type GetAdminOrderProofUrlParamsKind string
 
 // GetAdminProductsParams defines parameters for GetAdminProducts.
 type GetAdminProductsParams struct {
@@ -2165,6 +2213,9 @@ type UpdateRefundPolicyJSONRequestBody = RefundPolicyUpdate
 
 // UpdateShippingRulesJSONRequestBody defines body for UpdateShippingRules for application/json ContentType.
 type UpdateShippingRulesJSONRequestBody = ShippingRulesUpdate
+
+// UpdateShopContactJSONRequestBody defines body for UpdateShopContact for application/json ContentType.
+type UpdateShopContactJSONRequestBody = ShopContact
 
 // CreateStaffJSONRequestBody defines body for CreateStaff for application/json ContentType.
 type CreateStaffJSONRequestBody = StaffInvite
@@ -2407,6 +2458,9 @@ type ServerInterface interface {
 	// Admin order detail by id — the full internal order (admin-gated).
 	// (GET /admin/orders/{id})
 	GetAdminOrder(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Sign a short-lived GET URL for one of an order's proof images (admin-gated).
+	// (GET /admin/orders/{id}/proof-url)
+	GetAdminOrderProofUrl(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetAdminOrderProofUrlParams)
 	// Requeue every failed (poison-quarantined) outbox row for the relay to retry (owner-only).
 	// (POST /admin/outbox/requeue)
 	RequeueOutbox(w http.ResponseWriter, r *http.Request)
@@ -2521,6 +2575,9 @@ type ServerInterface interface {
 	// Replace the per-region shipping-fee table (owner-only).
 	// (PATCH /admin/settings/shipping-rules)
 	UpdateShippingRules(w http.ResponseWriter, r *http.Request)
+	// Replace the shop's public contact channels (owner-only).
+	// (PATCH /admin/settings/shop-contact)
+	UpdateShopContact(w http.ResponseWriter, r *http.Request)
 	// Staff & roles roster — every user account (owner-only read).
 	// (GET /admin/staff)
 	GetAdminStaff(w http.ResponseWriter, r *http.Request)
@@ -2605,6 +2662,9 @@ type ServerInterface interface {
 	// Public storefront product reviews (published-only) — paginated, newest first.
 	// (GET /products/{slug}/reviews)
 	GetProductReviews(w http.ResponseWriter, r *http.Request, slug string, params GetProductReviewsParams)
+	// The shop's public contact channels (public, rate-limited) — for /lien-he + the "Nhắn shop" popup.
+	// (GET /shop/contact)
+	GetShopContact(w http.ResponseWriter, r *http.Request)
 	// Create a presigned POST form for one public image upload.
 	// (POST /uploads/image)
 	CreateImageUpload(w http.ResponseWriter, r *http.Request)
@@ -2815,6 +2875,12 @@ func (_ Unimplemented) GetAdminOrderByCode(w http.ResponseWriter, r *http.Reques
 // Admin order detail by id — the full internal order (admin-gated).
 // (GET /admin/orders/{id})
 func (_ Unimplemented) GetAdminOrder(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Sign a short-lived GET URL for one of an order's proof images (admin-gated).
+// (GET /admin/orders/{id}/proof-url)
+func (_ Unimplemented) GetAdminOrderProofUrl(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetAdminOrderProofUrlParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3046,6 +3112,12 @@ func (_ Unimplemented) UpdateShippingRules(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Replace the shop's public contact channels (owner-only).
+// (PATCH /admin/settings/shop-contact)
+func (_ Unimplemented) UpdateShopContact(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Staff & roles roster — every user account (owner-only read).
 // (GET /admin/staff)
 func (_ Unimplemented) GetAdminStaff(w http.ResponseWriter, r *http.Request) {
@@ -3211,6 +3283,12 @@ func (_ Unimplemented) GetProductBySlug(w http.ResponseWriter, r *http.Request, 
 // Public storefront product reviews (published-only) — paginated, newest first.
 // (GET /products/{slug}/reviews)
 func (_ Unimplemented) GetProductReviews(w http.ResponseWriter, r *http.Request, slug string, params GetProductReviewsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// The shop's public contact channels (public, rate-limited) — for /lien-he + the "Nhắn shop" popup.
+// (GET /shop/contact)
+func (_ Unimplemented) GetShopContact(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4118,6 +4196,55 @@ func (siw *ServerInterfaceWrapper) GetAdminOrder(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAdminOrder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAdminOrderProofUrl operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminOrderProofUrl(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAdminOrderProofUrlParams
+
+	// ------------- Required query parameter "kind" -------------
+
+	if paramValue := r.URL.Query().Get("kind"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kind"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "kind", r.URL.Query(), &params.Kind)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kind", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAdminOrderProofUrl(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5296,6 +5423,26 @@ func (siw *ServerInterfaceWrapper) UpdateShippingRules(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateShopContact operation middleware
+func (siw *ServerInterfaceWrapper) UpdateShopContact(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateShopContact(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetAdminStaff operation middleware
 func (siw *ServerInterfaceWrapper) GetAdminStaff(w http.ResponseWriter, r *http.Request) {
 
@@ -6088,6 +6235,20 @@ func (siw *ServerInterfaceWrapper) GetProductReviews(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// GetShopContact operation middleware
+func (siw *ServerInterfaceWrapper) GetShopContact(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetShopContact(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateImageUpload operation middleware
 func (siw *ServerInterfaceWrapper) CreateImageUpload(w http.ResponseWriter, r *http.Request) {
 
@@ -6318,6 +6479,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/admin/orders/{id}", wrapper.GetAdminOrder)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/orders/{id}/proof-url", wrapper.GetAdminOrderProofUrl)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/admin/outbox/requeue", wrapper.RequeueOutbox)
 	})
 	r.Group(func(r chi.Router) {
@@ -6432,6 +6596,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Patch(options.BaseURL+"/admin/settings/shipping-rules", wrapper.UpdateShippingRules)
 	})
 	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/admin/settings/shop-contact", wrapper.UpdateShopContact)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/staff", wrapper.GetAdminStaff)
 	})
 	r.Group(func(r chi.Router) {
@@ -6514,6 +6681,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/products/{slug}/reviews", wrapper.GetProductReviews)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/shop/contact", wrapper.GetShopContact)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/uploads/image", wrapper.CreateImageUpload)
@@ -7975,6 +8145,51 @@ func (response GetAdminOrder401JSONResponse) VisitGetAdminOrderResponse(w http.R
 type GetAdminOrder404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetAdminOrder404JSONResponse) VisitGetAdminOrderResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminOrderProofUrlRequestObject struct {
+	Id     openapi_types.UUID `json:"id"`
+	Params GetAdminOrderProofUrlParams
+}
+
+type GetAdminOrderProofUrlResponseObject interface {
+	VisitGetAdminOrderProofUrlResponse(w http.ResponseWriter) error
+}
+
+type GetAdminOrderProofUrl200JSONResponse SignedAssetUrl
+
+func (response GetAdminOrderProofUrl200JSONResponse) VisitGetAdminOrderProofUrlResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminOrderProofUrl400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetAdminOrderProofUrl400JSONResponse) VisitGetAdminOrderProofUrlResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminOrderProofUrl401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetAdminOrderProofUrl401JSONResponse) VisitGetAdminOrderProofUrlResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAdminOrderProofUrl404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetAdminOrderProofUrl404JSONResponse) VisitGetAdminOrderProofUrlResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
 
@@ -9685,6 +9900,50 @@ func (response UpdateShippingRules403JSONResponse) VisitUpdateShippingRulesRespo
 	return json.NewEncoder(w).Encode(response)
 }
 
+type UpdateShopContactRequestObject struct {
+	Body *UpdateShopContactJSONRequestBody
+}
+
+type UpdateShopContactResponseObject interface {
+	VisitUpdateShopContactResponse(w http.ResponseWriter) error
+}
+
+type UpdateShopContact200JSONResponse Settings
+
+func (response UpdateShopContact200JSONResponse) VisitUpdateShopContactResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateShopContact400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateShopContact400JSONResponse) VisitUpdateShopContactResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateShopContact401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpdateShopContact401JSONResponse) VisitUpdateShopContactResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateShopContact403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateShopContact403JSONResponse) VisitUpdateShopContactResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetAdminStaffRequestObject struct {
 }
 
@@ -10897,6 +11156,22 @@ func (response GetProductReviews404JSONResponse) VisitGetProductReviewsResponse(
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetShopContactRequestObject struct {
+}
+
+type GetShopContactResponseObject interface {
+	VisitGetShopContactResponse(w http.ResponseWriter) error
+}
+
+type GetShopContact200JSONResponse ShopContact
+
+func (response GetShopContact200JSONResponse) VisitGetShopContactResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type CreateImageUploadRequestObject struct {
 	Body *CreateImageUploadJSONRequestBody
 }
@@ -11036,6 +11311,9 @@ type StrictServerInterface interface {
 	// Admin order detail by id — the full internal order (admin-gated).
 	// (GET /admin/orders/{id})
 	GetAdminOrder(ctx context.Context, request GetAdminOrderRequestObject) (GetAdminOrderResponseObject, error)
+	// Sign a short-lived GET URL for one of an order's proof images (admin-gated).
+	// (GET /admin/orders/{id}/proof-url)
+	GetAdminOrderProofUrl(ctx context.Context, request GetAdminOrderProofUrlRequestObject) (GetAdminOrderProofUrlResponseObject, error)
 	// Requeue every failed (poison-quarantined) outbox row for the relay to retry (owner-only).
 	// (POST /admin/outbox/requeue)
 	RequeueOutbox(ctx context.Context, request RequeueOutboxRequestObject) (RequeueOutboxResponseObject, error)
@@ -11150,6 +11428,9 @@ type StrictServerInterface interface {
 	// Replace the per-region shipping-fee table (owner-only).
 	// (PATCH /admin/settings/shipping-rules)
 	UpdateShippingRules(ctx context.Context, request UpdateShippingRulesRequestObject) (UpdateShippingRulesResponseObject, error)
+	// Replace the shop's public contact channels (owner-only).
+	// (PATCH /admin/settings/shop-contact)
+	UpdateShopContact(ctx context.Context, request UpdateShopContactRequestObject) (UpdateShopContactResponseObject, error)
 	// Staff & roles roster — every user account (owner-only read).
 	// (GET /admin/staff)
 	GetAdminStaff(ctx context.Context, request GetAdminStaffRequestObject) (GetAdminStaffResponseObject, error)
@@ -11234,6 +11515,9 @@ type StrictServerInterface interface {
 	// Public storefront product reviews (published-only) — paginated, newest first.
 	// (GET /products/{slug}/reviews)
 	GetProductReviews(ctx context.Context, request GetProductReviewsRequestObject) (GetProductReviewsResponseObject, error)
+	// The shop's public contact channels (public, rate-limited) — for /lien-he + the "Nhắn shop" popup.
+	// (GET /shop/contact)
+	GetShopContact(ctx context.Context, request GetShopContactRequestObject) (GetShopContactResponseObject, error)
 	// Create a presigned POST form for one public image upload.
 	// (POST /uploads/image)
 	CreateImageUpload(ctx context.Context, request CreateImageUploadRequestObject) (CreateImageUploadResponseObject, error)
@@ -12211,6 +12495,33 @@ func (sh *strictHandler) GetAdminOrder(w http.ResponseWriter, r *http.Request, i
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAdminOrderResponseObject); ok {
 		if err := validResponse.VisitGetAdminOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAdminOrderProofUrl operation middleware
+func (sh *strictHandler) GetAdminOrderProofUrl(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params GetAdminOrderProofUrlParams) {
+	var request GetAdminOrderProofUrlRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAdminOrderProofUrl(ctx, request.(GetAdminOrderProofUrlRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAdminOrderProofUrl")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAdminOrderProofUrlResponseObject); ok {
+		if err := validResponse.VisitGetAdminOrderProofUrlResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -13350,6 +13661,37 @@ func (sh *strictHandler) UpdateShippingRules(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+// UpdateShopContact operation middleware
+func (sh *strictHandler) UpdateShopContact(w http.ResponseWriter, r *http.Request) {
+	var request UpdateShopContactRequestObject
+
+	var body UpdateShopContactJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateShopContact(ctx, request.(UpdateShopContactRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateShopContact")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateShopContactResponseObject); ok {
+		if err := validResponse.VisitUpdateShopContactResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetAdminStaff operation middleware
 func (sh *strictHandler) GetAdminStaff(w http.ResponseWriter, r *http.Request) {
 	var request GetAdminStaffRequestObject
@@ -14153,6 +14495,30 @@ func (sh *strictHandler) GetProductReviews(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetProductReviewsResponseObject); ok {
 		if err := validResponse.VisitGetProductReviewsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetShopContact operation middleware
+func (sh *strictHandler) GetShopContact(w http.ResponseWriter, r *http.Request) {
+	var request GetShopContactRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetShopContact(ctx, request.(GetShopContactRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetShopContact")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetShopContactResponseObject); ok {
+		if err := validResponse.VisitGetShopContactResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

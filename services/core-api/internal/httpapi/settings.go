@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/api"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
@@ -171,6 +172,107 @@ func (s *Server) UpdateRefundPolicy(ctx context.Context, req api.UpdateRefundPol
 	}
 	return api.UpdateRefundPolicy200JSONResponse(dto), nil
 }
+
+// UpdateShopContact handles PATCH /admin/settings/shop-contact (owner-only, PR F). Replaces
+// settings.shop_info wholesale with `{contact: {...}}` — shop_info has had no writer until this PR
+// (DEFAULT '{}' since migration 000007), so a wholesale replace cannot clobber unrelated data.
+func (s *Server) UpdateShopContact(ctx context.Context, req api.UpdateShopContactRequestObject) (api.UpdateShopContactResponseObject, error) {
+	if err := assertOwner(ctx); err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return api.UpdateShopContact400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
+	}
+	contact, fields := cleanShopContact(*req.Body)
+	if len(fields) > 0 {
+		env := envelope(codeValidation)
+		env.Fields = &fields
+		return api.UpdateShopContact400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(env)}, nil
+	}
+	shopInfo, err := json.Marshal(map[string]any{"contact": contact})
+	if err != nil {
+		return nil, fmt.Errorf("settings: marshal shop_info: %w", err)
+	}
+	row, err := db.NewSettings(s.pool).UpdateShopInfo(ctx, shopInfo)
+	if err != nil {
+		return nil, err
+	}
+	dto, err := settingsDTO(row)
+	if err != nil {
+		return nil, err
+	}
+	return api.UpdateShopContact200JSONResponse(dto), nil
+}
+
+// GetShopContact handles GET /shop/contact (public, PR F): the /lien-he + "Nhắn shop" popup source.
+// Reads settings.shop_info.contact and returns it directly — every field is already optional on the
+// wire, so a shop with nothing configured yet returns `{}` (200, not a 404 or an error).
+func (s *Server) GetShopContact(ctx context.Context, _ api.GetShopContactRequestObject) (api.GetShopContactResponseObject, error) {
+	row, err := db.NewSettings(s.pool).Get(ctx)
+	if errors.Is(err, db.ErrNotFound) {
+		return nil, fmt.Errorf("settings: singleton missing (seed 000007)")
+	}
+	if err != nil {
+		return nil, err
+	}
+	var wrapper struct {
+		Contact api.ShopContact `json:"contact"`
+	}
+	if len(row.ShopInfo) > 0 {
+		if err := json.Unmarshal(row.ShopInfo, &wrapper); err != nil {
+			return nil, fmt.Errorf("settings: decode shop_info: %w", err)
+		}
+	}
+	return api.GetShopContact200JSONResponse(wrapper.Contact), nil
+}
+
+// cleanShopContact trims every field of a shop-contact update, dropping blanks (an all-empty PATCH is
+// legitimate — clearing every channel). No field is required; the only validation is a length backstop
+// against a pathological blob (mirrors the other free-text settings caps in this file).
+func cleanShopContact(in api.ShopContact) (api.ShopContact, map[string]string) {
+	clean := func(s *string) *string {
+		if s == nil {
+			return nil
+		}
+		t := strings.TrimSpace(*s)
+		if t == "" {
+			return nil
+		}
+		return &t
+	}
+	out := api.ShopContact{
+		Zalo:     clean(in.Zalo),
+		Facebook: clean(in.Facebook),
+		Phone:    clean(in.Phone),
+		Address:  clean(in.Address),
+		Hours:    clean(in.Hours),
+	}
+	emailStr := (*string)(nil)
+	if in.Email != nil {
+		s := string(*in.Email)
+		emailStr = &s
+	}
+	// Email is a distinct oapi-codegen type (format: email), not *string — trim/blank-drop through its
+	// string form, then re-wrap for the DTO.
+	if cleanedEmail := clean(emailStr); cleanedEmail != nil {
+		email := openapi_types.Email(*cleanedEmail)
+		out.Email = &email
+	}
+	fields := map[string]string{}
+	for name, v := range map[string]*string{
+		"zalo": out.Zalo, "facebook": out.Facebook, "phone": out.Phone, "address": out.Address, "hours": out.Hours,
+	} {
+		if v != nil && utf8.RuneCountInString(*v) > maxShopContactFieldChars {
+			fields[name] = msgKey(codeValidation)
+		}
+	}
+	if out.Email != nil && utf8.RuneCountInString(string(*out.Email)) > maxShopContactFieldChars {
+		fields["email"] = msgKey(codeValidation)
+	}
+	return out, fields
+}
+
+const maxShopContactFieldChars = 200
 
 // ListReplyTemplates handles GET /admin/reply-templates (admin-gated read), ordered by title.
 func (s *Server) ListReplyTemplates(ctx context.Context, _ api.ListReplyTemplatesRequestObject) (api.ListReplyTemplatesResponseObject, error) {

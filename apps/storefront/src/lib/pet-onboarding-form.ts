@@ -18,17 +18,18 @@ export type OnboardingForm = {
   allergies: string;
   ownerName: string;
   phone: string;
-  zalo: string;
   vaccinated: boolean | null; // null = chưa chọn
   neutered: boolean;
-  vetClinic: string;
   instagram: string;
   tiktok: string;
   consent: boolean;
 };
 
-// emptyOnboardingForm is the wizard's initial state.
-export function emptyOnboardingForm(): OnboardingForm {
+// emptyOnboardingForm is the wizard's initial state. `seed` prefills owner contact from the logged-in
+// customer's display profile (getCustomerProfile — a non-httpOnly cookie, shown, never verified) so a
+// signed-in shopper doesn't retype what the shop already has; it's a SEED the user can still overwrite,
+// never a source of truth (the server re-validates the phone regardless).
+export function emptyOnboardingForm(seed?: { name?: string; phone?: string }): OnboardingForm {
   return {
     petName: '',
     species: 'dog',
@@ -36,12 +37,10 @@ export function emptyOnboardingForm(): OnboardingForm {
     age: '',
     weight: '',
     allergies: '',
-    ownerName: '',
-    phone: '',
-    zalo: '',
+    ownerName: seed?.name ?? '',
+    phone: seed?.phone ?? '',
     vaccinated: null,
     neutered: false,
-    vetClinic: '',
     instagram: '',
     tiktok: '',
     consent: false,
@@ -80,11 +79,8 @@ export function toActivateInput(form: OnboardingForm): ActivateInput {
   if (form.neutered) medical.neutered = true;
   const allergies = clean(form.allergies);
   if (allergies) medical.allergies = allergies;
-  const vet = clean(form.vetClinic);
-  if (vet) medical.vetClinic = vet;
 
   const ownerName = clean(form.ownerName);
-  const zalo = clean(form.zalo);
 
   return {
     petName: form.petName.trim(),
@@ -95,7 +91,6 @@ export function toActivateInput(form: OnboardingForm): ActivateInput {
     ownerContact: {
       name: ownerName ?? '',
       phone: form.phone.trim(),
-      ...(zalo ? { zalo } : {}),
     },
     ...(Object.keys(medical).length ? { medical } : {}),
     ...(socials.length ? { socials } : {}),

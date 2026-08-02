@@ -1,9 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Checkbox, PriceTag, QuantityStepper, cn } from '@lumin/ui';
 import { MAX_QUANTITY, type CartItem } from '@/lib/cart';
+import { CartEditDialog } from './cart-edit-dialog';
 
 /** Pricing status for the line total: mirrors the cart page's quote state so a line shows the priced
  *  total, a skeleton while re-quoting, or a neutral dash if the quote failed (the error copy + retry
@@ -36,6 +38,7 @@ export function CartLine({
   onSelectedChange,
 }: CartLineProps) {
   const t = useTranslations('cart');
+  const [editing, setEditing] = useState(false);
 
   // Summary line: per-part colours · flat colour · choice picks · toggle add-ons · engraving — only the
   // parts that apply (ADR-037). partColorLabels/optionChoiceLabels are "{part}: {colour}" / "{option}:
@@ -80,9 +83,20 @@ export function CartLine({
         >
           {item.name}
         </Link>
-        {specParts.length > 0 ? (
-          <p className="mt-0.5 font-mono text-xs text-text-muted">{specParts.join(' · ')}</p>
-        ) : null}
+        <div className="mt-0.5 flex items-center gap-2">
+          {specParts.length > 0 ? (
+            <p className="font-mono text-xs text-text-muted">{specParts.join(' · ')}</p>
+          ) : null}
+          {/* Sửa tại chỗ (PR D) — trước đây cấu hình (màu/tuỳ chọn/khắc chữ) là read-only, phải xoá rồi
+              vào PDP tạo lại. Mở CartEditDialog, seed từ chính dòng này. */}
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="text-xs font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky"
+          >
+            {t('editLabel')}
+          </button>
+        </div>
 
         <div className="mt-2 flex items-center justify-between gap-3">
           <QuantityStepper
@@ -110,6 +124,7 @@ export function CartLine({
           )}
         </div>
       </div>
+      {editing ? <CartEditDialog item={item} onClose={() => setEditing(false)} /> : null}
     </li>
   );
 }

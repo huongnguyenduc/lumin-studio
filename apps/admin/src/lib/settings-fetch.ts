@@ -26,6 +26,22 @@ export async function fetchSettings(): Promise<components['schemas']['Settings']
   return data;
 }
 
+/** Fetch the shop's public contact channels (GET /shop/contact) — the SAME public, typed read the
+ *  storefront /lien-he page + "Nhắn shop" popup use, reused here so the admin form doesn't have to parse
+ *  Settings.shopInfo's loose `Record<string, unknown>` by hand. No auth needed (the endpoint is public);
+ *  reusing adminClient just keeps one client-construction helper. */
+export async function fetchShopContact(): Promise<components['schemas']['ShopContact']> {
+  const client = await adminClient();
+  // The endpoint has only a 200 response modeled (never 4xx/5xx — public, no auth, no not-found case),
+  // so openapi-fetch's `error` is statically `never` here; `data` can still be undefined on a network
+  // fault, which throws into the route error boundary like every other admin fetch in this file.
+  const { data } = await client.GET('/shop/contact', { cache: 'no-store' });
+  if (!data) {
+    throw new Error('shop contact fetch failed');
+  }
+  return data;
+}
+
 /** Fetch the reply templates, ordered by title (GET /admin/reply-templates). */
 export async function fetchReplyTemplates(): Promise<components['schemas']['ReplyTemplate'][]> {
   const client = await adminClient();

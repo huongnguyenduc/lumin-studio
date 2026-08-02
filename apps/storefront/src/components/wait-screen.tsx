@@ -38,6 +38,16 @@ export function WaitScreen({
   const { state, retry } = useOrderPoll(() => trackOrder(code, token), code);
   const handle = buildTrackHandle(code, token);
 
+  // Landing here right after submit swaps the WHOLE screen out from under the checkout form — on a long
+  // C1+C2 page the shopper was scrolled down near the submit button, so without this they'd land staring
+  // at whatever happened to be at that scroll offset instead of the confirmation (always-must #4: skip
+  // the smooth animation under prefers-reduced-motion).
+  useEffect(() => {
+    if (!justPlaced) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
+  }, []);
+
   return (
     <section className="mx-auto w-full max-w-[560px] px-4 py-6 md:px-6 md:py-10">
       {justPlaced ? (

@@ -129,6 +129,26 @@ func (s *Store) PresignPost(ctx context.Context, rawContentType string) (Presign
 	}, nil
 }
 
+// PresignGet signs a short-lived GET URL for an object this store owns, so admin can view a receipt
+// image without the bucket ever being anonymously readable (Garage has no anon read — the flow map
+// found there was previously NO way to view a proof image at all). Rejects any raw URL that isn't a
+// finalURL this store issued (same OwnsURL check as CHK-04) so a caller can never sign an arbitrary
+// object. ttl is capped at 30m — proof review is a short admin session, not a link to share around.
+func (s *Store) PresignGet(ctx context.Context, raw string, ttl time.Duration) (string, time.Time, error) {
+	key, ok := s.objectKeyFromURL(raw)
+	if !ok {
+		return "", time.Time{}, fmt.Errorf("proofstore: url not owned by this store")
+	}
+	if ttl <= 0 || ttl > 30*time.Minute {
+		ttl = 10 * time.Minute
+	}
+	u, err := s.client.PresignedGetObject(ctx, s.cfg.Bucket, key, ttl, nil)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return u.String(), s.now().Add(ttl), nil
+}
+
 // Delete removes the object addressed by a stored, host-pinned finalURL (retention sweep, ADR-035).
 // It returns (false, nil) when raw is not a URL this store manages — nothing to remove — so a foreign
 // or malformed reference is never used to delete an arbitrary object. S3 delete is idempotent, so a

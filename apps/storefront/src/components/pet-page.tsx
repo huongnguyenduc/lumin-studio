@@ -40,7 +40,17 @@ export async function PetPage({ page }: { page: PetPageData }) {
   const profile = page.profile as PetPageProfile;
   const lost = profile.lostMode;
   const isOwner = page.viewerIsOwner;
-  const meta = [profile.breed, profile.age, profile.weight].filter(Boolean).join(' · ');
+  // Giống/tuổi/cân nặng — chip row (bám design §3), thay vì gộp thành một câu chữ xám. Mỗi trục vắng thì
+  // ẩn hẳn chip đó, không hiện " · · ".
+  const metaChips: { key: 'breed' | 'age' | 'weight'; text: string }[] = [
+    ...(profile.breed
+      ? [{ key: 'breed' as const, text: t('metaBreed', { breed: profile.breed }) }]
+      : []),
+    ...(profile.age ? [{ key: 'age' as const, text: t('metaAge', { age: profile.age }) }] : []),
+    ...(profile.weight
+      ? [{ key: 'weight' as const, text: t('metaWeight', { weight: profile.weight }) }]
+      : []),
+  ];
   const heading = lost
     ? t('lostGreeting', { name: profile.petName })
     : t('greeting', { name: profile.petName });
@@ -154,7 +164,18 @@ export async function PetPage({ page }: { page: PetPageData }) {
           {heading}
         </h1>
         <p className="mt-1 font-mono text-xs text-[var(--pet-muted)]">{`@${profile.handle}`}</p>
-        {meta && <p className="mt-1 text-sm text-[var(--pet-muted)]">{meta}</p>}
+        {metaChips.length > 0 && (
+          <ul className="mt-2 flex flex-wrap justify-center gap-1.5">
+            {metaChips.map((c) => (
+              <li
+                key={c.key}
+                className="rounded-pill border border-[var(--pet-chip-border)] bg-[var(--pet-chip-bg)] px-2.5 py-1 text-xs text-[var(--pet-ink)]"
+              >
+                {c.text}
+              </li>
+            ))}
+          </ul>
+        )}
         {!lost && !isOwner && (
           <span className="mt-3 rounded-pill border border-[var(--pet-chip-border)] bg-[var(--pet-chip-bg)] px-3 py-1 font-mono text-[11px] font-bold text-[var(--pet-ink)]">
             {t('homeBadge')}
@@ -212,7 +233,9 @@ function Medical({
   t: Awaited<ReturnType<typeof getTranslations<'petTag.page'>>>;
 }) {
   if (!medical) return null;
-  const hasChips = medical.vaccinated || medical.neutered || medical.vetClinic;
+  // vetClinic bị bỏ khỏi hiển thị (mặc định ẩn — user chốt PR E): trường vẫn tồn tại trên wire/DB cho hồ
+  // sơ cũ (không migration), chỉ thôi RENDER nó ở đây.
+  const hasChips = medical.vaccinated || medical.neutered;
   if (!medical.allergies && !hasChips) return null;
   return (
     <div className="flex flex-col gap-2">
@@ -230,7 +253,6 @@ function Medical({
         <div className="flex flex-wrap gap-2">
           {medical.vaccinated && <MedChip>{t('vaccinated')}</MedChip>}
           {medical.neutered && <MedChip>{t('neutered')}</MedChip>}
-          {medical.vetClinic && <MedChip>{t('vetClinic', { clinic: medical.vetClinic })}</MedChip>}
         </div>
       )}
     </div>

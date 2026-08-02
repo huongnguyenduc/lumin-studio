@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -16,7 +16,7 @@ import {
   type AvailableTransition,
   type MilestoneState,
 } from '@/lib/order-detail';
-import { transitionOrder } from '@/lib/order-actions';
+import { transitionOrder, proofImageUrl } from '@/lib/order-actions';
 
 type Order = components['schemas']['Order'];
 
@@ -25,7 +25,7 @@ type Order = components['schemas']['Order'];
 // action bar as owner — the SERVER is authoritative regardless (staff→PAID = 403, owner-only refund
 // rejected in the domain guard), so this is display-only optimism. Plumb the real JWT role when staff
 // land (P3-q): decode the session role server-side in the page and pass it down.
-const ROLE: Role = 'owner';
+export const ROLE: Role = 'owner';
 
 const CLOSE_STATES: ReadonlySet<OrderStatus> = new Set<OrderStatus>(['CANCELLED', 'REFUNDED']);
 
@@ -194,15 +194,19 @@ export function OrderDetailView({ order }: { order: Order }) {
 
           <Card elevation="md" className="flex flex-col gap-3 px-5 py-5">
             <h2 className="font-semibold text-text-strong">{t('payment')}</h2>
-            <ProofLink
-              url={order.paymentProofUrl}
+            <ProofImage
+              orderId={order.id}
+              kind="payment"
+              present={Boolean(order.paymentProofUrl)}
               label={t('proofPayment')}
               missing={t('noProof')}
             />
             {order.refundProofUrl && (
-              <ProofLink url={order.refundProofUrl} label={t('proofRefund')} />
+              <ProofImage orderId={order.id} kind="refund" present label={t('proofRefund')} />
             )}
-            {order.qcPhotoUrl && <ProofLink url={order.qcPhotoUrl} label={t('proofQc')} />}
+            {order.qcPhotoUrl && (
+              <ProofImage orderId={order.id} kind="qc" present label={t('proofQc')} />
+            )}
             {order.trackingCode && (
               <p className="text-sm text-text-body">
                 {t('tracking')}:{' '}
@@ -426,18 +430,72 @@ function StepCircle({ index, state }: { index: number; state: MilestoneState }) 
   );
 }
 
-// A proof image is shown as a link that opens the full image in a new tab (no inline <img> → no
-// next/image remote-host config, and the owner still gets the receipt/QC/refund photo one click away).
-function ProofLink({ url, label, missing }: { url?: string; label: string; missing?: string }) {
-  if (!url) return missing ? <p className="text-sm text-text-muted">{missing}</p> : null;
+// A proof image PREVIEWS inline (the bucket is private, ADR-046 — no anon read, so the old plain <a
+// href={rawUrl}> hit Garage's AccessDeniedForbidden; there was no way to view a receipt at all). Fetches
+// a short-lived (10 min) signed GET on mount (GET /admin/orders/{id}/proof-url) and renders it as an
+// <img> — no next/image remote-host config needed since the URL is presigned/one-shot anyway. A failed
+// fetch/decode shows a retry button rather than a dead link.
+function ProofImage({
+  orderId,
+  kind,
+  present,
+  label,
+  missing,
+}: {
+  orderId: string;
+  kind: 'payment' | 'refund' | 'qc';
+  present: boolean;
+  label: string;
+  missing?: string;
+}) {
+  const t = useTranslations('orderDetail');
+  const [state, setState] = useState<
+    { status: 'loading' } | { status: 'done'; url: string } | { status: 'error' }
+  >({ status: 'loading' });
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    if (!present) return;
+    let cancelled = false;
+    setState({ status: 'loading' });
+    void proofImageUrl(orderId, kind).then((res) => {
+      if (cancelled) return;
+      setState(res.ok ? { status: 'done', url: res.url } : { status: 'error' });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId, kind, present, attempt]);
+
+  if (!present) return missing ? <p className="text-sm text-text-muted">{missing}</p> : null;
+
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex w-fit items-center gap-1 text-sm font-semibold text-accent-teal underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
-    >
-      {label} →
-    </a>
+    <div className="flex flex-col gap-1.5">
+      <span className="text-sm font-semibold text-text-strong">{label}</span>
+      {state.status === 'loading' && (
+        <div
+          role="status"
+          className="h-32 w-32 animate-pulse rounded-lg border-2 border-border-subtle bg-surface-sunken motion-reduce:animate-none"
+        />
+      )}
+      {state.status === 'error' && (
+        <button
+          type="button"
+          onClick={() => setAttempt((n) => n + 1)}
+          className="w-fit rounded-lg border-2 border-dashed border-border-strong px-3 py-2 text-sm text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky"
+        >
+          {t('proofLoadFailed')}
+        </button>
+      )}
+      {state.status === 'done' && (
+        <a href={state.url} target="_blank" rel="noopener noreferrer" title={t('proofOpenNewTab')}>
+          <img
+            src={state.url}
+            alt={label}
+            className="h-32 w-32 rounded-lg border-2 border-border-subtle object-cover"
+          />
+        </a>
+      )}
+    </div>
   );
 }
