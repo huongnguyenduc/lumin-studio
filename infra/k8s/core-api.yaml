@@ -44,6 +44,11 @@ spec:
                   key: WORKER_CALLBACK_TOKEN
                   optional: true
             - { name: ALLOW_DEV_JWT_SECRET, value: 'false' }
+            # Pet-tag URL burned to NFC chips (config.go default lumin.pet — a separate short domain).
+            # Switched to the main domain per owner request; storefront already serves /t/{shortId}
+            # on this host (apps/storefront/src/app/t/[shortId]), no ingress change needed. Tags
+            # burned BEFORE this change still carry the old lumin.pet URL — unaffected, not migrated.
+            - { name: PET_TAG_BASE_URL, value: 'https://www.luminstudio.vn' }
             # Cloudflare terminates TLS → browser sees HTTPS → Secure cookies are correct.
             - { name: COOKIE_SECURE, value: 'true' }
             # --- Garage/S3 uploads (ADR-005/035/036). The endpoint is baked into the browser's
