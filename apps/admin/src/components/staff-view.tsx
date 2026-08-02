@@ -251,7 +251,11 @@ function TokenCreatedDialog({
 
   useEffect(() => {
     ref.current?.showModal();
-  }, []);
+    // Save the raw token so the print-board's "Ghi chip NFC" sheet can build nfchelper:// write
+    // links without asking staff to paste it again — this browser's localStorage, nothing sent
+    // anywhere else. Overwrites any previous token (only one active token is meant to be in use).
+    localStorage.setItem('lumin_encode_token', token.token);
+  }, [token.token]);
 
   const titleId = 'encode-token-created-title';
   return (

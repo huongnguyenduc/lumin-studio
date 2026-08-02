@@ -6,15 +6,14 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
-**🟡 ĐANG CHẠY (2026-08-01, core-api — scoped Bearer token cho iOS Shortcuts ghi chip NFC).** User hỏi luồng ghi chip NFC (Pet Tag) → hỏi tiếp về iOS (Web NFC không hỗ trợ WebKit) → yêu cầu "token riêng cho Shortcuts, admin quản lý được" thay vì dùng thẳng token full-quyền của extension (ADR-043). Implement mới, KHÔNG phải bug fix:
-- Migration `000032_encode_tokens` (bảng `encode_tokens`: user_id, label, token_hash SHA-256, scope, revoked_at) — số migration tiếp theo sau 000031, đã kiểm tra monotonic.
-- `authClass` mới `authEncodeOrRequired` trong `middleware_auth.go`, áp CHỈ cho `EncodePrintJobTag`: chấp nhận Bearer scoped-token (prefix `lumin_pat_`, tra DB theo hash, check `scope`+`revoked_at`) HOẶC actor owner/staff bình thường — mọi route khác không đổi.
-- 3 endpoint owner-only mới `/admin/encode-tokens` (list/create/revoke) — `admin_encode_tokens.go` + openapi.yaml + sqlc query `encode_tokens.sql`.
-- Admin UI: card "Token cho Shortcuts" trong Cài đặt › Nhân viên (`staff-view.tsx`) — tạo/xem/thu hồi, token thô hiện 1 lần.
-- Android: `encode-tag-sheet.tsx` tự `scan()` đọc lại UID sau khi ghi chip (bớt gõ tay).
-- **Verify xanh:** `make verify-go` full (gofmt/vet/golangci-lint/sqlc vet+diff/oapi stale-check/go test -race) + `pnpm --filter admin typecheck/lint` + `pnpm --filter @lumin/api-client typecheck/test` — tất cả sạch. Unit test mới cho crypto/hash + projection (`admin_encode_tokens_test.go`).
-- **CHƯA:** commit/PR (đang ở working tree, chưa branch) · chưa test qua browser thật (chỉ unit/typecheck) · cấu hình Shortcut thật trên iPhone (ngoài phạm vi code, hướng dẫn đã đưa cho user) · **decisions.md CHƯA có ADR cho pattern token mới này** (route-scoped Bearer là pattern auth mới, không phải chỉ mở rộng ADR-043) — cân nhắc thêm ADR trước khi merge.
-- ⚠️ Diff chạm auth + migrations (rủi ro cao theo hook) — cần review từng dòng trước merge, và cân nhắc tách riêng 1 PR cho phần này (không gộp với phần Android scan() UI, tuy nhỏ nhưng khác trục).
+**🟡 ĐANG CHẠY (2026-08-02, admin — đổi luồng ghi chip iOS từ Shortcuts sang app "NFC Helper").** Tiếp nối phiên trước (scoped Bearer token cho `/admin/print-jobs/{id}/encode`). User test tay xác nhận: **Shortcuts KHÔNG có action ghi NFC** (chỉ đọc) → `shortcuts://run-shortcut` trong `encode-tag-sheet.tsx` sai, không dùng được để ghi chip. Nghiên cứu xác nhận app iOS **"NFC Helper" (id6472720100)** có URL scheme thật: `nfchelper://write?url=...&callback=...` (ghi xong GET-redirect callback kèm `?tagid={serial}`, không gửi được Authorization header). Đổi 4 file:
+- **Mới** `apps/admin/src/app/api/nfc-confirm/route.ts` — route public (không cookie/session), nhận `jobId`+`token`+`tagid` qua query, tự POST `Authorization: Bearer` tới core-api `/admin/print-jobs/{id}/encode` server-side. Đây là cầu nối cho việc callback GET không gửi được header.
+- `staff-view.tsx` — `TokenCreatedDialog` tự lưu token thô vào `localStorage['lumin_encode_token']` khi tạo (để sheet ghi chip dùng lại, không phải dán tay 2 nơi).
+- `encode-tag-sheet.tsx` — bỏ `shortcutRunURL`, thêm `nfcHelperWriteURL(jobId, tagUrl, token)`; đọc token từ localStorage; QR/link giờ trỏ `nfchelper://write?...&callback=/api/nfc-confirm?...`; cảnh báo nếu chưa có token (đường `nfcHelper.noToken`).
+- `messages/vi.ts` — đổi key `encode.shortcut.*` → `encode.nfcHelper.*` + thêm `noToken`.
+- **Verify xanh:** `pnpm --filter admin typecheck` + `pnpm --filter admin lint` sạch.
+- **CHƯA:** commit/PR (đang ở working tree, chưa branch) · chưa test qua browser thật (preview server chưa chạy) · **chưa test tay trên chip thật với app NFC Helper** (user mới test URL scheme, chưa test full luồng ghi→callback→lưu UID qua route mới) · domain pet-tag vẫn `lumin.pet` (user hỏi về `luminstudio.vn` nhưng xác nhận đó là domain khác — `k8s/core-api.yaml` không set `PET_TAG_BASE_URL` nên đang dùng default code, KHÔNG đổi) · phần scoped-token/migration từ phiên trước (**decisions.md CHƯA có ADR cho pattern token mới này**) vẫn còn nguyên như cũ, chưa merge.
+- ⚠️ Diff chạm auth + migrations + route public mới (rủi ro cao theo hook) — cần review từng dòng trước merge.
 
 ---
 

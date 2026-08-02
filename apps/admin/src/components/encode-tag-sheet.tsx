@@ -10,17 +10,21 @@ import type { PrintCard } from '@/lib/print-queue';
 
 type PetTagRef = components['schemas']['PetTagRef'];
 
-// Name of the iOS Shortcut the owner must create (Scan NFC Tag write + read UID + POST the confirm
-// call, see docs handed to the owner) — fixed, not configurable this slice (ponytail: one shortcut).
-const SHORTCUT_NAME = 'Lumin ghi chip NFC';
+// localStorage key the "Cài đặt › Nhân viên" token dialog writes the raw scoped token to
+// (staff-view.tsx TokenCreatedDialog) — read here so this sheet doesn't need staff to paste it again.
+const ENCODE_TOKEN_KEY = 'lumin_encode_token';
 
-// Builds the shortcuts://run-shortcut deep link that launches SHORTCUT_NAME with the print job's id as
-// its Shortcut Input — the ONLY thing Shortcuts needs that isn't already on-screen (the burn URL is).
-// One tap on iOS opens Shortcuts pre-filled; scanning the same link as a QR from another device does the
-// same. No dev account, no Core NFC — this is a plain Apple URL scheme (iOS 13+).
-function shortcutRunURL(jobId: string): string {
-  const params = new URLSearchParams({ name: SHORTCUT_NAME, input: 'text', text: jobId });
-  return `shortcuts://run-shortcut?${params.toString()}`;
+// Builds the nfchelper://write deep link (iOS app "NFC Helper", id6472720100 — Shortcuts has no NFC
+// WRITE action, only read, so it can't do this step). NFC Helper writes `tagUrl` to the chip, then
+// GET-redirects to `callback` with the chip's serial appended as `tagid` — it can't attach an
+// Authorization header, so the callback target is /api/nfc-confirm (this app), which holds the scoped
+// token and does the real authenticated POST server-side. No dev account, no Core NFC.
+function nfcHelperWriteURL(jobId: string, tagUrl: string, token: string): string {
+  const callback = new URL('/api/nfc-confirm', window.location.origin);
+  callback.searchParams.set('jobId', jobId);
+  callback.searchParams.set('token', token);
+  const params = new URLSearchParams({ url: tagUrl, callback: callback.toString() });
+  return `nfchelper://write?${params.toString()}`;
 }
 
 // Minimal Web NFC surface — NDEFReader is not yet in the TS DOM lib. Chrome-Android only (D2); everywhere
@@ -63,24 +67,34 @@ export function EncodeTagSheet({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(false);
   const [nfcNote, setNfcNote] = useState<'written' | 'failed' | null>(null);
-  const [shortcutQr, setShortcutQr] = useState<string | null>(null);
+  const [helperQr, setHelperQr] = useState<string | null>(null);
+  const [encodeToken] = useState(() =>
+    typeof window !== 'undefined' ? localStorage.getItem(ENCODE_TOKEN_KEY) : null,
+  );
 
   useEffect(() => {
     ref.current?.showModal();
   }, []);
 
-  // Render the Shortcuts deep link as a QR the moment the sheet is ready — for a board open on a
-  // different device (iPad, print-station desktop) than the phone that will do the tap. toDataURL runs
-  // client-side only (no third party sees the job id).
+  // Render the NFC Helper deep link as a QR the moment the tag URL + token are both ready — for a
+  // board open on a different device (iPad, print-station desktop) than the phone that will do the
+  // tap. toDataURL runs client-side only (no third party sees the job id or token).
   useEffect(() => {
+    if (!tag || !encodeToken) {
+      setHelperQr(null);
+      return;
+    }
     let alive = true;
-    void QRCode.toDataURL(shortcutRunURL(card.id), { margin: 1, width: 176 }).then((url) => {
-      if (alive) setShortcutQr(url);
+    void QRCode.toDataURL(nfcHelperWriteURL(card.id, tag.url, encodeToken), {
+      margin: 1,
+      width: 176,
+    }).then((url) => {
+      if (alive) setHelperQr(url);
     });
     return () => {
       alive = false;
     };
-  }, [card.id]);
+  }, [card.id, tag, encodeToken]);
 
   // Prepare: mint the tag + fetch the URL to burn (no chipUid). Re-runnable via the retry button.
   const prepare = useCallback(() => {
@@ -188,26 +202,33 @@ export function EncodeTagSheet({
               </div>
             )}
 
-            {!NDEFReaderCtor && (
+            {!NDEFReaderCtor && !encodeToken && (
               <div className="flex flex-col gap-2 rounded-lg border-[1.5px] border-border-subtle p-3">
-                <span className="font-semibold text-text-strong">{t('shortcut.title')}</span>
-                <p className="text-xs text-text-muted">{t('shortcut.hint')}</p>
+                <span className="font-semibold text-text-strong">{t('nfcHelper.title')}</span>
+                <p className="text-xs text-danger">{t('nfcHelper.noToken')}</p>
+              </div>
+            )}
+
+            {!NDEFReaderCtor && encodeToken && (
+              <div className="flex flex-col gap-2 rounded-lg border-[1.5px] border-border-subtle p-3">
+                <span className="font-semibold text-text-strong">{t('nfcHelper.title')}</span>
+                <p className="text-xs text-text-muted">{t('nfcHelper.hint')}</p>
                 <div className="flex items-center gap-3">
-                  {shortcutQr && (
+                  {helperQr && (
                     // A runtime-generated data URL — not a static asset next/image can optimize.
                     <img
-                      src={shortcutQr}
-                      alt={t('shortcut.qrAlt')}
+                      src={helperQr}
+                      alt={t('nfcHelper.qrAlt')}
                       width={88}
                       height={88}
                       className="rounded-md border border-border-subtle"
                     />
                   )}
                   <a
-                    href={shortcutRunURL(card.id)}
+                    href={nfcHelperWriteURL(card.id, tag.url, encodeToken)}
                     className="text-sm font-semibold text-primary underline underline-offset-2"
                   >
-                    {t('shortcut.openLink')}
+                    {t('nfcHelper.openLink')}
                   </a>
                 </div>
               </div>
