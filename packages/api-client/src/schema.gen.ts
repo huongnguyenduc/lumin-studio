@@ -883,6 +883,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/encode-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List scoped NFC-encode Bearer tokens (owner-only) — for the Shortcuts automation.
+         * @description Lists every encode-token (active + revoked), newest first, for the token-management surface (Cài đặt › NFC Shortcuts). The raw token is never returned here (only shown once on creation) — owner-only, mirroring staff & roles: managing credentials is an owner power.
+         */
+        get: operations["listEncodeTokens"];
+        put?: never;
+        /**
+         * Mint a scoped NFC-encode Bearer token (owner-only).
+         * @description Mints a random token scoped ONLY to POST /admin/print-jobs/{id}/encode — for an iOS Shortcuts automation that can't carry the httpOnly admin session cookie and shouldn't be handed a full-power admin session JWT (unlike the browser extension's ADR-043 bearer, which authenticates every admin route). The raw token is returned ONCE in this response body and never stored or shown again — only its SHA-256 hash is persisted.
+         */
+        post: operations["createEncodeToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/encode-tokens/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a scoped NFC-encode Bearer token (owner-only).
+         * @description Revokes the token immediately — any Shortcuts automation still presenting it gets 401 on its next call. Any owner may revoke any token, not only its creator (a small team's owners jointly administer these credentials). Idempotent-not: revoking an already-revoked or unknown id → 404.
+         */
+        delete: operations["revokeEncodeToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/outbox/stats": {
         parameters: {
             query?: never;
@@ -2703,6 +2747,36 @@ export interface components {
             role: components["schemas"]["UserRole"];
             /** Format: password */
             password: string;
+        };
+        /** @description A scoped NFC-encode Bearer token row (Cài đặt › NFC Shortcuts). Never carries the raw token or its hash — only metadata for the management list. `scope` is fixed 'pettag_encode' today (a plain string, not an enum, so a future second scope needs no migration). */
+        EncodeToken: {
+            /** Format: uuid */
+            id: string;
+            label: string;
+            scope: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            lastUsedAt?: string;
+            revoked: boolean;
+        };
+        /** @description Create body for POST /admin/encode-tokens — a human label only (e.g. "iPhone Shortcuts"). */
+        EncodeTokenCreate: {
+            label: string;
+        };
+        /** @description The created token INCLUDING the raw value — shown once. The caller must copy `token` into the Shortcuts automation immediately; it cannot be retrieved again (only the hash is persisted). */
+        EncodeTokenCreated: {
+            /** Format: uuid */
+            id: string;
+            label: string;
+            scope: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            lastUsedAt?: string;
+            revoked: boolean;
+            /** @description The raw Bearer token — shown once, never persisted or returned again. */
+            token: string;
         };
         /** @description The authenticated storefront customer (no credential material). Distinct from AuthUser (admin): a customer has no role, and carries the phone captured at registration. */
         CustomerAccount: {
@@ -4684,6 +4758,78 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listEncodeTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every encode token (no raw token material). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EncodeToken"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createEncodeToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EncodeTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description The created token, including the raw token value (shown once). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EncodeTokenCreated"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    revokeEncodeToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     getOutboxStats: {

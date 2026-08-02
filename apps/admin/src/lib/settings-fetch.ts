@@ -52,3 +52,17 @@ export async function fetchStaff(): Promise<
   }
   return { forbidden: false, staff: data };
 }
+
+/** Fetch the scoped NFC-encode Shortcuts tokens (GET /admin/encode-tokens, owner-only). Mirrors
+ *  fetchStaff's `forbidden` marker for a staff caller's 403. */
+export async function fetchEncodeTokens(): Promise<
+  { forbidden: true } | { forbidden: false; tokens: components['schemas']['EncodeToken'][] }
+> {
+  const client = await adminClient();
+  const { data, error, response } = await client.GET('/admin/encode-tokens', { cache: 'no-store' });
+  if (response.status === 403) return { forbidden: true };
+  if (error || !data) {
+    throw new Error(`admin encode-tokens fetch failed (${response.status})`);
+  }
+  return { forbidden: false, tokens: data };
+}

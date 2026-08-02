@@ -749,6 +749,34 @@ type DomainTargetUpdate struct {
 	TargetService string  `json:"targetService"`
 }
 
+// EncodeToken A scoped NFC-encode Bearer token row (Cài đặt › NFC Shortcuts). Never carries the raw token or its hash — only metadata for the management list. `scope` is fixed 'pettag_encode' today (a plain string, not an enum, so a future second scope needs no migration).
+type EncodeToken struct {
+	CreatedAt  time.Time          `json:"createdAt"`
+	Id         openapi_types.UUID `json:"id"`
+	Label      string             `json:"label"`
+	LastUsedAt *time.Time         `json:"lastUsedAt,omitempty"`
+	Revoked    bool               `json:"revoked"`
+	Scope      string             `json:"scope"`
+}
+
+// EncodeTokenCreate Create body for POST /admin/encode-tokens — a human label only (e.g. "iPhone Shortcuts").
+type EncodeTokenCreate struct {
+	Label string `json:"label"`
+}
+
+// EncodeTokenCreated The created token INCLUDING the raw value — shown once. The caller must copy `token` into the Shortcuts automation immediately; it cannot be retrieved again (only the hash is persisted).
+type EncodeTokenCreated struct {
+	CreatedAt  time.Time          `json:"createdAt"`
+	Id         openapi_types.UUID `json:"id"`
+	Label      string             `json:"label"`
+	LastUsedAt *time.Time         `json:"lastUsedAt,omitempty"`
+	Revoked    bool               `json:"revoked"`
+	Scope      string             `json:"scope"`
+
+	// Token The raw Bearer token — shown once, never persisted or returned again.
+	Token string `json:"token"`
+}
+
 // EngraveAnchor One owner-picked surface point on the product's 3D model where a customer's engraving text can be projected (storefront decal). A text option carries a LIST of these (engravePositions) — the owner places as many named spots as they like, and the storefront customer picks exactly ONE to engrave into. Position in model-space metres (matches the glb the viewer loads); normal is the outward surface direction at that point (unit-ish vector, must be non-zero). Display metadata, not money — plain floats (not int-VND).
 type EngraveAnchor struct {
 	// Label Owner-facing name for this spot (e.g. "Mặt trước", "Mặt sau") shown to the customer as a pick.
@@ -2032,6 +2060,9 @@ type CreateDomainJSONRequestBody = DomainInput
 // UpdateDomainJSONRequestBody defines body for UpdateDomain for application/json ContentType.
 type UpdateDomainJSONRequestBody = DomainTargetUpdate
 
+// CreateEncodeTokenJSONRequestBody defines body for CreateEncodeToken for application/json ContentType.
+type CreateEncodeTokenJSONRequestBody = EncodeTokenCreate
+
 // CreateFilamentMaterialJSONRequestBody defines body for CreateFilamentMaterial for application/json ContentType.
 type CreateFilamentMaterialJSONRequestBody = FilamentMaterialInput
 
@@ -2306,6 +2337,15 @@ type ServerInterface interface {
 	// Change a provisioned domain's target service/port and/or rename it (owner-only).
 	// (PATCH /admin/domains/{subdomain})
 	UpdateDomain(w http.ResponseWriter, r *http.Request, subdomain string)
+	// List scoped NFC-encode Bearer tokens (owner-only) — for the Shortcuts automation.
+	// (GET /admin/encode-tokens)
+	ListEncodeTokens(w http.ResponseWriter, r *http.Request)
+	// Mint a scoped NFC-encode Bearer token (owner-only).
+	// (POST /admin/encode-tokens)
+	CreateEncodeToken(w http.ResponseWriter, r *http.Request)
+	// Revoke a scoped NFC-encode Bearer token (owner-only).
+	// (DELETE /admin/encode-tokens/{id})
+	RevokeEncodeToken(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// List the filament palette with derived stock + weighted-average cost (admin-gated read).
 	// (GET /admin/filament-materials)
 	ListFilamentMaterials(w http.ResponseWriter, r *http.Request, params ListFilamentMaterialsParams)
@@ -2651,6 +2691,24 @@ func (_ Unimplemented) DeleteDomain(w http.ResponseWriter, r *http.Request, subd
 // Change a provisioned domain's target service/port and/or rename it (owner-only).
 // (PATCH /admin/domains/{subdomain})
 func (_ Unimplemented) UpdateDomain(w http.ResponseWriter, r *http.Request, subdomain string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List scoped NFC-encode Bearer tokens (owner-only) — for the Shortcuts automation.
+// (GET /admin/encode-tokens)
+func (_ Unimplemented) ListEncodeTokens(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Mint a scoped NFC-encode Bearer token (owner-only).
+// (POST /admin/encode-tokens)
+func (_ Unimplemented) CreateEncodeToken(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Revoke a scoped NFC-encode Bearer token (owner-only).
+// (DELETE /admin/encode-tokens/{id})
+func (_ Unimplemented) RevokeEncodeToken(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3559,6 +3617,77 @@ func (siw *ServerInterfaceWrapper) UpdateDomain(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateDomain(w, r, subdomain)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListEncodeTokens operation middleware
+func (siw *ServerInterfaceWrapper) ListEncodeTokens(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListEncodeTokens(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateEncodeToken operation middleware
+func (siw *ServerInterfaceWrapper) CreateEncodeToken(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateEncodeToken(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeEncodeToken operation middleware
+func (siw *ServerInterfaceWrapper) RevokeEncodeToken(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeEncodeToken(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6051,6 +6180,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Patch(options.BaseURL+"/admin/domains/{subdomain}", wrapper.UpdateDomain)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/encode-tokens", wrapper.ListEncodeTokens)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/encode-tokens", wrapper.CreateEncodeToken)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/admin/encode-tokens/{id}", wrapper.RevokeEncodeToken)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/filament-materials", wrapper.ListFilamentMaterials)
 	})
 	r.Group(func(r chi.Router) {
@@ -7075,6 +7213,127 @@ type UpdateDomain503JSONResponse struct{ ServiceUnavailableJSONResponse }
 func (response UpdateDomain503JSONResponse) VisitUpdateDomainResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(503)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListEncodeTokensRequestObject struct {
+}
+
+type ListEncodeTokensResponseObject interface {
+	VisitListEncodeTokensResponse(w http.ResponseWriter) error
+}
+
+type ListEncodeTokens200JSONResponse []EncodeToken
+
+func (response ListEncodeTokens200JSONResponse) VisitListEncodeTokensResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListEncodeTokens401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListEncodeTokens401JSONResponse) VisitListEncodeTokensResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListEncodeTokens403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListEncodeTokens403JSONResponse) VisitListEncodeTokensResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateEncodeTokenRequestObject struct {
+	Body *CreateEncodeTokenJSONRequestBody
+}
+
+type CreateEncodeTokenResponseObject interface {
+	VisitCreateEncodeTokenResponse(w http.ResponseWriter) error
+}
+
+type CreateEncodeToken201JSONResponse EncodeTokenCreated
+
+func (response CreateEncodeToken201JSONResponse) VisitCreateEncodeTokenResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateEncodeToken400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateEncodeToken400JSONResponse) VisitCreateEncodeTokenResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateEncodeToken401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateEncodeToken401JSONResponse) VisitCreateEncodeTokenResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateEncodeToken403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateEncodeToken403JSONResponse) VisitCreateEncodeTokenResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type RevokeEncodeTokenRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type RevokeEncodeTokenResponseObject interface {
+	VisitRevokeEncodeTokenResponse(w http.ResponseWriter) error
+}
+
+type RevokeEncodeToken204Response struct {
+}
+
+func (response RevokeEncodeToken204Response) VisitRevokeEncodeTokenResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeEncodeToken401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response RevokeEncodeToken401JSONResponse) VisitRevokeEncodeTokenResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type RevokeEncodeToken403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RevokeEncodeToken403JSONResponse) VisitRevokeEncodeTokenResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type RevokeEncodeToken404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevokeEncodeToken404JSONResponse) VisitRevokeEncodeTokenResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -10536,6 +10795,15 @@ type StrictServerInterface interface {
 	// Change a provisioned domain's target service/port and/or rename it (owner-only).
 	// (PATCH /admin/domains/{subdomain})
 	UpdateDomain(ctx context.Context, request UpdateDomainRequestObject) (UpdateDomainResponseObject, error)
+	// List scoped NFC-encode Bearer tokens (owner-only) — for the Shortcuts automation.
+	// (GET /admin/encode-tokens)
+	ListEncodeTokens(ctx context.Context, request ListEncodeTokensRequestObject) (ListEncodeTokensResponseObject, error)
+	// Mint a scoped NFC-encode Bearer token (owner-only).
+	// (POST /admin/encode-tokens)
+	CreateEncodeToken(ctx context.Context, request CreateEncodeTokenRequestObject) (CreateEncodeTokenResponseObject, error)
+	// Revoke a scoped NFC-encode Bearer token (owner-only).
+	// (DELETE /admin/encode-tokens/{id})
+	RevokeEncodeToken(ctx context.Context, request RevokeEncodeTokenRequestObject) (RevokeEncodeTokenResponseObject, error)
 	// List the filament palette with derived stock + weighted-average cost (admin-gated read).
 	// (GET /admin/filament-materials)
 	ListFilamentMaterials(ctx context.Context, request ListFilamentMaterialsRequestObject) (ListFilamentMaterialsResponseObject, error)
@@ -11289,6 +11557,87 @@ func (sh *strictHandler) UpdateDomain(w http.ResponseWriter, r *http.Request, su
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateDomainResponseObject); ok {
 		if err := validResponse.VisitUpdateDomainResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListEncodeTokens operation middleware
+func (sh *strictHandler) ListEncodeTokens(w http.ResponseWriter, r *http.Request) {
+	var request ListEncodeTokensRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListEncodeTokens(ctx, request.(ListEncodeTokensRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListEncodeTokens")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListEncodeTokensResponseObject); ok {
+		if err := validResponse.VisitListEncodeTokensResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateEncodeToken operation middleware
+func (sh *strictHandler) CreateEncodeToken(w http.ResponseWriter, r *http.Request) {
+	var request CreateEncodeTokenRequestObject
+
+	var body CreateEncodeTokenJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateEncodeToken(ctx, request.(CreateEncodeTokenRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateEncodeToken")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateEncodeTokenResponseObject); ok {
+		if err := validResponse.VisitCreateEncodeTokenResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeEncodeToken operation middleware
+func (sh *strictHandler) RevokeEncodeToken(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request RevokeEncodeTokenRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeEncodeToken(ctx, request.(RevokeEncodeTokenRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeEncodeToken")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeEncodeTokenResponseObject); ok {
+		if err := validResponse.VisitRevokeEncodeTokenResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -187,3 +187,42 @@ func (i *Identity) InviteUser(ctx context.Context, arg sqlc.InsertUserWithCreden
 	}
 	return u, nil
 }
+
+// CreateEncodeToken persists a new scoped encode-token row (the raw token itself is never stored —
+// callers pass its SHA-256 hash). See 000032_encode_tokens.up.sql.
+func (i *Identity) CreateEncodeToken(ctx context.Context, arg sqlc.InsertEncodeTokenParams) (sqlc.EncodeToken, error) {
+	return i.q.InsertEncodeToken(ctx, arg)
+}
+
+// ListEncodeTokens returns every encode token (active + revoked), newest first, for the token
+// management surface (Cài đặt › NFC Shortcuts).
+func (i *Identity) ListEncodeTokens(ctx context.Context) ([]sqlc.EncodeToken, error) {
+	return i.q.ListEncodeTokens(ctx)
+}
+
+// EncodeTokenByHash resolves a scoped Bearer credential to its row for the auth-middleware check, or
+// ErrNotFound if no token has this hash. Revoked/expired is judged by the caller (the row still needs
+// to exist to tell "revoked" apart from "never issued").
+func (i *Identity) EncodeTokenByHash(ctx context.Context, hash string) (sqlc.EncodeToken, error) {
+	t, err := i.q.GetEncodeTokenByHash(ctx, hash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.EncodeToken{}, ErrNotFound
+	}
+	return t, err
+}
+
+// TouchEncodeToken bumps last_used_at after a successful scoped-token auth — best-effort usage
+// observability, not itself a security check.
+func (i *Identity) TouchEncodeToken(ctx context.Context, id uuid.UUID) error {
+	return i.q.TouchEncodeToken(ctx, id)
+}
+
+// RevokeEncodeToken marks a token revoked (any owner may revoke any token — see the query doc), or
+// ErrNotFound if it doesn't exist or was already revoked.
+func (i *Identity) RevokeEncodeToken(ctx context.Context, id uuid.UUID) (sqlc.EncodeToken, error) {
+	t, err := i.q.RevokeEncodeToken(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.EncodeToken{}, ErrNotFound
+	}
+	return t, err
+}

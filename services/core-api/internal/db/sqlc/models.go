@@ -726,6 +726,17 @@ type Customer struct {
 	PasswordHash *string            `json:"passwordHash"`
 }
 
+type EncodeToken struct {
+	ID         uuid.UUID          `json:"id"`
+	UserID     uuid.UUID          `json:"userId"`
+	Label      string             `json:"label"`
+	TokenHash  string             `json:"tokenHash"`
+	Scope      string             `json:"scope"`
+	CreatedAt  pgtype.Timestamptz `json:"createdAt"`
+	LastUsedAt pgtype.Timestamptz `json:"lastUsedAt"`
+	RevokedAt  pgtype.Timestamptz `json:"revokedAt"`
+}
+
 type FilamentBatch struct {
 	ID           uuid.UUID          `json:"id"`
 	MaterialID   uuid.UUID          `json:"materialId"`

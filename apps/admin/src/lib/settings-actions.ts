@@ -127,3 +127,33 @@ export async function inviteStaff(body: StaffInvite): Promise<SettingsResult> {
     return { ok: false, code: 'error' };
   }
 }
+
+type EncodeTokenCreated = components['schemas']['EncodeTokenCreated'];
+
+/** Mint a scoped NFC-encode Bearer token (POST /admin/encode-tokens, owner-only) — for an iOS Shortcuts
+ *  automation. Returns the raw token ONCE; the caller must show it to the user immediately (it can never
+ *  be retrieved again). */
+export async function createEncodeToken(
+  label: string,
+): Promise<{ ok: true; token: EncodeTokenCreated } | Extract<SettingsResult, { ok: false }>> {
+  try {
+    const client = await authedClient();
+    const { data, response } = await client.POST('/admin/encode-tokens', { body: { label } });
+    return data ? { ok: true, token: data } : { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
+/** Revoke a scoped NFC-encode Bearer token (DELETE /admin/encode-tokens/{id}, owner-only). */
+export async function revokeEncodeToken(id: string): Promise<SettingsResult> {
+  try {
+    const client = await authedClient();
+    const { response } = await client.DELETE('/admin/encode-tokens/{id}', {
+      params: { path: { id } },
+    });
+    return response.status === 204 ? { ok: true } : { ok: false, code: codeFor(response.status) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}

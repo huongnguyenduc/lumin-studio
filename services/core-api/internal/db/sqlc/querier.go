@@ -140,6 +140,10 @@ type Querier interface {
 	// credential, possibly duplicate email) can never be logged into.
 	GetCustomerByLoginEmail(ctx context.Context, lower string) (Customer, error)
 	GetCustomerByPhone(ctx context.Context, phone string) (Customer, error)
+	// The auth-middleware lookup on every request bearing a scoped-token-shaped Bearer credential.
+	// Unfiltered by revoked_at — the middleware checks revoked_at/scope itself so a revoked token can
+	// still be told apart from "no such token" (both fail closed the same way to the caller either way).
+	GetEncodeTokenByHash(ctx context.Context, tokenHash string) (EncodeToken, error)
 	// GetFilamentMaterial is the by-id read with the same derived stock/avg (LEFT JOIN → exists with no lots
 	// still returns one row). Batches for the weighted-avg breakdown panel come from ListFilamentBatchesByMaterial.
 	GetFilamentMaterial(ctx context.Context, id uuid.UUID) (GetFilamentMaterialRow, error)
@@ -230,6 +234,9 @@ type Querier interface {
 	// customers_login_email_uq partial unique index (23505 → 409 in the handler), so there is no
 	// find-then-insert race — the DB is the single arbiter of login-email uniqueness.
 	InsertCustomerWithCredential(ctx context.Context, arg InsertCustomerWithCredentialParams) (Customer, error)
+	// encode_tokens.sql — scoped Bearer tokens for the NFC-encode-only Shortcuts automation (see
+	// 000032_encode_tokens.up.sql). Owner-only surface (mirrors staff & roles, users.sql).
+	InsertEncodeToken(ctx context.Context, arg InsertEncodeTokenParams) (EncodeToken, error)
 	// InsertFilamentBatch records one import lot; qty_remaining starts equal to qty_original (a fresh lot is
 	// untouched). The handler computes qty_original = spoolCount × qtyPerSpool and total_cost = spoolCount ×
 	// pricePerSpool from the "nhập cuộn" dialog.
@@ -396,6 +403,10 @@ type Querier interface {
 	// detail read, so card dots and detail swatches never disagree on order).
 	ListColorSwatchesByProducts(ctx context.Context, productIds []uuid.UUID) ([]ListColorSwatchesByProductsRow, error)
 	ListColorsByProduct(ctx context.Context, productID uuid.UUID) ([]Color, error)
+	// The token-management list (Cài đặt › NFC Shortcuts). Newest first; token_hash is never projected
+	// to the handler's wire type (toEncodeToken drops it) — this query still selects * for InsertEncodeToken's
+	// sibling shape, but the handler never serializes the hash column.
+	ListEncodeTokens(ctx context.Context) ([]EncodeToken, error)
 	ListFilamentBatchesByMaterial(ctx context.Context, materialID uuid.UUID) ([]FilamentBatch, error)
 	// ListFilamentMaterials returns the palette with DERIVED stock + weighted-average cost/unit. The weighted
 	// average is Σ(qty_remaining × per-lot ₫/unit) ÷ Σ(qty_remaining) where per-lot ₫/unit = total_cost/qty_original;
@@ -533,6 +544,11 @@ type Querier interface {
 	// the relay retries with a full budget) AFTER the owner has fixed the poison cause. Bulk by
 	// design: poison rows are rare and share a cause; per-id requeue is speculative until needed.
 	RequeueFailedOutbox(ctx context.Context) (int64, error)
+	// Owner-only management (classify → authOwnerOnly), so ANY owner may revoke ANY token — not scoped to
+	// its creator (a small team's owners jointly administer the Shortcuts credentials). Re-revoking an
+	// already-revoked (or nonexistent) row returns ErrNotFound via the zero-rows check in
+	// Identity.RevokeEncodeToken, distinguishing "nothing to revoke" from a genuine write.
+	RevokeEncodeToken(ctx context.Context, id uuid.UUID) (EncodeToken, error)
 	// SelectPendingOutbox scans the WHOLE pending SET in commit order each tick (ADR-029). It
 	// deliberately scans `status='pending' ORDER BY seq` — NOT a `seq > watermark` cursor and NOT
 	// `FOR UPDATE SKIP LOCKED`: bigserial `seq` is assigned at INSERT, not COMMIT, so a lower-seq
@@ -592,6 +608,9 @@ type Querier interface {
 	// within the window (NULL fails the range → unpaid excluded) AND status <> 'REFUNDED'. The 30-day window is
 	// a rolling now()-interval (not a TZ calendar boundary like the dashboard's "today"), so it needs no caller range.
 	SnapshotShopInputs(ctx context.Context) (SnapshotShopInputsRow, error)
+	// Bumps last_used_at on a successful auth — best-effort observability for "is this Shortcut still
+	// in use", not a security control.
+	TouchEncodeToken(ctx context.Context, id uuid.UUID) error
 	// UpdateAssetJobStatus records a worker lifecycle transition (slice-3 callback): the new status,
 	// the attempt count, last_error (set on 'failed', NULL clears it on 'ready'), and completed_at when
 	// supplied (COALESCE keeps the prior value when the narg is NULL).
