@@ -16,13 +16,17 @@ const ENCODE_TOKEN_KEY = 'lumin_encode_token';
 
 // Builds the nfchelper://write deep link (iOS app "NFC Helper", id6472720100 — Shortcuts has no NFC
 // WRITE action, only read, so it can't do this step). NFC Helper writes `tagUrl` to the chip, then
-// GET-redirects to `callback` with the chip's serial appended as `tagid` — it can't attach an
+// GET-redirects to `callback` with the chip's serial appended as `?tagid=...` — it can't attach an
 // Authorization header, so the callback target is /api/nfc-confirm (this app), which holds the scoped
 // token and does the real authenticated POST server-side. No dev account, no Core NFC.
+// jobId/token go in the PATH, not the query string: NFC Helper blindly appends `?tagid=...` to
+// whatever callback it's given, so a callback that already has a `?` breaks (its second `?` gets
+// folded into the previous param's value instead of starting a new one — confirmed live).
 function nfcHelperWriteURL(jobId: string, tagUrl: string, token: string): string {
-  const callback = new URL('/api/nfc-confirm', window.location.origin);
-  callback.searchParams.set('jobId', jobId);
-  callback.searchParams.set('token', token);
+  const callback = new URL(
+    `/api/nfc-confirm/${encodeURIComponent(jobId)}/${encodeURIComponent(token)}`,
+    window.location.origin,
+  );
   const params = new URLSearchParams({ url: tagUrl, callback: callback.toString() });
   return `nfchelper://write?${params.toString()}`;
 }
