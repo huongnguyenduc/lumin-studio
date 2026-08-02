@@ -614,11 +614,12 @@ export const vi = {
         failed: 'Chưa ghi được — bạn thử ghi bằng app NFC rồi nhập UID nhé.',
       },
       chipUidLabel: 'Mã UID của chip',
-      shortcut: {
-        title: 'Ghi qua Shortcuts (iOS)',
-        hint: 'Máy này không ghi NFC được qua trình duyệt — bấm link hoặc quét mã QR để mở Shortcut "Lumin ghi chip NFC" trên iPhone, đã điền sẵn mã thẻ.',
-        openLink: 'Mở trong Shortcuts',
-        qrAlt: 'Mã QR mở Shortcut ghi chip NFC',
+      nfcHelper: {
+        title: 'Ghi qua app NFC Helper (iOS)',
+        hint: 'Máy này không ghi NFC được qua trình duyệt — bấm link hoặc quét mã QR để mở app "NFC Helper" trên iPhone, đã điền sẵn URL cần ghi. Ghi xong app tự báo về hệ thống.',
+        openLink: 'Mở trong NFC Helper',
+        qrAlt: 'Mã QR mở NFC Helper để ghi chip',
+        noToken: 'Chưa có token cho NFC Helper — vào Cài đặt › Nhân viên tạo 1 token trước nhé.',
       },
       confirm: 'Xong — đánh dấu đã ghi',
       submitting: 'Đang lưu…',
