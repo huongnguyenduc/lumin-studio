@@ -39,7 +39,10 @@ export async function GET(
   });
 
   if (res.ok) {
-    return page('Đã ghi chip', '<p>🎉 Đã ghi chip NFC thành công. Bạn có thể đóng tab này.</p>');
+    // Send staff straight back to the print-queue board to see the card land in PACKING — same-origin
+    // redirect, so it rides whatever admin session cookie is already in this browser (or bounces to
+    // login if there isn't one, same as any other admin route).
+    return Response.redirect(new URL('/hang-doi-in', request.url), 303);
   }
   return page(
     'Chưa lưu được',

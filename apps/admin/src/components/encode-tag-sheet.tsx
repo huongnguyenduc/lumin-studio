@@ -27,7 +27,12 @@ function nfcHelperWriteURL(jobId: string, tagUrl: string, token: string): string
     `/api/nfc-confirm/${encodeURIComponent(jobId)}/${encodeURIComponent(token)}`,
     window.location.origin,
   );
-  const params = new URLSearchParams({ url: tagUrl, callback: callback.toString() });
+  // NFC Helper's write form has its own scheme dropdown (defaults to "https://") that it blindly
+  // prepends to whatever `url` we pass — it doesn't check if the value already has a scheme, so
+  // passing a full "https://…" URL wrote "https://https://…" to the chip (confirmed live). Strip a
+  // leading https:// so the app's own prefix is the only one.
+  const bareUrl = tagUrl.replace(/^https:\/\//i, '');
+  const params = new URLSearchParams({ url: bareUrl, callback: callback.toString() });
   return `nfchelper://write?${params.toString()}`;
 }
 
