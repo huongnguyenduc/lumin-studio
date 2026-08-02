@@ -69,6 +69,16 @@ type Server struct {
 	// mirroring proofUploadLimiter — an unauthenticated public write with no trusted per-IP signal. Generous
 	// limits (ratelimit.go) so a real rescue is never throttled; the edge WAF remains the per-IP layer.
 	lostShareLimiter *paymentProofUploadLimiter
+	// getPetPageLimiter is a small global token bucket for GET /pet-tags/{shortId} (P3-t t-3), same
+	// rationale as lostShareLimiter: an unauthenticated public read with no trusted per-IP signal
+	// in-process, so a missing/misconfigured edge rule doesn't turn it into an unbounded shortId
+	// brute-force oracle. Generous — real scan volume for one shop is tiny.
+	getPetPageLimiter *paymentProofUploadLimiter
+	// claimAccountLimiter is a small global token bucket for POST /pet-tags/{shortId}/claim-account — a
+	// public write that runs a bcrypt hash + DB write per call, so it needs its own (tighter) backstop
+	// distinct from getPetPageLimiter's plain-read budget. Reuses proofUploadLimiter's defaults (both are
+	// unauthenticated public writes with real per-call cost).
+	claimAccountLimiter *paymentProofUploadLimiter
 	// modelUploads signs presigned POST policies for admin source-model uploads (.glb/.stl/.3mf,
 	// P3-j-b/ADR-036) and host-pins the asset-job sourceModelUrl. Nil means the environment has not
 	// wired the catalog-asset bucket credentials; the owner-only endpoint then fails closed with a 500.
@@ -182,19 +192,21 @@ func WithKubeClient(c kube.Client) ServerOption {
 // customer realm via WithCustomerAuth) without changing the base signature.
 func NewServer(logger *slog.Logger, pool *pgxpool.Pool, nats NATSStatus, authIssuer *auth.Issuer, opts ...ServerOption) *Server {
 	s := &Server{
-		logger:             logger,
-		pool:               pool,
-		nats:               nats,
-		auth:               authIssuer,
-		users:              db.NewIdentity(pool),
-		lookup:             newLookupLimiter(defaultLookupLimits()),
-		loginLimiter:       newLookupLimiter(defaultLoginLimits()),
-		proofUploadLimiter: newPaymentProofUploadLimiter(defaultPaymentProofUploadLimits()),
-		lostShareLimiter:   newPaymentProofUploadLimiter(defaultLostShareLimits()),
-		imageUploadLimiter: newPaymentProofUploadLimiter(defaultPaymentProofUploadLimits()),
-		tracking:           newTrackingSigner(devTrackingSecret),
-		printHub:           newPrintStreamHub(),
-		petPageBaseURL:     defaultPetPageBaseURL,
+		logger:              logger,
+		pool:                pool,
+		nats:                nats,
+		auth:                authIssuer,
+		users:               db.NewIdentity(pool),
+		lookup:              newLookupLimiter(defaultLookupLimits()),
+		loginLimiter:        newLookupLimiter(defaultLoginLimits()),
+		proofUploadLimiter:  newPaymentProofUploadLimiter(defaultPaymentProofUploadLimits()),
+		lostShareLimiter:    newPaymentProofUploadLimiter(defaultLostShareLimits()),
+		getPetPageLimiter:   newPaymentProofUploadLimiter(defaultGetPetPageLimits()),
+		claimAccountLimiter: newPaymentProofUploadLimiter(defaultPaymentProofUploadLimits()),
+		imageUploadLimiter:  newPaymentProofUploadLimiter(defaultPaymentProofUploadLimits()),
+		tracking:            newTrackingSigner(devTrackingSecret),
+		printHub:            newPrintStreamHub(),
+		petPageBaseURL:      defaultPetPageBaseURL,
 	}
 	for _, opt := range opts {
 		opt(s)

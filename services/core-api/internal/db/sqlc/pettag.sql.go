@@ -16,7 +16,7 @@ const attachAndActivateTag = `-- name: AttachAndActivateTag :one
 UPDATE pet_tags
 SET owner_account_id = $2, status = 'ACTIVATED', activated_at = now()
 WHERE id = $1 AND status = 'ENCODED'
-RETURNING id, code, short_id, order_item_id, status, chip_uid, owner_account_id, encoded_at, activated_at, created_at
+RETURNING id, code, short_id, order_item_id, status, chip_uid, owner_account_id, encoded_at, activated_at, created_at, disabled_at, scan_count, last_scanned_at
 `
 
 type AttachAndActivateTagParams struct {
@@ -43,6 +43,9 @@ func (q *Queries) AttachAndActivateTag(ctx context.Context, arg AttachAndActivat
 		&i.EncodedAt,
 		&i.ActivatedAt,
 		&i.CreatedAt,
+		&i.DisabledAt,
+		&i.ScanCount,
+		&i.LastScannedAt,
 	)
 	return i, err
 }
@@ -83,7 +86,7 @@ func (q *Queries) GetPetProfileByTagID(ctx context.Context, tagID uuid.UUID) (Pe
 }
 
 const getPetTagByOrderItem = `-- name: GetPetTagByOrderItem :one
-SELECT id, code, short_id, order_item_id, status, chip_uid, owner_account_id, encoded_at, activated_at, created_at FROM pet_tags WHERE order_item_id = $1 ORDER BY created_at LIMIT 1
+SELECT id, code, short_id, order_item_id, status, chip_uid, owner_account_id, encoded_at, activated_at, created_at, disabled_at, scan_count, last_scanned_at FROM pet_tags WHERE order_item_id = $1 ORDER BY created_at LIMIT 1
 `
 
 // GetPetTagByOrderItem returns the (first) pet tag minted for an order line, or no rows. A qty>1 line
@@ -103,19 +106,25 @@ func (q *Queries) GetPetTagByOrderItem(ctx context.Context, orderItemID uuid.UUI
 		&i.EncodedAt,
 		&i.ActivatedAt,
 		&i.CreatedAt,
+		&i.DisabledAt,
+		&i.ScanCount,
+		&i.LastScannedAt,
 	)
 	return i, err
 }
 
 const getPetTagByShortID = `-- name: GetPetTagByShortID :one
 
-SELECT id, code, short_id, order_item_id, status, chip_uid, owner_account_id, encoded_at, activated_at, created_at FROM pet_tags WHERE short_id = $1
+SELECT id, code, short_id, order_item_id, status, chip_uid, owner_account_id, encoded_at, activated_at, created_at, disabled_at, scan_count, last_scanned_at FROM pet_tags WHERE short_id = $1 AND disabled_at IS NULL
 `
 
 // ==== Activation + public pet page (t-3) ======================================================
 // GetPetTagByShortID resolves a tag by its URL routing key (the /t/{shortId} segment burned to the chip),
 // for the public pet page (t-3) and the activation guard. No lock — the public GET never writes; the
-// activation race is handled by AttachAndActivateTag's status guard, not a SELECT FOR UPDATE.
+// activation race is handled by AttachAndActivateTag's status guard, not a SELECT FOR UPDATE. Excludes a
+// DISABLED (voided) tag — every write handler resolves through this one query, so hiding it here is the
+// single choke point that blocks activation/lost-mode/edit/share-location uniformly, same as an unknown
+// shortId (404, never leaks "this tag exists but is disabled").
 func (q *Queries) GetPetTagByShortID(ctx context.Context, shortID string) (PetTag, error) {
 	row := q.db.QueryRow(ctx, getPetTagByShortID, shortID)
 	var i PetTag
@@ -130,6 +139,9 @@ func (q *Queries) GetPetTagByShortID(ctx context.Context, shortID string) (PetTa
 		&i.EncodedAt,
 		&i.ActivatedAt,
 		&i.CreatedAt,
+		&i.DisabledAt,
+		&i.ScanCount,
+		&i.LastScannedAt,
 	)
 	return i, err
 }
@@ -241,7 +253,7 @@ func (q *Queries) InsertPetProfile(ctx context.Context, arg InsertPetProfilePara
 const insertPetTag = `-- name: InsertPetTag :one
 INSERT INTO pet_tags (id, code, short_id, order_item_id)
 VALUES ($1, $2, $3, $4)
-RETURNING id, code, short_id, order_item_id, status, chip_uid, owner_account_id, encoded_at, activated_at, created_at
+RETURNING id, code, short_id, order_item_id, status, chip_uid, owner_account_id, encoded_at, activated_at, created_at, disabled_at, scan_count, last_scanned_at
 `
 
 type InsertPetTagParams struct {
@@ -273,6 +285,9 @@ func (q *Queries) InsertPetTag(ctx context.Context, arg InsertPetTagParams) (Pet
 		&i.EncodedAt,
 		&i.ActivatedAt,
 		&i.CreatedAt,
+		&i.DisabledAt,
+		&i.ScanCount,
+		&i.LastScannedAt,
 	)
 	return i, err
 }
@@ -343,7 +358,7 @@ const markPetTagEncoded = `-- name: MarkPetTagEncoded :one
 UPDATE pet_tags
 SET status = 'ENCODED', chip_uid = $2, encoded_at = now()
 WHERE id = $1
-RETURNING id, code, short_id, order_item_id, status, chip_uid, owner_account_id, encoded_at, activated_at, created_at
+RETURNING id, code, short_id, order_item_id, status, chip_uid, owner_account_id, encoded_at, activated_at, created_at, disabled_at, scan_count, last_scanned_at
 `
 
 type MarkPetTagEncodedParams struct {
@@ -368,6 +383,9 @@ func (q *Queries) MarkPetTagEncoded(ctx context.Context, arg MarkPetTagEncodedPa
 		&i.EncodedAt,
 		&i.ActivatedAt,
 		&i.CreatedAt,
+		&i.DisabledAt,
+		&i.ScanCount,
+		&i.LastScannedAt,
 	)
 	return i, err
 }
@@ -464,6 +482,20 @@ func (q *Queries) RecentLostScansForTag(ctx context.Context, arg RecentLostScans
 	return items, nil
 }
 
+const recordPetTagScan = `-- name: RecordPetTagScan :exec
+UPDATE pet_tags
+SET scan_count = scan_count + 1, last_scanned_at = now()
+WHERE id = $1
+`
+
+// RecordPetTagScan bumps the server-side scan counter on every public GET /pet-tags/{shortId} (spec §08
+// analytics gap: the only prior record was lost_events, written solely on a finder location-share, not on
+// a plain scan). Best-effort from the handler's side — see RecordScan.
+func (q *Queries) RecordPetTagScan(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, recordPetTagScan, id)
+	return err
+}
+
 const setLostMode = `-- name: SetLostMode :one
 
 UPDATE pet_profiles
@@ -509,6 +541,43 @@ func (q *Queries) SetLostMode(ctx context.Context, arg SetLostModeParams) (PetPr
 		&i.Blocks,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const setPetTagDisabled = `-- name: SetPetTagDisabled :one
+UPDATE pet_tags
+SET disabled_at = CASE WHEN $2::boolean THEN now() ELSE NULL END
+WHERE id = $1
+RETURNING id, code, short_id, order_item_id, status, chip_uid, owner_account_id, encoded_at, activated_at, created_at, disabled_at, scan_count, last_scanned_at
+`
+
+type SetPetTagDisabledParams struct {
+	ID      uuid.UUID `json:"id"`
+	Column2 bool      `json:"column2"`
+}
+
+// SetPetTagDisabled voids (or restores) a tag by id, independent of its ENCODED/ACTIVATED status — a
+// disabled tag stops resolving via GetPetTagByShortID above but keeps its status/profile intact so
+// restoring just clears disabled_at. Owner action (leaked/fraudulent tag response); no HTTP endpoint yet
+// (ponytail: wire an admin route when this is needed more than rarely — direct SQL is fine meanwhile).
+func (q *Queries) SetPetTagDisabled(ctx context.Context, arg SetPetTagDisabledParams) (PetTag, error) {
+	row := q.db.QueryRow(ctx, setPetTagDisabled, arg.ID, arg.Column2)
+	var i PetTag
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.ShortID,
+		&i.OrderItemID,
+		&i.Status,
+		&i.ChipUid,
+		&i.OwnerAccountID,
+		&i.EncodedAt,
+		&i.ActivatedAt,
+		&i.CreatedAt,
+		&i.DisabledAt,
+		&i.ScanCount,
+		&i.LastScannedAt,
 	)
 	return i, err
 }

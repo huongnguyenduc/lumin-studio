@@ -905,6 +905,9 @@ type PetTag struct {
 	EncodedAt      pgtype.Timestamptz `json:"encodedAt"`
 	ActivatedAt    pgtype.Timestamptz `json:"activatedAt"`
 	CreatedAt      pgtype.Timestamptz `json:"createdAt"`
+	DisabledAt     pgtype.Timestamptz `json:"disabledAt"`
+	ScanCount      int64              `json:"scanCount"`
+	LastScannedAt  pgtype.Timestamptz `json:"lastScannedAt"`
 }
 
 type PrintJob struct {

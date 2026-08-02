@@ -265,6 +265,7 @@ export const vi = {
     emailLabel: 'Email',
     optional: '(tuỳ chọn)',
     emailPlaceholder: 'email của bạn',
+    emailHint: 'Email này sẽ dùng để đăng nhập sau này (ví dụ khi kích hoạt tag NFC).',
     nameLabel: 'Họ tên',
     namePlaceholder: 'tên của bạn',
     phoneLabel: 'Số điện thoại',
@@ -645,8 +646,24 @@ export const vi = {
       heading: 'Chào mừng đến Lumin Pet 👋',
       intro: 'Đăng nhập để bắt đầu, rồi tạo trang riêng cho bé.',
       loginCta: 'Tiếp tục với email',
+      registerCta: 'Tạo tài khoản mới',
       footnote:
         'Chưa có tài khoản? Tạo nhanh khi đăng nhập. Tag tự gắn vào tài khoản của bạn — không cần nhập mã.',
+      claim: {
+        badge: '✦ Đã nhận tag mới',
+        heading: 'Chào {name} 👋',
+        intro: 'Bạn từng mua với SĐT {phoneMasked} — đặt mật khẩu để dùng luôn thông tin này nhé.',
+        passwordLabel: 'Mật khẩu mới',
+        passwordPlaceholder: 'Tối thiểu 8 ký tự',
+        submit: 'Tạo mật khẩu & tiếp tục',
+        notMe: 'Không phải bạn?',
+        notMeCta: 'Đăng nhập tài khoản khác',
+        errors: {
+          alreadyClaimed: 'Tài khoản này đã có mật khẩu — đăng nhập bình thường nhé.',
+          validation: 'Mật khẩu cần tối thiểu 8 ký tự.',
+          networkError: 'Mình chưa lưu được — thử lại sau một chút nhé.',
+        },
+      },
     },
     unavailable: {
       notFoundTitle: 'Không tìm thấy trang',

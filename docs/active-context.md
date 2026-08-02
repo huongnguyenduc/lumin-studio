@@ -6,6 +6,28 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**🔧 ĐANG LÀM (2026-08-02, core-api + storefront — review flow "mua → nhận tag → quét NFC lần đầu", CHƯA commit/PR).** Bắt đầu từ review flow quét NFC lần đầu, mở rộng sang toàn bộ hành trình mua→activate và một tính năng claim-account mới. Tất cả gộp **1 migration `000033_pet_tag_disable_scan`**, sẽ commit 1 lần (user chốt "gộp 1 commit, cùng migration mà").
+
+**Phần 1 — 3 gap ở `GetPetPage`/`ActivatePetTag`/`SharePetLocation` (`internal/httpapi/pettag_customer.go`):**
+- Migration thêm 3 cột plain trên `pet_tags` (KHÔNG enum value mới — giữ nguyên 3-state `pet_tag_status` spec §10): `disabled_at` (void tag lộ/gian lận, không mất status/profile), `scan_count`+`last_scanned_at` (server-side scan counter — trước đó chỉ có `lost_events` ghi khi finder share vị trí).
+- Root-cause fix 1 chỗ: `GetPetTagByShortID` query thêm `AND disabled_at IS NULL` — mọi handler đều gọi `tags.GetByShortID` trước nên chặn đều, disabled → 404 y hệt shortId lạ.
+- `getPetPageLimiter` mới trên `GET /pet-tags/{shortId}` (trước đây KHÔNG có limiter).
+- `PetTags.SetDisabled()` có nhưng CHƯA có HTTP endpoint (`ponytail:` — owner disable qua SQL trực tiếp tới khi cần admin UI thật).
+
+**Phần 2 — claim-account (hướng B đã bàn + user chốt qua AskUserQuestion, phạm vi hẹp vì có tiền lệ `RegisterCustomer` từ chối auto-link theo SĐT rộng):**
+- 2 endpoint mới `GET /pet-tags/{shortId}/checkout-match` + `POST /pet-tags/{shortId}/claim-account` (`internal/httpapi/pettag_customer.go`, `authPublic`) — resolve customer server-side theo chuỗi `tag→order_item→order→customer` (KHÔNG theo SĐT tự do), cho khách "claim" account guest có sẵn từ lúc checkout bằng cách đặt mật khẩu, rồi tự đăng nhập (mint cookie như login/register). Đã claim rồi → 409 `CUSTOMER_ALREADY_CLAIMED`.
+- DB: `GetCustomerByTagShortID` + `SetCustomerPasswordIfAbsent` (`db/queries/customers.sql`, `internal/db/identity.go`) — guard `password_hash IS NULL` chặn ghi đè, race-safe.
+- Storefront: `NewTagWelcome` gọi `checkoutMatch` trước — có match → `ClaimAccountForm` (1 field mật khẩu); không match → CTA login **+ CTA "Tạo tài khoản mới"** mới thêm. Checkout thêm hint dưới email: *"dùng để đăng nhập sau này"*.
+- **Đã tự kiểm tra case "mua lần 2":** `FindOrCreateCustomer` khớp theo SĐT → cùng customer row; khách đã claim ở tag 1 thì tag 2 tự fallback về login (không hiện lại claim form) vì `password_hash != nil`; API `claim-account` cũng tự chặn double-claim qua guard SQL. Không cần sửa gì thêm.
+
+**Verify xanh (local, KHÔNG cần DB thật):** Go — build/gofmt/vet/golangci-lint (0 issues)/sqlc vet+diff/oapi stale-check/`go test ./internal/... -race`; Storefront — typecheck/lint/vitest (240 pass)/`next build` (full, với `SITE_URL` set). 2 integration test Go (`TestActivatePetTagEndToEnd`/`TestAdminPetTagRosterEndToEnd`) vẫn SKIP — cần colima (memory `lumin-testcontainers-local-docker`).
+
+**CHƯA:** chạy integration test qua colima trên Postgres thật · commit/branch/PR · `make migrate` migration 000033 lên prod.
+
+Tiện thể: user hỏi tài khoản `duchuong007@gmail.com` — tồn tại trong `customers` (tạo 2026-07-16) nhưng `password_hash NULL` = guest, chưa từng đặt mật khẩu (query read-only qua `ssh pc-server` + `kubectl exec` psql, user đã confirm trước khi chạy).
+
+---
+
 **✅ XONG & LIVE (2026-08-02, admin — luồng ghi chip iOS qua app "NFC Helper" + domain pet-tag đổi sang luminstudio.vn).** 3 PR liên tiếp, tất cả đã merge + deploy thành công (harness-selftest xanh → deploy workflow_run xanh):
 - **PR #246** — đổi `encode-tag-sheet.tsx` từ `shortcuts://run-shortcut` (Shortcuts KHÔNG có action ghi NFC, chỉ đọc — sai từ phiên trước) sang app iOS **"NFC Helper" (id6472720100)**: `nfchelper://write?url=...&callback=...`. Thêm route public `apps/admin/src/app/api/nfc-confirm/` (không cookie/session — callback GET không gửi được Authorization header, route tự POST Bearer scoped-token tới core-api). `staff-view.tsx` tự lưu token vào `localStorage['lumin_encode_token']` khi tạo.
 - **PR #247** — đổi `PET_TAG_BASE_URL` (`infra/k8s/core-api.yaml`) từ default `lumin.pet` sang `https://www.luminstudio.vn` theo yêu cầu owner. `/t/{shortId}` đã có sẵn trên storefront ở host này, không cần đổi ingress. Tag đã ghi trước đó vẫn giữ URL `lumin.pet` cũ.

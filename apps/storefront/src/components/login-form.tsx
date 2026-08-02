@@ -17,7 +17,7 @@ type LoginError = 'invalidCredentials' | 'validation' | 'networkError' | 'formEr
  * password) surfaces as one message, no enumeration (ADR-030). Reads/writes ONLY the session; no order
  * creation or status change (Phase-1/2 boundary).
  */
-export function LoginForm({ next }: { next?: string }) {
+export function LoginForm({ next, initialEmail }: { next?: string; initialEmail?: string }) {
   const t = useTranslations('account.login');
   const tNav = useTranslations('nav');
   const router = useRouter();
@@ -29,7 +29,10 @@ export function LoginForm({ next }: { next?: string }) {
     ? `/tai-khoan/dang-ky?next=${encodeURIComponent(returnTo)}`
     : '/tai-khoan/dang-ky';
 
-  const [email, setEmail] = useState('');
+  // initialEmail (P3-t: a second+ pet tag for a customer who already claimed on the first) prefills
+  // instead of asking them to retype an email they already gave at checkout — passed as a component
+  // prop from a server parent, NEVER a URL query param (PII stays out of the address bar/history).
+  const [email, setEmail] = useState(initialEmail ?? '');
   const [password, setPassword] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<LoginError | null>(null);

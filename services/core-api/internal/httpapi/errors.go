@@ -57,6 +57,10 @@ const (
 	// tag is not yet activated, so no profile exists), so a finder's location can't be recorded — an at-home
 	// pet's location is never pinged (spec §10 rescue is lostMode-only). Only fires on an at-home scan or API abuse.
 	codePetNotLost = "PET_NOT_LOST"
+	// codeCustomerAlreadyClaimed is the pet-tag claim-account 409: the checkout customer behind this tag's
+	// order already carries a login credential (a prior claim, or they separately registered). The client
+	// should fall back to a normal login prompt instead of retrying claim.
+	codeCustomerAlreadyClaimed = "CUSTOMER_ALREADY_CLAIMED"
 
 	// Checkout (PR-3g) selection/intake codes. Granular where the storefront needs a distinct
 	// user-facing message (hết hàng vs quá dài vs chưa hỗ trợ tỉnh); one INVALID_SELECTION for

@@ -52,9 +52,30 @@ ORDER BY pt.created_at DESC;
 
 -- GetPetTagByShortID resolves a tag by its URL routing key (the /t/{shortId} segment burned to the chip),
 -- for the public pet page (t-3) and the activation guard. No lock — the public GET never writes; the
--- activation race is handled by AttachAndActivateTag's status guard, not a SELECT FOR UPDATE.
+-- activation race is handled by AttachAndActivateTag's status guard, not a SELECT FOR UPDATE. Excludes a
+-- DISABLED (voided) tag — every write handler resolves through this one query, so hiding it here is the
+-- single choke point that blocks activation/lost-mode/edit/share-location uniformly, same as an unknown
+-- shortId (404, never leaks "this tag exists but is disabled").
 -- name: GetPetTagByShortID :one
-SELECT * FROM pet_tags WHERE short_id = $1;
+SELECT * FROM pet_tags WHERE short_id = $1 AND disabled_at IS NULL;
+
+-- SetPetTagDisabled voids (or restores) a tag by id, independent of its ENCODED/ACTIVATED status — a
+-- disabled tag stops resolving via GetPetTagByShortID above but keeps its status/profile intact so
+-- restoring just clears disabled_at. Owner action (leaked/fraudulent tag response); no HTTP endpoint yet
+-- (ponytail: wire an admin route when this is needed more than rarely — direct SQL is fine meanwhile).
+-- name: SetPetTagDisabled :one
+UPDATE pet_tags
+SET disabled_at = CASE WHEN $2::boolean THEN now() ELSE NULL END
+WHERE id = $1
+RETURNING *;
+
+-- RecordPetTagScan bumps the server-side scan counter on every public GET /pet-tags/{shortId} (spec §08
+-- analytics gap: the only prior record was lost_events, written solely on a finder location-share, not on
+-- a plain scan). Best-effort from the handler's side — see RecordScan.
+-- name: RecordPetTagScan :exec
+UPDATE pet_tags
+SET scan_count = scan_count + 1, last_scanned_at = now()
+WHERE id = $1;
 
 -- AttachAndActivateTag is the atomic claim: attach the tag to the signed-in customer, stamp activated_at,
 -- flip ENCODED → ACTIVATED (spec §10 step 2d). The `status = 'ENCODED'` guard makes it idempotent AND
