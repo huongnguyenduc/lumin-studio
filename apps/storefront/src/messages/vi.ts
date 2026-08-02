@@ -266,6 +266,11 @@ export const vi = {
     // Order summary (top of C1 + header of C2). Vietnamese has one plural form.
     orderSummaryHeading: 'Đơn hàng',
     summaryItemCount: '{count} món',
+    // Mobile-only collapsed toggles: the top card shrinks to "{n} món · Xem đơn hàng", and the sticky
+    // bottom bar's breakdown opens under "Chi tiết thanh toán" (giá luôn đi cùng nút đặt hàng). The
+    // separator lives INSIDE the message (not a hardcoded JSX literal) — conventions §i18n.
+    summaryToggleLine: '{count} món · Xem đơn hàng',
+    paymentDetailsToggle: 'Chi tiết thanh toán',
     subtotalLabel: 'Tạm tính',
     shippingLabel: 'Phí ship',
     totalLabel: 'Tổng cộng',

@@ -6,6 +6,21 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**✅ XONG — CHƯA COMMIT (2026-08-03, storefront — thiết kế lại khu vực giá ở `/thanh-toan`, theo yêu cầu owner "giá + nút đặt hàng chưa liền nhau, muốn kiểu Shopee").** Plan: `docs/plans/trong-web-storefront-ch-bright-galaxy.md`.
+
+- Tách tóm tắt đơn ra [`checkout-summary.tsx`](../apps/storefront/src/components/checkout-summary.tsx) (`SummaryLines`/`SummaryMoney`/`CheckoutTotalBar`) khỏi `checkout-view.tsx` (905 dòng, inline trước đó).
+- **Mobile:** thanh dính đáy (`sticky bottom-[76px] md:bottom-0 z-30 lg:hidden`, copy công thức PDP sticky-CTA) — Tổng cộng + nút submit luôn thấy; `<details>` "Chi tiết thanh toán" bung LÊN TRÊN xem tạm tính/phí ship; auto-mở + hiện lý do ngắn khi quote lỗi (không còn skeleton vô hạn — fix theo spec-guardian WARN). Thẻ đầu trang thu gọn "N món · Xem đơn hàng".
+- **Desktop:** nút submit dời vào thẻ "Đơn hàng" cột phải dính (`lg:sticky lg:top-24`), ngay dưới Tổng cộng — không còn ở cuối cột form.
+- Thêm giá từng dòng trong danh sách món, đọc `lines[i].lineTotal` từ `POST /price/quote` (trước đây bị bỏ qua) — thêm field `lines` vào `QuoteState` union trong `checkout-view.tsx`.
+- i18n: `summaryToggleLine` (ICU, gộp cả dấu `·` — tránh hardcode JSX), `paymentDetailsToggle`.
+
+**Verify xanh:** `pnpm --filter @lumin/storefront typecheck` + `lint` sạch · spec-guardian review PASS (0 BLOCKER, 2 WARN đã fix, 4 NOTE — 1 fix, 2 no-op vì không có logic hành vi mới, 1 ghi nhận không cần sửa) · browser smoke-test thật qua stack local (Postgres :5433 riêng + core-api :8090 dev-secret + seed `infra/k8s/seed-catalog.sql` + settings STK/shipping_rules chỉnh tay) ở 375px/900px/1280px — xác nhận cả state ok/pending/lỗi (`NO_SHIPPING_RULE`) đúng thiết kế, console sạch. Stack đã teardown (kill core-api, `docker rm -f lumin-pg-smoke`; KHÔNG `colima stop` — có container khác của user).
+
+**CHƯA:** commit/branch/PR (đang ở working tree trên `main`, 2 file: `checkout-view.tsx` + `checkout-summary.tsx` mới + `messages/vi.ts`).
+
+---
+
+## Focus trước (2026-08-02, chưa commit — xem lại nếu cần gộp/PR chung)
 **✅ XONG — CHƯA COMMIT (2026-08-02, core-api + admin + storefront — 13 điểm gãy flow từ walkthrough tay của owner, chia 7 PR logic A–G, tất cả staged chung 1 working tree chưa branch/commit).** Owner đi thử end-to-end (mua → thanh toán → in → ghi NFC → giao, + Lumin Pet) và liệt kê 13 vấn đề + 2 bổ sung giữa chừng (PDP sticky, popup nhắn shop) → gộp `docs/plans/hi-n-t-i-flow-lumin-snug-boole.md`, review qua Plan mode trước khi code.
 
 - **PR A (core-api):** presigned GET ảnh chuyển khoản (`proofstore.PresignGet` + `GET /admin/orders/{id}/proof-url`, trước đây KHÔNG có đường xem — Garage không anon-read); hàng đợi in thêm `personalization`/`optionChoiceLabels`/`orderNote` vào `PrintQueueJob`; đơn **tự `PAID→PRINTING`** khi hàng đợi in hết `NEED_PRINT` (**ADR-057 mới**, thu hẹp D6 — qua van `.allow-contract-edit`, đã đóng lại). Test tích hợp mới `TestAdvancePrintJobStageAutoAdvancesOrder` pass trên Postgres thật (colima).

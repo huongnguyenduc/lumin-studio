@@ -4,11 +4,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
-import { Button, Checkbox, Input, PriceTag, cn } from '@lumin/ui';
+import { Button, Checkbox, Input, cn } from '@lumin/ui';
 import { provinces as vnProvinces, getWardsByProvince } from 'vietnam-address-data';
 import { cartCount, cartQuoteItems, cartSignature, selectedItems } from '@/lib/cart';
 import { useCart } from '@/lib/cart-store';
-import { quoteCart } from '@/lib/quote';
+import { quoteCart, type QuoteLine } from '@/lib/quote';
+import { CheckoutTotalBar, SummaryLines, SummaryMoney } from './checkout-summary';
 import {
   buildWebOrderInput,
   EMPTY_CHECKOUT_FORM,
@@ -65,6 +66,7 @@ type QuoteState =
       signature: string;
       province: string;
       ward: string;
+      lines: QuoteLine[];
       subtotal: number;
       shippingFee?: number;
       total?: number;
@@ -183,6 +185,7 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
               signature,
               province,
               ward,
+              lines: result.lines,
               subtotal: result.subtotal,
               shippingFee: result.shippingFee,
               total: result.total,
@@ -408,90 +411,49 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
   const fieldError = (field: CheckoutField): string | undefined =>
     errors[field] ? t(`errors.${errors[field]}`) : undefined;
 
-  const summary = (
-    <div className="rounded-md border-2 border-border-strong bg-surface-sunken p-4 shadow-pop-sm">
-      <h2 className="font-display text-base font-bold text-text-strong">
-        {t('orderSummaryHeading')}
-      </h2>
-      <p className="mt-1 font-mono text-xs text-text-muted">
-        {t('summaryItemCount', { count: cartCount(items) })}
-      </p>
-      {/* Itemized list so the shopper can double-check what's about to be ordered before paying. */}
-      <ul className="mt-3 flex flex-col gap-2 border-t border-dashed border-border-default pt-3">
-        {items.map((item) => (
-          <li key={item.key} className="flex items-center gap-2">
-            <span className="h-10 w-10 shrink-0 overflow-hidden rounded-sm bg-surface-card">
-              {item.imageSrc ? (
-                <img src={item.imageSrc} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <div className="lumin-dotgrid h-full w-full" aria-hidden="true" />
-              )}
-            </span>
-            <span className="min-w-0 flex-1 text-sm text-text-body">
-              <span className="block truncate">{item.name}</span>
-              <span className="font-mono text-xs text-text-muted">×{item.quantity}</span>
-            </span>
-          </li>
-        ))}
-      </ul>
-      <div className="mt-2 flex items-center justify-between gap-3">
-        <span className="text-text-body">{t('subtotalLabel')}</span>
-        {/* aria-live so assistive tech announces the recomputed total after a quote settles. */}
-        <span aria-live="polite">
-          {okQuote ? <PriceTag amount={okQuote.subtotal} /> : <SummarySkeleton />}
-        </span>
-      </div>
-      {!provinceChosen ? (
-        <p className="mt-2 text-sm text-text-muted">{t('shippingPending')}</p>
-      ) : okQuote && okQuote.shippingFee !== undefined && okQuote.total !== undefined ? (
-        <>
-          <div className="mt-2 flex items-center justify-between gap-3">
-            <span className="text-text-body">{t('shippingLabel')}</span>
-            <PriceTag amount={okQuote.shippingFee} />
-          </div>
-          <div className="mt-2 flex items-center justify-between gap-3 border-t border-border-subtle pt-2">
-            <span className="font-display font-bold text-text-strong">{t('totalLabel')}</span>
-            <PriceTag amount={okQuote.total} className="text-xl" />
-          </div>
-        </>
-      ) : errQuote ? (
-        <div className="mt-3">
-          <p role="alert" className="text-sm font-semibold text-accent-flame">
-            {errQuote.code === 'no_shipping_rule'
-              ? t('noShippingRule')
-              : errQuote.code === 'unavailable'
-                ? t('unavailableError')
-                : t('pricingError')}
-          </p>
-          {errQuote.code === 'error' ? (
-            <button
-              type="button"
-              onClick={() => setRetryNonce((n) => n + 1)}
-              className="mt-2 inline-flex min-h-11 items-center rounded-pill border-2 border-border-strong bg-surface-card px-5 font-display text-sm font-semibold text-text-strong transition-colors hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
-            >
-              {t('retry')}
-            </button>
-          ) : null}
-        </div>
-      ) : (
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <span className="text-text-body">{t('shippingLabel')}</span>
-          <SummarySkeleton />
-        </div>
-      )}
-    </div>
+  const money = (hideTotal?: boolean) => (
+    <SummaryMoney
+      provinceChosen={provinceChosen}
+      okQuote={okQuote}
+      errQuote={errQuote}
+      onRetry={() => setRetryNonce((n) => n + 1)}
+      t={t}
+      hideTotal={hideTotal}
+    />
   );
+  // Same copy SummaryMoney shows for each errQuote.code — the sticky bar's collapsed total slot needs a
+  // short reason text (not the whole disclosure) when there's no total to show.
+  const errorLabel = errQuote
+    ? errQuote.code === 'no_shipping_rule'
+      ? t('noShippingRule')
+      : errQuote.code === 'unavailable'
+        ? t('unavailableError')
+        : t('pricingError')
+    : undefined;
 
   // A shop with no STK configured cannot take a web payment (mirrors the server's NO_STK_CONFIGURED,
   // P2-a) — the QR/upload section is replaced with a closed-notice and the whole form is blocked at
   // submit. Otherwise submit additionally needs a completed receipt upload + a settled server total.
   const stkConfigured = Boolean(bankAccount.accountNumber);
 
+  const submitButton = (
+    <Button
+      type="submit"
+      variant="pop"
+      size="lg"
+      className="w-full"
+      disabled={submitDisabled || !stkConfigured}
+      aria-busy={quotePending}
+    >
+      {t('submitCta')}
+    </Button>
+  );
+
   return (
     <Shell heading={t('heading')} wide>
-      {/* Gộp 1 trang (P2-d+f merged): thông tin nhận hàng → đổi-trả/PDPL → QR + biên lai, MỘT nút submit
-          duy nhất ở cuối — không còn tách 2 bước không cần thiết. Hi-fi desktop: form bên trái, thẻ
-          "Đơn hàng" dính bên phải; mobile thẻ tóm tắt lên đầu. */}
+      {/* Gộp 1 trang (P2-d+f merged): thông tin nhận hàng → đổi-trả/PDPL → QR + biên lai. Giá luôn đi
+          cùng nút đặt hàng: desktop nút nằm trong thẻ "Đơn hàng" dính cột phải; mobile là thanh dính
+          đáy (CheckoutTotalBar) — thẻ tóm tắt đầu trang chỉ còn 1 dòng thu gọn (<details>). */}
       <h2 ref={headingRef} tabIndex={-1} className="sr-only">
         {t('heading')}
       </h2>
@@ -500,7 +462,34 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
         noValidate
         className="mt-6 gap-8 lg:grid lg:grid-cols-[1fr_340px] lg:items-start"
       >
-        <aside className="lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1">{summary}</aside>
+        {/* Mobile-only collapsed summary — replaces the old always-open top card; the price itself now
+            lives in the sticky bottom bar, not up here. */}
+        <details className="lg:hidden">
+          <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1 rounded-md border-2 border-border-strong bg-surface-sunken px-4 font-display text-sm font-semibold text-text-strong marker:content-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden">
+            {t('summaryToggleLine', { count: cartCount(items) })}
+          </summary>
+          <div className="mt-3 rounded-md border-2 border-border-strong bg-surface-sunken p-4 shadow-pop-sm">
+            <SummaryLines items={items} lines={okQuote?.lines ?? null} />
+          </div>
+        </details>
+
+        {/* Desktop-only sticky "Đơn hàng" card — carries the total AND the submit button, so price and
+            action are never apart. */}
+        <aside className="hidden lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:block">
+          <div className="rounded-md border-2 border-border-strong bg-surface-sunken p-4 shadow-pop-sm">
+            <h2 className="font-display text-base font-bold text-text-strong">
+              {t('orderSummaryHeading')}
+            </h2>
+            <p className="mt-1 font-mono text-xs text-text-muted">
+              {t('summaryItemCount', { count: cartCount(items) })}
+            </p>
+            <div className="mt-3 border-t border-dashed border-border-default pt-3">
+              <SummaryLines items={items} lines={okQuote?.lines ?? null} />
+            </div>
+            {money()}
+            <div className="mt-4">{submitButton}</div>
+          </div>
+        </aside>
 
         <div className="mt-5 flex min-w-0 flex-col gap-5 lg:col-start-1 lg:row-start-1 lg:mt-0">
           <fieldset className="flex min-w-0 flex-col gap-4 border-0 p-0">
@@ -819,18 +808,22 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
               {t(`submitErrors.${submitError}`)}
             </p>
           ) : null}
-
-          <Button
-            type="submit"
-            variant="pop"
-            size="lg"
-            className="w-full"
-            disabled={submitDisabled || !stkConfigured}
-            aria-busy={quotePending}
-          >
-            {t('submitCta')}
-          </Button>
         </div>
+
+        {/* Mobile-only sticky total bar — carries the SAME submit button as the desktop aside (two
+            <button type="submit"> in one form, only one visible per breakpoint; submitLatch already
+            guards double-submit either way). */}
+        <CheckoutTotalBar
+          total={total}
+          provinceChosen={provinceChosen}
+          errorLabel={errorLabel}
+          toggleLabel={t('paymentDetailsToggle')}
+          totalLabel={t('totalLabel')}
+          shippingPendingLabel={t('shippingPending')}
+          money={money(true)}
+        >
+          {submitButton}
+        </CheckoutTotalBar>
       </form>
     </Shell>
   );
@@ -874,16 +867,6 @@ function CheckoutSkeleton({ heading }: { heading: string }) {
         ))}
       </div>
     </Shell>
-  );
-}
-
-/** Small inline pulse for a money value that is still (re-)quoting. */
-function SummarySkeleton() {
-  return (
-    <span
-      aria-hidden="true"
-      className="inline-block h-5 w-20 animate-pulse rounded bg-surface-sunken motion-reduce:animate-none"
-    />
   );
 }
 
