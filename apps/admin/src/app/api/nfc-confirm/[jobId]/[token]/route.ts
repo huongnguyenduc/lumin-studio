@@ -39,10 +39,12 @@ export async function GET(
   });
 
   if (res.ok) {
-    // Send staff straight back to the print-queue board to see the card land in PACKING — same-origin
-    // redirect, so it rides whatever admin session cookie is already in this browser (or bounces to
-    // login if there isn't one, same as any other admin route).
-    return Response.redirect(new URL('/hang-doi-in', request.url), 303);
+    // Send staff straight back to the print-queue board to see the card land in PACKING. A RELATIVE
+    // Location (not Response.redirect, which demands an absolute URL built from request.url) — behind
+    // Traefik/Cloudflare, request.url reflects the Next server's own bind address (0.0.0.0:3000), not
+    // the public host, so an absolute redirect built from it sent staff to a dead LAN address
+    // (confirmed live). A relative Location resolves against whatever host the browser is already on.
+    return new Response(null, { status: 303, headers: { Location: '/hang-doi-in' } });
   }
   return page(
     'Chưa lưu được',
