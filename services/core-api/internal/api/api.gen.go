@@ -1473,6 +1473,25 @@ type PetSocial struct {
 // PetSpecies The pet's species — a fixed 3-choice set on the onboarding form (spec §10). `other` catches the rest.
 type PetSpecies string
 
+// PetTagCheckoutMatch Result of GetPetTagCheckoutMatch — whether the tag's order has a claimable guest account, OR (a second+ tag for a customer who already claimed on an earlier one) the login email to prefill so the welcome screen doesn't ask them to retype it.
+type PetTagCheckoutMatch struct {
+	// LoginEmail Present only when matched=false AND the order customer already has a credential (a prior claim, or a separate register) — the email to prefill on the login form. Absent for every other non-claimable case (unknown/disabled tag, not ENCODED, no order customer at all).
+	LoginEmail *openapi_types.Email `json:"loginEmail,omitempty"`
+	Matched    bool                 `json:"matched"`
+
+	// Name Present only when matched=true — the checkout customer's name.
+	Name *string `json:"name,omitempty"`
+
+	// PhoneMasked Present only when matched=true — the checkout phone, PDPL-masked (spec §10 mask).
+	PhoneMasked *string `json:"phoneMasked,omitempty"`
+}
+
+// PetTagClaimAccountInput Sets a password on the guest customer tied to a tag's order (ClaimPetTagAccount).
+type PetTagClaimAccountInput struct {
+	// Password Plaintext password; bcrypt-hashed server-side (never stored/returned in clear).
+	Password string `json:"password"`
+}
+
 // PetTagRef A minimal reference to the physical Pet Tag behind a print job (spec §10). Returned by the encode endpoint so the admin sheet can show the URL to burn to the chip and the current tag status. The tag is minted lazily on the first encode call for an nfc_tag order line (no order→print_job wiring exists yet — ADR-041); code + shortId are stable once created.
 type PetTagRef struct {
 	// ChipUid The NTAG215 hardware UID recorded at encode; absent until the tag is ENCODED.
@@ -2177,6 +2196,9 @@ type ActivatePetTagJSONRequestBody = PetActivateInput
 // UpdatePetAppearanceJSONRequestBody defines body for UpdatePetAppearance for application/json ContentType.
 type UpdatePetAppearanceJSONRequestBody = PetAppearanceInput
 
+// ClaimPetTagAccountJSONRequestBody defines body for ClaimPetTagAccount for application/json ContentType.
+type ClaimPetTagAccountJSONRequestBody = PetTagClaimAccountInput
+
 // ToggleLostModeJSONRequestBody defines body for ToggleLostMode for application/json ContentType.
 type ToggleLostModeJSONRequestBody = PetLostModeInput
 
@@ -2556,6 +2578,12 @@ type ServerInterface interface {
 	// Owner changes the pet page theme + block order (spec §10 giao diện + sắp xếp, P3-t t-4c-2).
 	// (PATCH /pet-tags/{shortId}/appearance)
 	UpdatePetAppearance(w http.ResponseWriter, r *http.Request, shortId string)
+	// Look up the guest checkout account behind an ENCODED tag's order, if any.
+	// (GET /pet-tags/{shortId}/checkout-match)
+	GetPetTagCheckoutMatch(w http.ResponseWriter, r *http.Request, shortId string)
+	// Claim the guest checkout account behind an ENCODED tag by setting its password.
+	// (POST /pet-tags/{shortId}/claim-account)
+	ClaimPetTagAccount(w http.ResponseWriter, r *http.Request, shortId string)
 	// Toggle a pet's lost mode — owner only (spec §10 công tắc thất lạc).
 	// (PATCH /pet-tags/{shortId}/lost-mode)
 	ToggleLostMode(w http.ResponseWriter, r *http.Request, shortId string)
@@ -3129,6 +3157,18 @@ func (_ Unimplemented) ActivatePetTag(w http.ResponseWriter, r *http.Request, sh
 // Owner changes the pet page theme + block order (spec §10 giao diện + sắp xếp, P3-t t-4c-2).
 // (PATCH /pet-tags/{shortId}/appearance)
 func (_ Unimplemented) UpdatePetAppearance(w http.ResponseWriter, r *http.Request, shortId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Look up the guest checkout account behind an ENCODED tag's order, if any.
+// (GET /pet-tags/{shortId}/checkout-match)
+func (_ Unimplemented) GetPetTagCheckoutMatch(w http.ResponseWriter, r *http.Request, shortId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Claim the guest checkout account behind an ENCODED tag by setting its password.
+// (POST /pet-tags/{shortId}/claim-account)
+func (_ Unimplemented) ClaimPetTagAccount(w http.ResponseWriter, r *http.Request, shortId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -5727,6 +5767,56 @@ func (siw *ServerInterfaceWrapper) UpdatePetAppearance(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// GetPetTagCheckoutMatch operation middleware
+func (siw *ServerInterfaceWrapper) GetPetTagCheckoutMatch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "shortId" -------------
+	var shortId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "shortId", chi.URLParam(r, "shortId"), &shortId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "shortId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPetTagCheckoutMatch(w, r, shortId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ClaimPetTagAccount operation middleware
+func (siw *ServerInterfaceWrapper) ClaimPetTagAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "shortId" -------------
+	var shortId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "shortId", chi.URLParam(r, "shortId"), &shortId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "shortId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ClaimPetTagAccount(w, r, shortId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ToggleLostMode operation middleware
 func (siw *ServerInterfaceWrapper) ToggleLostMode(w http.ResponseWriter, r *http.Request) {
 
@@ -6397,6 +6487,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/pet-tags/{shortId}/appearance", wrapper.UpdatePetAppearance)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/pet-tags/{shortId}/checkout-match", wrapper.GetPetTagCheckoutMatch)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/pet-tags/{shortId}/claim-account", wrapper.ClaimPetTagAccount)
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/pet-tags/{shortId}/lost-mode", wrapper.ToggleLostMode)
@@ -10367,6 +10463,103 @@ func (response UpdatePetAppearance404JSONResponse) VisitUpdatePetAppearanceRespo
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetPetTagCheckoutMatchRequestObject struct {
+	ShortId string `json:"shortId"`
+}
+
+type GetPetTagCheckoutMatchResponseObject interface {
+	VisitGetPetTagCheckoutMatchResponse(w http.ResponseWriter) error
+}
+
+type GetPetTagCheckoutMatch200JSONResponse PetTagCheckoutMatch
+
+func (response GetPetTagCheckoutMatch200JSONResponse) VisitGetPetTagCheckoutMatchResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetPetTagCheckoutMatch404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetPetTagCheckoutMatch404JSONResponse) VisitGetPetTagCheckoutMatchResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetPetTagCheckoutMatch429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetPetTagCheckoutMatch429JSONResponse) VisitGetPetTagCheckoutMatchResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(429)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ClaimPetTagAccountRequestObject struct {
+	ShortId string `json:"shortId"`
+	Body    *ClaimPetTagAccountJSONRequestBody
+}
+
+type ClaimPetTagAccountResponseObject interface {
+	VisitClaimPetTagAccountResponse(w http.ResponseWriter) error
+}
+
+type ClaimPetTagAccount200ResponseHeaders struct {
+	SetCookie string
+}
+
+type ClaimPetTagAccount200JSONResponse struct {
+	Body    CustomerAccount
+	Headers ClaimPetTagAccount200ResponseHeaders
+}
+
+func (response ClaimPetTagAccount200JSONResponse) VisitClaimPetTagAccountResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Set-Cookie", fmt.Sprint(response.Headers.SetCookie))
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type ClaimPetTagAccount400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ClaimPetTagAccount400JSONResponse) VisitClaimPetTagAccountResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ClaimPetTagAccount404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ClaimPetTagAccount404JSONResponse) VisitClaimPetTagAccountResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ClaimPetTagAccount409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ClaimPetTagAccount409JSONResponse) VisitClaimPetTagAccountResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ClaimPetTagAccount429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ClaimPetTagAccount429JSONResponse) VisitClaimPetTagAccountResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(429)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type ToggleLostModeRequestObject struct {
 	ShortId string `json:"shortId"`
 	Body    *ToggleLostModeJSONRequestBody
@@ -11014,6 +11207,12 @@ type StrictServerInterface interface {
 	// Owner changes the pet page theme + block order (spec §10 giao diện + sắp xếp, P3-t t-4c-2).
 	// (PATCH /pet-tags/{shortId}/appearance)
 	UpdatePetAppearance(ctx context.Context, request UpdatePetAppearanceRequestObject) (UpdatePetAppearanceResponseObject, error)
+	// Look up the guest checkout account behind an ENCODED tag's order, if any.
+	// (GET /pet-tags/{shortId}/checkout-match)
+	GetPetTagCheckoutMatch(ctx context.Context, request GetPetTagCheckoutMatchRequestObject) (GetPetTagCheckoutMatchResponseObject, error)
+	// Claim the guest checkout account behind an ENCODED tag by setting its password.
+	// (POST /pet-tags/{shortId}/claim-account)
+	ClaimPetTagAccount(ctx context.Context, request ClaimPetTagAccountRequestObject) (ClaimPetTagAccountResponseObject, error)
 	// Toggle a pet's lost mode — owner only (spec §10 công tắc thất lạc).
 	// (PATCH /pet-tags/{shortId}/lost-mode)
 	ToggleLostMode(ctx context.Context, request ToggleLostModeRequestObject) (ToggleLostModeResponseObject, error)
@@ -13686,6 +13885,65 @@ func (sh *strictHandler) UpdatePetAppearance(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdatePetAppearanceResponseObject); ok {
 		if err := validResponse.VisitUpdatePetAppearanceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPetTagCheckoutMatch operation middleware
+func (sh *strictHandler) GetPetTagCheckoutMatch(w http.ResponseWriter, r *http.Request, shortId string) {
+	var request GetPetTagCheckoutMatchRequestObject
+
+	request.ShortId = shortId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPetTagCheckoutMatch(ctx, request.(GetPetTagCheckoutMatchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPetTagCheckoutMatch")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPetTagCheckoutMatchResponseObject); ok {
+		if err := validResponse.VisitGetPetTagCheckoutMatchResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ClaimPetTagAccount operation middleware
+func (sh *strictHandler) ClaimPetTagAccount(w http.ResponseWriter, r *http.Request, shortId string) {
+	var request ClaimPetTagAccountRequestObject
+
+	request.ShortId = shortId
+
+	var body ClaimPetTagAccountJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ClaimPetTagAccount(ctx, request.(ClaimPetTagAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ClaimPetTagAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ClaimPetTagAccountResponseObject); ok {
+		if err := validResponse.VisitClaimPetTagAccountResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

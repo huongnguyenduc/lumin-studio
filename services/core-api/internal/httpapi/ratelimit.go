@@ -167,6 +167,19 @@ func newPaymentProofUploadLimiter(l paymentProofUploadLimits) *paymentProofUploa
 	}
 }
 
+// defaultGetPetPageLimits configures the public pet-page read limiter (GET /pet-tags/{shortId}, P3-t t-3).
+// Generous like defaultLostShareLimits — a real owner/finder scanning a tag must never be throttled — but
+// present as a backstop against a shortId brute-force sweep bypassing the edge WAF (the shortId is
+// unguessable by design, but the route was previously unlimited in-process).
+const (
+	defaultGetPetPageRate  = rate.Limit(5) // 300 sustained reads/minute process-wide
+	defaultGetPetPageBurst = 60
+)
+
+func defaultGetPetPageLimits() paymentProofUploadLimits {
+	return paymentProofUploadLimits{rate: defaultGetPetPageRate, burst: defaultGetPetPageBurst}
+}
+
 func (l *paymentProofUploadLimiter) allow() bool {
 	if l == nil {
 		return true

@@ -192,6 +192,14 @@ func classify(operationID string) authClass {
 		// token-bucket (a public write; the edge WAF is the per-IP sweep). authPublic, not
 		// authOptionalCustomer — recognising a viewer buys nothing (a finder is not the owner).
 		return authPublic
+	case "GetPetTagCheckoutMatch", "ClaimPetTagAccount":
+		// Public first-scan flow (spec §10, checkout-account claim) — the caller has no session yet by
+		// definition (that's the whole point: claim a guest account without registering from scratch).
+		// Both resolve their target customer server-side from the tag's shortId alone (never from a
+		// client-supplied id), scoped to ONE ENCODED tag's order — see the openapi description + the
+		// GetCustomerByTagShortID query doc for why this is not the guest-order-by-phone auto-link
+		// RegisterCustomer's comment calls out as a security hole.
+		return authPublic
 	case "GetPetPage":
 		// Public pet-page read (P3-t t-3/t-4a) — the /t/{shortId} scan target. Anyone who taps the chip
 		// reads it (no session required); but the customer session is resolved OPTIONALLY so the owner is

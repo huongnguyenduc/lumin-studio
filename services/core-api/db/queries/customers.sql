@@ -49,6 +49,31 @@ RETURNING *;
 SELECT * FROM customers
 WHERE lower(email) = lower($1) AND password_hash IS NOT NULL;
 
+-- GetCustomerByTagShortID resolves the guest customer behind the order that produced a given pet tag
+-- (tag → order_item → order → customer), for the "claim my checkout account" flow on the ENCODED
+-- welcome screen (spec §10 first-scan UX). Scoped tight: only an ENCODED, non-disabled tag qualifies —
+-- an ACTIVATED tag already has its owner (the activation flow, not this one), and a disabled tag is
+-- void. This is a narrower version of the guest-order auto-link RegisterCustomer's comment calls out
+-- as a security hole: that would link by phone (guessable); this links by the exact customer tied to
+-- ONE specific tag, which requires possessing the physical chip (the unguessable shortId) to reach at
+-- all — the same trust boundary ActivatePetTag already relies on.
+-- name: GetCustomerByTagShortID :one
+SELECT c.* FROM customers c
+JOIN orders o ON o.customer_id = c.id
+JOIN order_items oi ON oi.order_id = o.id
+JOIN pet_tags pt ON pt.order_item_id = oi.id
+WHERE pt.short_id = $1 AND pt.status = 'ENCODED' AND pt.disabled_at IS NULL;
+
+-- SetCustomerPasswordIfAbsent claims a guest customer row for login by setting its password_hash, but
+-- ONLY while it is still guest (password_hash IS NULL) — an account that already has a credential (a
+-- prior register, or a prior claim) is never overwritten by this path; 0 rows tells the caller "already
+-- claimed" so it can fall back to a normal login prompt instead of silently rotating someone's password.
+-- name: SetCustomerPasswordIfAbsent :one
+UPDATE customers
+SET password_hash = $2
+WHERE id = $1 AND password_hash IS NULL
+RETURNING *;
+
 -- name: InsertConsentGrant :one
 -- Append a granted purpose. granted_at defaults to now(); withdrawn_at is NULL (active).
 INSERT INTO consent_grants (id, customer_id, scope, channel, policy_version)

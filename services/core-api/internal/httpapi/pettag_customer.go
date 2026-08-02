@@ -6,12 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/api"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/auth"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
 )
@@ -52,10 +55,17 @@ var errPetTagNotActivatable = errors.New("pet tag: not in an activatable (ENCODE
 // and the contact is un-masked (PDPL — the reveal is decided server-side, never in the browser). Unknown
 // shortId → 404.
 func (s *Server) GetPetPage(ctx context.Context, request api.GetPetPageRequestObject) (api.GetPetPageResponseObject, error) {
+	if !s.getPetPageLimiter.allow() {
+		return nil, errRateLimited // 429 — public-read backstop, checked before any DB work
+	}
 	tags := db.NewPetTags(s.pool)
 	tag, err := tags.GetByShortID(ctx, request.ShortId)
 	if err != nil {
-		return nil, err // ErrNotFound → 404; else 500
+		return nil, err // ErrNotFound → 404 (also a disabled/voided tag — GetByShortID hides it); else 500
+	}
+	if err := tags.RecordScan(ctx, tag.ID); err != nil {
+		// Best-effort: the scan counter is an analytics nicety, never a reason to fail the page.
+		s.logger.WarnContext(ctx, "pet tag: record scan failed", "tagId", tag.ID, "err", err)
 	}
 	var profile *sqlc.PetProfile
 	viewerIsOwner := false
@@ -80,6 +90,89 @@ func (s *Server) GetPetPage(ctx context.Context, request api.GetPetPageRequestOb
 		}
 	}
 	return api.GetPetPage200JSONResponse(page), nil
+}
+
+// GetPetTagCheckoutMatch handles GET /pet-tags/{shortId}/checkout-match (public): the first-scan
+// "claim your checkout account" lookup. Resolves the SAME customer GetByShortID → order → customer
+// chain the claim endpoint below writes to, so what the UI offers and what claim actually claims can
+// never diverge. matched=false for every non-claimable case (unknown/disabled tag, not ENCODED, no
+// order customer, or already claimed) — collapsed into one boolean so a stranger probing shortIds
+// learns nothing beyond what GetPetPage already exposes (never a 404 that would distinguish "tag
+// exists but no match" from "tag doesn't exist"). The already-claimed case still carries loginEmail —
+// a customer's SECOND tag lands here (they claimed on the first), so the welcome screen can prefill
+// login instead of asking them to retype an email they already gave at checkout.
+func (s *Server) GetPetTagCheckoutMatch(ctx context.Context, request api.GetPetTagCheckoutMatchRequestObject) (api.GetPetTagCheckoutMatchResponseObject, error) {
+	if !s.getPetPageLimiter.allow() {
+		return nil, errRateLimited
+	}
+	customer, err := db.NewIdentity(s.pool).CustomerByTagShortID(ctx, request.ShortId)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return api.GetPetTagCheckoutMatch200JSONResponse{Matched: false}, nil
+		}
+		return nil, err
+	}
+	if customer.PasswordHash != nil {
+		// Already claimed/registered — not offering claim again, but a second+ tag for the same customer
+		// can still prefill the login form with the email they'd sign in with (the customers_credential_
+		// needs_email CHECK guarantees a credentialed row always has one).
+		resp := api.GetPetTagCheckoutMatch200JSONResponse{Matched: false}
+		if customer.Email != nil {
+			email := openapi_types.Email(*customer.Email)
+			resp.LoginEmail = &email
+		}
+		return resp, nil
+	}
+	name := customer.Name
+	phoneMasked := maskPhone(customer.Phone)
+	return api.GetPetTagCheckoutMatch200JSONResponse{Matched: true, Name: &name, PhoneMasked: &phoneMasked}, nil
+}
+
+// ClaimPetTagAccount handles POST /pet-tags/{shortId}/claim-account (public): sets a password on the
+// guest customer resolved the same way as GetPetTagCheckoutMatch, then logs it in (mirrors
+// RegisterCustomer/LoginCustomer's cookie mint). A tight, narrow version of the guest-order auto-link
+// RegisterCustomer's comment flags as a security hole (that would link by phone, guessable; this links
+// only the ONE customer tied to THIS tag's order, reachable only by possessing the physical chip — the
+// unguessable shortId, the same trust boundary ActivatePetTag already relies on). No match (unknown/
+// disabled/not-ENCODED tag, or no order customer) → 404, same as an unknown shortId elsewhere. Already
+// claimed → 409 CUSTOMER_ALREADY_CLAIMED (the client falls back to a normal login prompt). Rate-limited.
+func (s *Server) ClaimPetTagAccount(ctx context.Context, request api.ClaimPetTagAccountRequestObject) (api.ClaimPetTagAccountResponseObject, error) {
+	if !s.claimAccountLimiter.allow() {
+		return nil, errRateLimited
+	}
+	if request.Body == nil || len(request.Body.Password) < passwordMin || len(request.Body.Password) > passwordMax {
+		return api.ClaimPetTagAccount400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(envelope(codeValidation))}, nil
+	}
+	users := db.NewIdentity(s.pool)
+	customer, err := users.CustomerByTagShortID(ctx, request.ShortId)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return api.ClaimPetTagAccount404JSONResponse{NotFoundJSONResponse: api.NotFoundJSONResponse(envelope(codeNotFound))}, nil
+		}
+		return nil, err
+	}
+	hash, err := auth.HashPassword(request.Body.Password)
+	if err != nil {
+		return nil, err // bcrypt fault → 500 (logged), never leaked
+	}
+	claimed, err := users.ClaimCustomerPassword(ctx, customer.ID, hash)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			// 0 rows = the customer already carries a credential (a prior claim, or a separate register
+			// that happened to land on the same row) between our read and this write — narrow race, same
+			// outcome as if checkout-match had already shown matched=false.
+			return api.ClaimPetTagAccount409JSONResponse{ConflictJSONResponse: api.ConflictJSONResponse(envelope(codeCustomerAlreadyClaimed))}, nil
+		}
+		return nil, err
+	}
+	cookie, err := s.customerAuth.Issue(claimed.ID.String(), customerTokenRole, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	return api.ClaimPetTagAccount200JSONResponse{
+		Body:    toCustomerAccount(claimed),
+		Headers: api.ClaimPetTagAccount200ResponseHeaders{SetCookie: cookie.String()},
+	}, nil
 }
 
 // ActivatePetTag handles POST /pet-tags/{shortId}/activate (customer-authed, P3-t t-3): onboarding

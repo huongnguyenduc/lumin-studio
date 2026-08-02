@@ -77,6 +77,38 @@ func (q *Queries) GetCustomerByPhone(ctx context.Context, phone string) (Custome
 	return i, err
 }
 
+const getCustomerByTagShortID = `-- name: GetCustomerByTagShortID :one
+SELECT c.id, c.name, c.phone, c.email, c.social_handle, c.addresses, c.created_at, c.password_hash FROM customers c
+JOIN orders o ON o.customer_id = c.id
+JOIN order_items oi ON oi.order_id = o.id
+JOIN pet_tags pt ON pt.order_item_id = oi.id
+WHERE pt.short_id = $1 AND pt.status = 'ENCODED' AND pt.disabled_at IS NULL
+`
+
+// GetCustomerByTagShortID resolves the guest customer behind the order that produced a given pet tag
+// (tag → order_item → order → customer), for the "claim my checkout account" flow on the ENCODED
+// welcome screen (spec §10 first-scan UX). Scoped tight: only an ENCODED, non-disabled tag qualifies —
+// an ACTIVATED tag already has its owner (the activation flow, not this one), and a disabled tag is
+// void. This is a narrower version of the guest-order auto-link RegisterCustomer's comment calls out
+// as a security hole: that would link by phone (guessable); this links by the exact customer tied to
+// ONE specific tag, which requires possessing the physical chip (the unguessable shortId) to reach at
+// all — the same trust boundary ActivatePetTag already relies on.
+func (q *Queries) GetCustomerByTagShortID(ctx context.Context, shortID string) (Customer, error) {
+	row := q.db.QueryRow(ctx, getCustomerByTagShortID, shortID)
+	var i Customer
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Phone,
+		&i.Email,
+		&i.SocialHandle,
+		&i.Addresses,
+		&i.CreatedAt,
+		&i.PasswordHash,
+	)
+	return i, err
+}
+
 const insertConsentGrant = `-- name: InsertConsentGrant :one
 INSERT INTO consent_grants (id, customer_id, scope, channel, policy_version)
 VALUES ($1, $2, $3, $4, $5)
@@ -318,6 +350,38 @@ func (q *Queries) ListAdminCustomers(ctx context.Context) ([]ListAdminCustomersR
 		return nil, err
 	}
 	return items, nil
+}
+
+const setCustomerPasswordIfAbsent = `-- name: SetCustomerPasswordIfAbsent :one
+UPDATE customers
+SET password_hash = $2
+WHERE id = $1 AND password_hash IS NULL
+RETURNING id, name, phone, email, social_handle, addresses, created_at, password_hash
+`
+
+type SetCustomerPasswordIfAbsentParams struct {
+	ID           uuid.UUID `json:"id"`
+	PasswordHash *string   `json:"passwordHash"`
+}
+
+// SetCustomerPasswordIfAbsent claims a guest customer row for login by setting its password_hash, but
+// ONLY while it is still guest (password_hash IS NULL) — an account that already has a credential (a
+// prior register, or a prior claim) is never overwritten by this path; 0 rows tells the caller "already
+// claimed" so it can fall back to a normal login prompt instead of silently rotating someone's password.
+func (q *Queries) SetCustomerPasswordIfAbsent(ctx context.Context, arg SetCustomerPasswordIfAbsentParams) (Customer, error) {
+	row := q.db.QueryRow(ctx, setCustomerPasswordIfAbsent, arg.ID, arg.PasswordHash)
+	var i Customer
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Phone,
+		&i.Email,
+		&i.SocialHandle,
+		&i.Addresses,
+		&i.CreatedAt,
+		&i.PasswordHash,
+	)
+	return i, err
 }
 
 const withdrawConsent = `-- name: WithdrawConsent :exec

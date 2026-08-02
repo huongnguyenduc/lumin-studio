@@ -157,6 +157,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pet-tags/{shortId}/checkout-match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Look up the guest checkout account behind an ENCODED tag's order, if any.
+         * @description Public read backing the first-scan "claim your checkout account" screen: whether the order that produced THIS tag has a guest customer (from checkout, no password yet) to offer claiming instead of a from-scratch registration. Scoped tight — only an ENCODED, non-disabled tag qualifies, and the phone comes back masked (PDPL); the name is shown in full (same trust boundary as activation: reaching this endpoint already requires knowing the unguessable shortId). matched=false covers every other case (already ACTIVATED, no order customer, or already claimed) — never a 404, so a stranger probing shortIds learns nothing more than GetPetPage already exposes.
+         */
+        get: operations["getPetTagCheckoutMatch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pet-tags/{shortId}/claim-account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claim the guest checkout account behind an ENCODED tag by setting its password.
+         * @description Sets a password on the guest customer resolved the same way as checkout-match (tag → order → customer), then logs it in — the storefront redirects back into onboarding already authenticated. Only ever claims the ONE customer tied to THIS tag's order (never a phone-wide lookup — see RegisterCustomer's guest-order-linking note for the rejected broader version). 409 CUSTOMER_ALREADY_CLAIMED when the row already carries a credential (a prior claim or register) — the client should fall back to a normal login prompt. Unknown shortId, a not-ENCODED/disabled tag, or an order with no resolvable customer → 404. Rate-limited (429).
+         */
+        post: operations["claimPetTagAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/pet-tags/{shortId}/lost-mode": {
         parameters: {
             query?: never;
@@ -2787,6 +2827,24 @@ export interface components {
             email: string;
             phone: string;
         };
+        /** @description Result of GetPetTagCheckoutMatch — whether the tag's order has a claimable guest account, OR (a second+ tag for a customer who already claimed on an earlier one) the login email to prefill so the welcome screen doesn't ask them to retype it. */
+        PetTagCheckoutMatch: {
+            matched: boolean;
+            /** @description Present only when matched=true — the checkout customer's name. */
+            name?: string;
+            /** @description Present only when matched=true — the checkout phone, PDPL-masked (spec §10 mask). */
+            phoneMasked?: string;
+            /**
+             * Format: email
+             * @description Present only when matched=false AND the order customer already has a credential (a prior claim, or a separate register) — the email to prefill on the login form. Absent for every other non-claimable case (unknown/disabled tag, not ENCODED, no order customer at all).
+             */
+            loginEmail?: string;
+        };
+        /** @description Sets a password on the guest customer tied to a tag's order (ClaimPetTagAccount). */
+        PetTagClaimAccountInput: {
+            /** @description Plaintext password; bcrypt-hashed server-side (never stored/returned in clear). */
+            password: string;
+        };
         /** @description New storefront account registration (ADR-030 realm riêng). Money/orders unrelated. */
         CustomerRegisterInput: {
             name: string;
@@ -3634,6 +3692,62 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getPetTagCheckoutMatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shortId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Whether a claimable checkout account exists for this tag. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PetTagCheckoutMatch"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+        };
+    };
+    claimPetTagAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shortId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PetTagClaimAccountInput"];
+            };
+        };
+        responses: {
+            /** @description Claimed and logged in. The customer session cookie is set via Set-Cookie. */
+            200: {
+                headers: {
+                    /** @description Signed JWT in an httpOnly + Secure + SameSite=Strict customer session cookie. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerAccount"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            429: components["responses"]["TooManyRequests"];
         };
     };
     toggleLostMode: {

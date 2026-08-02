@@ -109,6 +109,29 @@ func (i *Identity) FindOrCreateCustomer(ctx context.Context, arg sqlc.InsertCust
 	return created, true, nil
 }
 
+// CustomerByTagShortID resolves the guest customer tied to the order behind a given (ENCODED,
+// non-disabled) pet tag, or ErrNotFound if the tag is unknown/not in that state or carries no order
+// customer. Backs the pet-tag "claim my checkout account" flow (pettag_customer.go).
+func (i *Identity) CustomerByTagShortID(ctx context.Context, shortID string) (sqlc.Customer, error) {
+	c, err := i.q.GetCustomerByTagShortID(ctx, shortID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Customer{}, ErrNotFound
+	}
+	return c, err
+}
+
+// ClaimCustomerPassword sets a guest customer's password_hash, ONLY if it is still unset. Returns
+// ErrNotFound both when the id is gone and when the row already carries a credential (already
+// claimed/registered) — the caller can't tell those apart from the 0-rows result, which is fine: both
+// mean "don't overwrite, this path is not the way in anymore".
+func (i *Identity) ClaimCustomerPassword(ctx context.Context, id uuid.UUID, passwordHash string) (sqlc.Customer, error) {
+	c, err := i.q.SetCustomerPasswordIfAbsent(ctx, sqlc.SetCustomerPasswordIfAbsentParams{ID: id, PasswordHash: &passwordHash})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Customer{}, ErrNotFound
+	}
+	return c, err
+}
+
 // GrantConsent appends a consent grant. PDPL: consent is append-then-mark — every grant is
 // an explicit row (never a pre-defaulted boolean), and the active partial-unique index
 // keeps at most one un-withdrawn grant per (customer, scope, channel).

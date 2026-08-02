@@ -140,6 +140,15 @@ type Querier interface {
 	// credential, possibly duplicate email) can never be logged into.
 	GetCustomerByLoginEmail(ctx context.Context, lower string) (Customer, error)
 	GetCustomerByPhone(ctx context.Context, phone string) (Customer, error)
+	// GetCustomerByTagShortID resolves the guest customer behind the order that produced a given pet tag
+	// (tag → order_item → order → customer), for the "claim my checkout account" flow on the ENCODED
+	// welcome screen (spec §10 first-scan UX). Scoped tight: only an ENCODED, non-disabled tag qualifies —
+	// an ACTIVATED tag already has its owner (the activation flow, not this one), and a disabled tag is
+	// void. This is a narrower version of the guest-order auto-link RegisterCustomer's comment calls out
+	// as a security hole: that would link by phone (guessable); this links by the exact customer tied to
+	// ONE specific tag, which requires possessing the physical chip (the unguessable shortId) to reach at
+	// all — the same trust boundary ActivatePetTag already relies on.
+	GetCustomerByTagShortID(ctx context.Context, shortID string) (Customer, error)
 	// The auth-middleware lookup on every request bearing a scoped-token-shaped Bearer credential.
 	// Unfiltered by revoked_at — the middleware checks revoked_at/scope itself so a revoked token can
 	// still be told apart from "no such token" (both fail closed the same way to the caller either way).
@@ -170,7 +179,10 @@ type Querier interface {
 	// ==== Activation + public pet page (t-3) ======================================================
 	// GetPetTagByShortID resolves a tag by its URL routing key (the /t/{shortId} segment burned to the chip),
 	// for the public pet page (t-3) and the activation guard. No lock — the public GET never writes; the
-	// activation race is handled by AttachAndActivateTag's status guard, not a SELECT FOR UPDATE.
+	// activation race is handled by AttachAndActivateTag's status guard, not a SELECT FOR UPDATE. Excludes a
+	// DISABLED (voided) tag — every write handler resolves through this one query, so hiding it here is the
+	// single choke point that blocks activation/lost-mode/edit/share-location uniformly, same as an unknown
+	// shortId (404, never leaks "this tag exists but is disabled").
 	GetPetTagByShortID(ctx context.Context, shortID string) (PetTag, error)
 	GetPrintJobByID(ctx context.Context, id uuid.UUID) (PrintJob, error)
 	// GetPrintQueueEntry is the single-card read behind the stage PATCH (P3-f): the same enriched shape as
@@ -534,6 +546,10 @@ type Querier interface {
 	// first, via lost_events_tag_idx. ponytail: no time-window filter — the retention sweep (t-6) bounds row age,
 	// so LIMIT is the only cap needed.
 	RecentLostScansForTag(ctx context.Context, arg RecentLostScansForTagParams) ([]LostEvent, error)
+	// RecordPetTagScan bumps the server-side scan counter on every public GET /pet-tags/{shortId} (spec §08
+	// analytics gap: the only prior record was lost_events, written solely on a finder location-share, not on
+	// a plain scan). Best-effort from the handler's side — see RecordScan.
+	RecordPetTagScan(ctx context.Context, id uuid.UUID) error
 	// ReorderCategories sets each category's display_order to its position in the given id list (0-based), in
 	// one atomic statement over the whole ordered set the admin drag produced. unnest(... ) WITH ORDINALITY
 	// pairs each id with its 1-based index (ord), minus 1 for a 0-based order. Ids absent from the list keep
@@ -556,6 +572,11 @@ type Querier interface {
 	// late-committing lower-seq row forever = silent money-event loss. Single instance (ADR-009)
 	// ⇒ no SKIP LOCKED / advisory lock. Uses the partial index outbox_unpublished_idx.
 	SelectPendingOutbox(ctx context.Context, limit int32) ([]SelectPendingOutboxRow, error)
+	// SetCustomerPasswordIfAbsent claims a guest customer row for login by setting its password_hash, but
+	// ONLY while it is still guest (password_hash IS NULL) — an account that already has a credential (a
+	// prior register, or a prior claim) is never overwritten by this path; 0 rows tells the caller "already
+	// claimed" so it can fall back to a normal login prompt instead of silently rotating someone's password.
+	SetCustomerPasswordIfAbsent(ctx context.Context, arg SetCustomerPasswordIfAbsentParams) (Customer, error)
 	// ==== Pet page — lost mode (t-4a) =============================================================
 	// SetLostMode flips the profile's lost-mode flag (spec §10 công tắc thất lạc). The owner_account_id guard
 	// makes this the authorization boundary: a signed-in NON-owner matches 0 rows → the handler maps that to a
@@ -566,6 +587,11 @@ type Querier interface {
 	// SetOrderItemCostSnapshot writes the frozen COGS blob (the rollup marshals it in Go). Best-effort,
 	// post-commit — a failure leaves cost_snapshot NULL ("chưa chốt", backfillable), never blocking the board.
 	SetOrderItemCostSnapshot(ctx context.Context, arg SetOrderItemCostSnapshotParams) error
+	// SetPetTagDisabled voids (or restores) a tag by id, independent of its ENCODED/ACTIVATED status — a
+	// disabled tag stops resolving via GetPetTagByShortID above but keeps its status/profile intact so
+	// restoring just clears disabled_at. Owner action (leaked/fraudulent tag response); no HTTP endpoint yet
+	// (ponytail: wire an admin route when this is needed more than rarely — direct SQL is fine meanwhile).
+	SetPetTagDisabled(ctx context.Context, arg SetPetTagDisabledParams) (PetTag, error)
 	// SetProductModel3dStructuredUrl is the asset pipeline's write of the STRUCTURED glb URL (f-4) — named
 	// objects/materials preserved, for the live viewer's per-part recolour. Written only from the render callback
 	// on a ready model_ingest, alongside SetProductModel3dUrl (OPTIONAL — a nameless source yields none, so the

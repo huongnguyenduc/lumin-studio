@@ -613,6 +613,7 @@ export function CheckoutView({ config }: { config: CheckoutConfigResult }) {
               value={form.email}
               onChange={(e) => setField('email', e.target.value)}
               error={fieldError('email')}
+              hint={t('emailHint')}
             />
             <Input
               label={t('nameLabel')}

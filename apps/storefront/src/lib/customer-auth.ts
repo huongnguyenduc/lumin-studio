@@ -98,6 +98,62 @@ export async function registerCustomer(input: {
   }
 }
 
+export type CheckoutMatchResult =
+  | { matched: true; name: string; phoneMasked: string }
+  // A second+ tag for a customer who already claimed on an earlier one — loginEmail lets the welcome
+  // screen prefill the login form instead of asking them to retype an email they already gave.
+  | { matched: false; loginEmail?: string };
+
+/** GET /pet-tags/{shortId}/checkout-match (P3-t first-scan): whether the order behind an ENCODED tag has
+ *  a guest checkout account the "new tag" screen can offer to claim instead of registering from scratch.
+ *  Never throws to the caller's UI — any failure (network, unexpected status) just reads as no match, so
+ *  the screen falls back to the plain register/login CTAs. */
+export async function checkoutMatch(shortId: string): Promise<CheckoutMatchResult> {
+  try {
+    const client = createApiClient({ baseUrl: coreApiBaseUrl() });
+    const { data } = await client.GET('/pet-tags/{shortId}/checkout-match', {
+      params: { path: { shortId } },
+      cache: 'no-store',
+    });
+    if (data?.matched && data.name && data.phoneMasked) {
+      return { matched: true, name: data.name, phoneMasked: data.phoneMasked };
+    }
+    return data?.loginEmail ? { matched: false, loginEmail: data.loginEmail } : { matched: false };
+  } catch {
+    return { matched: false };
+  }
+}
+
+export type ClaimAccountResult =
+  | { ok: true }
+  | { ok: false; code: 'already_claimed' | 'not_found' | 'validation' | 'error' };
+
+/** POST /pet-tags/{shortId}/claim-account: sets a password on the checkout-match customer and logs the
+ *  browser in (same cookie re-mint as loginCustomer/registerCustomer) — the caller then just re-navigates
+ *  to /t/{shortId}, which now resolves ACTIVATED-onboarding as the signed-in owner. */
+export async function claimPetTagAccount(
+  shortId: string,
+  password: string,
+): Promise<ClaimAccountResult> {
+  if (!password) return { ok: false, code: 'validation' };
+  try {
+    const client = createApiClient({ baseUrl: coreApiBaseUrl() });
+    const { data, response } = await client.POST('/pet-tags/{shortId}/claim-account', {
+      params: { path: { shortId } },
+      body: { password },
+    });
+    if (data) {
+      return (await persistSession(response, data)) ? { ok: true } : { ok: false, code: 'error' };
+    }
+    if (response.status === 409) return { ok: false, code: 'already_claimed' };
+    if (response.status === 404) return { ok: false, code: 'not_found' };
+    if (response.status === 400) return { ok: false, code: 'validation' };
+    return { ok: false, code: 'error' };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
 /** Logout form action: best-effort core-api logout (forwarding the session), then clear BOTH storefront
  *  cookies and go home. Progressive-enhancement — a plain <form action={logoutCustomer}>, zero client JS. */
 export async function logoutCustomer(): Promise<void> {

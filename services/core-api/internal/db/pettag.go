@@ -93,6 +93,24 @@ func (t *PetTags) GetByShortID(ctx context.Context, shortID string) (sqlc.PetTag
 	return row, err
 }
 
+// SetDisabled voids (disabled=true) or restores (false) a tag by id, independent of its lifecycle
+// status. Once disabled_at is set, GetByShortID stops resolving the tag (404 everywhere) without
+// touching its ENCODED/ACTIVATED status or profile, so restoring is a plain clear.
+func (t *PetTags) SetDisabled(ctx context.Context, id uuid.UUID, disabled bool) (sqlc.PetTag, error) {
+	row, err := t.q.SetPetTagDisabled(ctx, sqlc.SetPetTagDisabledParams{ID: id, Column2: disabled})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.PetTag{}, ErrNotFound
+	}
+	return row, err
+}
+
+// RecordScan bumps the server-side scan counter for a resolved tag (spec §08 analytics — the prior only
+// record of a scan was a lost_events row, written solely on a finder location-share). Called by the public
+// GET handler after GetByShortID resolves; best-effort, so a failure here never fails the page.
+func (t *PetTags) RecordScan(ctx context.Context, id uuid.UUID) error {
+	return t.q.RecordPetTagScan(ctx, id)
+}
+
 // Activate is the atomic claim (spec §10 step 2d): attach the tag to the customer + flip ENCODED →
 // ACTIVATED. The status guard means 0 rows = the tag was NOT in ENCODED state (already activated, or a
 // concurrent activate won the race); that surfaces as ErrNotFound, which the handler — having just read an
