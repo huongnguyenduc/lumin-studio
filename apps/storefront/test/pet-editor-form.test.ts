@@ -101,10 +101,8 @@ describe('editToUpdateInput', () => {
       allergies: '',
       vaccinated: null,
       neutered: false,
-      vetClinic: '',
       instagram: '',
       tiktok: '',
-      zalo: '',
     };
     const out = editToUpdateInput(f);
     expect(out.breed).toBeUndefined();

@@ -397,7 +397,7 @@ chế độ cứu hộ + gửi GPS cho chủ.
 ### Luồng kích hoạt & onboarding (quét lần đầu)
 1. **Quét tag mới (2a):** URL `lumin.pet/t/{shortId}` của tag `ENCODED` → "Đã nhận tag mới" → đăng nhập (Google / email). **Tag tự gắn vào tài khoản** vừa đăng nhập — **không nhập mã, không bước "kích hoạt" riêng**, **bỏ field số microchip**.
 2. **Hồ sơ bé — bước 1/2 (2b):** ảnh · tên · loài · giống · tuổi · nặng · dị ứng/lưu ý y tế.
-3. **Liên hệ · y tế · social — bước 2/2 (2c):** liên hệ chủ (tên, SĐT, Zalo) · y tế (tiêm phòng, triệt sản, phòng khám — tuỳ chọn) · social (instagram, tiktok — tuỳ chọn).
+3. **Liên hệ · y tế · social — bước 2/2 (2c):** liên hệ chủ (tên, SĐT — **Zalo bị bỏ khỏi form nhập, SĐT là kênh liên hệ đủ dùng**) · y tế (tiêm phòng, triệt sản — tuỳ chọn; **phòng khám bị bỏ khỏi form nhập + không hiển thị**, thông tin dư) · social (instagram, tiktok — tuỳ chọn). `ownerContact.zalo`/`medical.vetClinic` vẫn tồn tại trên wire (hồ sơ cũ, không migration) nhưng không còn được thu thập/hiển thị.
 4. **Xong (2d):** `PetTag.status → ACTIVATED` (gắn `ownerAccountId` + tạo `PetProfile`); trang pet sẵn sàng. Từ giờ chạm tag là mở.
 > Lần quét **sau** (tag `ACTIVATED`): mở thẳng trang pet theo trạng thái xem, bỏ qua onboarding.
 

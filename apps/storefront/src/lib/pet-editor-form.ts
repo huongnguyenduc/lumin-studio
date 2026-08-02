@@ -23,10 +23,8 @@ export type EditForm = {
   allergies: string;
   vaccinated: boolean | null; // null = chưa chọn
   neutered: boolean;
-  vetClinic: string;
   ownerName: string;
   phone: string;
-  zalo: string;
   instagram: string;
   tiktok: string;
 };
@@ -52,10 +50,8 @@ export function editFormFromProfile(p: PetPageProfile): EditForm {
     allergies: m?.allergies ?? '',
     vaccinated: m?.vaccinated ?? null,
     neutered: m?.neutered ?? false,
-    vetClinic: m?.vetClinic ?? '',
     ownerName: p.contact.name ?? '',
     phone: p.contact.phone ?? '',
-    zalo: p.contact.zalo ?? '',
     instagram: social('instagram'),
     tiktok: social('tiktok'),
   };
@@ -92,13 +88,10 @@ export function editToUpdateInput(form: EditForm): ProfileUpdateInput {
   if (form.neutered) medical.neutered = true;
   const allergies = clean(form.allergies);
   if (allergies) medical.allergies = allergies;
-  const vet = clean(form.vetClinic);
-  if (vet) medical.vetClinic = vet;
 
   const gallery = form.gallery.map((s) => s.trim()).filter((s) => s !== '');
   const favorites = form.favorites.map((s) => s.trim()).filter((s) => s !== '');
   const ownerName = clean(form.ownerName);
-  const zalo = clean(form.zalo);
 
   return {
     petName: form.petName.trim(),
@@ -113,7 +106,6 @@ export function editToUpdateInput(form: EditForm): ProfileUpdateInput {
     ownerContact: {
       name: ownerName ?? '',
       phone: form.phone.trim(),
-      ...(zalo ? { zalo } : {}),
     },
     ...(Object.keys(medical).length ? { medical } : {}),
     ...(socials.length ? { socials } : {}),

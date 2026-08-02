@@ -597,6 +597,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/orders/{id}/proof-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sign a short-lived GET URL for one of an order's proof images (admin-gated).
+         * @description The payment-proof/refund-proof/QC-photo buckets are private by design (ADR-046 — no anon read, no website alias) and Garage has no anonymous GET, so `order.paymentProofUrl` etc. are not directly viewable — this mints a presigned GET (10 min TTL) for the requested kind so the admin UI can render an `<img>`. Reads the URL off the order itself (server picks, client never supplies an arbitrary URL to sign) and re-checks the proofstore host-pin before signing. 404 when the order has no URL of that kind (e.g. no refund proof on a non-refunded order).
+         */
+        get: operations["getAdminOrderProofUrl"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/customers": {
         parameters: {
             query?: never;
@@ -789,6 +809,46 @@ export interface paths {
         head?: never;
         /** Change the refund-policy text shown pre-purchase (owner-only, ADR-012). */
         patch: operations["updateRefundPolicy"];
+        trace?: never;
+    };
+    "/admin/settings/shop-contact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Replace the shop's public contact channels (owner-only).
+         * @description Owner-only. Replaces settings.shop_info wholesale with `{contact: {...}}` — every field optional (a shop may not have every channel); an omitted/blank field is simply not shown on /lien-he or the "Nhắn shop" popup. This is the ONLY writer of shop_info (PR F); GET /shop/contact (public) reads the same object back, whitelisted to just the channel fields (never the full Settings singleton — that also carries the STK).
+         */
+        patch: operations["updateShopContact"];
+        trace?: never;
+    };
+    "/shop/contact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The shop's public contact channels (public, rate-limited) — for /lien-he + the "Nhắn shop" popup.
+         * @description Public read of settings.shop_info's contact fields ONLY — never the full Settings singleton (which also carries the STK, refundPolicy, shippingRules — ADR-032-style whitelist, same posture as GET /checkout/config not leaking shopInfo PII at checkout-config.md). Every field is optional and omitted-when-unset, so a shop that hasn't configured a channel yet returns `{}`, not an error — the storefront renders a "chưa cập nhật" fallback rather than a 404.
+         */
+        get: operations["getShopContact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/admin/reply-templates": {
@@ -2935,6 +2995,19 @@ export interface components {
             targetService: string;
             targetPort: number;
         };
+        /** @description The shop's public contact channels (settings.shop_info.contact) — written by owner-only PATCH /admin/settings/shop-contact, read publicly by GET /shop/contact for /lien-he and the "Nhắn shop" popup. Every field optional/omit-when-unset. */
+        ShopContact: {
+            /** @description Zalo handle or number (opens https://zalo.me/{zalo}). */
+            zalo?: string;
+            /** @description Facebook Messenger username (opens https://m.me/{facebook}). */
+            facebook?: string;
+            phone?: string;
+            /** Format: email */
+            email?: string;
+            address?: string;
+            /** @description Free-text opening hours, e.g. "8:00–20:00, T2–CN". */
+            hours?: string;
+        };
         /** @description Public checkout config (GET /checkout/config). A whitelist of the anonymous data the payment step and pre-purchase disclosure need — never the full Settings singleton (no shopInfo PII, no shipping-fee table). */
         CheckoutConfig: {
             bankAccount: components["schemas"]["BankAccount"];
@@ -2979,6 +3052,16 @@ export interface components {
              * @description Maximum object size enforced by the signed POST policy.
              */
             maxBytes: number;
+        };
+        /** @description A short-lived presigned GET for one private proof/QC object (GET /admin/orders/{id}/proof-url). */
+        SignedAssetUrl: {
+            /**
+             * Format: uri
+             * @description Presigned GET URL, valid until expiresAt.
+             */
+            url: string;
+            /** Format: date-time */
+            expiresAt: string;
         };
         /** @description Browser upload bootstrap for one permanent public image (pet-page or product-gallery photo). Like PaymentProofUploadInput, no file name or client-declared size is accepted: the object key is generated server-side with no PII and the actual size/type gate lives in the signed S3 POST policy. */
         ImageUploadInput: {
@@ -3160,6 +3243,11 @@ export interface components {
              * @description Estimated handoff, when set.
              */
             eta?: string;
+            personalization?: components["schemas"]["Personalization"];
+            /** @description Human-readable option choices for the line ("Kích thước: Lớn") — what to print, beyond colour. */
+            optionChoiceLabels?: string[];
+            /** @description The order's internal note, when set — same field shown on the admin order detail. */
+            orderNote?: string;
         };
         /** @description PATCH body for /admin/print-jobs/{id} — the target print stage (staff drag-drop). */
         PrintStageUpdate: {
@@ -4344,6 +4432,33 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    getAdminOrderProofUrl: {
+        parameters: {
+            query: {
+                kind: "payment" | "refund" | "qc";
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A signed, short-lived GET URL for the requested proof image. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignedAssetUrl"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     getAdminCustomers: {
         parameters: {
             query?: never;
@@ -4590,6 +4705,53 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    updateShopContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopContact"];
+            };
+        };
+        responses: {
+            /** @description Updated settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getShopContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The shop's configured contact channels (omitted fields = not configured). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopContact"];
+                };
+            };
         };
     };
     listReplyTemplates: {

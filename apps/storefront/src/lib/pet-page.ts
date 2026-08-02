@@ -147,11 +147,3 @@ export async function fetchPetPage(shortId: string): Promise<PetPageResult> {
     return { status: 'error' };
   }
 }
-
-/** Whether a customer session cookie is present — the /t/{shortId} page uses it to route an unactivated
- *  tag: signed-in → onboarding (they claim it), signed-out → the "new tag" welcome + login. The activation
- *  POST is the real gate (an expired cookie there → 401 surfaced as "session expired"), so a soft
- *  cookie-presence check here is enough. */
-export async function hasCustomerSession(): Promise<boolean> {
-  return Boolean((await cookies()).get(CUSTOMER_COOKIE)?.value);
-}

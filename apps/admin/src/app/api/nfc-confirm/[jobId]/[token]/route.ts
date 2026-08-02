@@ -44,7 +44,12 @@ export async function GET(
     // Traefik/Cloudflare, request.url reflects the Next server's own bind address (0.0.0.0:3000), not
     // the public host, so an absolute redirect built from it sent staff to a dead LAN address
     // (confirmed live). A relative Location resolves against whatever host the browser is already on.
-    return new Response(null, { status: 303, headers: { Location: '/hang-doi-in' } });
+    // `?encoded={jobId}` tells the board page to scroll to + briefly highlight the just-encoded card
+    // (it lands in PACKING, not necessarily at the top of the column — staff previously had to hunt for it).
+    return new Response(null, {
+      status: 303,
+      headers: { Location: `/hang-doi-in?encoded=${jobId}` },
+    });
   }
   return page(
     'Chưa lưu được',

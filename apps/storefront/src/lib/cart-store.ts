@@ -5,6 +5,7 @@ import {
   addItem,
   cartCount,
   removeItem,
+  replaceItem,
   sanitizeCart,
   setAllSelected,
   setItemQuantity,
@@ -91,6 +92,9 @@ export type UseCart = {
   add: (item: CartItem) => void;
   setQuantity: (key: string, qty: number) => void;
   remove: (key: string) => void;
+  /** Sửa tại chỗ (cart edit dialog): swap one line's configuration for a freshly-built CartItem, keeping
+   *  its position + `selected` (or merging into an existing identical line — see replaceItem). */
+  replace: (oldKey: string, newItem: CartItem) => void;
   /** Hi-fi 05 "chọn món": toggle one line in/out of the quote + checkout. */
   setSelected: (key: string, on: boolean) => void;
   /** Hi-fi 05 "chọn tất cả": select/deselect every line at once. */
@@ -116,6 +120,7 @@ export function useCart(): UseCart {
     add: (item) => write(addItem(read(), item)),
     setQuantity: (key, qty) => write(setItemQuantity(read(), key, qty)),
     remove: (key) => write(removeItem(read(), key)),
+    replace: (oldKey, newItem) => write(replaceItem(read(), oldKey, newItem)),
     setSelected: (key, on) => write(setItemSelected(read(), key, on)),
     selectAll: (on) => write(setAllSelected(read(), on)),
     clearSelected: () => write(read().filter((i) => !i.selected)),

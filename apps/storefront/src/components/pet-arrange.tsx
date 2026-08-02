@@ -1,8 +1,23 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import type { PetPageProfile } from '@/lib/pet-page';
 import {
   type Block,
@@ -16,9 +31,13 @@ import { themeFormFrom, themeToWire } from '@/lib/pet-theme';
 import { updatePetAppearance } from '@/lib/pet-actions';
 
 // The owner's "sắp xếp khối" mode (spec §10 §5b, P3-t t-4c-2) — a separate mode from the in-place editor so
-// "1 chạm = 1 việc": here the owner ONLY reorders (▲▼) and shows/hides content blocks, never edits content.
-// The photo_name (ảnh & tên) block is fixed on top and can't be hidden. Save sends the FULL appearance (the
-// unchanged theme passes through) to the owner-guarded PATCH, then router.refresh()es the re-ordered page.
+// "1 chạm = 1 việc": here the owner reorders (drag ⠿, OR the ▲▼ keyboard/AT fallback) and shows/hides
+// content blocks, never edits content. Drag uses @dnd-kit (already a repo dependency via apps/admin's print
+// board) so the ⠿ handle finally does what the design promises instead of being decorative; the ▲▼ buttons
+// stay as the accessible, touch-reliable path (moveContentBlock is the SAME reducer both call — one
+// implementation of "reorder", not two that could drift). The photo_name (ảnh & tên) block is fixed on top
+// and can't be hidden or dragged. Save sends the FULL appearance (the unchanged theme passes through) to
+// the owner-guarded PATCH, then router.refresh()es the re-ordered page.
 
 const HANDLE = '⠿';
 const UP = '▲';
@@ -74,8 +93,45 @@ function ArrangePanel({
   const [blocks, setBlocks] = useState<Block[]>(() => normalizeBlocks(profile.blocks));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reduced, setReduced] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const sync = () => setReduced(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
 
   const content = blocks.filter((b) => b.type !== PHOTO_NAME);
+
+  // Touch needs the SAME 200ms-hold PointerSensor delay the admin print board uses (a plain swipe must
+  // still scroll the panel), plus KeyboardSensor so arrow keys can reorder via the sortable handle too —
+  // on top of, not instead of, the explicit ▲▼ buttons below.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const onDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const from = content.findIndex((b) => b.type === active.id);
+    const to = content.findIndex((b) => b.type === over.id);
+    if (from === -1 || to === -1) return;
+    // moveContentBlock only swaps ONE adjacent step — reuse it in a loop for a multi-step drag rather
+    // than writing a second reorder algorithm that could drift from the ▲▼ buttons' behavior.
+    setBlocks((bs) => {
+      let next = bs;
+      let i = from;
+      const dir = to > from ? 1 : -1;
+      while (i !== to) {
+        next = moveContentBlock(next, i, dir);
+        i += dir;
+      }
+      return next;
+    });
+  };
 
   const onSave = async () => {
     setSaving(true);
@@ -147,48 +203,53 @@ function ArrangePanel({
             </span>
           </div>
 
-          {content.map((b, i) => (
-            <div
-              key={b.type}
-              className={`flex items-center gap-2.5 rounded-2xl border-2 border-border-strong px-3 py-3 shadow-pop ${
-                b.visible ? 'bg-surface-card' : 'bg-surface-sunken opacity-70'
-              }`}
+          <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+            <SortableContext
+              items={content.map((b) => b.type)}
+              strategy={verticalListSortingStrategy}
             >
-              <span aria-hidden="true" className="text-text-subtle">
-                {HANDLE}
-              </span>
-              <span aria-hidden="true" className="text-base">
-                {BLOCK_ICON[b.type]}
-              </span>
-              <span className="flex-1 text-sm text-text-strong">
-                {t(`block.${b.type}`)}
-                {!b.visible && (
-                  <span className="ml-1.5 font-mono text-[10px] text-text-muted">
-                    {t('hidden')}
+              {content.map((b, i) => (
+                <SortableRow
+                  key={b.type}
+                  id={b.type}
+                  visible={b.visible}
+                  reduced={reduced}
+                  dragLabel={t('dragHandle', { block: t(`block.${b.type}`) })}
+                >
+                  <span aria-hidden="true" className="text-base">
+                    {BLOCK_ICON[b.type]}
                   </span>
-                )}
-              </span>
-              <div className="flex items-center gap-1">
-                <MoveButton
-                  label={t('moveUp', { block: t(`block.${b.type}`) })}
-                  glyph={UP}
-                  disabled={i === 0}
-                  onClick={() => setBlocks((bs) => moveContentBlock(bs, i, -1))}
-                />
-                <MoveButton
-                  label={t('moveDown', { block: t(`block.${b.type}`) })}
-                  glyph={DOWN}
-                  disabled={i === content.length - 1}
-                  onClick={() => setBlocks((bs) => moveContentBlock(bs, i, 1))}
-                />
-                <VisibleToggle
-                  on={b.visible}
-                  label={t(b.visible ? 'hide' : 'show', { block: t(`block.${b.type}`) })}
-                  onClick={() => setBlocks((bs) => toggleBlockVisible(bs, b.type))}
-                />
-              </div>
-            </div>
-          ))}
+                  <span className="flex-1 text-sm text-text-strong">
+                    {t(`block.${b.type}`)}
+                    {!b.visible && (
+                      <span className="ml-1.5 font-mono text-[10px] text-text-muted">
+                        {t('hidden')}
+                      </span>
+                    )}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <MoveButton
+                      label={t('moveUp', { block: t(`block.${b.type}`) })}
+                      glyph={UP}
+                      disabled={i === 0}
+                      onClick={() => setBlocks((bs) => moveContentBlock(bs, i, -1))}
+                    />
+                    <MoveButton
+                      label={t('moveDown', { block: t(`block.${b.type}`) })}
+                      glyph={DOWN}
+                      disabled={i === content.length - 1}
+                      onClick={() => setBlocks((bs) => moveContentBlock(bs, i, 1))}
+                    />
+                    <VisibleToggle
+                      on={b.visible}
+                      label={t(b.visible ? 'hide' : 'show', { block: t(`block.${b.type}`) })}
+                      onClick={() => setBlocks((bs) => toggleBlockVisible(bs, b.type))}
+                    />
+                  </div>
+                </SortableRow>
+              ))}
+            </SortableContext>
+          </DndContext>
 
           {error && (
             <p role="alert" className="text-center text-sm text-danger">
@@ -203,6 +264,52 @@ function ArrangePanel({
 
 // MoveButton — a compact ▲/▼ reorder control (a11y + mobile-friendly alternative to native drag, which
 // touch handles poorly). ponytail: up/down + a fixed header beats pulling in a drag-and-drop dep.
+// SortableRow — one draggable content-block row. The ⠿ glyph is the ACTUAL drag handle now (was purely
+// decorative before this PR — a real affordance lie, since the design promises drag). `touch-action: none`
+// on the handle only (not the whole row) so the row's ▲▼/switch controls stay normal touch targets and the
+// panel itself still scrolls from anywhere else.
+function SortableRow({
+  id,
+  visible,
+  reduced,
+  dragLabel,
+  children,
+}: {
+  id: BlockType;
+  visible: boolean;
+  reduced: boolean;
+  dragLabel: string;
+  children: React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition: reduced ? undefined : transition,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-2.5 rounded-2xl border-2 border-border-strong px-3 py-3 shadow-pop ${
+        visible ? 'bg-surface-card' : 'bg-surface-sunken opacity-70'
+      } ${isDragging ? 'opacity-60' : ''}`}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label={dragLabel}
+        className="cursor-grab touch-none text-text-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky active:cursor-grabbing"
+      >
+        {HANDLE}
+      </button>
+      {children}
+    </div>
+  );
+}
+
 function MoveButton({
   label,
   glyph,

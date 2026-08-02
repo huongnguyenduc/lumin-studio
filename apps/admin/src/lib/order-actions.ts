@@ -15,6 +15,7 @@ type ProofUpload = components['schemas']['PaymentProofUpload'];
 type ProofContentType = components['schemas']['PaymentProofUploadInput']['contentType'];
 type ImageUpload = components['schemas']['ImageUpload'];
 type ImageContentType = components['schemas']['ImageUploadInput']['contentType'];
+type ProofUrlKind = 'payment' | 'refund' | 'qc';
 
 /** `forbidden` = staff hit an owner-only edge (→PAID/→REFUNDED); `conflict` = the order moved under us
  *  (stale edge, 409 INVALID_EDGE); `validation` = a missing artifact the UI should have supplied
@@ -60,6 +61,29 @@ export async function presignProofUpload(
     const client = createApiClient({ baseUrl: coreApiBaseUrl() });
     const { data } = await client.POST('/checkout/payment-proof-upload', { body: { contentType } });
     if (data) return { ok: true, upload: data };
+    return { ok: false };
+  } catch {
+    return { ok: false };
+  }
+}
+
+/** Ask core-api for a short-lived (10 min) presigned GET for a proof image already stored on the order
+ *  (GET /admin/orders/{id}/proof-url) — the private payment-proof bucket has no anon read (ADR-046), so
+ *  this is the only way to preview a receipt/refund/QC photo. 404 = the order has no URL of that kind. */
+export async function proofImageUrl(
+  orderId: string,
+  kind: ProofUrlKind,
+): Promise<{ ok: true; url: string } | { ok: false }> {
+  const session = (await cookies()).get(SESSION_COOKIE)?.value;
+  try {
+    const client = createApiClient({
+      baseUrl: coreApiBaseUrl(),
+      headers: session ? { cookie: `${SESSION_COOKIE}=${session}` } : {},
+    });
+    const { data } = await client.GET('/admin/orders/{id}/proof-url', {
+      params: { path: { id: orderId }, query: { kind } },
+    });
+    if (data) return { ok: true, url: data.url };
     return { ok: false };
   } catch {
     return { ok: false };

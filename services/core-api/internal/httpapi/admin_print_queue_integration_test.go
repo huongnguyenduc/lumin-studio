@@ -109,6 +109,84 @@ func TestGetPrintQueueEndToEnd(t *testing.T) {
 	}
 }
 
+// TestAdvancePrintJobStageAutoAdvancesOrder covers ADR-057: an order with 2 lines, both NEED_PRINT.
+// Moving the FIRST off NEED_PRINT must NOT touch order status (one line still needs printing); moving the
+// SECOND (last remaining) must auto-advance the order PAID→PRINTING in the SAME tx, with statusHistory
+// recording the actor from ctx. A third move (already PRINTING, e.g. NFC_ENCODE-bound stage change) must be
+// a silent no-op on order status — TransitionError{ErrInvalidEdge} swallowed, not surfaced as a failure.
+func TestAdvancePrintJobStageAutoAdvancesOrder(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := ctxWithActor(order.RoleStaff) // PAID→PRINTING is not owner-only (ADR-057)
+
+	catID := seedCategory(t, ctx, pool)
+	mochi := seedProductNamed(t, ctx, pool, catID, "mochi-2", "Đèn Mochi 2", 390_000)
+	origami := seedProductNamed(t, ctx, pool, catID, "origami-2", "Kệ Origami 2", 120_000)
+
+	// inbox channel is born PAID (InitialStatusForChannel) — no separate reconcile step needed.
+	orderID := seedAdminOrder(t, ctx, pool, adminOrderSeed{
+		customer: "Trần Bình", channel: order.ChannelInbox, createdAt: "2026-08-01T08:00:00Z",
+		items: []db.NewOrderItem{
+			{ProductID: mochi, Quantity: 1, UnitPrice: 390_000},
+			{ProductID: origami, Quantity: 1, UnitPrice: 120_000},
+		},
+	})
+	// CreateOrderTx already auto-creates one NEED_PRINT job per line for a PAID-born order
+	// (CreatePrintJobsForOrder, called from the same seam seedAdminOrder uses) — seeding MORE jobs here
+	// would double-count NEED_PRINT and never reach zero. Use the auto-created jobs directly.
+	mochiItem := orderItemID(t, ctx, pool, orderID, mochi)
+	origamiItem := orderItemID(t, ctx, pool, orderID, origami)
+	job1 := printJobIDForItem(t, ctx, pool, mochiItem)
+	job2 := printJobIDForItem(t, ctx, pool, origamiItem)
+
+	srv := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), pool, nil, nil)
+
+	advancePrintStage(t, srv, ctx, job1, api.PrintStagePRINTING)
+	if got := orderStatusOf(t, ctx, pool, orderID); got != "PAID" {
+		t.Fatalf("order status after 1/2 jobs left NEED_PRINT = %s, want still PAID", got)
+	}
+
+	advancePrintStage(t, srv, ctx, job2, api.PrintStagePRINTING)
+	if got := orderStatusOf(t, ctx, pool, orderID); got != "PRINTING" {
+		t.Fatalf("order status after last job left NEED_PRINT = %s, want auto-advanced to PRINTING", got)
+	}
+	row, err := db.NewOrders(pool).ByID(ctx, orderID)
+	if err != nil {
+		t.Fatalf("reload order: %v", err)
+	}
+	last := row.StatusHistory[len(row.StatusHistory)-1]
+	if last.Reason != "auto_print_stage" || last.ByUser == "" {
+		t.Fatalf("auto-advance statusHistory = %+v, want reason=auto_print_stage + a real byUser", last)
+	}
+
+	// A further stage move (job now PRINTING → NFC_ENCODE doesn't apply to a non-nfc_tag product, so
+	// instead re-drag job1 PRINTING→PACKING) must not fail even though the order can't move again —
+	// AdvanceStatusTx(PAID→PRINTING) now sees status=PRINTING → InvalidEdge → swallowed, not surfaced.
+	advancePrintStage(t, srv, ctx, job1, api.PrintStagePACKING)
+	if got := orderStatusOf(t, ctx, pool, orderID); got != "PRINTING" {
+		t.Fatalf("order status after a stage move with no NEED_PRINT jobs left = %s, want unchanged PRINTING", got)
+	}
+}
+
+// printJobIDForItem returns the print_jobs.id auto-created for one order item (CreatePrintJobsForOrder).
+func printJobIDForItem(t *testing.T, ctx context.Context, pool *pgxpool.Pool, itemID uuid.UUID) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	if err := pool.QueryRow(ctx, `SELECT id FROM print_jobs WHERE order_item_id=$1`, itemID).Scan(&id); err != nil {
+		t.Fatalf("lookup print job for item %s: %v", itemID, err)
+	}
+	return id
+}
+
+// orderStatusOf reads an order's current status column directly, for asserting auto-advance side effects.
+func orderStatusOf(t *testing.T, ctx context.Context, pool *pgxpool.Pool, orderID uuid.UUID) string {
+	t.Helper()
+	var status string
+	if err := pool.QueryRow(ctx, `SELECT status FROM orders WHERE id=$1`, orderID).Scan(&status); err != nil {
+		t.Fatalf("lookup order status (%s): %v", orderID, err)
+	}
+	return status
+}
+
 // TestGetPrintQueueEmptyIsRenderable: no print jobs → an empty (non-nil) slice, so the JSON renders `[]`
 // not null (spec §03 zero-state — empty kanban columns, never blank).
 func TestGetPrintQueueEmptyIsRenderable(t *testing.T) {

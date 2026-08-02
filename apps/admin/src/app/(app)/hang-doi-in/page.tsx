@@ -7,7 +7,12 @@ import { PrintBoard } from '@/components/print-board';
  * fallback) and mutates via the stage PATCH. Loading is ./loading.tsx (skeleton); a fetch failure is
  * caught by (app)/error.tsx (retry); an empty board is the client board's own zero-state (spec §03).
  */
-export default async function PrintQueuePage() {
+export default async function PrintQueuePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ encoded?: string }>;
+}) {
   const cards = await fetchPrintQueue();
-  return <PrintBoard initialCards={cards} />;
+  const { encoded } = await searchParams;
+  return <PrintBoard initialCards={cards} highlightId={encoded} />;
 }

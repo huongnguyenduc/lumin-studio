@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -40,6 +41,23 @@ func (q *Queries) ClaimPrintForPrinting(ctx context.Context, id uuid.UUID) (Prin
 		&i.FilamentDeductedAt,
 	)
 	return i, err
+}
+
+const countNeedPrintForOrder = `-- name: CountNeedPrintForOrder :one
+SELECT count(*) FROM print_jobs pj
+JOIN order_items oi ON oi.id = pj.order_item_id
+WHERE oi.order_id = $1 AND pj.stage = 'NEED_PRINT'
+`
+
+// CountNeedPrintForOrder is the auto-advance check (P3-x, ADR-057): after a print job moves off
+// NEED_PRINT, count how many of the SAME order's jobs are still stuck there. Zero means every line has
+// at least started printing (or further), the signal AdvancePrintJobStage uses to auto-advance the
+// order PAID→PRINTING. Reads within the SAME tx as the stage update so the count is never stale.
+func (q *Queries) CountNeedPrintForOrder(ctx context.Context, orderID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countNeedPrintForOrder, orderID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const createAssetJob = `-- name: CreateAssetJob :one
@@ -187,11 +205,15 @@ func (q *Queries) GetPrintJobByID(ctx context.Context, id uuid.UUID) (PrintJob, 
 const getPrintQueueEntry = `-- name: GetPrintQueueEntry :one
 SELECT pj.id, pj.stage, pj.printer, pj.color_name, pj.eta,
   pj.order_item_id AS order_item_id,
+  o.id AS order_id,
   o.code AS order_code,
   p.name AS product_name,
   p.product_type AS product_type,
   oi.quantity AS quantity,
-  oi.part_colors AS part_colors
+  oi.part_colors AS part_colors,
+  oi.personalization AS personalization,
+  oi.option_choices AS option_choices,
+  o.note AS order_note
 FROM print_jobs pj
 JOIN order_items oi ON oi.id = pj.order_item_id
 JOIN orders o ON o.id = oi.order_id
@@ -200,17 +222,21 @@ WHERE pj.id = $1
 `
 
 type GetPrintQueueEntryRow struct {
-	ID          uuid.UUID          `json:"id"`
-	Stage       PrintStage         `json:"stage"`
-	Printer     *string            `json:"printer"`
-	ColorName   *string            `json:"colorName"`
-	Eta         pgtype.Timestamptz `json:"eta"`
-	OrderItemID uuid.UUID          `json:"orderItemId"`
-	OrderCode   string             `json:"orderCode"`
-	ProductName string             `json:"productName"`
-	ProductType ProductType        `json:"productType"`
-	Quantity    int32              `json:"quantity"`
-	PartColors  []byte             `json:"partColors"`
+	ID              uuid.UUID              `json:"id"`
+	Stage           PrintStage             `json:"stage"`
+	Printer         *string                `json:"printer"`
+	ColorName       *string                `json:"colorName"`
+	Eta             pgtype.Timestamptz     `json:"eta"`
+	OrderItemID     uuid.UUID              `json:"orderItemId"`
+	OrderID         uuid.UUID              `json:"orderId"`
+	OrderCode       string                 `json:"orderCode"`
+	ProductName     string                 `json:"productName"`
+	ProductType     ProductType            `json:"productType"`
+	Quantity        int32                  `json:"quantity"`
+	PartColors      []byte                 `json:"partColors"`
+	Personalization *order.Personalization `json:"personalization"`
+	OptionChoices   []byte                 `json:"optionChoices"`
+	OrderNote       *string                `json:"orderNote"`
 }
 
 // GetPrintQueueEntry is the single-card read behind the stage PATCH (P3-f): the same enriched shape as
@@ -225,11 +251,15 @@ func (q *Queries) GetPrintQueueEntry(ctx context.Context, id uuid.UUID) (GetPrin
 		&i.ColorName,
 		&i.Eta,
 		&i.OrderItemID,
+		&i.OrderID,
 		&i.OrderCode,
 		&i.ProductName,
 		&i.ProductType,
 		&i.Quantity,
 		&i.PartColors,
+		&i.Personalization,
+		&i.OptionChoices,
+		&i.OrderNote,
 	)
 	return i, err
 }
@@ -389,6 +419,9 @@ SELECT pj.id, pj.stage, pj.printer, pj.color_name, pj.eta,
   p.name AS product_name,
   oi.quantity AS quantity,
   oi.part_colors AS part_colors,
+  oi.personalization AS personalization,
+  oi.option_choices AS option_choices,
+  o.note AS order_note,
   p.product_type AS product_type
 FROM print_jobs pj
 JOIN order_items oi ON oi.id = pj.order_item_id
@@ -398,16 +431,19 @@ ORDER BY pj.stage, pj.created_at
 `
 
 type ListPrintQueueRow struct {
-	ID          uuid.UUID          `json:"id"`
-	Stage       PrintStage         `json:"stage"`
-	Printer     *string            `json:"printer"`
-	ColorName   *string            `json:"colorName"`
-	Eta         pgtype.Timestamptz `json:"eta"`
-	OrderCode   string             `json:"orderCode"`
-	ProductName string             `json:"productName"`
-	Quantity    int32              `json:"quantity"`
-	PartColors  []byte             `json:"partColors"`
-	ProductType ProductType        `json:"productType"`
+	ID              uuid.UUID              `json:"id"`
+	Stage           PrintStage             `json:"stage"`
+	Printer         *string                `json:"printer"`
+	ColorName       *string                `json:"colorName"`
+	Eta             pgtype.Timestamptz     `json:"eta"`
+	OrderCode       string                 `json:"orderCode"`
+	ProductName     string                 `json:"productName"`
+	Quantity        int32                  `json:"quantity"`
+	PartColors      []byte                 `json:"partColors"`
+	Personalization *order.Personalization `json:"personalization"`
+	OptionChoices   []byte                 `json:"optionChoices"`
+	OrderNote       *string                `json:"orderNote"`
+	ProductType     ProductType            `json:"productType"`
 }
 
 // ListPrintQueue is the admin kanban board read (P3-f): every print job across all stages, joined to
@@ -416,7 +452,11 @@ type ListPrintQueueRow struct {
 // on print_jobs (queue-card field, spec §02) so no colors join is needed; printer/eta/color_name are
 // nullable. oi.part_colors is the ADR-037 per-part-colour snapshot (jsonb, already denormalized WITH the
 // colour names at capture) — carried straight off the joined order_item so a parts-product card shows
-// what-filament-for-which-part without any new colours/parts join. All joins are INNER: a print job's order_item FK is ON DELETE CASCADE and its product FK is
+// what-filament-for-which-part without any new colours/parts join. oi.personalization (engraving text) and
+// oi.option_choices (also name-denormalized, ADR-037) and o.note ride along the SAME join for the SAME
+// reason: the printer needs to know WHAT to engrave, not just what colour, and the shop's internal note —
+// previously only visible on the admin order detail, forcing a second click per order to find it. All
+// joins are INNER: a print job's order_item FK is ON DELETE CASCADE and its product FK is
 // RESTRICT, so every job has exactly one live item → order + product. Ordered by stage (enum definition
 // order NEED_PRINT→SHIPPED) then created_at, so each column is stable FIFO; the client groups by stage.
 // ponytail: no pagination — the active print queue on a one-shop box is small; SHIPPED accretes, so add
@@ -440,6 +480,9 @@ func (q *Queries) ListPrintQueue(ctx context.Context) ([]ListPrintQueueRow, erro
 			&i.ProductName,
 			&i.Quantity,
 			&i.PartColors,
+			&i.Personalization,
+			&i.OptionChoices,
+			&i.OrderNote,
 			&i.ProductType,
 		); err != nil {
 			return nil, err

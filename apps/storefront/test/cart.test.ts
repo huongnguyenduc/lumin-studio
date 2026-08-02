@@ -9,6 +9,7 @@ import {
   cartQuoteItems,
   cartSignature,
   removeItem,
+  replaceItem,
   sanitizeCart,
   selectedItems,
   setAllSelected,
@@ -359,6 +360,65 @@ describe('removeItem', () => {
     expect(removeItem([item({ key: 'k1' }), item({ key: 'k2' })], 'k1').map((i) => i.key)).toEqual([
       'k2',
     ]);
+  });
+});
+
+describe('replaceItem', () => {
+  it('updates in place on the SAME key (quantity-only edit), preserving position + selected', () => {
+    const items = [
+      item({ key: 'k1', quantity: 1, selected: false }),
+      item({ key: 'k2', quantity: 1 }),
+    ];
+    const next = replaceItem(items, 'k1', item({ key: 'k1', quantity: 3, selected: true }));
+    expect(next.map((i) => i.key)).toEqual(['k1', 'k2']); // position preserved
+    expect(next[0].quantity).toBe(3);
+    expect(next[0].selected).toBe(false); // old selected wins, not the freshly-built item's default true
+  });
+
+  it('moves to a NEW key in place (does not jump to the end)', () => {
+    const items = [item({ key: 'k1' }), item({ key: 'k2' }), item({ key: 'k3' })];
+    const next = replaceItem(items, 'k2', item({ key: 'k2-red', quantity: 2 }));
+    expect(next.map((i) => i.key)).toEqual(['k1', 'k2-red', 'k3']);
+    expect(next[1].quantity).toBe(2);
+  });
+
+  it('merges into an existing DIFFERENT line with the same new key, dropping the edited line', () => {
+    const items = [
+      item({ key: 'k1', quantity: 2 }),
+      item({ key: 'k2', quantity: 5, selected: false }),
+    ];
+    // Editing k1 into the same configuration as k2 (qty 3) — merges into k2's position.
+    const next = replaceItem(items, 'k1', item({ key: 'k2', quantity: 3 }));
+    expect(next.map((i) => i.key)).toEqual(['k2']);
+    expect(next[0].quantity).toBe(8);
+    expect(next[0].selected).toBe(true); // merge re-selects, mirrors addItem
+  });
+
+  it('clamps a merged quantity to MAX_QUANTITY', () => {
+    const items = [item({ key: 'k1', quantity: 1 }), item({ key: 'k2', quantity: MAX_QUANTITY })];
+    const next = replaceItem(items, 'k1', item({ key: 'k2', quantity: 10 }));
+    expect(next[0].quantity).toBe(MAX_QUANTITY);
+  });
+
+  it('clamps a moved (non-merged) quantity to MAX_QUANTITY', () => {
+    const next = replaceItem(
+      [item({ key: 'k1' })],
+      'k1',
+      item({ key: 'k1-new', quantity: MAX_QUANTITY + 20 }),
+    );
+    expect(next[0].quantity).toBe(MAX_QUANTITY);
+  });
+
+  it('is a no-op when oldKey is not found', () => {
+    const items = [item({ key: 'k1' })];
+    const next = replaceItem(items, 'gone', item({ key: 'k2' }));
+    expect(next).toEqual(items);
+  });
+
+  it('does not mutate the input array', () => {
+    const input = [item({ key: 'k1', quantity: 1 })];
+    replaceItem(input, 'k1', item({ key: 'k1', quantity: 9 }));
+    expect(input[0].quantity).toBe(1);
   });
 });
 

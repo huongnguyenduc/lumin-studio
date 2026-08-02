@@ -11,11 +11,13 @@ import {
   updateBankAccount,
   updateRefundPolicy,
   updateShippingRules,
+  updateShopContact,
   type SettingsResult,
 } from '@/lib/settings-actions';
 import { WILDCARD_PROVINCE, isStkConfigured, shippingRulesOf } from '@/lib/settings';
 
 type Settings = components['schemas']['Settings'];
+type ShopContact = components['schemas']['ShopContact'];
 
 // The "Cài đặt › Thanh toán & ship" screen (P3-i, design screen 13): STK edit (+ the "chưa cấu hình STK ⇒
 // chặn checkout" warning), the per-region shipping-fee table, and the refund-policy text. Every write is
@@ -29,7 +31,13 @@ type Settings = components['schemas']['Settings'];
 type SaveErrorCode = Extract<SettingsResult, { ok: false }>['code'];
 type Status = 'idle' | 'saved' | SaveErrorCode;
 
-export function SettingsView({ settings }: { settings: Settings }) {
+export function SettingsView({
+  settings,
+  shopContact,
+}: {
+  settings: Settings;
+  shopContact: ShopContact;
+}) {
   const t = useTranslations('settings');
   return (
     <div className="flex flex-col gap-6">
@@ -43,6 +51,7 @@ export function SettingsView({ settings }: { settings: Settings }) {
           <BankAccountSection settings={settings} />
           <ShippingRulesSection settings={settings} />
           <RefundPolicySection settings={settings} />
+          <ContactSection shopContact={shopContact} />
         </div>
         <SubpagesCard />
       </div>
@@ -361,6 +370,103 @@ function RefundPolicySection({ settings }: { settings: Settings }) {
       <div className="flex items-center gap-3">
         <Button onClick={save} disabled={pending}>
           {pending ? t('saving') : t('refund.save')}
+        </Button>
+        <Feedback status={status} />
+      </div>
+    </Card>
+  );
+}
+
+/** "Kênh liên hệ" — the shop's public contact channels (PR F), read by the storefront /lien-he page and
+ *  the "Nhắn shop" popup on every page. Distinct from "Kênh chat" (/cai-dat/kenh, social-inbox connect
+ *  for the browser extension) — this is plain shop contact info, no integration behind it. All fields
+ *  optional; saving with everything blank is a legitimate "chưa cập nhật" state. */
+function ContactSection({ shopContact }: { shopContact: ShopContact }) {
+  const t = useTranslations('settings');
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [status, setStatus] = useState<Status>('idle');
+  const [zalo, setZalo] = useState(shopContact.zalo ?? '');
+  const [facebook, setFacebook] = useState(shopContact.facebook ?? '');
+  const [phone, setPhone] = useState(shopContact.phone ?? '');
+  const [email, setEmail] = useState(shopContact.email ?? '');
+  const [address, setAddress] = useState(shopContact.address ?? '');
+  const [hours, setHours] = useState(shopContact.hours ?? '');
+
+  function save() {
+    setStatus('idle');
+    startTransition(async () => {
+      const res = await updateShopContact({
+        zalo: zalo.trim() || undefined,
+        facebook: facebook.trim() || undefined,
+        phone: phone.trim() || undefined,
+        email: email.trim() || undefined,
+        address: address.trim() || undefined,
+        hours: hours.trim() || undefined,
+      });
+      if (res.ok) {
+        setStatus('saved');
+        router.refresh();
+      } else {
+        setStatus(res.code);
+      }
+    });
+  }
+
+  return (
+    <Card elevation="md" className="flex flex-col gap-4 p-5">
+      <div>
+        <h2 className="font-display text-lg font-semibold text-text-strong">
+          {t('contact.title')}
+        </h2>
+        <p className="mt-1 text-sm text-text-muted">{t('contact.subtitle')}</p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Input
+          label={t('contact.zalo')}
+          value={zalo}
+          onChange={(e) => setZalo(e.target.value)}
+          autoComplete="off"
+        />
+        <Input
+          label={t('contact.facebook')}
+          value={facebook}
+          onChange={(e) => setFacebook(e.target.value)}
+          autoComplete="off"
+        />
+        <Input
+          label={t('contact.phone')}
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          inputMode="tel"
+          autoComplete="off"
+        />
+        <Input
+          label={t('contact.email')}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          inputMode="email"
+          autoComplete="off"
+        />
+        <Input
+          label={t('contact.address')}
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          autoComplete="off"
+          className="sm:col-span-2"
+        />
+        <Input
+          label={t('contact.hours')}
+          value={hours}
+          onChange={(e) => setHours(e.target.value)}
+          autoComplete="off"
+          placeholder={t('contact.hoursPlaceholder')}
+          className="sm:col-span-2"
+        />
+      </div>
+      <div className="flex items-center gap-3">
+        <Button onClick={save} disabled={pending}>
+          {pending ? t('saving') : t('contact.save')}
         </Button>
         <Feedback status={status} />
       </div>

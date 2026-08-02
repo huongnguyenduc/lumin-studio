@@ -254,6 +254,57 @@ export function addItem(items: readonly CartItem[], item: CartItem): CartItem[] 
   );
 }
 
+/**
+ * Replace one line's CONFIGURATION (colour/parts/options/engrave — everything `cartLineKey` covers),
+ * from the cart edit dialog. `newItem` is a freshly-built CartItem (buildCartItem), already carrying the
+ * dialog's chosen quantity; its `key` may differ from `oldKey` (a new configuration is a new key) or may
+ * be unchanged (only quantity changed). No-op (items unchanged) if `oldKey` isn't found — a stale dialog
+ * submitted after the line was removed elsewhere (another tab) must not resurrect it.
+ *
+ * - Same key (no configuration change): update in place, same position, same quantity clamp — `selected`
+ *   is carried over from the old line (never flipped by an edit).
+ * - New key that collides with a DIFFERENT existing line: the edit turned this line into a duplicate of
+ *   another — merge quantities into that target line (clamped, `selected: true`, mirroring addItem's
+ *   merge-reselects rule) and drop the edited line. The target's own position is unchanged.
+ * - New key, no collision: the edited line moves to its new configuration IN PLACE (same index — an edit
+ *   must not jump to the end of the list, unlike a fresh add) with the new quantity (clamped) and the old
+ *   line's `selected` preserved.
+ */
+export function replaceItem(
+  items: readonly CartItem[],
+  oldKey: string,
+  newItem: CartItem,
+): CartItem[] {
+  const oldIdx = items.findIndex((i) => i.key === oldKey);
+  if (oldIdx === -1) return [...items];
+  const old = items[oldIdx];
+
+  if (newItem.key === oldKey) {
+    return items.map((i, n) =>
+      n === oldIdx
+        ? { ...newItem, quantity: clampQuantity(newItem.quantity), selected: old.selected }
+        : i,
+    );
+  }
+
+  const targetIdx = items.findIndex((i, n) => n !== oldIdx && i.key === newItem.key);
+  if (targetIdx !== -1) {
+    return items
+      .map((i, n) =>
+        n === targetIdx
+          ? { ...i, quantity: clampQuantity(i.quantity + newItem.quantity), selected: true }
+          : i,
+      )
+      .filter((_, n) => n !== oldIdx);
+  }
+
+  return items.map((i, n) =>
+    n === oldIdx
+      ? { ...newItem, quantity: clampQuantity(newItem.quantity), selected: old.selected }
+      : i,
+  );
+}
+
 /** Set a line's quantity. A quantity ≤ 0 REMOVES the line (the stepper's "decrement at 1 → remove",
  *  design 05: "GIẢM =1 → XOÁ"); otherwise it is clamped to 1..MAX_QUANTITY. New array, no mutation. */
 export function setItemQuantity(items: readonly CartItem[], key: string, qty: number): CartItem[] {

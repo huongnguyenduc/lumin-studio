@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -10,6 +12,7 @@ import (
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/api"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db"
 	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/db/sqlc"
+	"github.com/huongnguyenduc/lumin-studio/services/core-api/internal/order"
 )
 
 // printStages is the set of valid print_stage values — the runtime membership check for the stage PATCH.
@@ -44,11 +47,12 @@ func (s *Server) GetPrintQueue(ctx context.Context, _ api.GetPrintQueueRequestOb
 }
 
 // AdvancePrintJobStage handles PATCH /admin/print-jobs/{id} (P3-f): the staff drag-drop between kanban
-// columns. It is authRequired (owner AND staff). It moves ONLY the print stage — it does NOT transition the
-// customer's OrderStatus. The print queue is STORED, staff-driven and finer-grained than order status,
-// advanced INDEPENDENTLY of it (D6); an OrderStatus change goes through POST /orders/{id}/transitions,
-// which enforces the RBAC + statusHistory + →SHIPPING QC-photo/tracking gate (P3-e) that a board drag must
-// never bypass. A missing body or a stage outside the enum → 400 (before the write); an unknown job id → 404.
+// columns. It is authRequired (owner AND staff). It moves the print stage — the print queue stays STORED,
+// staff-driven and finer-grained than order status (D6) — and, as of ADR-057, ALSO auto-advances the
+// order PAID→PRINTING once every line has left NEED_PRINT (see the in-tx block below). Every other
+// OrderStatus edge is UNCHANGED by D6: →SHIPPING (QC-photo/tracking gate), →CANCELLED, →REFUNDED still only
+// happen through POST /orders/{id}/transitions, which a board drag must never bypass. A missing body or a
+// stage outside the enum → 400 (before the write); an unknown job id → 404.
 //
 // A move to PRINTING also DRAWS FILAMENT (ADR-039 deduct-on-print): an atomic claim (ClaimPrintForPrinting)
 // stamps filament_deducted_at so only the FIRST →PRINTING draws — a re-drag or concurrent second mover just
@@ -94,7 +98,41 @@ func (s *Server) AdvancePrintJobStage(ctx context.Context, request api.AdvancePr
 			return err
 		}
 		card, err = printQueueEntryDTO(row)
-		return err // malformed part_colors jsonb (never written by the capture seam) → 500, logged
+		if err != nil {
+			return err // malformed part_colors jsonb (never written by the capture seam) → 500, logged
+		}
+		// Auto-advance PAID→PRINTING (ADR-057): once every line of the order has left NEED_PRINT, the
+		// order no longer needs a SEPARATE manual click on the orders page — this is the ONE edge D6's
+		// "print stage and order status move independently" narrows, because a solo shop moving cards on
+		// the board is the actual source of the drift ("moved every item to Đang in, order still says Đã
+		// thanh toán"), not a reason to keep two clicks. Every other edge (→SHIPPING's QC-photo/tracking
+		// gate, →CANCELLED, →REFUNDED) still goes through POST /orders/{id}/transitions untouched.
+		// Idempotent: if the order is already past PAID (or not PAID at all — e.g. cancelled), the guard
+		// rejects the edge and that's a silent no-op, not a failure of the print-stage move itself.
+		remaining, err := jobs.CountNeedPrintForOrder(ctx, row.OrderID)
+		if err != nil {
+			return err
+		}
+		if remaining == 0 {
+			actor, ok := actorFrom(ctx)
+			if ok {
+				tctx := order.TransitionContext{
+					Role:   actor.Role,
+					ByUser: actor.ByUser,
+					At:     actor.At.UTC().Format(time.RFC3339Nano),
+					Reason: "auto_print_stage",
+				}
+				if _, aerr := db.AdvanceStatusTx(ctx, tx, row.OrderID, order.Printing, tctx); aerr != nil {
+					var terr *order.TransitionError
+					if !errors.As(aerr, &terr) || terr.Code != order.ErrInvalidEdge {
+						return aerr // a real DB fault — roll back with the rest of the move
+					}
+					// InvalidEdge means the order simply isn't PAID right now (already PRINTING+, or
+					// cancelled) — expected and not an error for the print-stage move itself.
+				}
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err // ErrNotFound → 404; any other db fault → 500 (mapError, no leak)
@@ -127,16 +165,25 @@ func printQueueDTO(rows []sqlc.ListPrintQueueRow) ([]api.PrintQueueJob, error) {
 		if err != nil {
 			return nil, fmt.Errorf("print job %s: part_colors: %w", r.ID, err)
 		}
+		choiceLabels, err := printQueueOptionChoiceLabels(r.OptionChoices)
+		if err != nil {
+			return nil, fmt.Errorf("print job %s: option_choices: %w", r.ID, err)
+		}
 		dto := api.PrintQueueJob{
-			Id:              r.ID,
-			Stage:           api.PrintStage(r.Stage),
-			ProductType:     api.ProductType(r.ProductType), // routes nfc_tag cards through NFC_ENCODE (t-2)
-			OrderCode:       r.OrderCode,
-			ProductName:     r.ProductName,
-			Quantity:        int(r.Quantity),
-			ColorName:       r.ColorName, // *string, omitempty when the line has no color
-			PartColorLabels: labels,      // *[]string, omitempty for a flat line (ADR-037)
-			Printer:         r.Printer,   // *string, omitempty when no printer assigned
+			Id:                 r.ID,
+			Stage:              api.PrintStage(r.Stage),
+			ProductType:        api.ProductType(r.ProductType), // routes nfc_tag cards through NFC_ENCODE (t-2)
+			OrderCode:          r.OrderCode,
+			ProductName:        r.ProductName,
+			Quantity:           int(r.Quantity),
+			ColorName:          r.ColorName, // *string, omitempty when the line has no color
+			PartColorLabels:    labels,      // *[]string, omitempty for a flat line (ADR-037)
+			Printer:            r.Printer,   // *string, omitempty when no printer assigned
+			OptionChoiceLabels: choiceLabels,
+			OrderNote:          r.OrderNote,
+		}
+		if r.Personalization != nil {
+			dto.Personalization = &api.Personalization{Text: r.Personalization.Text, ZoneId: r.Personalization.ZoneID}
 		}
 		if r.Eta.Valid {
 			t := r.Eta.Time
@@ -154,16 +201,25 @@ func printQueueEntryDTO(r sqlc.GetPrintQueueEntryRow) (api.PrintQueueJob, error)
 	if err != nil {
 		return api.PrintQueueJob{}, fmt.Errorf("print job %s: part_colors: %w", r.ID, err)
 	}
+	choiceLabels, err := printQueueOptionChoiceLabels(r.OptionChoices)
+	if err != nil {
+		return api.PrintQueueJob{}, fmt.Errorf("print job %s: option_choices: %w", r.ID, err)
+	}
 	dto := api.PrintQueueJob{
-		Id:              r.ID,
-		Stage:           api.PrintStage(r.Stage),
-		ProductType:     api.ProductType(r.ProductType),
-		OrderCode:       r.OrderCode,
-		ProductName:     r.ProductName,
-		Quantity:        int(r.Quantity),
-		ColorName:       r.ColorName,
-		PartColorLabels: labels,
-		Printer:         r.Printer,
+		Id:                 r.ID,
+		Stage:              api.PrintStage(r.Stage),
+		ProductType:        api.ProductType(r.ProductType),
+		OrderCode:          r.OrderCode,
+		ProductName:        r.ProductName,
+		Quantity:           int(r.Quantity),
+		ColorName:          r.ColorName,
+		PartColorLabels:    labels,
+		Printer:            r.Printer,
+		OptionChoiceLabels: choiceLabels,
+		OrderNote:          r.OrderNote,
+	}
+	if r.Personalization != nil {
+		dto.Personalization = &api.Personalization{Text: r.Personalization.Text, ZoneId: r.Personalization.ZoneID}
 	}
 	if r.Eta.Valid {
 		t := r.Eta.Time
@@ -187,6 +243,24 @@ func printQueuePartLabels(raw []byte) (*[]string, error) {
 	labels := make([]string, len(snap))
 	for i, s := range snap {
 		labels[i] = partColorLabel(s)
+	}
+	return &labels, nil
+}
+
+// printQueueOptionChoiceLabels parses the joined oi.option_choices jsonb into display labels ("Kích
+// thước: Lớn") — nil (field omitted) when the line has none. Reuses the same parse/format the order
+// detail uses (optionChoiceSnapshots / optionChoiceLabel) so a print card never drifts from the detail.
+func printQueueOptionChoiceLabels(raw []byte) (*[]string, error) {
+	snap, err := optionChoiceSnapshots(raw)
+	if err != nil {
+		return nil, err
+	}
+	if len(snap) == 0 {
+		return nil, nil
+	}
+	labels := make([]string, len(snap))
+	for i, s := range snap {
+		labels[i] = optionChoiceLabel(s)
 	}
 	return &labels, nil
 }

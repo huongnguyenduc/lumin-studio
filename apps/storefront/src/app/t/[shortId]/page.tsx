@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
-import { fetchPetPage, hasCustomerSession } from '@/lib/pet-page';
+import { fetchPetPage } from '@/lib/pet-page';
+import { getCustomerProfile } from '@/lib/customer-session';
 import { NewTagWelcome, PetPageUnavailable } from '@/components/pet-page-states';
 import { PetPage } from '@/components/pet-page';
 import { PetOnboarding } from '@/components/pet-onboarding';
@@ -37,11 +38,22 @@ export default async function PetTagPage({ params }: { params: Promise<{ shortId
     );
   }
   if (page.status === 'ENCODED') {
-    const signedIn = await hasCustomerSession();
+    // A resolved profile means a live session (the profile cookie is only ever set alongside the JWT —
+    // see customer-session-cookie.ts) — reusing it both answers "signed in?" AND seeds step 2's contact
+    // fields, one read instead of two. Display-only cache (never verified), so it's a SEED the shopper
+    // can overwrite, not a source of truth.
+    const profile = await getCustomerProfile();
     return (
       <>
         <TrackScan state="encoded" />
-        {signedIn ? <PetOnboarding shortId={shortId} /> : <NewTagWelcome shortId={shortId} />}
+        {profile ? (
+          <PetOnboarding
+            shortId={shortId}
+            contactSeed={{ name: profile.name, phone: profile.phone }}
+          />
+        ) : (
+          <NewTagWelcome shortId={shortId} />
+        )}
       </>
     );
   }

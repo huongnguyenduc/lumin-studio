@@ -239,6 +239,16 @@ export const vi = {
     unavailableError: 'Một món trong giỏ không còn khả dụng — thử xoá rồi thêm lại nhé.',
     pricingError: 'Chưa tính được tạm tính — thử lại giúp mình nhé.',
     retry: 'Thử lại',
+    // Cart edit dialog (PR D — sửa cấu hình tại chỗ, thay vì phải xoá rồi vào PDP thêm lại).
+    editLabel: 'Sửa',
+    editDialogTitle: 'Sửa {name}',
+    editLoading: 'Đang tải thông tin sản phẩm…',
+    editNotFound: 'Sản phẩm này không còn được bán nữa — bạn xoá món này giúp mình nhé.',
+    editError: 'Chưa tải được thông tin sản phẩm — thử lại giúp mình nhé.',
+    editRetry: 'Thử lại',
+    editCancel: 'Huỷ',
+    editSave: 'Cập nhật',
+    editQuantityLabel: 'Số lượng',
   },
   // Checkout info step /thanh-toan (C1, P2-d). Guest-first: reads the cart, collects contact + shipping
   // address (province → ward → street, NO district per ADR-017), prices it server-side with the chosen
@@ -303,17 +313,9 @@ export const vi = {
     privacyNotice:
       'Chúng mình dùng tên, số điện thoại và địa chỉ của bạn chỉ để xử lý và giao đơn.',
     privacyLink: 'Thông báo quyền riêng tư',
-    continueCta: 'Tiếp tục thanh toán',
-    // Payment step (C2) header rendered by this PR; P2-f adds QR + biên lai + submit below. Composed
-    // lines are ICU (not literal JSX separators) so no-literal-string stays clean and word order stays
-    // translatable. Address order = street → ward → province (specific → general, ADR-017 no district).
-    deliverToLabel: 'Giao cho',
-    recipientLine: '{name} · {phone}',
-    addressLine: '{street}, {ward}, {province}',
-    editLabel: 'Sửa',
-    backToInfo: 'Quay lại',
-    // Payment step (C2, P2-f): VietQR panel + receipt upload + submit. The bank name is not shown (config
-    // carries only the bin) — the QR image renders it; we show account number + holder.
+    // One page (P2-d+f merged, no more "continue" step): thông tin nhận hàng → đổi-trả/PDPL → QR + biên
+    // lai, tất cả trong MỘT form. Address order = street → ward → province (specific → general,
+    // ADR-017 no district).
     payHeading: 'Chuyển khoản',
     payIntro: 'Quét mã VietQR bằng app ngân hàng, hoặc chuyển tới số tài khoản dưới đây.',
     qrAlt: 'Mã QR chuyển khoản VietQR',
@@ -325,18 +327,21 @@ export const vi = {
     proofChange: 'Đổi ảnh khác',
     proofUploading: 'Đang tải ảnh lên…',
     proofDone: 'Đã đính kèm: {name}',
+    proofPreviewAlt: 'Ảnh biên lai chuyển khoản vừa chọn',
     proofErrors: {
       type: 'Chỉ nhận ảnh JPG, PNG hoặc WebP nhé.',
       size: 'Ảnh hơi lớn — chọn ảnh nhỏ hơn giúp mình nhé.',
       upload: 'Chưa tải được ảnh lên — thử lại giúp mình nhé.',
     },
     submitCta: 'Xác nhận đặt đơn',
-    // Submit failures mapped from POST /orders (lib/order-submit.ts). Two recoverable 422s get their own
-    // line; everything else is one loud retry message (the client sends no prices, so never proceed).
+    // Submit failures mapped from POST /orders (lib/order-submit.ts) + the client-side "chưa đính ảnh
+    // biên lai" nudge (no_proof — the upload has no disabled-button gate anymore, so a missing proof at
+    // submit time needs a loud, specific reason instead of a dead button).
     submitErrors: {
       no_stk: 'Shop tạm chưa nhận đặt đơn online — bạn nhắn trực tiếp shop giúp mình nhé.',
       no_shipping_rule:
         'Chúng mình chưa giao tới tỉnh/thành này — quay lại chọn nơi khác giúp mình nhé.',
+      no_proof: 'Bạn đính ảnh biên lai chuyển khoản trước khi xác nhận đặt đơn nhé.',
       error: 'Chưa đặt được đơn — kiểm tra lại rồi thử lại giúp mình nhé.',
     },
     // Shown when the shop has no STK configured (no web payment possible; mirrors NO_STK_CONFIGURED).
@@ -574,6 +579,36 @@ export const vi = {
   // (settings.refund_policy) is rendered inline at checkout, this is the full policy. `version` MUST
   // stay in sync with core-api's consentPolicyVersion ("2026-01", checkout.go) — a drift means a
   // customer consents under a version whose notice text they can't read. Sentence case, warm voice.
+  // The "Nhắn shop" popup (PR F) — a floating button on desktop, a bottom-nav entry on mobile, both open
+  // this SAME sheet listing whatever channels the shop configured (Admin › Cài đặt › Kênh liên hệ). Never
+  // rendered when no channel is set.
+  shopContact: {
+    triggerLabel: 'Nhắn shop',
+    sheetTitle: 'Nhắn shop',
+    close: 'Đóng',
+    zalo: 'Nhắn Zalo',
+    facebook: 'Nhắn Messenger',
+    call: 'Gọi {phone}',
+    email: 'Gửi email',
+    viewPage: 'Xem trang liên hệ',
+  },
+  // /lien-he (PR F) — public, indexable trust page listing the shop's contact channels + hours/address.
+  // Reads GET /shop/contact (public); every field optional, so an unconfigured shop still gets a 200 page
+  // with a warm "đang cập nhật" fallback instead of a 404.
+  lienHe: {
+    metaTitle: 'Liên hệ — Lumin Studio',
+    metaDescription:
+      'Cách liên hệ với Lumin Studio — Zalo, Messenger, điện thoại, email và địa chỉ.',
+    heading: 'Liên hệ',
+    intro: 'Có gì chưa rõ, bạn nhắn cho chúng mình qua kênh tiện nhất nhé.',
+    empty: 'Chúng mình đang cập nhật thông tin liên hệ — bạn quay lại sau nhé.',
+    zalo: 'Zalo',
+    facebook: 'Facebook Messenger',
+    phone: 'Điện thoại',
+    email: 'Email',
+    address: 'Địa chỉ',
+    hours: 'Giờ mở cửa',
+  },
   chinhSach: {
     metaTitle: 'Chính sách đổi trả & quyền riêng tư — Lumin Studio',
     metaDescription:
@@ -686,7 +721,7 @@ export const vi = {
         other: 'Khác',
         breed: 'Giống',
         age: 'Tuổi',
-        weight: 'Nặng',
+        weight: 'Cân nặng (kg)',
         allergies: 'Dị ứng / lưu ý y tế',
         allergiesPlaceholder: 'Ví dụ: dị ứng thịt gà…',
         next: 'Tiếp tục → liên hệ, y tế & social',
@@ -733,6 +768,13 @@ export const vi = {
       greeting: 'Xin chào, mình là {name}',
       lostGreeting: 'Chào, mình là {name}',
       homeBadge: '🏠 ở nhà · safe',
+      // Chip row cho giống/tuổi/cân nặng (thay dòng meta một câu xám nhạt trước đây — bám vocab pill
+      // của design "Lumin Pet Tag - Hi-fi" §3, mượn class chip đã dùng cho khoái khẩu/homeBadge).
+      metaBreed: '🐾 {breed}',
+      metaAge: '🎂 {age}',
+      // Không tự thêm "kg" ở đây — dữ liệu cũ có thể đã gõ kèm đơn vị; form giờ hướng nhập số qua nhãn
+      // "Cân nặng (kg)" nên hồ sơ mới sẽ tự nhất quán mà không cần suy đoán/parse chuỗi cũ.
+      metaWeight: '⚖️ {weight}',
       lostBanner: 'Mình đi lạc rồi!',
       lostBannerEn: "I'm lost — please help me get home",
       allergy: 'Lưu ý: dị ứng {allergy}',
@@ -763,8 +805,15 @@ export const vi = {
         locating: 'Đang lấy vị trí…',
         sending: 'Đang gửi…',
         sent: 'Đã gửi vị trí cho sen của {name}! Cảm ơn bạn đã giúp đỡ 🎉',
-        denied: 'Chưa chia sẻ được vị trí',
-        deniedHint: 'Bạn vẫn có thể gọi hoặc nhắn cho sen bằng nút phía trên nhé.',
+        // "Chặn" (trình duyệt đã nhớ từ chối trước đó — bấm lại sẽ tự động chặn lần nữa, không hiện lại
+        // hộp thoại xin quyền) so với "chưa hỗ trợ" (HTTP không có geolocation, hoặc trình duyệt trong-app
+        // như Zalo/Messenger chặn hộp thoại) — hai nguyên nhân khác nhau, gộp chung "Chưa chia sẻ được vị
+        // trí" khiến người dùng cứ bấm lại mãi không hiểu vì sao (báo cáo gốc).
+        denied: 'Trình duyệt đang chặn chia sẻ vị trí cho trang này',
+        deniedHint:
+          'Bạn mở cài đặt trình duyệt → quyền vị trí cho trang này → cho phép, rồi thử lại — hoặc gọi/nhắn cho sen bằng nút phía trên nhé.',
+        unsupported: 'Máy hoặc trình duyệt này chưa hỗ trợ chia sẻ vị trí',
+        unsupportedHint: 'Bạn vẫn có thể gọi hoặc nhắn cho sen bằng nút phía trên nhé.',
         notLost: 'Bé này vừa được đánh dấu đã về nhà rồi — không cần gửi vị trí nữa.',
         error: 'Gửi chưa được — thử lại giúp mình nhé.',
         retry: 'Thử lại',
@@ -792,7 +841,7 @@ export const vi = {
         other: '🐾 Khác',
         breed: 'Giống',
         age: 'Tuổi',
-        weight: 'Nặng',
+        weight: 'Cân nặng (kg)',
         bio: 'Tiểu sử',
         bioPlaceholder: 'Kể vài dòng về bé…',
         favorites: 'Khoái khẩu',
@@ -835,6 +884,7 @@ export const vi = {
         hidden: '· đang ẩn',
         moveUp: 'Đưa {block} lên trên',
         moveDown: 'Đưa {block} xuống dưới',
+        dragHandle: 'Kéo để sắp xếp {block}',
         show: 'Hiện {block}',
         hide: 'Ẩn {block}',
         block: {

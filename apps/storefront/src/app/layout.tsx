@@ -7,9 +7,11 @@ import { SiteHeader } from '@/components/site-header';
 import { SiteFooter } from '@/components/site-footer';
 import { BottomNav } from '@/components/bottom-nav';
 import { ConsentBanner } from '@/components/consent-banner';
+import { ShopContactTrigger } from '@/components/shop-contact-sheet';
 import { locale } from '@/messages';
 import { siteBaseUrl } from '@/lib/site';
 import { BRAND } from '@/lib/product-jsonld';
+import { fetchShopContact } from '@/lib/shop-contact';
 import './globals.css';
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -41,6 +43,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // domain catalog grows, shipping it whole to every client page is wasted bytes.
   const messages = await getMessages();
   const t = await getTranslations('nav');
+  // Fetched ONCE here (not per-page, not per-popup-open) and threaded to both surfaces that need it —
+  // the desktop floating trigger (rendered here) and the mobile bottom-nav tab (passed as a prop, since
+  // it must render INSIDE BottomNav's tab list, not float independently).
+  const shopContactResult = await fetchShopContact();
+  const shopContact = shopContactResult.ok ? shopContactResult.contact : {};
 
   return (
     <html
@@ -60,7 +67,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             {children}
           </main>
           <SiteFooter />
-          <BottomNav />
+          <BottomNav shopContact={shopContact} />
+          <ShopContactTrigger contact={shopContact} variant="floating" />
           <ConsentBanner />
         </NextIntlClientProvider>
       </body>

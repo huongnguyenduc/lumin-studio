@@ -16,9 +16,10 @@ type EncodeResult = components['schemas']['PrintTagEncodeResult'];
 
 /**
  * Move ONE print job to a new stage (PATCH /admin/print-jobs/{id}) — the drag drop / advance button.
- * Stage-only: this does NOT transition the customer's OrderStatus (D6) — an order-status change goes
- * through the transition flow (P3-e) that enforces the QC/tracking gate a board drag must never bypass.
- * The server is authoritative and re-reads the enriched card, which we return so the board reconciles
+ * The server (ADR-057) also auto-advances the order PAID→PRINTING once every line has left NEED_PRINT —
+ * still stage-only from the CLIENT's point of view, D6 otherwise holds: →SHIPPING/→CANCELLED/→REFUNDED
+ * only ever happen through the transition flow (P3-e) that enforces the QC/tracking gate a board drag
+ * must never bypass. The server is authoritative and re-reads the enriched card, which we return so the board reconciles
  * (idempotent with the SSE broadcast of the same PATCH). `conflict` = the job vanished under us (404);
  * `validation` = a stage the server rejected (shouldn't happen from a fixed column drop, mapped anyway).
  */

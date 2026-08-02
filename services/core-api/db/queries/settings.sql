@@ -40,6 +40,17 @@ SET refund_policy = sqlc.arg('refund_policy'),
 WHERE id = true
 RETURNING *;
 
+-- UpdateShopInfo writes ONLY shop_info (PR F — shop contact channels: zalo/facebook/phone/email/
+-- address/hours, GET /shop/contact's source), same targeted reasoning as above. WHOLESALE replace, not
+-- a merge — shop_info has had no writer until this PR (DEFAULT '{}' since 000007), so there is nothing
+-- else stored in it to clobber; if that ever changes, this query must become a jsonb_set-style merge.
+-- name: UpdateShopInfo :one
+UPDATE settings
+SET shop_info = sqlc.arg('shop_info'),
+    updated_at = now()
+WHERE id = true
+RETURNING *;
+
 -- UpdateBankAccount sets the VietQR STK the server renders the static QR from. Called only inside
 -- UpdateBankAccountTx, alongside InsertBankAudit, so every change is audited (conventions §57).
 -- name: UpdateBankAccount :one

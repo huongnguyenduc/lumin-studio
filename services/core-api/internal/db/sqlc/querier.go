@@ -48,6 +48,11 @@ type Querier interface {
 	// the two can skew the count by one (cosmetic, self-heals next request, never a money value), which a
 	// one-shop admin accepts rather than pay for a snapshot tx (same stance as CountActiveProducts).
 	CountAdminOrders(ctx context.Context, status NullOrderStatus) (int64, error)
+	// CountNeedPrintForOrder is the auto-advance check (P3-x, ADR-057): after a print job moves off
+	// NEED_PRINT, count how many of the SAME order's jobs are still stuck there. Zero means every line has
+	// at least started printing (or further), the signal AdvancePrintJobStage uses to auto-advance the
+	// order PAID→PRINTING. Reads within the SAME tx as the stage update so the count is never stale.
+	CountNeedPrintForOrder(ctx context.Context, orderID uuid.UUID) (int64, error)
 	// CountPublishedReviewsByProduct is the total for the review-list envelope — the SAME product_id +
 	// status='published' filter as ListReviewsByProduct, no sort/limit. It runs alongside the list as a
 	// second autocommit read; a concurrent review write between the two can skew the total by one. That is
@@ -460,7 +465,11 @@ type Querier interface {
 	// on print_jobs (queue-card field, spec §02) so no colors join is needed; printer/eta/color_name are
 	// nullable. oi.part_colors is the ADR-037 per-part-colour snapshot (jsonb, already denormalized WITH the
 	// colour names at capture) — carried straight off the joined order_item so a parts-product card shows
-	// what-filament-for-which-part without any new colours/parts join. All joins are INNER: a print job's order_item FK is ON DELETE CASCADE and its product FK is
+	// what-filament-for-which-part without any new colours/parts join. oi.personalization (engraving text) and
+	// oi.option_choices (also name-denormalized, ADR-037) and o.note ride along the SAME join for the SAME
+	// reason: the printer needs to know WHAT to engrave, not just what colour, and the shop's internal note —
+	// previously only visible on the admin order detail, forcing a second click per order to find it. All
+	// joins are INNER: a print job's order_item FK is ON DELETE CASCADE and its product FK is
 	// RESTRICT, so every job has exactly one live item → order + product. Ordered by stage (enum definition
 	// order NEED_PRINT→SHIPPED) then created_at, so each column is stable FIFO; the client groups by stage.
 	// ponytail: no pagination — the active print queue on a one-shop box is small; SHIPPED accretes, so add
@@ -732,6 +741,11 @@ type Querier interface {
 	// so the shape MUST stay [{province, fee}]; the handler validates that before this write. Not audited
 	// (P3-i open-q #2: only the STK is a high-value money-out field worth an audit trail).
 	UpdateShippingRules(ctx context.Context, shippingRules []byte) (Setting, error)
+	// UpdateShopInfo writes ONLY shop_info (PR F — shop contact channels: zalo/facebook/phone/email/
+	// address/hours, GET /shop/contact's source), same targeted reasoning as above. WHOLESALE replace, not
+	// a merge — shop_info has had no writer until this PR (DEFAULT '{}' since 000007), so there is nothing
+	// else stored in it to clobber; if that ever changes, this query must become a jsonb_set-style merge.
+	UpdateShopInfo(ctx context.Context, shopInfo []byte) (Setting, error)
 	// Seed or rotate the first owner's login credential (PR-3e-1, `make seed-owner`). Forces
 	// role=owner + active=true and is idempotent on the UNIQUE email, so re-running it rotates the
 	// password hash rather than failing. This is the ONLY writer of password_hash this slice; there

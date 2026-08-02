@@ -2,11 +2,16 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { formatVnd, formatVnDate } from '@lumin/core';
+import { formatVnd, formatVnDate, type OrderStatus } from '@lumin/core';
 import { Card } from '@lumin/ui';
 import type { AdminOrderRow } from '@/lib/orders';
+import { availableTransitions, type AvailableTransition } from '@/lib/order-detail';
+import { transitionOrder } from '@/lib/order-actions';
 import { OrderStatusBadge } from './order-status-badge';
+import { ROLE } from './order-detail-view';
+import { TransitionDialog } from './transition-dialog';
 
 /**
  * Orders list body (P3-c). One component owns both responsive layouts and the multi-select state:
@@ -18,6 +23,82 @@ import { OrderStatusBadge } from './order-status-badge';
  * reports the count, but the BULK action stays inert (a bulk transition is N× POST /transitions —
  * deferred) — see the comment on the bar.
  */
+/**
+ * Change-status-inline (per row) — the orders list previously had NO way to move an order except
+ * opening its detail page (P3-e). Reuses the SAME transition machinery the detail page uses
+ * (availableTransitions/transitionOrder/TransitionDialog) so this is not a second, drifting
+ * implementation of the state machine's RBAC/edge rules — just a shorter path to it. A native
+ * `<select>` (rung 4 of the ladder: platform feature over a custom dropdown/menu component) lists
+ * only the edges `canTransition` allows from THIS row's status for ROLE; `confirm`/`advance` fire
+ * immediately, `ship`/`cancel`/`refund` still need their extra fields so they open the same dialog.
+ */
+function RowActions({ orderId, status }: { orderId: string; status: OrderStatus }) {
+  const t = useTranslations('orders');
+  const tDetail = useTranslations('orderDetail');
+  const router = useRouter();
+  const [dialog, setDialog] = useState<AvailableTransition | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const actions = availableTransitions(status, ROLE);
+
+  if (actions.length === 0) {
+    return <span className="text-xs text-text-muted">{t('actionDone')}</span>;
+  }
+
+  async function onPick(to: string) {
+    const action = actions.find((a) => a.to === to);
+    if (!action) return;
+    if (action.kind === 'confirm' || action.kind === 'advance') {
+      setError(null);
+      setPending(true);
+      const res = await transitionOrder(orderId, { to: action.to });
+      setPending(false);
+      if (res.ok) router.refresh();
+      else setError(res.code);
+    } else {
+      setDialog(action);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <select
+        aria-label={t('bulkStatus')}
+        disabled={pending}
+        value=""
+        onChange={(e) => void onPick(e.target.value)}
+        className="min-h-[36px] rounded-lg border-2 border-border-subtle bg-surface-card px-2 text-sm font-semibold text-text-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky"
+      >
+        <option value="" disabled>
+          {t('actionPlaceholder')}
+        </option>
+        {actions.map((a) => (
+          <option key={a.to} value={a.to}>
+            {tDetail(`action.${a.to}`)}
+          </option>
+        ))}
+      </select>
+      {error && (
+        <p role="alert" className="text-xs text-danger">
+          {tDetail(`error.${error}`)}
+        </p>
+      )}
+      {dialog && (
+        <TransitionDialog
+          key={dialog.to}
+          orderId={orderId}
+          action={dialog}
+          onClose={() => setDialog(null)}
+          onDone={() => {
+            setDialog(null);
+            router.refresh();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 export function OrdersTable({ rows }: { rows: AdminOrderRow[] }) {
   const t = useTranslations('orders');
   const tChannel = useTranslations('channel');
@@ -109,6 +190,9 @@ export function OrdersTable({ rows }: { rows: AdminOrderRow[] }) {
                 <th scope="col" className="px-4 py-3">
                   {t('colDate')}
                 </th>
+                <th scope="col" className="px-4 py-3">
+                  {t('colAction')}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -142,6 +226,9 @@ export function OrdersTable({ rows }: { rows: AdminOrderRow[] }) {
                   </td>
                   <td className="px-4 py-3 font-mono text-text-muted">
                     {formatVnDate(r.createdAt)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <RowActions orderId={r.id} status={r.status} />
                   </td>
                 </tr>
               ))}
@@ -182,9 +269,10 @@ export function OrdersTable({ rows }: { rows: AdminOrderRow[] }) {
                   {formatVnd(r.total)}
                 </span>
               </div>
-              <p className="text-right font-mono text-xs text-text-muted">
-                {formatVnDate(r.createdAt)}
-              </p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-mono text-xs text-text-muted">{formatVnDate(r.createdAt)}</p>
+                <RowActions orderId={r.id} status={r.status} />
+              </div>
             </Card>
           </li>
         ))}

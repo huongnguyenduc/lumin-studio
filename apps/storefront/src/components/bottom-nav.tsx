@@ -5,10 +5,14 @@ import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { cn } from '@lumin/ui';
 import { useCart } from '@/lib/cart-store';
+import type { ShopContact } from '@/lib/shop-contact';
 import { BagIcon, GridIcon, HomeIcon, UserIcon } from './icons';
+import { ShopContactTrigger } from './shop-contact-sheet';
 
-/** Mobile-only bottom tab bar (design: fixed 4-tab nav). Active tab is coral; hidden from md up. */
-export function BottomNav() {
+/** Mobile-only bottom tab bar (design: fixed 4-tab nav, +1 "Nhắn shop" tab from PR F when the shop has
+ *  configured at least one channel — ShopContactTrigger renders null otherwise, so the bar stays 4-tab
+ *  for an unconfigured shop). Active tab is coral; hidden from md up. */
+export function BottomNav({ shopContact }: { shopContact: ShopContact }) {
   const t = useTranslations('nav');
   const pathname = usePathname();
   const { count: cartCount } = useCart();
@@ -57,6 +61,7 @@ export function BottomNav() {
             </li>
           );
         })}
+        <ShopContactTrigger contact={shopContact} variant="navTab" />
       </ul>
     </nav>
   );

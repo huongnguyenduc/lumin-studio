@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {
   DndContext,
@@ -40,21 +41,30 @@ const COLUMN_TONE: Record<PrintStage, string> = {
 };
 
 /**
- * The live drag-drop print board (Hàng đợi in, P3-h). Four columns = the four print stages; a card is
- * dragged (pointer/touch) OR advanced with its "→ next" button (the keyboard/AT/mobile path, D-P3-2).
- * Either way it PATCHes print_jobs.stage only — it does NOT move the customer's OrderStatus (D6: the
- * design's "drag → order status auto-syncs" is intentionally decoupled; order status changes go through
- * the guarded transition flow on the order-detail screen). The board stays live over SSE with a poll
- * fallback (usePrintStream). Optimistic: the card moves immediately, reconciles to the server card, and
- * reverts on failure.
+ * The live drag-drop print board (Hàng đợi in, P3-h). Columns = the print stages; a card is dragged
+ * (pointer/touch) OR advanced with its "→ next" button (the keyboard/AT/mobile path, D-P3-2). Either way
+ * it PATCHes print_jobs.stage — server-side (ADR-057) that ALSO auto-advances the order PAID→PRINTING
+ * once every one of its lines has left NEED_PRINT, so a solo shop doesn't have to click twice for the
+ * same fact. D6 still holds everywhere else: →SHIPPING (QC-photo/tracking gate), →CANCELLED, →REFUNDED
+ * only ever happen through the guarded transition flow on the order-detail screen — a board drag never
+ * touches those. The board stays live over SSE with a poll fallback (usePrintStream). Optimistic: the
+ * card moves immediately, reconciles to the server card, and reverts on failure.
  */
-export function PrintBoard({ initialCards }: { initialCards: PrintCard[] }) {
+export function PrintBoard({
+  initialCards,
+  highlightId,
+}: {
+  initialCards: PrintCard[];
+  highlightId?: string;
+}) {
   const t = useTranslations('printQueue');
+  const router = useRouter();
   const { cards, setCards, live } = usePrintStream(initialCards);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [reduced, setReduced] = useState(false);
   const [encodingCard, setEncodingCard] = useState<PrintCard | null>(null); // NFC-encode sheet (t-2)
+  const [highlighted, setHighlighted] = useState(highlightId ?? null); // just-NFC-encoded card (P3-h follow-up)
 
   // prefers-reduced-motion → kill the drop settle animation (the drag itself must still translate, or
   // the card can't follow the pointer; only the decorative settle is suppressed).
@@ -64,6 +74,21 @@ export function PrintBoard({ initialCards }: { initialCards: PrintCard[] }) {
     sync();
     mq.addEventListener('change', sync);
     return () => mq.removeEventListener('change', sync);
+  }, []);
+
+  // After the NFC-write callback redirects back here (?encoded={jobId}), the card landed in PACKING but
+  // isn't necessarily at the top of that column (FIFO by created_at) — staff previously had no signal it
+  // worked short of hunting the column. Scroll it into view + flash it briefly, then strip the query param
+  // (router.replace, no history entry) so a refresh doesn't re-trigger the flash.
+  useEffect(() => {
+    if (!highlightId) return;
+    const el = document.getElementById(`job-${highlightId}`);
+    el?.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' });
+    router.replace('/hang-doi-in');
+    const timer = setTimeout(() => setHighlighted(null), 2500);
+    return () => clearTimeout(timer);
+    // Deliberately empty deps: this must run exactly once, off the FIRST-LOAD highlightId prop — not
+    // re-fire if router/reduced happen to change identity later.
   }, []);
 
   // Mouse: an 8px move starts a drag. Touch: a 200ms press-hold starts one, so an ordinary swipe still
@@ -141,6 +166,7 @@ export function PrintBoard({ initialCards }: { initialCards: PrintCard[] }) {
                 cards={columns[stage]}
                 onAdvance={advance}
                 onEncode={setEncodingCard}
+                highlightId={highlighted}
               />
             ))}
           </div>
@@ -174,11 +200,13 @@ function Column({
   cards,
   onAdvance,
   onEncode,
+  highlightId,
 }: {
   stage: PrintStage;
   cards: PrintCard[];
   onAdvance: (id: string, to: PrintStage) => void;
   onEncode: (card: PrintCard) => void;
+  highlightId?: string | null;
 }) {
   const t = useTranslations('printQueue');
   const { setNodeRef, isOver } = useDroppable({ id: stage });
@@ -208,7 +236,13 @@ function Column({
         </p>
       ) : (
         cards.map((card) => (
-          <DraggableCard key={card.id} card={card} onAdvance={onAdvance} onEncode={onEncode} />
+          <DraggableCard
+            key={card.id}
+            card={card}
+            onAdvance={onAdvance}
+            onEncode={onEncode}
+            highlighted={card.id === highlightId}
+          />
         ))
       )}
     </section>
@@ -222,10 +256,12 @@ function DraggableCard({
   card,
   onAdvance,
   onEncode,
+  highlighted,
 }: {
   card: PrintCard;
   onAdvance: (id: string, to: PrintStage) => void;
   onEncode: (card: PrintCard) => void;
+  highlighted?: boolean;
 }) {
   const { listeners, setNodeRef, transform, isDragging } = useDraggable({ id: card.id });
   const style = transform
@@ -234,12 +270,15 @@ function DraggableCard({
 
   return (
     <div
+      id={`job-${card.id}`}
       ref={setNodeRef}
       style={style}
       {...listeners}
       className={`cursor-grab rounded-xl border-2 border-border-strong bg-surface-card p-2.5 shadow-pop ${
         isDragging ? 'opacity-40' : ''
-      } ${card.stage === 'SHIPPED' ? 'opacity-70' : ''}`}
+      } ${card.stage === 'SHIPPED' ? 'opacity-70' : ''} ${
+        highlighted ? 'ring-4 ring-accent-teal motion-safe:animate-pulse' : ''
+      }`}
     >
       <CardFace card={card} />
       <CardAdvance card={card} onAdvance={onAdvance} onEncode={onEncode} />
@@ -247,14 +286,16 @@ function DraggableCard({
   );
 }
 
-/** The card face: product (+ color) · quantity, the per-part colours (ADR-037), then the order code · due
- *  date · printer meta line. Shared by the in-column card and the drag overlay. No money, no PII (a print
- *  card carries neither). A parts product has no flat colorName; its filament-per-part shows on its own
- *  line from partColorLabels — what to load for which part, straight off the order (names frozen at capture). */
+/** The card face: product (+ color) · quantity, the per-part colours (ADR-037) + chosen options, the
+ *  engraving text (if any — the printer previously had NO way to see what to engrave, only the order
+ *  detail showed it), then the order code · due date · printer meta line, then the internal note if set.
+ *  Shared by the in-column card and the drag overlay. No money, no PII (a print card carries neither) —
+ *  the engraving/note ARE the shop's own production data, not customer PII, so they're safe on the card. */
 function CardFace({ card }: { card: PrintCard }) {
   const t = useTranslations('printQueue');
   const nameLine = card.colorName ? `${card.productName} · ${card.colorName}` : card.productName;
-  const partColors = card.partColorLabels?.length ? card.partColorLabels.join(' · ') : null;
+  const specParts = [...(card.partColorLabels ?? []), ...(card.optionChoiceLabels ?? [])];
+  const specs = specParts.length ? specParts.join(' · ') : null;
   const meta = [
     card.orderCode,
     card.eta ? t('due', { date: formatVnDate(card.eta) }) : null,
@@ -267,8 +308,18 @@ function CardFace({ card }: { card: PrintCard }) {
         {nameLine}
         {card.quantity > 1 ? <span className="text-text-muted"> ×{card.quantity}</span> : null}
       </p>
-      {partColors ? <p className="mt-0.5 text-xs text-text-body">{partColors}</p> : null}
+      {specs ? <p className="mt-0.5 text-xs text-text-body">{specs}</p> : null}
+      {card.personalization ? (
+        <p className="mt-0.5 rounded bg-primary/10 px-1.5 py-0.5 font-mono text-xs font-semibold text-primary">
+          {t('engrave', { text: card.personalization.text })}
+        </p>
+      ) : null}
       <p className="mt-0.5 font-mono text-[11px] text-text-muted">{meta.join(' · ')}</p>
+      {card.orderNote ? (
+        <p className="mt-0.5 text-xs italic text-text-muted">
+          {t('orderNote', { note: card.orderNote })}
+        </p>
+      ) : null}
     </>
   );
 }
