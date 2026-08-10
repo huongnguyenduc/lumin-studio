@@ -265,13 +265,17 @@ export function ProductDetail({
               whole selection is valid (colour/parts + enumerated choices + every engraving in-limit). On
               click it snapshots the selection into the cart and stays on the PDP ("Mua ngay" adds then
               goes straight to /thanh-toan). The hint names the
-              first unmet axis (engrave errors surface on the field itself). Sticky above the mobile tab
-              bar (storefront rule: add-to-cart dính đáy trên mobile) as a SOLID footer flush against
-              BottomNav (bottom-nav.tsx — 56px min-height row + border ≈ 60px) — matches the hi-fi's
-              opaque bottom bar rather than floating with a gap. The CTA shows the UNIT base price
-              only while qty = 1 — the client never multiplies money (conventions §Tiền); the real total
-              lands with the cart's server quote. */}
-          <div className="sticky bottom-[60px] z-30 -mx-4 border-t-2 border-border-default bg-surface-card px-4 pb-3.5 pt-[11px] md:static md:m-0 md:border-0 md:bg-transparent md:p-0">
+              first unmet axis (engrave errors surface on the field itself). `fixed` (not `sticky`) above
+              the mobile tab bar (storefront rule: add-to-cart dính đáy trên mobile) — this component
+              renders above ProductReviews too (page.tsx), and `position:sticky`'s stuck region is bounded
+              by its own parent box, so it would unstick once the info column ends, well before the
+              reviews section below it; `fixed` keeps buy-intent reachable while reading reviews, matching
+              the hi-fi's persistent bottom bar. Corresponding bottom clearance for content is reserved at
+              the page level (page.tsx) so nothing renders underneath it. Solid footer flush against
+              BottomNav (bottom-nav.tsx — 56px min-height row + border ≈ 60px). The CTA shows the UNIT
+              base price only while qty = 1 — the client never multiplies money (conventions §Tiền); the
+              real total lands with the cart's server quote. */}
+          <div className="fixed inset-x-0 bottom-[60px] z-30 border-t-2 border-border-default bg-surface-card px-4 pb-3.5 pt-[11px] md:static md:inset-auto md:border-0 md:bg-transparent md:p-0">
             <div className="flex items-center gap-2 sm:gap-3">
               {/* Hi-fi "Tổng / giá" block, mobile only — desktop CTA already carries its own price. Base
                   price only (never client-multiplied); "từ" prefix when the pick can still change the

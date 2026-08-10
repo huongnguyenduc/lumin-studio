@@ -32,15 +32,19 @@ Trong `product-detail.tsx` (+ `color-swatches.tsx`, `vi.ts`).
 
 Verify: như PR 1 + đối chiếu cả frame hi-fi desktop trước khi chốt order; xác nhận `divide-border-subtle` compile.
 
-## PR 3 — Reviews vào trong article, sticky CTA bám tới cuối ("dễ mua hơn")
+## PR 3 — CTA bám tới cuối reviews ("dễ mua hơn") — ĐÃ LÀM XONG, khác cơ chế so với plan gốc
 
 Vấn đề: `ProductReviews` render là sibling SAU `<ProductDetail>` (`page.tsx:100`) nên sticky bar hết bám trước khi tới reviews — đúng chỗ intent mua cao nhất.
 
-1. `product-detail.tsx`: thêm `children?: ReactNode`, render trong `<article>` sau flex 2 cột. Nếu cột info không cao theo (flex stretch — nên là có), dời sticky-bar div thành con trực tiếp của `<article>`.
-2. `page.tsx`: nest `<ProductReviews/>` làm children, xoá sibling render. Giữ anchor `id="reviews"` (redirect `page.tsx:88` phụ thuộc).
-3. Kiểm tra desktop: media column `md:sticky top-24` giờ bám lâu hơn (tốt) — check không đè footer.
+**Cơ chế gốc (children/DOM-nesting) KHÔNG dùng được:** `position:sticky` chỉ bám trong phạm vi box của chính parent nó (cột info). Muốn bám qua hết reviews bằng sticky thuần, reviews phải nằm TRONG cùng div với cột info — nhưng PR 2 đã đưa mô tả+specs vào cuối cột info đó theo đúng thứ tự hi-fi (configurator→CTA→mô tả→specs); dời CTA ra ngoài hàng flex 2 cột để "bao" luôn reviews sẽ đẩy CTA xuống SAU specs, phá thứ tự hi-fi vừa chốt ở PR 2. Nhân đôi render `ProductReviews` (ẩn theo breakpoint) để né việc này bị loại vì trùng `id="reviews"` + trùng nội dung SSR (SEO/AT).
 
-Verify: browser mobile scroll hết reviews mà CTA vẫn hiện; deep-link `?reviewsPage=2#reviews` vẫn đúng; screenshots.
+**Đã làm thay:** đổi CTA bar mobile từ `sticky bottom-[60px]` → `fixed inset-x-0 bottom-[60px]` (desktop `md:static` không đổi) — bám theo viewport nên tồn tại suốt route, không phụ thuộc vị trí DOM. `page.tsx` bọc `<ProductDetail>`+`<ProductReviews>` trong `<div className="pb-20 md:pb-0">` (cộng thêm layout's `pb-20` toàn site cho BottomNav) để chừa chỗ cho bar không đè lên review/pager cuối cùng. `ProductReviews` VẪN là sibling, không cần `children` prop.
+
+**Đã biết, CHƯA fix (cần devtools/browser thật để quyết, ghi trong PR body):**
+- `consent-banner.tsx` (`fixed bottom-[76px] z-50`) có thể đè lên CTA bar (z-30) ở lần ghé đầu (trước khi chọn đồng ý/từ chối) — trước đây hiếm khi trùng vì bar chỉ hiện khi cuộn tới cột info, giờ bar luôn hiện nên khả năng trùng cao hơn. Banner tự biến mất vĩnh viễn sau khi chọn (localStorage) nên đây là overlap ngắn hạn, không chặn mua hàng — nhưng cần xác nhận bằng mắt.
+- Bàn phím: `pb-20` chỉ chừa chỗ ở CUỐI trang; một link giữa danh sách review được focus bằng Tab có thể bị bar che (không có `scroll-margin-bottom` trên từng item). Chưa thêm — cần xác nhận bằng bàn phím thật trước khi quyết định có đáng thêm không.
+
+Verify: browser mobile scroll hết reviews mà CTA vẫn hiện; deep-link `?reviewsPage=2#reviews` vẫn đúng; screenshots; xác nhận 2 điểm "chưa fix" ở trên bằng browser thật.
 
 ---
 
