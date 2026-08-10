@@ -20,6 +20,7 @@ import {
   type ProductFieldErrors,
 } from '@/lib/product-form';
 import { parseIntField } from '@/lib/materials';
+import { defaultModelColors } from '@/lib/product-model';
 import { createProduct, updateProduct, deleteProduct, type WriteCode } from '@/lib/product-actions';
 import { ProductGallery } from './product-gallery';
 import { ProductModel } from './product-model';
@@ -63,6 +64,12 @@ export function ProductEditor({
   const dirty = useMemo(
     () => JSON.stringify(draft) !== JSON.stringify(baseline),
     [draft, baseline],
+  );
+  // Default paint for the 3D preview cards (pose editor + engrave picker) — the model shows the
+  // colours a customer opens on, not the glb's baked material.
+  const defaultColors = useMemo(
+    () => (product ? defaultModelColors(product.parts ?? [], product.colors ?? []) : undefined),
+    [product],
   );
   const [errors, setErrors] = useState<ProductFieldErrors>({});
   const [formError, setFormError] = useState<WriteCode | null>(null);
@@ -367,8 +374,10 @@ export function ProductEditor({
               <ProductModelView
                 productId={product.id}
                 model3dUrl={product.model3dUrl}
+                model3dStructuredUrl={product.model3dStructuredUrl}
                 model3dView={product.model3dView}
                 productName={product.name}
+                defaultColors={defaultColors}
               />
             </Card>
           )}
@@ -384,6 +393,8 @@ export function ProductEditor({
               <EngraveAnchorPicker
                 productId={product.id}
                 model3dUrl={product.model3dUrl}
+                model3dStructuredUrl={product.model3dStructuredUrl}
+                model3dView={product.model3dView}
                 options={product.options
                   .filter((o) => o.type === 'text')
                   .map((o) => ({
@@ -393,6 +404,7 @@ export function ProductEditor({
                   }))}
                 productName={product.name}
                 colors={product.colors}
+                defaultColors={defaultColors}
               />
             </Card>
           )}

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Button, Input, cn } from '@lumin/ui';
+import { Badge, Button, Input, cn } from '@lumin/ui';
 import type { Viewer3d } from '@lumin/ui/viewer3d';
 import type { components } from '@lumin/api-client';
 import {
@@ -14,8 +14,17 @@ import {
   loadModelViewer,
 } from '@/lib/model-view';
 import { saveModelView, saveEngraveAnchor } from '@/lib/product-actions';
+import { getAssetJobs } from '@/lib/asset-actions';
 
 type Model3dView = components['schemas']['Model3dView'];
+type JobStatusName = components['schemas']['AssetJob']['status'];
+// Badge hue per job status — mirrors the upload card (product-model.tsx).
+const SPRITE_TONE = {
+  queued: 'neutral',
+  processing: 'sky',
+  ready: 'teal',
+  failed: 'danger',
+} as const;
 type EngraveAnchor = components['schemas']['EngraveAnchor'];
 type Color = components['schemas']['Color'];
 
@@ -34,6 +43,14 @@ interface ModelViewerElement extends HTMLElement {
   ): {
     position: { x: number; y: number; z: number };
     normal: { x: number; y: number; z: number };
+  } | null;
+  // Default-paint (f-3): recolour materials by name (structured glb names materials after objects).
+  // setBaseColorFactor accepts a CSS colour string — model-viewer converts to linear itself.
+  model?: {
+    materials: {
+      name: string;
+      pbrMetallicRoughness: { setBaseColorFactor(color: string): void };
+    }[];
   } | null;
 }
 
@@ -103,15 +120,23 @@ function useWebglOk(): boolean {
 export function ProductModelView({
   productId,
   model3dUrl,
+  model3dStructuredUrl,
   model3dView,
   productName,
+  defaultColors,
 }: {
   productId: string;
   model3dUrl: string;
+  /** f-4 structured glb (materials named after objects) — preferred when present so the default paint
+   *  below recolours per part exactly like the storefront viewer; plain glb otherwise. */
+  model3dStructuredUrl?: string;
   model3dView?: Model3dView;
   productName: string;
+  /** Default paint (defaultModelColors) — the pose is aligned on the model AS THE CUSTOMER SEES IT. */
+  defaultColors?: { flatHex?: string; byObject: Record<string, string> };
 }) {
   const t = useTranslations('products.edit.preview');
+  const tm = useTranslations('products.edit.model');
   const router = useRouter();
   const viewerRef = useRef<ModelViewerElement | null>(null);
   const idealRadiusRef = useRef(0);
@@ -143,18 +168,46 @@ export function ProductModelView({
     };
   }, [webglOk, model3dUrl]);
 
-  // Capture the ideal radius the moment the model frames (or immediately if it loaded before this ran).
+  // The pose is aligned on the model AS THE CUSTOMER SEES IT: structured glb when present (materials
+  // named after objects — per-part default paint lands on the right meshes) + the default colours.
+  const viewerSrc = model3dStructuredUrl || model3dUrl;
+
+  // Capture the ideal radius the moment the model frames (or immediately if it loaded before this ran),
+  // and paint the default colours in the same load hook.
   useEffect(() => {
     const el = viewerRef.current;
     if (!el || !ready) return;
     const capture = () => {
       const r = el.getCameraOrbit().radius;
       idealRadiusRef.current = Number.isFinite(r) && r > 0 ? (r * 100) / initialPercent : 0;
+      for (const m of el.model?.materials ?? []) {
+        const hex = defaultColors?.byObject[m.name] ?? defaultColors?.flatHex;
+        if (hex) m.pbrMetallicRoughness.setBaseColorFactor(hex);
+      }
     };
     if (el.loaded) capture();
     el.addEventListener('load', capture);
     return () => el.removeEventListener('load', capture);
-  }, [ready, initialPercent]);
+  }, [ready, initialPercent, defaultColors]);
+
+  // The sprite_render job kicked off by an angle save — polled here so the owner SEES the 360° redo
+  // progress right where they changed the angle (it used to be invisible: the job list lives in the
+  // upload card, whose poll loop had already stopped). Unbounded while this card is mounted and the
+  // redo is in flight — a GPU render can outlast any fixed cap; on settle, refresh the RSC so the
+  // sprite preview (upload card) shows the new render.
+  const [spriteJob, setSpriteJob] = useState<{ status: JobStatusName } | null>(null);
+  const spritePolling =
+    rerender && (!spriteJob || spriteJob.status === 'queued' || spriteJob.status === 'processing');
+  useEffect(() => {
+    if (!spritePolling) return;
+    const id = setTimeout(async () => {
+      const jobs = await getAssetJobs(productId);
+      const s = jobs.find((j) => j.jobType === 'sprite_render') ?? null;
+      setSpriteJob(s);
+      if (s && s.status !== 'queued' && s.status !== 'processing') router.refresh();
+    }, 5000);
+    return () => clearTimeout(id);
+  }, [spritePolling, spriteJob, productId, router]);
 
   function onSaveView() {
     const el = viewerRef.current;
@@ -167,6 +220,7 @@ export function ProductModelView({
     setSaved(false);
     setRerender(false);
     setSaveError(null);
+    setSpriteJob(null);
     start(async () => {
       const res = await saveModelView(productId, view);
       if (res.ok) {
@@ -200,7 +254,7 @@ export function ProductModelView({
         ) : ready ? (
           <model-viewer
             ref={viewerRef}
-            src={model3dUrl}
+            src={viewerSrc}
             alt={t('alt', { name: productName })}
             camera-controls={true}
             interaction-prompt="none"
@@ -227,6 +281,15 @@ export function ProductModelView({
           {saved && (
             <span role="status" className="text-sm text-accent-teal">
               {rerender ? t('savedRerender') : t('saved')}
+            </span>
+          )}
+          {/* Live status of the 360° redo the save kicked off (reuses the upload card's job i18n). */}
+          {rerender && (
+            <span role="status" className="flex items-center gap-2 text-sm">
+              <span className="font-medium text-text-strong">{tm('jobType.sprite_render')}</span>
+              <Badge tone={spriteJob ? SPRITE_TONE[spriteJob.status] : 'neutral'}>
+                {tm(`jobStatus.${spriteJob?.status ?? 'queued'}`)}
+              </Badge>
             </span>
           )}
           {saveError && (
@@ -352,6 +415,9 @@ export function EngraveAnchorPicker({
   options,
   productName,
   colors = [],
+  model3dView,
+  defaultColors,
+  model3dStructuredUrl,
 }: {
   productId: string;
   model3dUrl: string;
@@ -361,6 +427,14 @@ export function EngraveAnchorPicker({
   /** The product's own paint colours (ADR-037/ADR-039) — reused as the engrave-text colour picker so
    *  there is no separate config to maintain. */
   colors?: Color[];
+  /** The owner-saved default camera pose (ADR-038) — the picker opens at the SAME angle the storefront
+   *  (and the engrave heuristic) uses, so what the owner sees is what the customer sees. */
+  model3dView?: Model3dView;
+  /** Default paint (defaultModelColors) — applied to the model so anchors are picked on the product's
+   *  real colours, not the glb's baked material. */
+  defaultColors?: { flatHex?: string; byObject: Record<string, string> };
+  /** f-4 structured glb — preferred so per-part paint lands on the right meshes (same as storefront). */
+  model3dStructuredUrl?: string;
 }) {
   const t = useTranslations('products.edit.engraveAnchor');
   const router = useRouter();
@@ -422,8 +496,7 @@ export function EngraveAnchorPicker({
     const onClick = (e: MouseEvent) => {
       const el = viewerRef.current;
       const id = activeOptionIdRef.current;
-      const label = draftLabelRef.current.trim();
-      if (!el || !id || !label) return; // no active option or no name typed yet → a tap does nothing
+      if (!el || !id) return;
       const next = pickedAnchor(down, { x: e.clientX, y: e.clientY }, (x, y) => {
         const p = el.pickAt(x, y);
         return p
@@ -434,10 +507,14 @@ export function EngraveAnchorPicker({
           : null;
       });
       if (next) {
-        setPositions((prev) => ({
-          ...prev,
-          [id]: [...(prev[id] ?? []), { label, ...next }],
-        }));
+        setPositions((prev) => {
+          const list = prev[id] ?? [];
+          // A typed name labels the new spot; empty → auto-name "Vị trí N" (renameable-by-delete-and-
+          // redo). The old flow silently ignored taps until a name was typed — the top confusion report.
+          const label =
+            draftLabelRef.current.trim() || autoLabelRef.current({ n: list.length + 1 });
+          return { ...prev, [id]: [...list, { label, ...next }] };
+        });
         setDirty((prev) => ({ ...prev, [id]: true }));
         setSaved((prev) => ({ ...prev, [id]: false }));
         setDraftLabel('');
@@ -452,7 +529,8 @@ export function EngraveAnchorPicker({
         observer.observe(mountRef.current);
         mount.addEventListener('pointerdown', onDown);
         mount.addEventListener('click', onClick);
-        void viewer.load(model3dUrl).then(() => alive && setReady(true));
+        // Structured glb when present (f-4) so setColors' per-part paint keys onto the right materials.
+        void viewer.load(model3dStructuredUrl || model3dUrl).then(() => alive && setReady(true));
       })
       .catch(() => alive && setFailed(true));
     return () => {
@@ -464,7 +542,17 @@ export function EngraveAnchorPicker({
       viewerRef.current = null;
       setReady(false);
     };
-  }, [webglOk, model3dUrl]);
+  }, [webglOk, model3dUrl, model3dStructuredUrl]);
+
+  // Open at the saved pose + paint the default colours (mirrors the storefront model-3d-viewer wiring).
+  // setView also re-places the heuristic engrave preview, so admin and PDP agree on where un-anchored
+  // text lands. Separate ready-gated effects so a later pose/colour prop change re-applies live.
+  useEffect(() => {
+    if (ready) viewerRef.current?.setView(model3dView ?? null);
+  }, [ready, model3dView]);
+  useEffect(() => {
+    if (ready) viewerRef.current?.setColors(defaultColors?.byObject, defaultColors?.flatHex);
+  }, [ready, defaultColors]);
 
   // The click handler above is registered once (boot effect) but needs the LATEST activeOptionId/label —
   // refs sidestep re-registering the DOM listener on every keystroke/tab switch.
@@ -472,6 +560,10 @@ export function EngraveAnchorPicker({
   activeOptionIdRef.current = activeOptionId;
   const draftLabelRef = useRef(draftLabel);
   draftLabelRef.current = draftLabel;
+  // t() via ref for the same reason — the DOM click handler is registered once.
+  const autoLabel = (values: { n: number }) => t('autoPositionLabel', values);
+  const autoLabelRef = useRef(autoLabel);
+  autoLabelRef.current = autoLabel;
 
   function removePosition(optionId: string, index: number) {
     setPositions((prev) => ({ ...prev, [optionId]: prev[optionId].filter((_, i) => i !== index) }));
