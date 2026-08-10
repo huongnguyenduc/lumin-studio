@@ -118,6 +118,10 @@ export const vi = {
     // Hi-fi spec-chip row: the teal lead-time tile (replaces the old inline madeToOrder line).
     leadTimeLabel: 'In trong',
     leadTimeValue: '3–5 ngày',
+    // Sticky mobile CTA bar's "Tổng / giá" block. stickyFromPrice prefixes the base price when a
+    // pending option delta or qty > 1 means the real total may differ (never client-computed).
+    stickyTotalLabel: 'Tổng',
+    stickyFromPrice: 'từ',
     // Hi-fi coral pill on the media tile when the on-demand 3D viewer is available.
     realtime3dBadge: 'Realtime 3D',
     // Quantity stepper beside the CTA (−/+ aria-labels; the visible value is aria-live in @lumin/ui).
