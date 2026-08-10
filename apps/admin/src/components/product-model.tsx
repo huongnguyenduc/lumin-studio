@@ -15,9 +15,10 @@ type JobStatus = AssetJob['status'];
 // Badge hue per job status (queued=waiting, processing=in-flight, ready=done, failed=error).
 const JOB_TONE = { queued: 'neutral', processing: 'sky', ready: 'teal', failed: 'danger' } as const;
 const isPending = (s: JobStatus) => s === 'queued' || s === 'processing';
-// Auto-poll cap: a render (sprite_render on the GPU) can take a while, so poll ~80s, then stop and offer a
-// manual refresh so an open editor tab doesn't spin forever. ponytail: raise if real renders outlast it.
-const POLL_CAP = 20;
+// Auto-poll cap: a render (sprite_render on the GPU) can take minutes — real renders outlasted the old
+// 80s cap, leaving the owner to reload by hand. ~5 phút now, then stop and offer a manual refresh so an
+// abandoned editor tab doesn't spin forever.
+const POLL_CAP = 75;
 const POLL_MS = 4000;
 
 /**
@@ -67,18 +68,25 @@ export function ProductModel({
   // Show only the latest job per type: re-uploading fires fresh jobs and old attempts (incl. resolved
   // failures) are never pruned server-side, so render/poll off the collapsed view, not the raw pile.
   const latestJobs = latestJobsByType(jobs);
-  // Poll while any current job is pending, capped. On settle, refresh the RSC to pull the new model3dUrl.
+  // Poll while any current job is pending, capped. Refresh the RSC as soon as ANY job settles — not
+  // only when the whole pile is done: model_ingest finishes in seconds while sprite_render can sit on
+  // the GPU for minutes, and the editor's 3D cards (pose/engrave) need the new model3dUrl right away
+  // (the owner used to have to reload the page by hand to see the freshly-ingested model).
   const anyPending = latestJobs.some((j) => isPending(j.status));
   useEffect(() => {
     if (!anyPending || polls >= POLL_CAP) return;
     const id = setTimeout(async () => {
       const next = await getAssetJobs(productId);
+      const settledSincePoll = latestJobsByType(next).some((n) => {
+        const prev = jobs.find((j) => j.id === n.id);
+        return !isPending(n.status) && (!prev || isPending(prev.status));
+      });
       setJobs(next);
       setPolls((p) => p + 1);
-      if (!next.some((j) => isPending(j.status))) router.refresh();
+      if (settledSincePoll) router.refresh();
     }, POLL_MS);
     return () => clearTimeout(id);
-  }, [anyPending, polls, productId, router]);
+  }, [anyPending, polls, jobs, productId, router]);
 
   function onPick(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];

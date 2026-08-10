@@ -232,6 +232,22 @@ func spritePartColors(parts []sqlc.Part, colors []sqlc.Color) (map[string]string
 			break // first available in catalog order = the default (D-C)
 		}
 	}
+	// A FLAT product (no parts) paints its whole model in the first available product-level colour —
+	// same default the storefront viewer opens on. "*" is the worker's match-all key (_bl_render.py):
+	// there are no object names to key on for a flat model. Parts products never get the wildcard —
+	// an unmapped part deliberately keeps its baked material (never guessed).
+	if len(parts) == 0 {
+		for _, c := range colors {
+			if !c.Available || c.PartID.Valid {
+				continue
+			}
+			if !hexColorRe.MatchString(c.Hex) {
+				return nil, fmt.Errorf("flat default colour hex %q is not #RRGGBB", c.Hex)
+			}
+			m["*"] = c.Hex
+			break
+		}
+	}
 	return m, nil
 }
 

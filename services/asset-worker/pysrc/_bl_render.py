@@ -77,7 +77,9 @@ for o in meshes:
     # ingest.py keys the mapping off trimesh scene.geometry (the glb MESH names), so Blender's mesh-datablock
     # name (o.data.name) is the closest match; o.name (the glb NODE name) is the common-case fallback where a
     # node and its mesh share a name. A miss on both → the part keeps its baked material (never grey).
-    hexv = part_colors.get(o.data.name) or part_colors.get(o.name)
+    # "*" = flat-product match-all (core-api sends it when the product has no parts — no object names
+    # to key on); a per-object entry still wins when both are present.
+    hexv = part_colors.get(o.data.name) or part_colors.get(o.name) or part_colors.get("*")
     if not hexv:
         continue
     try:

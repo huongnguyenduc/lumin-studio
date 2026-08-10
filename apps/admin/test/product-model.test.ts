@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { latestJobsByType } from '../src/lib/product-model';
+import { latestJobsByType, defaultModelColors } from '../src/lib/product-model';
 
 // Only jobType/id/status matter to the collapse; build minimal rows (newest-first, as the API returns).
 const job = (id: string, jobType: 'model_ingest' | 'sprite_render', status: string) => ({
@@ -32,5 +32,42 @@ describe('latestJobsByType', () => {
 
   it('returns [] for no jobs', () => {
     expect(latestJobsByType([])).toEqual([]);
+  });
+});
+
+describe('defaultModelColors', () => {
+  const color = (hex: string, available: boolean, partId: string | null = null) => ({
+    hex,
+    available,
+    partId,
+  });
+
+  it('parts product: first AVAILABLE colour per mapped part, keyed by object name; no flat', () => {
+    const out = defaultModelColors(
+      [
+        { id: 'p1', modelObjectName: 'Chao đèn' },
+        { id: 'p2', modelObjectName: '' }, // unmapped → omitted
+        { id: 'p3', modelObjectName: 'Đế' }, // only unavailable colour → omitted
+      ],
+      [
+        color('#E8B923', false, 'p1'), // unavailable → skip
+        color('#111111', true, 'p1'), // → p1's default
+        color('#FFFFFF', false, 'p3'),
+        color('#ABCDEF', true), // flat colour ignored on a parts product
+      ],
+    );
+    expect(out).toEqual({ flatHex: undefined, byObject: { 'Chao đèn': '#111111' } });
+  });
+
+  it('flat product: first available product-level colour', () => {
+    const out = defaultModelColors(
+      [],
+      [color('#E8B923', false), color('#ABCDEF', true), color('#111111', true)],
+    );
+    expect(out).toEqual({ flatHex: '#ABCDEF', byObject: {} });
+  });
+
+  it('no colours at all → nothing to paint', () => {
+    expect(defaultModelColors([], [])).toEqual({ flatHex: undefined, byObject: {} });
   });
 });

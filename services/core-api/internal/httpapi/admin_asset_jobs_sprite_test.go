@@ -51,8 +51,27 @@ func TestSpritePartColors(t *testing.T) {
 		t.Fatal("malformed hex: want error, got nil")
 	}
 
-	// No parts at all → empty (not nil-panic); a model with no mapping renders uncoloured.
+	// No parts at all → empty (not nil-panic); a model with no mapping AND no colours renders uncoloured.
 	if m, err := spritePartColors(nil, nil); err != nil || len(m) != 0 {
 		t.Fatalf("empty: m=%v err=%v", m, err)
+	}
+
+	// A FLAT product (no parts, product-level colours) paints the whole model via the "*" match-all key
+	// (_bl_render.py) in its first AVAILABLE flat colour — the same default the storefront opens on.
+	flat := []sqlc.Color{
+		{PartID: pgtype.UUID{Valid: false}, Hex: "#E8B923", Available: false}, // unavailable → skip
+		{PartID: pgtype.UUID{Valid: false}, Hex: "#ABCDEF", Available: true},  // → the default
+		{PartID: pgtype.UUID{Valid: false}, Hex: "#111111", Available: true},
+	}
+	if m, err := spritePartColors(nil, flat); err != nil || !reflect.DeepEqual(m, map[string]string{"*": "#ABCDEF"}) {
+		t.Fatalf("flat: m=%v err=%v", m, err)
+	}
+	// Parts products NEVER get the wildcard — an unmapped part keeps its baked material.
+	if m, err := spritePartColors(parts, colors); err != nil || m["*"] != "" {
+		t.Fatalf("parts product got wildcard: m=%v err=%v", m, err)
+	}
+	// A malformed FLAT hex also rejects the build.
+	if _, err := spritePartColors(nil, []sqlc.Color{{PartID: pgtype.UUID{Valid: false}, Hex: "gold", Available: true}}); err == nil {
+		t.Fatal("malformed flat hex: want error, got nil")
 	}
 }
