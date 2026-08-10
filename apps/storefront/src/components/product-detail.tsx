@@ -138,11 +138,18 @@ export function ProductDetail({
             (auto-loaded; interactive; recoloured live by the colour selection). No WebGL → 360° sprite
             (ADR-049), else the static cover. The real photos sit below as thumbnails — clicking one shows
             it large in the main tile; the dashed "360°" thumb returns to the viewer. */}
-        {/* md:sticky (PR G) — colouring a part meant scrolling back up to see the model react; the info
-            column runs longer than the media column, so pinning media at a fixed offset keeps the model
-            in view the whole time the shopper is picking colour/options below. top-24 clears the sticky
-            site header. */}
-        <div className="md:sticky md:top-24 md:w-[460px] md:shrink-0 md:self-start">
+        {/* Sticky on ALL breakpoints (PR G, extended) — colouring a part/engrave used to mean scrolling
+            back up to see the model react; the info column runs longer than the media column on mobile
+            too (single-column flow puts the configurator right below), so pinning media keeps the model
+            in view the whole time the shopper is picking colour/options. top-16 clears the sticky
+            SiteHeader (h-16) on mobile; top-24 gives extra clearance on desktop where the header row is
+            taller. z-10 keeps it above the configurator content scrolling underneath, below both the
+            header (z-40) and the fixed CTA bar (z-30, bottom of screen — no vertical overlap with this
+            top-pinned tile). Capped at 260px on mobile (vs. full-bleed before, a documented hi-fi
+            deviation — the mock shows a full-width mobile hero) — pinned full-width would leave a short
+            phone almost no room to see the configurator it's meant to stay visible next to; the desktop
+            460px column is unaffected. */}
+        <div className="sticky top-16 z-10 mx-auto max-w-[260px] md:top-24 md:max-w-none md:w-[460px] md:shrink-0 md:self-start">
           <div className="relative aspect-square overflow-hidden rounded-lg border-2 border-border-strong bg-surface-sunken">
             {show3d ? (
               <>
