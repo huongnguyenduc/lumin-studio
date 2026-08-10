@@ -148,7 +148,7 @@ export class Viewer3d {
 
       // Frame the model: orbit target at its centre, camera pulled back on +Z with a slight lift.
       const box = new THREE.Box3().setFromObject(root);
-      const center = box.getCenter(this.center);
+      box.getCenter(this.center);
       const size = box.getSize(new THREE.Vector3());
       this.maxDim = Math.max(size.x, size.y, size.z) || 1;
       this.sphereRadius = size.length() / 2 || 1;
@@ -157,7 +157,6 @@ export class Viewer3d {
       this.camera.updateProjectionMatrix();
 
       this.loaded = true;
-      this.frontCenter = { center, frontZ: box.max.z };
       this.applyCamera();
       this.rebuildEngravings();
     } catch {
@@ -234,7 +233,11 @@ export class Viewer3d {
     } | null,
   ) {
     this.savedView = v;
-    if (this.loaded) this.applyCamera();
+    if (this.loaded) {
+      this.applyCamera();
+      // The heuristic anchor + text roll derive from defaultPose — re-place them under the new pose.
+      this.rebuildEngravings();
+    }
   }
 
   /** Place the camera: the saved pose when one exists, else auto-framing. The "ideal" (100%) distance is
@@ -262,6 +265,8 @@ export class Viewer3d {
         this.center.z + this.maxDim * 2.2,
       );
     }
+    // Snapshot the default pose for the engrave heuristic BEFORE the user orbits (see defaultPose).
+    this.defaultPose = { pos: this.camera.position.clone(), target: this.controls.target.clone() };
   }
 
   /** Hit-test a pointer position (client px) against the model: the surface point + outward normal
@@ -287,32 +292,52 @@ export class Viewer3d {
     };
   }
 
-  private frontCenter: { center: THREE.Vector3; frontZ: number } | null = null;
+  /** The default camera pose captured at applyCamera time (savedView or auto-framing) — the
+   *  heuristic anchor probes along THIS view, not the live (possibly user-orbited) camera, so the
+   *  guessed placement is deterministic per product. */
+  private defaultPose: { pos: THREE.Vector3; target: THREE.Vector3 } | null = null;
 
-  /** The front-most surface at model-centre height (a ray fired from in front of the model toward its
-   *  centre) — the ONE engraving's placement when the owner hasn't picked an anchor yet. Only applied
-   *  when there is exactly ONE engraving in play (see resolveAnchors): with several text options in
-   *  play, an un-placed one should show nothing rather than stack on top of another at the same
-   *  guessed spot — the owner is expected to place each via the anchor picker. */
+  /** The surface the shopper actually SEES first: a ray from the default camera pose toward the orbit
+   *  target — the ONE engraving's placement when the owner hasn't picked an anchor yet. The previous
+   *  probe was a fixed -Z ray at model-centre height, which hit the thin EDGE of any model whose face
+   *  isn't +Z (e.g. a flat pet tag lying face-up with a saved top-down view) and silently placed the
+   *  text on the rim — invisible. Probing along the default view direction lands on whatever face the
+   *  product opens on, for any orientation. Only applied when exactly ONE engraving has text (see
+   *  rebuildEngravings): with several in play, an un-placed one should show nothing rather than stack
+   *  on another at the same guessed spot — the owner places each via the admin anchor picker. */
+  private warnedHeuristicMiss = false;
+
   private frontCenterAnchor(): { point: THREE.Vector3; normal: THREE.Vector3 } | null {
-    if (!this.frontCenter) return null;
-    const { center } = this.frontCenter;
-    const from = new THREE.Vector3(center.x, center.y, this.frontCenter.frontZ + this.maxDim);
-    this.raycaster.set(from, new THREE.Vector3(0, 0, -1));
+    if (!this.defaultPose) return null;
+    const { pos, target } = this.defaultPose;
+    const dir = target.clone().sub(pos).normalize();
+    this.raycaster.set(pos.clone(), dir);
     const hit = this.raycaster.intersectObjects(this.meshes, false)[0];
-    if (!hit?.face) return null;
+    if (!hit?.face) {
+      // Every skip used to be fully silent, making "typed a name, model shows nothing"
+      // undebuggable from the field. Once per instance — rebuild runs per keystroke.
+      if (!this.warnedHeuristicMiss) {
+        this.warnedHeuristicMiss = true;
+        console.warn(
+          '[viewer3d] engrave heuristic ray missed the model — no anchor, text not placed',
+        );
+      }
+      return null;
+    }
     const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
     return { point: hit.point, normal };
   }
 
   /** Rebuild every engraving in `this.engravings` against the current anchor resolution. Called after
-   *  load and whenever setEngravings changes an id's inputs. */
+   *  load and whenever setEngravings changes an id's inputs. The heuristic gate counts entries WITH
+   *  TEXT — counting raw entries let a second, untouched text option (empty string) disable the
+   *  heuristic for the one the shopper actually filled in. */
   private rebuildEngravings() {
-    const onlyOneEntry = this.engravings.size === 1;
+    const entriesWithText = [...this.engravings.values()].filter((e) => e.text).length;
     for (const [id, input] of this.engravings) {
       const anchor = input.serverAnchor
         ? { point: input.serverAnchor.pos, normal: input.serverAnchor.normal }
-        : onlyOneEntry
+        : entriesWithText === 1
           ? this.frontCenterAnchor()
           : null;
       this.rebuildOneEngrave(id, input.text, input.colorHex, anchor);
@@ -364,6 +389,22 @@ export class Viewer3d {
         );
         mesh.scale.setScalar(scale);
         mesh.position.copy(point).addScaledVector(normal, -depth * scale * 0.3);
+        // Roll: point the text's up at the DEFAULT view's screen-up projected onto the anchor plane,
+        // so a name reads upright from the product's opening view even on a top-facing surface.
+        // lookAt's default up (0,1,0) is degenerate when the normal is near ±Y (arbitrary roll — a
+        // face-up pet tag drew the name sideways); a front-facing anchor projects to ~(0,1,0), so the
+        // familiar case keeps its exact old orientation.
+        const pose = this.defaultPose;
+        if (pose) {
+          const forward = pose.target.clone().sub(pose.pos).normalize();
+          const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0));
+          const screenUp =
+            right.lengthSq() > 1e-6
+              ? new THREE.Vector3().crossVectors(right.normalize(), forward)
+              : new THREE.Vector3(0, 0, -1);
+          const upOnPlane = screenUp.addScaledVector(normal, -screenUp.dot(normal));
+          if (upOnPlane.lengthSq() > 1e-6) mesh.up.copy(upOnPlane.normalize());
+        }
         mesh.lookAt(point.clone().add(normal));
         this.bendToSurface(geometry, mesh, normal, scale);
         this.engraveMeshes.set(id, mesh);
