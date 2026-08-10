@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -100,6 +100,44 @@ export function ProductDetail({
     if (addCurrentSelectionToCart()) router.push('/thanh-toan');
   };
 
+  // Mobile mini-preview (PiP): on a phone the media column is static and single-column flow puts the
+  // configurator below it, so picking a colour/engrave used to mean scrolling back up to see the model
+  // react. When the hero tile has scrolled out of view AND the live viewer is up, the SAME tile element
+  // re-docks (CSS only — no second viewer, the WebGL canvas keeps its context) as a small fixed bubble
+  // under the header; tapping it scrolls back to the hero. `heroRef` wraps a same-size placeholder, so
+  // undocking the tile from flow causes no layout jump. On desktop the media column is md:sticky and
+  // never leaves the viewport, so the observer keeps this off by construction — no breakpoint JS.
+  const heroRef = useRef<HTMLDivElement>(null);
+  const [heroOffscreen, setHeroOffscreen] = useState(false);
+  useEffect(() => {
+    const el = heroRef.current;
+    if (!el || !show3d) {
+      setHeroOffscreen(false);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        // Mobile-only: on desktop, scrolling past the md:sticky media column into reviews would pop
+        // the bubble there too. Checked at callback time (not captured) so a resize between events
+        // reads fresh; the max-md: classes on the tile are the CSS backstop for the brief window
+        // where a resize crosses md while pip is already true.
+        const mobile = !window.matchMedia('(min-width: 768px)').matches;
+        setHeroOffscreen(mobile && !entry.isIntersecting);
+      },
+      {
+        // A sliver of hero at the screen edge doesn't help the shopper — treat <15% visible as gone.
+        threshold: 0.15,
+      },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [show3d]);
+  const pip = heroOffscreen && show3d;
+  const scrollToHero = () => {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    heroRef.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
+  };
+
   return (
     <article className="mx-auto w-full max-w-[1200px] px-4 py-6 md:px-6 md:py-10">
       {/* Hi-fi breadcrumb: mono, with the category as the middle crumb linking back into the filtered
@@ -138,49 +176,79 @@ export function ProductDetail({
             (auto-loaded; interactive; recoloured live by the colour selection). No WebGL → 360° sprite
             (ADR-049), else the static cover. The real photos sit below as thumbnails — clicking one shows
             it large in the main tile; the dashed "360°" thumb returns to the viewer. */}
-        {/* Sticky on ALL breakpoints (PR G, extended) — colouring a part/engrave used to mean scrolling
-            back up to see the model react; the info column runs longer than the media column on mobile
-            too (single-column flow puts the configurator right below), so pinning media keeps the model
-            in view the whole time the shopper is picking colour/options. top-16 clears the sticky
-            SiteHeader (h-16) on mobile; top-24 gives extra clearance on desktop where the header row is
-            taller. z-10 keeps it above the configurator content scrolling underneath, below both the
-            header (z-40) and the fixed CTA bar (z-30, bottom of screen — no vertical overlap with this
-            top-pinned tile). Capped at 260px on mobile (vs. full-bleed before, a documented hi-fi
-            deviation — the mock shows a full-width mobile hero) — pinned full-width would leave a short
-            phone almost no room to see the configurator it's meant to stay visible next to; the desktop
-            460px column is unaffected. */}
-        <div className="sticky top-16 z-10 mx-auto max-w-[260px] md:top-24 md:max-w-none md:w-[460px] md:shrink-0 md:self-start">
-          <div className="relative aspect-square overflow-hidden rounded-lg border-2 border-border-strong bg-surface-sunken">
-            {show3d ? (
-              <>
-                <Model3dViewer
-                  src={product.model3dStructuredUrl || product.model3dUrl!}
-                  productName={product.name}
-                  spriteSheetUrl={product.spriteSheetUrl}
-                  partColors={cfg.viewerPartColors}
-                  flatColorHex={cfg.flatColorHex}
-                  engravings={cfg.viewerEngravings}
-                  model3dView={product.model3dView}
-                  fallback={
-                    cover ? (
-                      <img src={cover} alt={product.name} className="h-full w-full object-cover" />
-                    ) : (
-                      <div className="lumin-dotgrid h-full w-full" aria-hidden="true" />
-                    )
-                  }
-                />
-                {/* Hi-fi: coral "Realtime 3D" pill on the media tile while the viewer is up. */}
-                <span className="pointer-events-none absolute right-3 top-3 rounded-pill bg-primary px-3 py-1 font-mono text-[10px] font-bold text-on-primary">
-                  {t('realtime3dBadge')}
-                </span>
-              </>
-            ) : cover ? (
-              // Arbitrary shop-photo hosts → a plain <img> (no next/image remotePatterns to maintain),
-              // matching @lumin/ui ProductCard. Alt = product name (jsx-a11y).
-              <img src={cover} alt={product.name} className="h-full w-full object-cover" />
-            ) : (
-              <div className="lumin-dotgrid h-full w-full" aria-hidden="true" />
-            )}
+        {/* md:sticky (PR G) — colouring a part meant scrolling back up to see the model react; the info
+            column runs longer than the media column, so pinning media at a fixed offset keeps the model
+            in view the whole time the shopper is picking colour/options below. top-24 clears the sticky
+            site header. Mobile gets the PiP mini-preview instead (see `pip` above) — a full-bleed sticky
+            hero was tried (PR #257) and pinned itself OVER the info column, since a stuck sticky child
+            overlaps later siblings. */}
+        <div className="md:sticky md:top-24 md:w-[460px] md:shrink-0 md:self-start">
+          {/* Same-size placeholder: keeps the hero's slot in flow while the tile inside re-docks as the
+              fixed PiP bubble, so toggling PiP never shifts the scroll position. */}
+          <div ref={heroRef} className="relative aspect-square">
+            <div
+              className={cn(
+                'overflow-hidden rounded-lg border-2 border-border-strong bg-surface-sunken',
+                pip
+                  ? // PiP bubble, MOBILE ONLY (max-md — on desktop the shopper can scroll past the
+                    // md:sticky media column into reviews, which would otherwise pop the bubble there
+                    // too; md: pins the tile back to its normal slot so `pip` is a no-op ≥ md). Below
+                    // the mobile sticky header — logo row + search row ≈ 117px (measured in-browser;
+                    // NOT the desktop h-16), so top-32 (128px) clears it with a small gap. z-30 = same
+                    // layer as the CTA bar, below the z-40 header/BottomNav; opposite screen corners,
+                    // so no overlap. shadow-pop lifts it off the page.
+                    'max-md:fixed max-md:right-3 max-md:top-32 max-md:z-30 max-md:h-28 max-md:w-28 max-md:shadow-pop md:absolute md:inset-0'
+                  : 'absolute inset-0',
+              )}
+            >
+              {show3d ? (
+                <>
+                  <Model3dViewer
+                    src={product.model3dStructuredUrl || product.model3dUrl!}
+                    productName={product.name}
+                    spriteSheetUrl={product.spriteSheetUrl}
+                    partColors={cfg.viewerPartColors}
+                    flatColorHex={cfg.flatColorHex}
+                    engravings={cfg.viewerEngravings}
+                    model3dView={product.model3dView}
+                    fallback={
+                      cover ? (
+                        <img
+                          src={cover}
+                          alt={product.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="lumin-dotgrid h-full w-full" aria-hidden="true" />
+                      )
+                    }
+                  />
+                  {/* Hi-fi: coral "Realtime 3D" pill on the media tile while the viewer is up. Hidden in
+                      PiP — at 112px it would cover most of the model. */}
+                  {!pip ? (
+                    <span className="pointer-events-none absolute right-3 top-3 rounded-pill bg-primary px-3 py-1 font-mono text-[10px] font-bold text-on-primary">
+                      {t('realtime3dBadge')}
+                    </span>
+                  ) : null}
+                  {/* In PiP the bubble is a single button (drag-to-rotate makes no sense at 112px):
+                      tap → scroll back to the full-size hero. Overlays the whole bubble. */}
+                  {pip ? (
+                    <button
+                      type="button"
+                      aria-label={t('miniPreviewLabel')}
+                      onClick={scrollToHero}
+                      className="absolute inset-0 z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2"
+                    />
+                  ) : null}
+                </>
+              ) : cover ? (
+                // Arbitrary shop-photo hosts → a plain <img> (no next/image remotePatterns to maintain),
+                // matching @lumin/ui ProductCard. Alt = product name (jsx-a11y).
+                <img src={cover} alt={product.name} className="h-full w-full object-cover" />
+              ) : (
+                <div className="lumin-dotgrid h-full w-full" aria-hidden="true" />
+              )}
+            </div>
           </div>
 
           {(product.model3dUrl && product.images.length > 0) || product.images.length > 1 ? (
@@ -268,6 +336,24 @@ export function ProductDetail({
               price row (shortest tap-to-buy on mobile); the description reads after the CTA. */}
           <ConfiguratorFields product={product} state={cfg} idPrefix="detail" />
 
+          {/* Hi-fi mobile: "Số lượng" is its own row in the flow, NOT inside the bottom bar — four
+              clusters (Tổng + stepper + bag + Mua ngay) overflow a 375px bar (verified in-browser).
+              From sm: up the stepper moves back into the CTA row (below) and this row hides. Both
+              stepper renders bind the same `quantity` state; only one is visible at a time. */}
+          <div className="flex items-center justify-between sm:hidden">
+            <span className="font-display text-sm font-semibold text-text-strong">
+              {t('qtyLabel')}
+            </span>
+            <QuantityStepper
+              value={quantity}
+              onChange={setQuantity}
+              min={1}
+              max={MAX_QUANTITY}
+              decrementLabel={t('qtyDecrement')}
+              incrementLabel={t('qtyIncrement')}
+            />
+          </div>
+
           {/* Add-to-cart: qty stepper + the pop CTA (hi-fi: "Thêm vào giỏ · 290.000₫"). Locked until the
               whole selection is valid (colour/parts + enumerated choices + every engraving in-limit). On
               click it snapshots the selection into the cart and stays on the PDP ("Mua ngay" adds then
@@ -298,6 +384,7 @@ export function ProductDetail({
                   <PriceTag amount={product.basePrice} className="text-base" />
                 </span>
               </div>
+              {/* Hidden below sm — the standalone "Số lượng" row above carries quantity there. */}
               <QuantityStepper
                 value={quantity}
                 onChange={setQuantity}
@@ -305,7 +392,7 @@ export function ProductDetail({
                 max={MAX_QUANTITY}
                 decrementLabel={t('qtyDecrement')}
                 incrementLabel={t('qtyIncrement')}
-                className="shrink-0"
+                className="hidden shrink-0 sm:inline-flex"
               />
               {/* Mobile: icon-only add-to-cart (BagIcon) so it never competes for width against "Mua ngay" —
                   the full label + price returns from sm: up where there's room. */}
