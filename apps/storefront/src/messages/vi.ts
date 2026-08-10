@@ -125,9 +125,15 @@ export const vi = {
     // Hi-fi "Thông số" dl — shipping-estimate row (trust signal beside the lead-time row).
     shippingLabel: 'Giao hàng',
     shippingValue: 'Giao toàn quốc · 2–4 ngày sau in',
+    // Mobile PiP mini-preview bubble (the live viewer re-docked small while the hero is scrolled away);
+    // the whole bubble is one button — tapping scrolls back up to the full-size model.
+    miniPreviewLabel: 'Xem mẫu lớn hơn — cuộn lên đầu trang',
     // Hi-fi coral pill on the media tile when the on-demand 3D viewer is available.
     realtime3dBadge: 'Realtime 3D',
     // Quantity stepper beside the CTA (−/+ aria-labels; the visible value is aria-live in @lumin/ui).
+    // qtyLabel is the visible row label on mobile, where the stepper sits in the flow (hi-fi order)
+    // instead of inside the bottom bar.
+    qtyLabel: 'Số lượng',
     qtyDecrement: 'Giảm số lượng',
     qtyIncrement: 'Tăng số lượng',
     // Colour picker.
