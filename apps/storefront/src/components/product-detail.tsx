@@ -8,18 +8,8 @@ import { formatVnd, formatVnNumber, formatVnRating } from '@lumin/core';
 import { Button, IconButton, PriceTag, QuantityStepper, cn } from '@lumin/ui';
 import { buildCartItem, MAX_QUANTITY } from '@/lib/cart';
 import { useCart } from '@/lib/cart-store';
-import {
-  colorsForPart,
-  formatDimensions,
-  isColorSelectable,
-  type ColorView,
-  type ProductDetailView,
-} from '@/lib/product-view';
-import {
-  ConfiguratorFields,
-  useConfiguratorState,
-  type ConfiguratorState,
-} from './product-configurator';
+import { formatDimensions, type ProductDetailView } from '@/lib/product-view';
+import { ConfiguratorFields, useConfiguratorState } from './product-configurator';
 import { BagIcon, CheckIcon } from './icons';
 import { Model3dViewer } from './model-3d-viewer';
 
@@ -280,17 +270,27 @@ export function ProductDetail({
               click it snapshots the selection into the cart and stays on the PDP ("Mua ngay" adds then
               goes straight to /thanh-toan). The hint names the
               first unmet axis (engrave errors surface on the field itself). Sticky above the mobile tab
-              bar (storefront rule: add-to-cart dính đáy trên mobile). The CTA shows the UNIT base price
+              bar (storefront rule: add-to-cart dính đáy trên mobile) as a SOLID footer flush against
+              BottomNav (bottom-nav.tsx — 56px min-height row + border ≈ 60px) — matches the hi-fi's
+              opaque bottom bar rather than floating with a gap. The CTA shows the UNIT base price
               only while qty = 1 — the client never multiplies money (conventions §Tiền); the real total
               lands with the cart's server quote. */}
-          <div className="sticky bottom-[76px] z-30 -mx-4 bg-surface-page/95 px-4 py-3 backdrop-blur-sm md:static md:z-auto md:m-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
-            {/* Mobile colour shortcut (PR G): picking a colour used to mean scrolling down to the
-                swatches then back up to see the model react. This strip is a SHORTCUT, not a
-                replacement — it reads/writes the exact same cfg state as the full swatch section
-                below, so the two can never disagree. Desktop already solves this via the sticky media
-                column above; md:hidden here avoids a redundant second picker on desktop. */}
-            <MobileColorBar product={product} cfg={cfg} />
+          <div className="sticky bottom-[60px] z-30 -mx-4 border-t-2 border-border-default bg-surface-card px-4 pb-3.5 pt-[11px] md:static md:m-0 md:border-0 md:bg-transparent md:p-0">
             <div className="flex items-center gap-2 sm:gap-3">
+              {/* Hi-fi "Tổng / giá" block, mobile only — desktop CTA already carries its own price. Base
+                  price only (never client-multiplied); "từ" prefix when the pick can still change the
+                  total (an option delta, or qty > 1). */}
+              <div className="mr-1 flex flex-col sm:hidden">
+                <span className="font-mono text-[10px] uppercase tracking-wide text-text-muted">
+                  {t('stickyTotalLabel')}
+                </span>
+                <span className="flex items-baseline gap-1">
+                  {anyPriceDelta || quantity > 1 ? (
+                    <span className="text-xs text-text-muted">{t('stickyFromPrice')}</span>
+                  ) : null}
+                  <PriceTag amount={product.basePrice} className="text-base" />
+                </span>
+              </div>
               <QuantityStepper
                 value={quantity}
                 onChange={setQuantity}
@@ -380,110 +380,5 @@ export function ProductDetail({
         </div>
       </div>
     </article>
-  );
-}
-
-/** Mobile-only colour shortcut docked above the sticky add-to-cart bar (PR G). A flat product gets a
- *  plain swatch row; a parts product gets a part-chip row (which part is "active") ABOVE that part's
- *  swatch row — one part editable at a time keeps the strip one line tall on a phone. Renders nothing
- *  for a product with no colours at all (nothing to shortcut). Reuses cfg's own state/setters, so this
- *  is purely a second set of controls over the SAME selection — never a parallel source of truth. */
-function MobileColorBar({ product, cfg }: { product: ProductDetailView; cfg: ConfiguratorState }) {
-  const t = useTranslations('productDetail');
-  const [activePartId, setActivePartId] = useState<string | null>(product.parts[0]?.id ?? null);
-
-  if (!cfg.hasColors) return null;
-
-  const colorLabel = (c: ColorView) =>
-    isColorSelectable(c)
-      ? t('selectColorLabel', { name: c.name })
-      : t('colorUnavailableLabel', { name: c.name });
-
-  if (cfg.hasParts) {
-    const activePart = product.parts.find((p) => p.id === activePartId) ?? product.parts[0];
-    if (!activePart) return null;
-    const partColors = colorsForPart(product.colors, activePart.id);
-    return (
-      <div className="mb-2.5 flex flex-col gap-1.5 md:hidden">
-        {product.parts.length > 1 && (
-          <div className="flex gap-1.5 overflow-x-auto">
-            {product.parts.map((part) => (
-              <button
-                key={part.id}
-                type="button"
-                onClick={() => setActivePartId(part.id)}
-                className={cn(
-                  'shrink-0 rounded-pill border px-2.5 py-1 font-mono text-[11px] font-semibold',
-                  part.id === activePart.id
-                    ? 'border-border-strong bg-surface-brand text-on-dark'
-                    : 'border-border-default text-text-muted',
-                )}
-              >
-                {part.name}
-              </button>
-            ))}
-          </div>
-        )}
-        <SwatchRow
-          colors={partColors}
-          selectedId={cfg.partColorByPart[activePart.id] ?? null}
-          onSelect={(id) => cfg.setPartColorByPart((prev) => ({ ...prev, [activePart.id]: id }))}
-          labelFor={colorLabel}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="mb-2.5 md:hidden">
-      <SwatchRow
-        colors={product.colors}
-        selectedId={cfg.selectedColorId}
-        onSelect={cfg.setSelectedColorId}
-        labelFor={colorLabel}
-      />
-    </div>
-  );
-}
-
-/** A compact horizontal-scroll swatch row — smaller than ColorSwatches (no heading/caption, this is a
- *  shortcut strip, not the full picker), reusing the exact same selectable/disabled rules. */
-function SwatchRow({
-  colors,
-  selectedId,
-  onSelect,
-  labelFor,
-}: {
-  colors: ColorView[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-  labelFor: (color: ColorView) => string;
-}) {
-  return (
-    <ul className="flex gap-2 overflow-x-auto py-0.5">
-      {colors.map((c) => {
-        const selectable = isColorSelectable(c);
-        const selected = c.id === selectedId;
-        return (
-          <li key={c.id} className="shrink-0">
-            <button
-              type="button"
-              disabled={!selectable}
-              aria-pressed={selectable ? selected : undefined}
-              aria-label={labelFor(c)}
-              onClick={() => onSelect(c.id)}
-              className={cn(
-                'h-8 w-8 rounded-full border-2',
-                selected
-                  ? 'border-border-strong ring-2 ring-border-strong ring-offset-1'
-                  : 'border-border-default',
-                selectable ? '' : 'cursor-not-allowed opacity-40',
-              )}
-              style={{ backgroundColor: c.hex }}
-            />
-          </li>
-        );
-      })}
-    </ul>
   );
 }
