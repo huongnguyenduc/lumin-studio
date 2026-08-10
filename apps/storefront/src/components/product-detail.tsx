@@ -255,14 +255,10 @@ export function ProductDetail({
 
           {anyPriceDelta ? <p className="text-sm text-text-muted">{t('priceNote')}</p> : null}
 
-          {/* Hi-fi: the short description sits directly under the price row (not below the fold). */}
-          <p className="max-w-[440px] whitespace-pre-line text-sm leading-relaxed text-text-muted">
-            {product.description}
-          </p>
-
           {/* Colour/parts/choices/engrave/toggle configurator (ADR-037) — shared markup with the cart
               edit dialog via ConfiguratorFields (PR D), so a swatch, a pill or an engrave field looks and
-              behaves identically wherever it's rendered. */}
+              behaves identically wherever it's rendered. Hi-fi order: configurator sits right under the
+              price row (shortest tap-to-buy on mobile); the description reads after the CTA. */}
           <ConfiguratorFields product={product} state={cfg} idPrefix="detail" />
 
           {/* Add-to-cart: qty stepper + the pop CTA (hi-fi: "Thêm vào giỏ · 290.000₫"). Locked until the
@@ -351,31 +347,43 @@ export function ProductDetail({
             ) : null}
           </div>
 
-          {/* Hi-fi spec chips: VẬT LIỆU / SIZE / IN TRONG as small bordered tiles (replaces the old
-              two-row "Thông số" dl — same data, the hi-fi presentation). */}
+          {/* Hi-fi: the short description reads after the CTA, above specs. */}
+          <p className="max-w-[440px] whitespace-pre-line text-sm leading-relaxed text-text-muted">
+            {product.description}
+          </p>
+
+          {/* Hi-fi "Thông số": key/value list with dividers (replaces the old spec-chip tiles — same
+              data, closer to the hi-fi's dl presentation). Lead-time + shipping rows carry the teal
+              made-to-order trust signal. */}
           <section aria-label={t('specsHeading')}>
-            <ul className="flex flex-wrap gap-2">
-              <li className="rounded-sm border border-border-default bg-surface-card px-3 py-2">
-                <p className="font-mono text-[10px] uppercase tracking-wide text-text-muted">
+            <dl className="divide-y divide-border-subtle border-y border-border-subtle">
+              <div className="flex items-center justify-between py-2.5">
+                <dt className="font-mono text-[11px] uppercase tracking-wide text-text-muted">
                   {t('specMaterial')}
-                </p>
-                <p className="text-sm font-semibold text-text-strong">{product.material}</p>
-              </li>
-              <li className="rounded-sm border border-border-default bg-surface-card px-3 py-2">
-                <p className="font-mono text-[10px] uppercase tracking-wide text-text-muted">
+                </dt>
+                <dd className="text-sm font-semibold text-text-strong">{product.material}</dd>
+              </div>
+              <div className="flex items-center justify-between py-2.5">
+                <dt className="font-mono text-[11px] uppercase tracking-wide text-text-muted">
                   {t('specDimensions')}
-                </p>
-                <p className="font-mono text-sm font-semibold text-text-strong">
+                </dt>
+                <dd className="font-mono text-sm font-semibold text-text-strong">
                   {formatDimensions(product.dimensions)}
-                </p>
-              </li>
-              <li className="rounded-sm border border-accent-teal bg-accent-teal-soft px-3 py-2">
-                <p className="font-mono text-[10px] uppercase tracking-wide text-text-muted">
+                </dd>
+              </div>
+              <div className="flex items-center justify-between py-2.5">
+                <dt className="font-mono text-[11px] uppercase tracking-wide text-text-muted">
                   {t('leadTimeLabel')}
-                </p>
-                <p className="text-sm font-semibold text-text-strong">{t('leadTimeValue')}</p>
-              </li>
-            </ul>
+                </dt>
+                <dd className="text-sm font-semibold text-accent-teal">{t('leadTimeValue')}</dd>
+              </div>
+              <div className="flex items-center justify-between py-2.5">
+                <dt className="font-mono text-[11px] uppercase tracking-wide text-text-muted">
+                  {t('shippingLabel')}
+                </dt>
+                <dd className="text-sm font-semibold text-text-strong">{t('shippingValue')}</dd>
+              </div>
+            </dl>
           </section>
         </div>
       </div>

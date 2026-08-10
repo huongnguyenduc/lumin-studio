@@ -54,9 +54,10 @@ export function ColorSwatches({
                   className={cn(
                     'relative h-11 w-11 rounded-full border-2 transition-transform duration-150 ease-out',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2',
-                    'motion-reduce:transition-none',
+                    'motion-safe:transition-transform motion-reduce:transition-none',
                     selected
-                      ? 'border-border-strong ring-2 ring-border-strong ring-offset-2'
+                      ? // Hi-fi: the selected swatch reads larger with a double halo (ring + offset).
+                        'scale-110 border-border-strong ring-2 ring-border-strong ring-offset-2'
                       : 'border-border-default',
                     selectable
                       ? 'hover:-translate-y-px motion-reduce:transform-none'

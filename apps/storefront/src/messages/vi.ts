@@ -122,6 +122,9 @@ export const vi = {
     // pending option delta or qty > 1 means the real total may differ (never client-computed).
     stickyTotalLabel: 'Tổng',
     stickyFromPrice: 'từ',
+    // Hi-fi "Thông số" dl — shipping-estimate row (trust signal beside the lead-time row).
+    shippingLabel: 'Giao hàng',
+    shippingValue: 'Giao toàn quốc · 2–4 ngày sau in',
     // Hi-fi coral pill on the media tile when the on-demand 3D viewer is available.
     realtime3dBadge: 'Realtime 3D',
     // Quantity stepper beside the CTA (−/+ aria-labels; the visible value is aria-live in @lumin/ui).
