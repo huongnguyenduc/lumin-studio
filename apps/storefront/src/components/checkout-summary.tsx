@@ -120,8 +120,11 @@ export function SummaryMoney({
 
 /** Mobile sticky total bar (< lg): total + submit always in view, with an expandable breakdown that opens
  *  UPWARD (the <details> sits above the total row, and the bar itself is pinned to the bottom) — no JS,
- *  no flex-col-reverse. Copies the PDP sticky-CTA recipe (product-detail.tsx): `sticky` + translucent blur
- *  + dissolves on lg: (the desktop aside carries the submit button there instead). Unlike the PDP bar this
+ *  no flex-col-reverse. Originally copied the PDP sticky-CTA bar's recipe (product-detail.tsx): `sticky`
+ *  + translucent blur; the PDP bar has since moved to `fixed` (so it persists through its reviews section)
+ *  — this bar stays `sticky` intentionally, since checkout has no content below the summary that a fixed
+ *  bar would need to persist through, and `sticky` costs no extra page-level bottom-padding bookkeeping.
+ *  Dissolves on lg: (the desktop aside carries the submit button there instead). Unlike the PDP bar this
  *  one only needs to clear the mobile bottom-nav (bottom-nav.tsx is `md:hidden`), so the 76px offset drops
  *  at `md:` instead of `lg:` — it would otherwise float above empty space between md and lg.
  *

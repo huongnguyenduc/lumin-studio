@@ -96,17 +96,22 @@ export default async function ProductDetailPage({ params, searchParams }: PagePr
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd }} />
-      <ProductDetail product={product} category={category} />
-      <ProductReviews
-        slug={product.slug}
-        reviews={reviews.items}
-        total={reviews.total}
-        page={reviews.page}
-        pageSize={reviews.pageSize}
-        productRating={product.rating}
-        images={product.images}
-        productName={product.name}
-      />
+      {/* Extra bottom clearance beyond the layout's global pb-20 (BottomNav) — ProductDetail's
+          add-to-cart bar is `fixed` on mobile (persists through this whole route, reviews included), so
+          this route alone needs room for BOTH the bar and BottomNav under the last review/pager. */}
+      <div className="pb-20 md:pb-0">
+        <ProductDetail product={product} category={category} />
+        <ProductReviews
+          slug={product.slug}
+          reviews={reviews.items}
+          total={reviews.total}
+          page={reviews.page}
+          pageSize={reviews.pageSize}
+          productRating={product.rating}
+          images={product.images}
+          productName={product.name}
+        />
+      </div>
     </>
   );
 }
