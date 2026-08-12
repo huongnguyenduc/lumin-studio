@@ -31,6 +31,7 @@ Also verified on-box today (o-1c): Blender sees the GTX 1060 CUDA device, render
 - **Amend ADR-049** — payload grows the `partColors` map (sprite).
 - **Amend ADR-039** — `filament_material_id` extends from "costing-only" to "costing + swatch source" (copy-on-write).
 - **Within ADR-049** (no ADR) — first-color default + manual re-render (reuses `CreateProductAssetJob`, `admin_asset_jobs.go:88`; there is no auto-enqueue-on-catalog-change today and we are not adding one).
+  - *2026-08-12 update:* the default is now EXPLICIT — owner-picked `colors.is_default` per scope (mig 000034, `PUT .../colors/{colorId}/default`), first-available stays the fallback; on a default change the ADMIN CLIENT re-enqueues a sprite_render (same shape as `saveModelView` — still no server-side auto-enqueue-on-catalog-change).
 
 ## 3 · Slices (each = one merge-gated PR)
 

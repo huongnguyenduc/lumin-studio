@@ -58,6 +58,7 @@ Thời gian lưu **ISO-8601 UTC**.
 | `available` | bool (còn cuộn nhựa) |
 | `priceDelta` | int (VND, có thể 0) |
 | `partId` | uuid? → Part (null = màu phẳng cấp SP, mặc định; set = màu của một bộ phận · ADR-037) |
+| `isDefault` | bool — màu mặc định owner chọn cho scope của nó (SP phẳng / từng part), tối đa **một** per scope (server clear sibling atomic). Mọi nơi cần "màu mở đầu" (storefront pre-select, ảnh 360° freeze, 2 khung 3D admin) ưu tiên màu này nếu còn hàng, không có thì fallback màu available đầu tiên |
 
 ### Part (bộ phận có tên)
 | Trường | Kiểu |

@@ -249,6 +249,24 @@ RETURNING *;
 -- name: DeleteColor :one
 DELETE FROM colors WHERE id = $1 AND product_id = $2 RETURNING id;
 
+-- SetDefaultColor marks ONE colour as the scope default (flat product, or the part it belongs to) and
+-- clears every sibling in the SAME scope in one atomic statement — no tx needed, no window where two
+-- defaults coexist. Scoped by (id, product_id) like UpdateColor: a colourId under another product
+-- matches no target → ErrNoRows → 404.
+-- name: SetDefaultColor :one
+WITH cleared AS (
+  UPDATE colors c SET is_default = false
+  WHERE c.product_id = $2
+    AND c.id <> $1
+    -- Same scope as the target (its part, or NULL = flat). The EXISTS guard keeps a missing target
+    -- from clearing the flat scope (the subquery would be NULL, matching every flat colour).
+    AND EXISTS (SELECT 1 FROM colors t WHERE t.id = $1 AND t.product_id = $2)
+    AND c.part_id IS NOT DISTINCT FROM
+        (SELECT t.part_id FROM colors t WHERE t.id = $1 AND t.product_id = $2)
+)
+UPDATE colors col SET is_default = true WHERE col.id = $1 AND col.product_id = $2
+RETURNING col.*;
+
 -- name: InsertOption :one
 INSERT INTO options (id, product_id, label, description, type, price_delta, max_chars)
 VALUES ($1, $2, $3, $4, $5, $6, $7)

@@ -70,4 +70,26 @@ describe('defaultModelColors', () => {
   it('no colours at all → nothing to paint', () => {
     expect(defaultModelColors([], [])).toEqual({ flatHex: undefined, byObject: {} });
   });
+
+  it('owner-picked isDefault beats list order, per part and flat; an unavailable default is skipped', () => {
+    const def = (hex: string, available: boolean, partId: string | null = null) => ({
+      hex,
+      available,
+      partId,
+      isDefault: true,
+    });
+    expect(
+      defaultModelColors(
+        [{ id: 'p1', modelObjectName: 'Chao đèn' }],
+        [color('#111111', true, 'p1'), def('#E8B923', true, 'p1')],
+      ),
+    ).toEqual({ flatHex: undefined, byObject: { 'Chao đèn': '#E8B923' } });
+    expect(defaultModelColors([], [color('#ABCDEF', true), def('#111111', true)]).flatHex).toBe(
+      '#111111',
+    );
+    // Unavailable default → fall back to first available (never paint an out-of-stock colour).
+    expect(defaultModelColors([], [def('#111111', false), color('#ABCDEF', true)]).flatHex).toBe(
+      '#ABCDEF',
+    );
+  });
 });

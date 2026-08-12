@@ -89,6 +89,7 @@ describe('toProductDetailView', () => {
           available: true,
           priceDelta: 0,
           partId: null,
+          isDefault: false,
         },
       ],
       options: [],
@@ -254,8 +255,17 @@ describe('toProductDetailView', () => {
         available: true,
         priceDelta: 15000,
         partId: null,
+        isDefault: false,
       },
-      { id: 'b', name: 'Kem sữa', hex: '#F3E9D2', available: false, priceDelta: 0, partId: null },
+      {
+        id: 'b',
+        name: 'Kem sữa',
+        hex: '#F3E9D2',
+        available: false,
+        priceDelta: 0,
+        partId: null,
+        isDefault: false,
+      },
     ]);
   });
 });
@@ -469,6 +479,28 @@ describe('defaultFlatColorId / defaultPartColors (2026-07-17 pre-selected colour
     expect(
       defaultPartColors(parts, [{ id: 'c-shade-red', partId: 'p-shade', available: true }]),
     ).toEqual({ 'p-shade': 'c-shade-red' });
+  });
+
+  it('an owner-picked isDefault colour beats list order; an unavailable default falls back', () => {
+    expect(
+      defaultFlatColorId([
+        { id: 'first', available: true },
+        { id: 'chosen', available: true, isDefault: true },
+      ]),
+    ).toBe('chosen');
+    expect(
+      defaultFlatColorId([
+        { id: 'chosen-out', available: false, isDefault: true },
+        { id: 'first', available: true },
+      ]),
+    ).toBe('first');
+    expect(
+      defaultPartColors(parts, [
+        { id: 'c-shade-red', partId: 'p-shade', available: true },
+        { id: 'c-shade-def', partId: 'p-shade', available: true, isDefault: true },
+        { id: 'c-base-red', partId: 'p-base', available: true },
+      ]),
+    ).toEqual({ 'p-shade': 'c-shade-def', 'p-base': 'c-base-red' });
   });
 });
 

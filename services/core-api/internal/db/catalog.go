@@ -376,6 +376,16 @@ func (c *Catalog) UpdateColor(ctx context.Context, arg sqlc.UpdateColorParams) (
 	return col, err
 }
 
+// SetDefaultColor makes one colour its scope's default (clearing siblings atomically — one SQL
+// statement); scoped by (id, product_id) → ErrNotFound on a mismatch.
+func (c *Catalog) SetDefaultColor(ctx context.Context, arg sqlc.SetDefaultColorParams) (sqlc.Color, error) {
+	col, err := c.q.SetDefaultColor(ctx, arg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Color{}, ErrNotFound
+	}
+	return col, err
+}
+
 // DeleteColor removes a color scoped by (id, product_id), or ErrNotFound. colors have no inbound FK, so no
 // RESTRICT case — a delete always succeeds when the row exists.
 func (c *Catalog) DeleteColor(ctx context.Context, arg sqlc.DeleteColorParams) error {

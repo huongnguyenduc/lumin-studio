@@ -1298,6 +1298,29 @@ export interface paths {
         patch: operations["updateProductColor"];
         trace?: never;
     };
+    "/admin/products/{id}/colors/{colorId}/default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                colorId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Make this colour the default of its scope (owner-only).
+         * @description Atomically clears the previous default in the same scope (flat product, or the colour's part) and sets this one. Idempotent. Scoped by (product, colour); a colourId under another product → 404. The 360° sprite is NOT re-rendered here — the admin client re-enqueues a sprite_render after a successful call (same pattern as the model-view save).
+         */
+        put: operations["setProductColorDefault"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/products/{id}/options": {
         parameters: {
             query?: never;
@@ -1772,6 +1795,8 @@ export interface components {
             hex: string;
             /** @description Whether the filament is currently in stock. */
             available: boolean;
+            /** @description Owner-picked default for its scope (the whole product when partId is null, else that part). Drives the storefront's pre-selected colour, the 360° sprite paint, and the admin 3D previews. At most one per scope (server-enforced); none set → readers fall back to the first available colour by name. */
+            isDefault?: boolean;
             /**
              * Format: int64
              * @description Added price in int-VND (>= 0).
@@ -5569,6 +5594,32 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setProductColorDefault: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                colorId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The colour, now the scope default. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Color"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
