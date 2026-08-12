@@ -544,6 +544,9 @@ type Color struct {
 	Hex string             `json:"hex"`
 	Id  openapi_types.UUID `json:"id"`
 
+	// IsDefault Owner-picked default for its scope (the whole product when partId is null, else that part). Drives the storefront's pre-selected colour, the 360° sprite paint, and the admin 3D previews. At most one per scope (server-enforced); none set → readers fall back to the first available colour by name.
+	IsDefault *bool `json:"isDefault,omitempty"`
+
 	// Name Display name, e.g. "Kem sữa".
 	Name string `json:"name"`
 
@@ -2509,6 +2512,9 @@ type ServerInterface interface {
 	// Edit a product's colour (owner-only).
 	// (PATCH /admin/products/{id}/colors/{colorId})
 	UpdateProductColor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, colorId openapi_types.UUID)
+	// Make this colour the default of its scope (owner-only).
+	// (PUT /admin/products/{id}/colors/{colorId}/default)
+	SetProductColorDefault(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, colorId openapi_types.UUID)
 	// Create a presigned POST form for one source-model upload (owner-only).
 	// (POST /admin/products/{id}/model-upload)
 	CreateProductModelUpload(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -2977,6 +2983,12 @@ func (_ Unimplemented) DeleteProductColor(w http.ResponseWriter, r *http.Request
 // Edit a product's colour (owner-only).
 // (PATCH /admin/products/{id}/colors/{colorId})
 func (_ Unimplemented) UpdateProductColor(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, colorId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Make this colour the default of its scope (owner-only).
+// (PUT /admin/products/{id}/colors/{colorId}/default)
+func (_ Unimplemented) SetProductColorDefault(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, colorId openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4706,6 +4718,46 @@ func (siw *ServerInterfaceWrapper) UpdateProductColor(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateProductColor(w, r, id, colorId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetProductColorDefault operation middleware
+func (siw *ServerInterfaceWrapper) SetProductColorDefault(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "colorId" -------------
+	var colorId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "colorId", chi.URLParam(r, "colorId"), &colorId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "colorId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetProductColorDefault(w, r, id, colorId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6528,6 +6580,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/admin/products/{id}/colors/{colorId}", wrapper.UpdateProductColor)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/admin/products/{id}/colors/{colorId}/default", wrapper.SetProductColorDefault)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/admin/products/{id}/model-upload", wrapper.CreateProductModelUpload)
@@ -8860,6 +8915,51 @@ func (response UpdateProductColor403JSONResponse) VisitUpdateProductColorRespons
 type UpdateProductColor404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateProductColor404JSONResponse) VisitUpdateProductColorResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetProductColorDefaultRequestObject struct {
+	Id      openapi_types.UUID `json:"id"`
+	ColorId openapi_types.UUID `json:"colorId"`
+}
+
+type SetProductColorDefaultResponseObject interface {
+	VisitSetProductColorDefaultResponse(w http.ResponseWriter) error
+}
+
+type SetProductColorDefault200JSONResponse Color
+
+func (response SetProductColorDefault200JSONResponse) VisitSetProductColorDefaultResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetProductColorDefault401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response SetProductColorDefault401JSONResponse) VisitSetProductColorDefaultResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetProductColorDefault403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response SetProductColorDefault403JSONResponse) VisitSetProductColorDefaultResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetProductColorDefault404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetProductColorDefault404JSONResponse) VisitSetProductColorDefaultResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
 
@@ -11362,6 +11462,9 @@ type StrictServerInterface interface {
 	// Edit a product's colour (owner-only).
 	// (PATCH /admin/products/{id}/colors/{colorId})
 	UpdateProductColor(ctx context.Context, request UpdateProductColorRequestObject) (UpdateProductColorResponseObject, error)
+	// Make this colour the default of its scope (owner-only).
+	// (PUT /admin/products/{id}/colors/{colorId}/default)
+	SetProductColorDefault(ctx context.Context, request SetProductColorDefaultRequestObject) (SetProductColorDefaultResponseObject, error)
 	// Create a presigned POST form for one source-model upload (owner-only).
 	// (POST /admin/products/{id}/model-upload)
 	CreateProductModelUpload(ctx context.Context, request CreateProductModelUploadRequestObject) (CreateProductModelUploadResponseObject, error)
@@ -12979,6 +13082,33 @@ func (sh *strictHandler) UpdateProductColor(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateProductColorResponseObject); ok {
 		if err := validResponse.VisitUpdateProductColorResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetProductColorDefault operation middleware
+func (sh *strictHandler) SetProductColorDefault(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, colorId openapi_types.UUID) {
+	var request SetProductColorDefaultRequestObject
+
+	request.Id = id
+	request.ColorId = colorId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetProductColorDefault(ctx, request.(SetProductColorDefaultRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetProductColorDefault")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetProductColorDefaultResponseObject); ok {
+		if err := validResponse.VisitSetProductColorDefaultResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

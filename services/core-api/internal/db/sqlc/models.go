@@ -703,6 +703,7 @@ type Color struct {
 	PriceDelta         int64       `json:"priceDelta"`
 	PartID             pgtype.UUID `json:"partId"`
 	FilamentMaterialID pgtype.UUID `json:"filamentMaterialId"`
+	IsDefault          bool        `json:"isDefault"`
 }
 
 type ConsentGrant struct {

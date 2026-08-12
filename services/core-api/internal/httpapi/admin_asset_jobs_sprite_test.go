@@ -74,4 +74,29 @@ func TestSpritePartColors(t *testing.T) {
 	if _, err := spritePartColors(nil, []sqlc.Color{{PartID: pgtype.UUID{Valid: false}, Hex: "gold", Available: true}}); err == nil {
 		t.Fatal("malformed flat hex: want error, got nil")
 	}
+
+	// An owner-picked is_default colour BEATS catalog order — per part and flat — but an UNAVAILABLE
+	// default is skipped (never freeze an out-of-stock colour into the render).
+	defParts := []sqlc.Part{{ID: shade, ModelObjectName: "Chao đèn"}}
+	defColors := []sqlc.Color{
+		{PartID: partID(shade), Hex: "#111111", Available: true},
+		{PartID: partID(shade), Hex: "#E8B923", Available: true, IsDefault: true}, // later in order, but the default
+	}
+	if m, err := spritePartColors(defParts, defColors); err != nil || m["Chao đèn"] != "#E8B923" {
+		t.Fatalf("is_default part: m=%v err=%v", m, err)
+	}
+	defFlat := []sqlc.Color{
+		{PartID: pgtype.UUID{Valid: false}, Hex: "#ABCDEF", Available: true},
+		{PartID: pgtype.UUID{Valid: false}, Hex: "#111111", Available: true, IsDefault: true},
+	}
+	if m, err := spritePartColors(nil, defFlat); err != nil || m["*"] != "#111111" {
+		t.Fatalf("is_default flat: m=%v err=%v", m, err)
+	}
+	unavailDef := []sqlc.Color{
+		{PartID: pgtype.UUID{Valid: false}, Hex: "#111111", Available: false, IsDefault: true},
+		{PartID: pgtype.UUID{Valid: false}, Hex: "#ABCDEF", Available: true},
+	}
+	if m, err := spritePartColors(nil, unavailDef); err != nil || m["*"] != "#ABCDEF" {
+		t.Fatalf("unavailable is_default falls back: m=%v err=%v", m, err)
+	}
 }

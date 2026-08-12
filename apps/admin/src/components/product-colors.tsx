@@ -7,7 +7,12 @@ import { formatVnd } from '@lumin/core';
 import { Badge, Button } from '@lumin/ui';
 import type { components } from '@lumin/api-client';
 import { groupColorsByPart } from '@/lib/product-colors';
-import { deleteColor, deletePart, type SubWriteResult } from '@/lib/product-actions';
+import {
+  deleteColor,
+  deletePart,
+  setDefaultColor,
+  type SubWriteResult,
+} from '@/lib/product-actions';
 import { ProductColorDialog, type DialogTarget } from './product-colors-dialog';
 
 type Color = components['schemas']['Color'];
@@ -45,6 +50,22 @@ export function ProductColors({
   const [target, setTarget] = useState<DialogTarget | null>(null);
   const [pending, start] = useTransition();
   const [delError, setDelError] = useState<string | null>(null);
+  // After a default-colour change: '' hidden · 'saved' set (no model yet) · 'rerender' set + 360° redo kicked.
+  const [defaultNote, setDefaultNote] = useState<'' | 'saved' | 'rerender'>('');
+
+  function runSetDefault(colorId: string) {
+    setDelError(null);
+    setDefaultNote('');
+    start(async () => {
+      const res = await setDefaultColor(productId, colorId);
+      if (res.ok) {
+        setDefaultNote(res.rerender ? 'rerender' : 'saved');
+        router.refresh();
+      } else {
+        setDelError(res.code);
+      }
+    });
+  }
 
   const groups = groupColorsByPart(parts, colors);
   const filamentName = (id?: string | null) =>
@@ -119,6 +140,12 @@ export function ProductColors({
             {t('addColor')}
           </Button>
         </div>
+        <p className="text-sm text-text-muted">{t('defaultHint')}</p>
+        {defaultNote && (
+          <p role="status" className="text-sm text-accent-teal">
+            {t(defaultNote === 'rerender' ? 'defaultSavedRerender' : 'defaultSaved')}
+          </p>
+        )}
         {groups.map((g) => (
           <section key={g.part?.id ?? 'flat'} className="flex flex-col gap-1.5">
             {parts.length > 0 && (
@@ -141,6 +168,18 @@ export function ProductColors({
                         {c.name}
                       </span>
                       {c.priceDelta > 0 && <Badge tone="neutral">+{formatVnd(c.priceDelta)}</Badge>}
+                      {c.isDefault ? (
+                        <Badge tone="teal">{t('defaultBadge')}</Badge>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => runSetDefault(c.id)}
+                          disabled={pending || !c.available}
+                          className="min-h-[44px] rounded-md px-1.5 text-sm text-text-muted underline hover:text-text-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sky focus-visible:ring-offset-2 disabled:opacity-60"
+                        >
+                          {t('makeDefault')}
+                        </button>
+                      )}
                       {!c.available && <Badge tone="danger">{t('unavailable')}</Badge>}
                       {filamentName(c.filamentMaterialId) && (
                         <span className="truncate font-mono text-xs text-text-muted">

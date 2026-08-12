@@ -80,6 +80,10 @@ export type ColorView = {
    *  with `parts` groups its colours by this id — the customer picks one colour per part; the server
    *  validates the colour ∈ its claimed part (ErrColorNotForPart). null = the legacy flat colour path. */
   partId: string | null;
+  /** Owner-picked default of its scope (product / part). When set (and available) the detail page opens
+   *  on it; none set → the first available colour, the pre-2026-08 behaviour. Optional so the many
+   *  test fixtures predating it stay valid — absent ⇒ false. */
+  isDefault?: boolean;
 };
 
 /** One enumerated choice of a `choice` option (ADR-037) — e.g. size "M". The customer picks exactly one
@@ -208,6 +212,7 @@ export function toProductDetailView(product: components['schemas']['Product']): 
       priceDelta: c.priceDelta,
       // openapi partId is nullable + optional (a flat product's colours omit it); collapse to null.
       partId: c.partId ?? null,
+      isDefault: c.isDefault ?? false,
     })),
     options: product.options.map((o) => ({
       id: o.id,
@@ -373,9 +378,13 @@ export function canAddToCartWithOptions(
  * selectable colour (all out of stock / colourless) — the CTA lock then behaves as before. Pure → tested.
  */
 export function defaultFlatColorId(
-  colors: ReadonlyArray<Pick<ColorView, 'id' | 'available'>>,
+  colors: ReadonlyArray<Pick<ColorView, 'id' | 'available' | 'isDefault'>>,
 ): string | null {
-  return colors.find((c) => c.available)?.id ?? null;
+  // Owner-picked default first (is_default, 2026-08); an unavailable default never wins — fall back
+  // to the first available (the original 2026-07-17 rule), so the viewer is always coloured.
+  return (
+    (colors.find((c) => c.available && c.isDefault) ?? colors.find((c) => c.available))?.id ?? null
+  );
 }
 
 /**
@@ -385,12 +394,13 @@ export function defaultFlatColorId(
  */
 export function defaultPartColors(
   parts: ReadonlyArray<Pick<PartView, 'id'>>,
-  colors: ReadonlyArray<Pick<ColorView, 'id' | 'partId' | 'available'>>,
+  colors: ReadonlyArray<Pick<ColorView, 'id' | 'partId' | 'available' | 'isDefault'>>,
 ): Record<string, string> {
   const map: Record<string, string> = {};
   for (const part of parts) {
-    const first = colors.find((c) => c.partId === part.id && c.available);
-    if (first) map[part.id] = first.id;
+    const scoped = colors.filter((c) => c.partId === part.id && c.available);
+    const pick = scoped.find((c) => c.isDefault) ?? scoped[0];
+    if (pick) map[part.id] = pick.id;
   }
   return map;
 }

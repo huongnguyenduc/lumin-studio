@@ -245,6 +245,13 @@ export const vi = {
         flatGroup: 'Không thuộc bộ phận',
         noColorsInGroup: 'Chưa có màu nào.',
         unavailable: 'Tạm hết',
+        defaultHint:
+          'Màu mặc định là màu khách thấy đầu tiên — model trên web, ảnh xoay 360° và 2 khung 3D bên dưới đều mở theo màu này.',
+        defaultBadge: 'Mặc định',
+        makeDefault: 'Đặt mặc định',
+        defaultSaved: 'Đã đặt màu mặc định.',
+        defaultSavedRerender:
+          'Đã đặt màu mặc định — ảnh xoay 360° đang được render lại theo màu mới.',
         edit: 'Sửa',
         delete: 'Xoá',
         confirmDelete: 'Xoá hẳn',

@@ -2347,6 +2347,38 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /admin/products/{id}/colors/{colorId}/default:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: colorId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      tags: [admin]
+      operationId: setProductColorDefault
+      summary: Make this colour the default of its scope (owner-only).
+      description: >
+        Atomically clears the previous default in the same scope (flat product, or the colour's part)
+        and sets this one. Idempotent. Scoped by (product, colour); a colourId under another product
+        → 404. The 360° sprite is NOT re-rendered here — the admin client re-enqueues a sprite_render
+        after a successful call (same pattern as the model-view save).
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: The colour, now the scope default.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Color'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /admin/products/{id}/options:
     parameters:
       - name: id
@@ -3312,6 +3344,15 @@ components:
         available:
           type: boolean
           description: Whether the filament is currently in stock.
+        isDefault:
+          type: boolean
+          # No `default:` — that would generate a REQUIRED TS field and break every existing Color
+          # literal in client fixtures (the #76 lesson); absent ⇒ false.
+          description: >
+            Owner-picked default for its scope (the whole product when partId is null, else that part).
+            Drives the storefront's pre-selected colour, the 360° sprite paint, and the admin 3D
+            previews. At most one per scope (server-enforced); none set → readers fall back to the
+            first available colour by name.
         priceDelta:
           type: integer
           format: int64

@@ -195,15 +195,7 @@ func engravePositionsFromJSON(raw []byte) ([]api.EngraveAnchor, error) {
 func colorsDTO(rows []sqlc.Color) []api.Color {
 	out := make([]api.Color, len(rows))
 	for i, c := range rows {
-		out[i] = api.Color{
-			Id:                 c.ID,
-			Name:               c.Name,
-			Hex:                c.Hex,
-			Available:          c.Available,
-			PriceDelta:         c.PriceDelta,                        // raw int-VND (may be 0)
-			PartId:             uuidPtrFromPg(c.PartID),             // ADR-037: null = flat product-level colour
-			FilamentMaterialId: uuidPtrFromPg(c.FilamentMaterialID), // ADR-039: null = colour not linked to a filament
-		}
+		out[i] = colorDTO(c) // one mapper (admin_products.go) — the storefront needs isDefault too
 	}
 	return out
 }

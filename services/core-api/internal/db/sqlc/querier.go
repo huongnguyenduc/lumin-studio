@@ -586,6 +586,11 @@ type Querier interface {
 	// prior register, or a prior claim) is never overwritten by this path; 0 rows tells the caller "already
 	// claimed" so it can fall back to a normal login prompt instead of silently rotating someone's password.
 	SetCustomerPasswordIfAbsent(ctx context.Context, arg SetCustomerPasswordIfAbsentParams) (Customer, error)
+	// SetDefaultColor marks ONE colour as the scope default (flat product, or the part it belongs to) and
+	// clears every sibling in the SAME scope in one atomic statement — no tx needed, no window where two
+	// defaults coexist. Scoped by (id, product_id) like UpdateColor: a colourId under another product
+	// matches no target → ErrNoRows → 404.
+	SetDefaultColor(ctx context.Context, arg SetDefaultColorParams) (Color, error)
 	// ==== Pet page — lost mode (t-4a) =============================================================
 	// SetLostMode flips the profile's lost-mode flag (spec §10 công tắc thất lạc). The owner_account_id guard
 	// makes this the authorization boundary: a signed-in NON-owner matches 0 rows → the handler maps that to a

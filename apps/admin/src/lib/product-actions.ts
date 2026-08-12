@@ -304,6 +304,27 @@ export async function saveEngraveAnchor(
   }
 }
 
+// Make one colour its scope's default (flat product / its part) — owner-only, atomic server-side.
+// The 360° sprite freezes the default paint at enqueue (admin_asset_jobs.go), so a changed default
+// would silently leave the old sprite in the old colour — same staleness as an angle change. After a
+// successful PUT we therefore re-enqueue a sprite_render (same pattern as saveModelView below);
+// `rerender` is best-effort and false when no model was ever uploaded.
+export async function setDefaultColor(
+  productId: string,
+  colorId: string,
+): Promise<{ ok: true; rerender: boolean } | { ok: false; code: WriteCode }> {
+  try {
+    const client = await authedClient();
+    const { error, response } = await client.PUT('/admin/products/{id}/colors/{colorId}/default', {
+      params: { path: { id: productId, colorId } },
+    });
+    if (error) return { ok: false, code: codeFor(response.status) };
+    return { ok: true, rerender: await enqueueSpriteRerender(productId) };
+  } catch {
+    return { ok: false, code: 'error' };
+  }
+}
+
 // Save the default 3D camera pose (P3-l l-5, ADR-038). Owner-only; 204 no body. The pose is display
 // metadata (degrees/percent/metres floats), not money — the storefront viewer opens at it.
 //

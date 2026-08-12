@@ -208,12 +208,12 @@ func (s *Server) cleanAssetJobInput(in api.AssetJobInput) (sqlc.AssetJobType, st
 }
 
 // spritePartColors builds the {objectName → hex} snapshot a sprite_render job paints its parts with (f-5,
-// oracle D-C/D-E). For each part mapped to a model object, the DEFAULT colour is the first AVAILABLE colour
-// of that part in catalog order — ColorsByProduct returns colours by name (colours have no display_order),
-// the same order the editor/storefront list them, so "first available" is a stable, predictable default.
-// The hex is re-validated (#RRGGBB) here at the render trust boundary; a malformed one fails the WHOLE
-// enqueue (a poison job, never a grey part — D-E). A part with no object name or no available colour is
-// omitted: it renders in the model's own baked material, never grey.
+// oracle D-C/D-E). For each part mapped to a model object, the DEFAULT colour is the owner-picked
+// is_default AVAILABLE colour of that scope, else the first available in catalog order (ColorsByProduct
+// returns colours by name) — the same rule the storefront's opening selection and the admin previews use,
+// so all four surfaces paint the same default. The hex is re-validated (#RRGGBB) here at the render trust
+// boundary; a malformed one fails the WHOLE enqueue (a poison job, never a grey part — D-E). A part with
+// no object name or no available colour is omitted: it renders in the model's own baked material, never grey.
 func spritePartColors(parts []sqlc.Part, colors []sqlc.Color) (map[string]string, error) {
 	m := map[string]string{}
 	for _, p := range parts {
@@ -221,34 +221,48 @@ func spritePartColors(parts []sqlc.Part, colors []sqlc.Color) (map[string]string
 		if obj == "" {
 			continue
 		}
-		for _, c := range colors {
-			if !c.Available || !c.PartID.Valid || uuid.UUID(c.PartID.Bytes) != p.ID {
-				continue
-			}
-			if !hexColorRe.MatchString(c.Hex) {
-				return nil, fmt.Errorf("part %s default colour hex %q is not #RRGGBB", p.ID, c.Hex)
-			}
-			m[obj] = c.Hex
-			break // first available in catalog order = the default (D-C)
+		c := defaultScopeColor(colors, func(c sqlc.Color) bool {
+			return c.PartID.Valid && uuid.UUID(c.PartID.Bytes) == p.ID
+		})
+		if c == nil {
+			continue
 		}
+		if !hexColorRe.MatchString(c.Hex) {
+			return nil, fmt.Errorf("part %s default colour hex %q is not #RRGGBB", p.ID, c.Hex)
+		}
+		m[obj] = c.Hex
 	}
-	// A FLAT product (no parts) paints its whole model in the first available product-level colour —
-	// same default the storefront viewer opens on. "*" is the worker's match-all key (_bl_render.py):
+	// A FLAT product (no parts) paints its whole model in its default product-level colour — same
+	// default the storefront viewer opens on. "*" is the worker's match-all key (_bl_render.py):
 	// there are no object names to key on for a flat model. Parts products never get the wildcard —
 	// an unmapped part deliberately keeps its baked material (never guessed).
 	if len(parts) == 0 {
-		for _, c := range colors {
-			if !c.Available || c.PartID.Valid {
-				continue
-			}
+		if c := defaultScopeColor(colors, func(c sqlc.Color) bool { return !c.PartID.Valid }); c != nil {
 			if !hexColorRe.MatchString(c.Hex) {
 				return nil, fmt.Errorf("flat default colour hex %q is not #RRGGBB", c.Hex)
 			}
 			m["*"] = c.Hex
-			break
 		}
 	}
 	return m, nil
+}
+
+// defaultScopeColor picks a scope's default paint: the AVAILABLE colour the owner marked is_default,
+// else the first available in list order. nil when the scope has no available colour.
+func defaultScopeColor(colors []sqlc.Color, inScope func(sqlc.Color) bool) *sqlc.Color {
+	var first *sqlc.Color
+	for i, c := range colors {
+		if !c.Available || !inScope(c) {
+			continue
+		}
+		if c.IsDefault {
+			return &colors[i]
+		}
+		if first == nil {
+			first = &colors[i]
+		}
+	}
+	return first
 }
 
 // assetJobDTO maps a stored asset_jobs row to the wire shape. attempts/lastError/completedAt reflect the

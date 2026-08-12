@@ -11,24 +11,27 @@ export function latestJobsByType<T extends { jobType: string }>(jobs: T[]): T[] 
 }
 
 /**
- * The product's DEFAULT paint: first AVAILABLE colour per mapped part (keyed by modelObjectName, the
- * material name in the structured glb — f-3/f-4), plus the first available product-level colour for a
- * flat (no-parts) product. Mirrors the storefront's default selection (product-view.ts) and the
- * sprite's freeze at enqueue (core-api spritePartColors) — one convention, three surfaces. The admin
- * 3D previews apply these so the owner sees the model in the colours a customer opens on, not the
- * glb's baked material.
+ * The product's DEFAULT paint: per scope (a mapped part, or the flat product level) the AVAILABLE
+ * colour the owner marked isDefault, else the first available in list order — keyed by
+ * modelObjectName, the material name in the structured glb (f-3/f-4). Mirrors the storefront's
+ * default selection (product-view.ts) and the sprite's freeze at enqueue (core-api
+ * spritePartColors) — one convention, four surfaces. The admin 3D previews apply these so the owner
+ * sees the model in the colours a customer opens on, not the glb's baked material.
  */
 export function defaultModelColors(
   parts: { id: string; modelObjectName?: string }[],
-  colors: { partId?: string | null; hex: string; available: boolean }[],
+  colors: { partId?: string | null; hex: string; available: boolean; isDefault?: boolean }[],
 ): { flatHex?: string; byObject: Record<string, string> } {
+  const pick = (inScope: (c: (typeof colors)[number]) => boolean) => {
+    const scoped = colors.filter((c) => c.available && inScope(c));
+    return scoped.find((c) => c.isDefault) ?? scoped[0];
+  };
   const byObject: Record<string, string> = {};
   for (const p of parts) {
     const obj = p.modelObjectName?.trim();
     if (!obj) continue;
-    const c = colors.find((c) => c.partId === p.id && c.available);
+    const c = pick((c) => c.partId === p.id);
     if (c) byObject[obj] = c.hex;
   }
-  const flat = colors.find((c) => !c.partId && c.available);
-  return { flatHex: parts.length === 0 ? flat?.hex : undefined, byObject };
+  return { flatHex: parts.length === 0 ? pick((c) => !c.partId)?.hex : undefined, byObject };
 }

@@ -316,7 +316,7 @@ func (q *Queries) InsertCategory(ctx context.Context, arg InsertCategoryParams) 
 const insertColor = `-- name: InsertColor :one
 INSERT INTO colors (id, product_id, name, hex, available, price_delta, part_id, filament_material_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, product_id, name, hex, available, price_delta, part_id, filament_material_id
+RETURNING id, product_id, name, hex, available, price_delta, part_id, filament_material_id, is_default
 `
 
 type InsertColorParams struct {
@@ -354,6 +354,7 @@ func (q *Queries) InsertColor(ctx context.Context, arg InsertColorParams) (Color
 		&i.PriceDelta,
 		&i.PartID,
 		&i.FilamentMaterialID,
+		&i.IsDefault,
 	)
 	return i, err
 }
@@ -979,7 +980,7 @@ func (q *Queries) ListColorSwatchesByProducts(ctx context.Context, productIds []
 }
 
 const listColorsByProduct = `-- name: ListColorsByProduct :many
-SELECT id, product_id, name, hex, available, price_delta, part_id, filament_material_id FROM colors WHERE product_id = $1 ORDER BY name
+SELECT id, product_id, name, hex, available, price_delta, part_id, filament_material_id, is_default FROM colors WHERE product_id = $1 ORDER BY name
 `
 
 func (q *Queries) ListColorsByProduct(ctx context.Context, productID uuid.UUID) ([]Color, error) {
@@ -1000,6 +1001,7 @@ func (q *Queries) ListColorsByProduct(ctx context.Context, productID uuid.UUID) 
 			&i.PriceDelta,
 			&i.PartID,
 			&i.FilamentMaterialID,
+			&i.IsDefault,
 		); err != nil {
 			return nil, err
 		}
@@ -1196,6 +1198,47 @@ func (q *Queries) ReorderCategories(ctx context.Context, ids []uuid.UUID) error 
 	return err
 }
 
+const setDefaultColor = `-- name: SetDefaultColor :one
+WITH cleared AS (
+  UPDATE colors c SET is_default = false
+  WHERE c.product_id = $2
+    AND c.id <> $1
+    -- Same scope as the target (its part, or NULL = flat). The EXISTS guard keeps a missing target
+    -- from clearing the flat scope (the subquery would be NULL, matching every flat colour).
+    AND EXISTS (SELECT 1 FROM colors t WHERE t.id = $1 AND t.product_id = $2)
+    AND c.part_id IS NOT DISTINCT FROM
+        (SELECT t.part_id FROM colors t WHERE t.id = $1 AND t.product_id = $2)
+)
+UPDATE colors col SET is_default = true WHERE col.id = $1 AND col.product_id = $2
+RETURNING col.id, col.product_id, col.name, col.hex, col.available, col.price_delta, col.part_id, col.filament_material_id, col.is_default
+`
+
+type SetDefaultColorParams struct {
+	ID        uuid.UUID `json:"id"`
+	ProductID uuid.UUID `json:"productId"`
+}
+
+// SetDefaultColor marks ONE colour as the scope default (flat product, or the part it belongs to) and
+// clears every sibling in the SAME scope in one atomic statement — no tx needed, no window where two
+// defaults coexist. Scoped by (id, product_id) like UpdateColor: a colourId under another product
+// matches no target → ErrNoRows → 404.
+func (q *Queries) SetDefaultColor(ctx context.Context, arg SetDefaultColorParams) (Color, error) {
+	row := q.db.QueryRow(ctx, setDefaultColor, arg.ID, arg.ProductID)
+	var i Color
+	err := row.Scan(
+		&i.ID,
+		&i.ProductID,
+		&i.Name,
+		&i.Hex,
+		&i.Available,
+		&i.PriceDelta,
+		&i.PartID,
+		&i.FilamentMaterialID,
+		&i.IsDefault,
+	)
+	return i, err
+}
+
 const setProductModel3dStructuredUrl = `-- name: SetProductModel3dStructuredUrl :execrows
 UPDATE products SET model3d_structured_url = $2 WHERE id = $1
 `
@@ -1330,7 +1373,7 @@ const updateColor = `-- name: UpdateColor :one
 UPDATE colors
 SET name = $3, hex = $4, available = $5, price_delta = $6, part_id = $7, filament_material_id = $8
 WHERE id = $1 AND product_id = $2
-RETURNING id, product_id, name, hex, available, price_delta, part_id, filament_material_id
+RETURNING id, product_id, name, hex, available, price_delta, part_id, filament_material_id, is_default
 `
 
 type UpdateColorParams struct {
@@ -1368,6 +1411,7 @@ func (q *Queries) UpdateColor(ctx context.Context, arg UpdateColorParams) (Color
 		&i.PriceDelta,
 		&i.PartID,
 		&i.FilamentMaterialID,
+		&i.IsDefault,
 	)
 	return i, err
 }

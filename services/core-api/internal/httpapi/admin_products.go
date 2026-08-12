@@ -428,6 +428,24 @@ func (s *Server) UpdateProductColor(ctx context.Context, request api.UpdateProdu
 	return api.UpdateProductColor200JSONResponse(colorDTO(col)), nil
 }
 
+// SetProductColorDefault handles PUT /admin/products/{id}/colors/{colorId}/default (owner-only).
+// One atomic statement clears the previous default in the colour's scope (its part, or the flat
+// product level) and sets this one — so the storefront's opening colour, the sprite freeze, and the
+// admin previews all agree on ONE default. Idempotent; scoped by (product, colour) → 404 on mismatch.
+func (s *Server) SetProductColorDefault(ctx context.Context, request api.SetProductColorDefaultRequestObject) (api.SetProductColorDefaultResponseObject, error) {
+	if err := assertOwner(ctx); err != nil {
+		return nil, err
+	}
+	col, err := db.NewCatalog(s.pool).SetDefaultColor(ctx, sqlc.SetDefaultColorParams{
+		ID:        request.ColorId,
+		ProductID: request.Id,
+	})
+	if err != nil {
+		return nil, err // db.ErrNotFound → 404
+	}
+	return api.SetProductColorDefault200JSONResponse(colorDTO(col)), nil
+}
+
 // DeleteProductColor handles DELETE /admin/products/{id}/colors/{colorId} (owner-only). Scoped by
 // (product, colour); unknown → 404.
 func (s *Server) DeleteProductColor(ctx context.Context, request api.DeleteProductColorRequestObject) (api.DeleteProductColorResponseObject, error) {
@@ -780,6 +798,7 @@ func colorDTO(c sqlc.Color) api.Color {
 		Hex:                c.Hex,
 		Available:          c.Available,
 		PriceDelta:         c.PriceDelta,
+		IsDefault:          &c.IsDefault,                        // owner-picked scope default (pointer: optional on the wire)
 		PartId:             uuidPtrFromPg(c.PartID),             // ADR-037: null = flat product-level colour
 		FilamentMaterialId: uuidPtrFromPg(c.FilamentMaterialID), // ADR-039: null = colour not linked to a filament
 	}
