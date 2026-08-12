@@ -6,6 +6,10 @@
 > hợp; muốn binding phải thành ADR/luật (`agent-harness.md` §Ranh giới promote memory).
 
 ## Focus
+**2026-08-12 — màu mặc định + ghim vị trí khắc (owner báo 3 ý):** (A) `colors.is_default` (mig 000034) đồng bộ 4 bề mặt — PR #261 (`feat/default-color-sync`, chờ CI/merge); đổi mặc định → admin tự re-enqueue sprite_render. (B) Viewer3d `setMarkers` ghim đánh số vị trí khắc + chip số trong danh sách — ĐANG STASH (`git stash pop` sau khi #261 merge, tách nhánh mới từ main, spec-guardian đã PASS 0/0/1-fixed). Smoke stack local đang chạy (pg :5433 `lumin-smoke-pg`, core-api :8090 background, admin :3001/storefront :3000) — teardown khi xong.
+
+---
+
 **✅ XONG — CHƯA COMMIT (2026-08-03, storefront — thiết kế lại khu vực giá ở `/thanh-toan`, theo yêu cầu owner "giá + nút đặt hàng chưa liền nhau, muốn kiểu Shopee").** Plan: `docs/plans/trong-web-storefront-ch-bright-galaxy.md`.
 
 - Tách tóm tắt đơn ra [`checkout-summary.tsx`](../apps/storefront/src/components/checkout-summary.tsx) (`SummaryLines`/`SummaryMoney`/`CheckoutTotalBar`) khỏi `checkout-view.tsx` (905 dòng, inline trước đó).
