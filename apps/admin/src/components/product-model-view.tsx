@@ -603,6 +603,17 @@ export function EngraveAnchorPicker({
       });
     }
     viewerRef.current?.setEngravings(entries);
+    // Numbered pins for the ACTIVE option's spots — same 1..n as the list below, the newest one
+    // (the spot the sample text previews on) highlighted. Other options' spots keep just their text.
+    const activeList = activeOptionId ? (positions[activeOptionId] ?? []) : [];
+    viewerRef.current?.setMarkers(
+      activeList.map((pos, i) => ({
+        id: `${activeOptionId}::${i}`,
+        ...pos,
+        label: String(i + 1),
+        active: i === activeList.length - 1,
+      })),
+    );
   }, [ready, options, activeOptionId, sample, positions, sampleColorHex]);
 
   function onSave() {
@@ -708,7 +719,16 @@ export function EngraveAnchorPicker({
                   key={i}
                   className="flex items-center justify-between gap-2 rounded-md border border-border-default px-3 py-2 text-sm"
                 >
-                  <span className="font-medium text-text-strong">{pos.label}</span>
+                  <span className="flex items-center gap-2">
+                    {/* Same number as the pin on the model — the row ↔ pin link. */}
+                    <span
+                      aria-hidden="true"
+                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-text-strong font-mono text-xs font-bold text-surface-card"
+                    >
+                      {i + 1}
+                    </span>
+                    <span className="font-medium text-text-strong">{pos.label}</span>
+                  </span>
                   <button
                     type="button"
                     onClick={() => activeOptionId && removePosition(activeOptionId, i)}

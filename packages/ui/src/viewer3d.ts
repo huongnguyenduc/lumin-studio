@@ -75,6 +75,15 @@ export class Viewer3d {
   >();
   private engraveMeshes = new Map<string, THREE.Mesh>();
   private engraveBuildTokens = new Map<string, number>();
+  // Numbered anchor pins (admin picker only — the storefront never calls setMarkers).
+  private markers: {
+    id: string;
+    pos: THREE.Vector3;
+    normal: THREE.Vector3;
+    label: string;
+    active: boolean;
+  }[] = [];
+  private markerSprites: THREE.Sprite[] = [];
   private savedView: {
     orbitTheta: number;
     orbitPhi: number;
@@ -159,6 +168,7 @@ export class Viewer3d {
       this.loaded = true;
       this.applyCamera();
       this.rebuildEngravings();
+      this.rebuildMarkers();
     } catch {
       if (!this.disposed) this.onError();
     } finally {
@@ -217,6 +227,72 @@ export class Viewer3d {
     mesh.geometry.dispose();
     (mesh.material as THREE.Material).dispose();
     this.engraveMeshes.delete(id);
+  }
+
+  /** Numbered pins at engrave anchors (admin picker): each entry draws a small badge sprite floating
+   *  just off the surface, always camera-facing and drawn OVER the model (depthTest off) so a spot on
+   *  the far side is still findable at a glance. `active` = the spot being edited — bigger, flame
+   *  accent. Replaces the whole set each call (they're few); pass [] to clear. Safe before load. */
+  setMarkers(
+    entries: {
+      id: string;
+      posX: number;
+      posY: number;
+      posZ: number;
+      normX: number;
+      normY: number;
+      normZ: number;
+      label: string;
+      active?: boolean;
+    }[],
+  ) {
+    this.markers = entries.map((e) => ({
+      id: e.id,
+      pos: new THREE.Vector3(e.posX, e.posY, e.posZ),
+      normal: new THREE.Vector3(e.normX, e.normY, e.normZ).normalize(),
+      label: e.label,
+      active: e.active ?? false,
+    }));
+    if (this.loaded) this.rebuildMarkers();
+  }
+
+  private rebuildMarkers() {
+    for (const s of this.markerSprites) {
+      this.scene.remove(s);
+      (s.material.map as THREE.Texture | null)?.dispose();
+      s.material.dispose();
+    }
+    this.markerSprites = [];
+    for (const m of this.markers) {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) continue;
+      // flame-700 (#C93A1A, the AA-safe accent) for the active spot, ink cocoa for the rest — both
+      // with a white number: data-driven pin art, not themable via CSS tokens (canvas texture).
+      ctx.beginPath();
+      ctx.arc(32, 32, 30, 0, Math.PI * 2);
+      ctx.fillStyle = m.active ? '#C93A1A' : '#2E1C0C';
+      ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.stroke();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 32px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(m.label, 32, 34);
+      const texture = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: texture, depthTest: false, transparent: true }),
+      );
+      sprite.renderOrder = 999; // over the model AND the raised lettering
+      const size = this.maxDim * (m.active ? 0.09 : 0.065);
+      sprite.scale.set(size, size, 1);
+      sprite.position.copy(m.pos).addScaledVector(m.normal, this.maxDim * 0.05);
+      this.scene.add(sprite);
+      this.markerSprites.push(sprite);
+    }
   }
 
   /** The owner-saved default camera pose (ADR-038): model-viewer camera-orbit semantics — theta/phi in
@@ -472,6 +548,8 @@ export class Viewer3d {
 
   dispose() {
     this.disposed = true;
+    this.markers = [];
+    this.rebuildMarkers(); // frees each pin's canvas texture + material (JS heap, not just GPU)
     cancelAnimationFrame(this.raf);
     this.controls.dispose();
     this.renderer.dispose();
